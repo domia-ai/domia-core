@@ -1,0 +1,30 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: domia-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  core:
+    container_name: domia-core
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+      target: domia-core
+    image: domia-core/domia-core
+    privileged: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: always
+
+volumes:
+  ollama_data:

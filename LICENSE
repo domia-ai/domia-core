@@ -1,0 +1,37 @@
+Business Source License 1.1
+
+Licensor: Kevin Castillo Mora / DOMIA
+Initial Date: 2025-06-07
+License: Business Source License 1.1
+Change Date: 2030-01-01
+Change License: Apache 2.0
+
+Terms
+
+The contents of this repository are made available under the terms of the Business Source License 1.1 (the "License"). The License allows the use of the code for non-production and non-commercial use.
+
+As of the Change Date specified above, the contents of this repository will be made available under the Change License, which will apply as an open source license as defined by the Open Source Initiative.
+
+Permissions
+
+You are allowed to use, copy, modify, and distribute the contents of this repository under the following limitations:
+
+1. **Production Use**
+   You may not use the software in a production environment or to provide a commercial service unless you obtain a commercial license from the Licensor.
+
+2. **Resale and Distribution**
+   You may not resell or distribute the software or any derivative works under any license other than this one, unless you are granted explicit written permission.
+
+3. **Modifications**
+   You may create and share modifications, forks, or derived works, provided that you do not use them in a production or commercial setting unless you hold a commercial license.
+
+4. **Commercial License**
+   Commercial licenses may be granted by contacting the Licensor at: [business@domia.ai]
+
+Future Transition
+
+On or after the Change Date (2030-01-01), this software will automatically transition to the Apache 2.0 license and will be governed by the terms of that open source license going forward.
+
+DISCLAIMER
+
+This software is provided "as-is" without warranties or conditions of any kind, express or implied. Use at your own risk.

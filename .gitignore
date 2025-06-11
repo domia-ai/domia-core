@@ -1,0 +1,41 @@
+# Node.js dependency directory
+node_modules/
+
+# Compiled JavaScript files
+build/
+
+# local env files
+.env
+
+# Personal cursor configuration files
+.cursor/
+
+.DS_Store
+
+# SQLite
+local.db
+
+# Temp files for local testing
+/tmp/
+/**/tmp/
+/**/mic_test_output.wav
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+pip-log.txt
+
+
+# Ignore all models in stt-models/vosk/
+src/resources/stt-models/vosk/*
+# Except the default model
+!src/resources/stt-models/vosk/vosk-model-small-en-us-0.15/
+
+
+# Ignore all models in stt-models/vosk/
+src/resources/wake-word/*
+# Except the default model
+src/resources/wake-word/open-wake-word/

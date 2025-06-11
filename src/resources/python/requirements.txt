@@ -1,0 +1,11 @@
+# Open wake word
+sounddevice==0.5.2
+numpy==1.26.4
+openwakeword==0.6.0
+
+# Vosk
+vosk==0.3.44
+
+# Piper
+piper-tts==1.2.0
+soundfile==0.12.1
