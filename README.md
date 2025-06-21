@@ -46,7 +46,7 @@ Here’s what we’ve done, and what’s coming next for Domia.
 - [x] Character profile engine
 - [x] SQLite persistence
 - [x] Manual scripts for wakeword, STT, TTS, LLM, etc.
-- [ ] Developer CLI for test inputs and benchmarks
+- [x] Developer CLI for test inputs and benchmarks
 - [ ] Performance optimization across all modules (reduce latency to minimum)
 - [ ] Prompt refinement for high-quality, emotionally intelligent LLM responses
 - [ ] Admin CLI to configure Domia instance

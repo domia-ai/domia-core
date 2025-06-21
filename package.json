@@ -25,13 +25,7 @@
 		"db:studio": "drizzle-kit studio",
 		"db:push": "drizzle-kit push",
 		"db:reset": "rm -rf local.db && rm -rf drizzle && yarn db:generate && yarn db:migrate",
-		"scripts:checkEnv": "ts-node -r tsconfig-paths/register src/scripts/check-env.ts",
-		"scripts:testWakeWord": "ts-node -r tsconfig-paths/register src/scripts/test-wake-word.ts",
-		"scripts:testAudioRecording": "ts-node -r tsconfig-paths/register src/scripts/test-audio-recording.ts",
-		"scripts:testStt": "ts-node -r tsconfig-paths/register src/scripts/test-stt.ts",
-		"scripts:testLlm": "ts-node -r tsconfig-paths/register src/scripts/test-llm.ts",
-		"scripts:testTts": "ts-node -r tsconfig-paths/register src/scripts/test-tts.ts",
-		"scripts:testPlayAudio": "ts-node -r tsconfig-paths/register src/scripts/test-play-audio.ts"
+		"dev-cli": "ts-node -r tsconfig-paths/register src/cli/dev/index.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.28.0",
@@ -59,10 +53,12 @@
 	"dependencies": {
 		"better-sqlite3": "^11.10.0",
 		"chalk": "^5.4.1",
+		"commander": "^14.0.0",
 		"debug": "^4.4.1",
 		"dotenv": "^16.5.0",
 		"drizzle-orm": "^0.44.2",
 		"drizzle-zod": "^0.8.2",
+		"inquirer": "^12.6.3",
 		"ollama": "^0.5.16",
 		"zod": "^3.25.50"
 	}
