@@ -7,6 +7,7 @@ import {
 	audioRecordingCommand,
 	sttCommand,
 	llmCommand,
+	llmBatchCommand,
 	ttsCommand,
 	playAudioCommand,
 	benchmarkCommand,
@@ -60,6 +61,23 @@ program
 		"Good morning, Domia. How are you feeling today?",
 	)
 	.action((options) => llmCommand(options.prompt))
+
+program
+	.command("llm-batch")
+	.description(
+		"🧠 Run a batch of prompts through the LLM and save responses with timing",
+	)
+	.option(
+		"-i, --input <path>",
+		"Path to the input .jsonl file containing the list of user transcripts",
+		"tmp/llm-batch/input.jsonl",
+	)
+	.option(
+		"-o, --output <path>",
+		"Path to save the output .jsonl file with responses and timing",
+		"tmp/llm-batch/output.jsonl",
+	)
+	.action((options) => llmBatchCommand(options.input, options.output))
 
 program
 	.command("tts")

@@ -6,6 +6,7 @@ import {
 	audioRecordingCommand,
 	sttCommand,
 	llmCommand,
+	llmBatchCommand,
 	ttsCommand,
 	playAudioCommand,
 	benchmarkCommand,
@@ -23,6 +24,7 @@ export const interactiveCommand = async () => {
 				{ name: "🎙️  Record Audio", value: "audio-rec" },
 				{ name: "📝 Run STT", value: "stt" },
 				{ name: "🧠 Run LLM", value: "llm" },
+				{ name: "📚 Run LLM Batch", value: "llm-batch" },
 				{ name: "🗣️  Run TTS", value: "tts" },
 				{ name: "🔊 Play Audio", value: "play-audio" },
 				{ name: "📊 Benchmark", value: "benchmark" },
@@ -62,6 +64,25 @@ export const interactiveCommand = async () => {
 				},
 			])
 			await llmCommand(prompt)
+			break
+		}
+
+		case "llm-batch": {
+			const { input, output } = await inquirer.prompt([
+				{
+					type: "input",
+					name: "input",
+					message: "📥 Path to input .jsonl file:",
+					default: "tmp/llm-batch/input.jsonl",
+				},
+				{
+					type: "input",
+					name: "output",
+					message: "📤 Path to output .jsonl file:",
+					default: "tmp/llm-batch/output.jsonl",
+				},
+			])
+			await llmBatchCommand(input, output)
 			break
 		}
 

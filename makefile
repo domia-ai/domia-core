@@ -16,21 +16,13 @@ ollama: ##🧠 Run ollama project locally
 	@docker compose up --build -d ollama
 
 ##@ Models
-install-phi: ##📦 Install the phi model locally inside the ollama container
-	@echo "🔍 Installing Phi-2 model in Ollama container..."
-	@docker compose exec ollama ollama pull phi
-	@echo "✅ Phi-2 model installed successfully."
-
-install-tinyllama: ##📦 Install the tinyllama model inside the ollama container
-	@echo "🔍 Installing TinyLlama model in Ollama container..."
-	@docker compose exec ollama ollama pull tinyllama
-	@echo "✅ TinyLlama model installed successfully."
+install-phi: ##📦 Install the phi3:mini model locally inside the ollama container
+	@echo "🔍 Installing Phi-3 mini model in Ollama container..."
+	@docker compose exec ollama ollama pull phi3:mini
+	@echo "✅ Phi-3 mini model installed successfully."
 
 run-phi: ##💬 Start interactive shell with Phi model inside the ollama container
-	@docker compose exec ollama ollama run phi
-
-run-tinyllama: ##💬 Start interactive shell with TinyLlama model inside the ollama container
-	@docker compose exec ollama ollama run tinyllama
+	@docker compose exec ollama ollama run phi3:mini
 
 ##@ Lifecycle
 up: ##📈 Up the project locally

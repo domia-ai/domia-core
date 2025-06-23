@@ -117,7 +117,7 @@ CREATE TABLE `llm_model_config` (
 	`is_active` integer DEFAULT false,
 	`domia_id` text NOT NULL,
 	`engine` text DEFAULT 'OLLAMA' NOT NULL,
-	`model_name` text DEFAULT 'tinyllama' NOT NULL,
+	`model_name` text DEFAULT 'phi3:mini' NOT NULL,
 	`temperature` real DEFAULT 0.7,
 	`context_window` integer DEFAULT 2048,
 	`use_compact_prompt` integer DEFAULT false,

@@ -4,7 +4,7 @@ export const DEFAULT_WAKE_WORD_MODEL = "domia"
 export const DEFAULT_LLM_MODEL_TEMPERATURE = 0.7
 export const DEFAULT_LLM_MODEL_CONTEXT_WINDOW = 2048
 export const DEFAULT_STT_MODEL_NAME = "vosk-model-small-en-us-0.15"
-export const DEFAULT_LLM_MODEL_NAME = "tinyllama"
+export const DEFAULT_LLM_MODEL_NAME = "phi3:mini"
 export const DEFAULT_TTS_VOICE_NAME = "en_US-libritts_r-medium"
 
 export const PERSONALITY_ENUM = {
