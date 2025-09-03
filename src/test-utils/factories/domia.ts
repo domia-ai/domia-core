@@ -11,6 +11,8 @@ import { getLlmModelConfig } from "./llm-model-config"
 import { getTtsConfig } from "./tts-config"
 import { getMcpServerConfig } from "./mcp-server-config"
 import { getAudioPlaybackConfig } from "./audio-playback-config"
+import { getRuntimeCapabilities } from "./runtime-capabilities"
+import { getMqttConfig } from "./mqtt-config"
 
 export const getBaseDomia = (
 	overrides: Partial<SelectDomiaType> = {},
@@ -21,6 +23,7 @@ export const getBaseDomia = (
 
 export const getDomia = ({
 	domiaOverrides = {},
+	runtimeCapabilitiesOverrides = {},
 	emotionStateOverrides = {},
 	moduleSettingsOverrides = {},
 	characterProfileOverrides = {},
@@ -30,8 +33,13 @@ export const getDomia = ({
 	ttsConfigOverrides = {},
 	audioPlaybackConfigOverrides = {},
 	mcpServerConfigOverrides = {},
+	mqttConfigOverrides = {},
 }: GetDomiaParamsType): DomiaType => {
 	const baseDomia = getBaseDomia(domiaOverrides)
+	const runtimeCapabilities = getRuntimeCapabilities({
+		...runtimeCapabilitiesOverrides,
+		domiaId: baseDomia?.id,
+	})
 	const emotionState = getEmotionState({
 		...emotionStateOverrides,
 		domiaId: baseDomia?.id,
@@ -68,9 +76,19 @@ export const getDomia = ({
 		...mcpServerConfigOverrides,
 		domiaId: baseDomia?.id,
 	})
+	const localMqttConfig = getMqttConfig({
+		...mqttConfigOverrides,
+		domiaId: baseDomia?.id,
+	})
+	const remoteMqttConfig = getMqttConfig({
+		...mqttConfigOverrides,
+		type: "REMOTE",
+		domiaId: baseDomia?.id,
+	})
 
 	return {
 		...baseDomia,
+		runtimeCapabilities,
 		emotionState,
 		moduleSettings,
 		characterProfile,
@@ -80,5 +98,7 @@ export const getDomia = ({
 		ttsConfig,
 		audioPlaybackConfig,
 		mcpServerConfigs: [mcpServerConfig],
+		localMqttConfig,
+		remoteMqttConfig,
 	}
 }

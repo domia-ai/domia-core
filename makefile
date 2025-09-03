@@ -15,7 +15,19 @@ ollama: ##🧠 Run ollama project locally
 	@echo "🚀 Starting ollama service..."
 	@docker compose up --build -d ollama
 
+mosquitto: ##📡 Start the Mosquitto MQTT broker
+	@echo "📡 Starting Mosquitto broker..."
+	@docker compose up -d mosquitto
+
 ##@ Models
+install-llama: ##📦 Install the llama3.2 model locally inside the ollama container
+	@echo "🔍 Installing llama3.2 model in Ollama container..."
+	@docker compose exec ollama ollama pull llama3.2
+	@echo "✅ llama3.2 model installed successfully."
+
+run-llama: ##💬 Start interactive shell with Llama model inside the ollama container
+	@docker compose exec ollama ollama run llama3.2
+
 install-phi: ##📦 Install the phi3:mini model locally inside the ollama container
 	@echo "🔍 Installing Phi-3 mini model in Ollama container..."
 	@docker compose exec ollama ollama pull phi3:mini
@@ -23,6 +35,25 @@ install-phi: ##📦 Install the phi3:mini model locally inside the ollama contai
 
 run-phi: ##💬 Start interactive shell with Phi model inside the ollama container
 	@docker compose exec ollama ollama run phi3:mini
+
+##@ MQTT
+mosquitto-logs: ##📜 Show Mosquitto logs
+	@docker compose logs -f mosquitto
+
+mosquitto-down: ##🧹 Stop and remove Mosquitto container and data
+	@echo "🧹 Stopping and cleaning Mosquitto..."
+	@docker compose stop mosquitto
+	@docker compose rm -f mosquitto
+	@rm -rf ./data/mqtt ./log/mqtt
+
+mosquitto-password: ##🔐 Generate password.txt with user 'domia' (Docker)
+	@echo "🔐 Generating password.txt for user 'domia' using Docker..."
+	@docker run --rm -v "$$(pwd)/config/mqtt:/mosquitto/config" eclipse-mosquitto \
+		mosquitto_passwd -b -c /mosquitto/config/password.txt domia domia
+
+# mosquitto-password: ##🔐 Generate password.txt with user 'domia' interactively
+# 	@echo "🔐 Generating password.txt for user 'domia'..."
+# 	@mosquitto_passwd -c ./config/mqtt/password.txt domia
 
 ##@ Lifecycle
 up: ##📈 Up the project locally
@@ -66,9 +97,9 @@ mic-test: ##🎙️ Record a short audio sample to test microphone input and RMS
 	@$(PYTHON) src/resources/python/open-wake-word/mic_test.py
 
 run-vosk: ##🗣️ Run the Vosk STT runner with a sample audio file
-	@echo "🗣️ Running Vosk transcription with test.wav..."
+	@echo "🗣️ Running Vosk transcription with mic_test_output.wav..."
 	@$(PYTHON) src/resources/python/vosk/runner.py \
-		--file tmp/recordings/test.wav \
+		--file tmp/mic_test_output.wav \
 		--model src/resources/stt-models/vosk/vosk-model-small-en-us-0.15 \
 		--timeout 5
 

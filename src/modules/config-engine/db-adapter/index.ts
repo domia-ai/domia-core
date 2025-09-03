@@ -11,6 +11,8 @@ import {
 	ttsConfig,
 	mcpServerConfig,
 	audioPlaybackConfig,
+	mqttConfig,
+	runtimeCapabilities,
 	type DBClientOrTxType,
 	type InsertModuleSettingsType,
 	type InsertCharacterProfileType,
@@ -21,11 +23,29 @@ import {
 	type InsertTtsConfigType,
 	type InsertMcpServerConfigType,
 	type InsertAudioPlaybackConfigType,
+	type InsertMqttConfigType,
 	type UpdateModuleSettingsType,
+	type InsertRuntimeCapabilitiesType,
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 
 const dbAdapter = {
+	insertRuntimeCapabilities: (
+		data: InsertRuntimeCapabilitiesType,
+		client: DBClientOrTxType = dbClient,
+	) => client.insert(runtimeCapabilities).values(data),
+	upsertRuntimeCapabilities: (
+		data: InsertRuntimeCapabilitiesType,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.insert(runtimeCapabilities)
+			.values({ ...data, updatedAt: DEFAULT_TIMESTAMP })
+			.onConflictDoUpdate({
+				target: runtimeCapabilities.id,
+				set: data,
+				where: eq(characterProfile.domiaId, data.domiaId),
+			}),
 	insertModuleSettings: (
 		data: InsertModuleSettingsType,
 		client: DBClientOrTxType = dbClient,
@@ -176,6 +196,22 @@ const dbAdapter = {
 			.values({ ...data, updatedAt: DEFAULT_TIMESTAMP })
 			.onConflictDoUpdate({
 				target: audioPlaybackConfig.id,
+				set: data,
+				where: eq(characterProfile.domiaId, data.domiaId),
+			}),
+	insertMqttConfig: (
+		data: InsertMqttConfigType,
+		client: DBClientOrTxType = dbClient,
+	) => client.insert(mqttConfig).values(data),
+	upsertMqttConfig: (
+		data: InsertMqttConfigType,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.insert(mqttConfig)
+			.values({ ...data, updatedAt: DEFAULT_TIMESTAMP })
+			.onConflictDoUpdate({
+				target: mqttConfig.id,
 				set: data,
 				where: eq(characterProfile.domiaId, data.domiaId),
 			}),

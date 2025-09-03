@@ -7,7 +7,7 @@ import type { LogLevelType, LogPrefixType } from "./types"
 const isDevelopment = env.NODE_ENV !== "production"
 
 export const createLogger = (namespace: string) => {
-	const debugInstance = debug(namespace)
+	const debugInstance = debug(`domia:${namespace}`)
 
 	const getPrefix = (level: LogLevelType): LogPrefixType => {
 		const prefix = `[${namespace}]`
@@ -21,6 +21,8 @@ export const createLogger = (namespace: string) => {
 				return { prefix, color: colors.info }
 			case "debug":
 				return { prefix, color: colors.debug }
+			case "success":
+				return { prefix, color: colors.success }
 			default:
 				return { prefix, color: (text: string) => text }
 		}
@@ -47,6 +49,7 @@ export const createLogger = (namespace: string) => {
 				warn: console.warn,
 				info: console.log,
 				debug: console.log,
+				success: console.log,
 			}[level]
 
 			logMethod(`[${timestamp}] ${formattedMessage}`, ...args)
@@ -65,9 +68,8 @@ export const createLogger = (namespace: string) => {
 				log("debug", message, ...args)
 			}
 		},
-		success: (message: string, ...args: unknown[]) => {
-			console.log(colors.success("✓"), colors.highlight(message), ...args)
-		},
+		success: (message: string, ...args: unknown[]) =>
+			log("success", message, ...args),
 	}
 }
 
@@ -78,6 +80,7 @@ export const emotionEngineLogger = createLogger("emotion-engine")
 export const configEngineLogger = createLogger("config-engine")
 export const audioCaptureLogger = createLogger("audio-capture")
 export const domiaBusLogger = createLogger("domia-bus")
+export const mqttLogger = createLogger("mqtt")
 export const localMqttLogger = createLogger("local-mqtt")
 export const remoteMqttLogger = createLogger("remote-mqtt")
 export const sttEngineLogger = createLogger("stt-engine")
@@ -86,3 +89,5 @@ export const ttsEngineLogger = createLogger("tts-engine")
 export const audioPlaybackLogger = createLogger("audio-playback")
 export const scriptsLogger = createLogger("scripts")
 export const devCliLogger = createLogger("dev-cli")
+export const httpServerLogger = createLogger("http-server")
+export const heartbeatLogger = createLogger("heartbeat")

@@ -27,7 +27,6 @@ export const runPiper = async (
 
 	const voiceDir = path.resolve("src/resources/tts-models/piper", voiceName)
 	const modelPath = path.join(voiceDir, `voice.onnx`)
-	const configPath = path.join(voiceDir, `config.json`)
 	const scriptPath = path.resolve("src/resources/python/piper/runner.py")
 	const filePath = path.resolve("tmp/tts-output", `domia-${generateUuid()}.wav`)
 
@@ -37,8 +36,6 @@ export const runPiper = async (
 		text,
 		"--model_path",
 		modelPath,
-		"--config_path",
-		configPath,
 		"--output_path",
 		filePath,
 	]

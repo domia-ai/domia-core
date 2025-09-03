@@ -4,7 +4,7 @@ export const DEFAULT_WAKE_WORD_MODEL = "domia"
 export const DEFAULT_LLM_MODEL_TEMPERATURE = 0.7
 export const DEFAULT_LLM_MODEL_CONTEXT_WINDOW = 2048
 export const DEFAULT_STT_MODEL_NAME = "vosk-model-small-en-us-0.15"
-export const DEFAULT_LLM_MODEL_NAME = "phi3:mini"
+export const DEFAULT_LLM_MODEL_NAME = "llama3.2"
 export const DEFAULT_TTS_VOICE_NAME = "en_US-libritts_r-medium"
 
 export const PERSONALITY_ENUM = {
@@ -191,4 +191,41 @@ export const INTERACTION_INPUT_TYPE_ENUM = {
 export const INTERACTION_INPUT_TYPE_ENUM_VALUES = [
 	INTERACTION_INPUT_TYPE_ENUM.VOICE,
 	INTERACTION_INPUT_TYPE_ENUM.TEXT,
+] as const
+
+export const MQTT_TYPE_ENUM = {
+	LOCAL: "LOCAL",
+	REMOTE: "REMOTE",
+} as const
+export const MQTT_TYPE_ENUM_VALUES = [
+	MQTT_TYPE_ENUM.LOCAL,
+	MQTT_TYPE_ENUM.REMOTE,
+] as const
+
+export const MQTT_PROTOCOL_ENUM = {
+	MQTT: "mqtt",
+	MQTTS: "mqtts",
+	WS: "ws",
+	WSS: "wss",
+} as const
+export const MQTT_PROTOCOL_ENUM_VALUES = [
+	MQTT_PROTOCOL_ENUM.MQTT,
+	MQTT_PROTOCOL_ENUM.MQTTS,
+	MQTT_PROTOCOL_ENUM.WS,
+	MQTT_PROTOCOL_ENUM.WSS,
+] as const
+
+export const CAPABILITY_ENUM = {
+	RECORD: "record",
+	STT: "stt",
+	LLM: "llm",
+	TTS: "tts",
+	PLAYBACK: "playback",
+} as const
+export const CAPABILITY_ENUM_VALUES = [
+	CAPABILITY_ENUM.RECORD,
+	CAPABILITY_ENUM.STT,
+	CAPABILITY_ENUM.LLM,
+	CAPABILITY_ENUM.TTS,
+	CAPABILITY_ENUM.PLAYBACK,
 ] as const

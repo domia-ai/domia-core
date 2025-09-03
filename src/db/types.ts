@@ -44,6 +44,18 @@ export type UpdateDomiaType = Partial<Omit<InsertDomiaType, "id">> & {
 	id: string
 }
 
+export type SelectRuntimeCapabilitiesType = InferSelectModel<
+	typeof schema.runtimeCapabilities
+>
+export type InsertRuntimeCapabilitiesType = InferInsertModel<
+	typeof schema.runtimeCapabilities
+>
+export type UpdateRuntimeCapabilitiesType = Partial<
+	Omit<InsertRuntimeCapabilitiesType, "id">
+> & {
+	id: string
+}
+
 export type SelectEmotionStateType = InferSelectModel<
 	typeof schema.emotionState
 >
@@ -89,6 +101,12 @@ export type InsertAudioPlaybackConfigType = InferInsertModel<
 export type UpdateAudioPlaybackConfigType = Partial<
 	Omit<InsertAudioPlaybackConfigType, "id">
 > & {
+	id: string
+}
+
+export type SelectMqttConfigType = InferSelectModel<typeof schema.mqttConfig>
+export type InsertMqttConfigType = InferInsertModel<typeof schema.mqttConfig>
+export type UpdateMqttConfigType = Partial<Omit<InsertMqttConfigType, "id">> & {
 	id: string
 }
 

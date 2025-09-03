@@ -8,6 +8,18 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
 
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: domia-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./config/mqtt:/mosquitto/config
+      - ./data/mqtt:/mosquitto/data
+      - ./log/mqtt:/mosquitto/log
+    restart: unless-stopped
+
   core:
     container_name: domia-core
     build:

@@ -2,7 +2,7 @@ import { startCapture } from "@/modules/audio-capture"
 import { DOMIA_EVENT_BUS_ENUM, publishToDomiaBus } from "@/buses"
 import { type DomiaType } from "@/modules/core"
 
-export const setupOwnDomia = async (domia: DomiaType) => {
+export const setupVoiceListener = async (domia: DomiaType) => {
 	const domiaId = domia?.id
 
 	await startCapture(domia, {

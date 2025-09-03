@@ -16,6 +16,7 @@ const dbAdapter = {
 		client.query.domia.findFirst({
 			where: eq(domia.domiaKey, domiaKey),
 			with: {
+				runtimeCapabilities: true,
 				emotionState: true,
 				moduleSettings: {
 					limit: 1,
@@ -50,6 +51,9 @@ const dbAdapter = {
 				mcpServerConfigs: {
 					where: (mcpServerConfig, { eq }) =>
 						eq(mcpServerConfig.isActive, true),
+				},
+				mqttConfigs: {
+					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
 				},
 			},
 		}),
@@ -57,6 +61,7 @@ const dbAdapter = {
 		client.query.domia.findFirst({
 			where: eq(domia.id, id),
 			with: {
+				runtimeCapabilities: true,
 				emotionState: true,
 				moduleSettings: {
 					limit: 1,
@@ -91,6 +96,9 @@ const dbAdapter = {
 				mcpServerConfigs: {
 					where: (mcpServerConfig, { eq }) =>
 						eq(mcpServerConfig.isActive, true),
+				},
+				mqttConfigs: {
+					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
 				},
 			},
 		}),
@@ -98,6 +106,7 @@ const dbAdapter = {
 		client.query.domia.findMany({
 			where: eq(domia.isActive, true),
 			with: {
+				runtimeCapabilities: true,
 				emotionState: true,
 				moduleSettings: {
 					limit: 1,
@@ -132,6 +141,9 @@ const dbAdapter = {
 				mcpServerConfigs: {
 					where: (mcpServerConfig, { eq }) =>
 						eq(mcpServerConfig.isActive, true),
+				},
+				mqttConfigs: {
+					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
 				},
 			},
 		}),

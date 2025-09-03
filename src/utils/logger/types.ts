@@ -1,6 +1,6 @@
 import { createLogger } from "./logger"
 
-export type LogLevelType = "error" | "warn" | "info" | "debug"
+export type LogLevelType = "error" | "warn" | "info" | "debug" | "success"
 
 export type LoggerType = ReturnType<typeof createLogger>
 

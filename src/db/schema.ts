@@ -38,6 +38,11 @@ import {
 	DEFAULT_TTS_VOICE_NAME,
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
 	AUDIO_PLAYBACK_ENGINE_ENUM,
+	MQTT_TYPE_ENUM_VALUES,
+	MQTT_TYPE_ENUM,
+	MQTT_PROTOCOL_ENUM,
+	MQTT_PROTOCOL_ENUM_VALUES,
+	CAPABILITY_ENUM_VALUES,
 } from "./constants"
 
 export const DEFAULT_TIMESTAMP = sql`CURRENT_TIMESTAMP`
@@ -48,6 +53,32 @@ export const domia = sqliteTable("domia", {
 	domiaKey: text("domia_key").notNull().unique(),
 	isActive: integer("is_active", { mode: "boolean" }).default(true),
 	sessionIdTimeoutMs: integer("session_id_timeout_ms").default(300_000),
+	localIp: text("local_ip"),
+	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+})
+
+export const runtimeCapabilities = sqliteTable("runtime_capabilities", {
+	id: text("id").primaryKey(),
+	domiaId: text("domia_id")
+		.notNull()
+		.unique()
+		.references(() => domia.id),
+	wakeword: integer("wakeword", { mode: "boolean" }).default(false),
+	record: integer("record", { mode: "boolean" }).default(false),
+	stt: integer("stt", { mode: "boolean" }).default(false),
+	intentDetection: integer("intent_detection", { mode: "boolean" }).default(
+		false,
+	),
+	intentExecution: integer("intent_execution", { mode: "boolean" }).default(
+		false,
+	),
+	promptGeneration: integer("prompt_generation", { mode: "boolean" }).default(
+		false,
+	),
+	llm: integer("llm", { mode: "boolean" }).default(false),
+	tts: integer("tts", { mode: "boolean" }).default(false),
+	playback: integer("playback", { mode: "boolean" }).default(false),
 	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
 })
@@ -259,6 +290,31 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
 })
 
+export const mqttConfig = sqliteTable("mqtt_config", {
+	id: text("id").primaryKey(),
+	name: text("name").notNull(),
+	isActive: integer("is_active", { mode: "boolean" }).default(true),
+	domiaId: text("domia_id")
+		.notNull()
+		.references(() => domia.id),
+	type: text("type", { enum: MQTT_TYPE_ENUM_VALUES })
+		.notNull()
+		.default(MQTT_TYPE_ENUM.LOCAL),
+	host: text("host").notNull(),
+	username: text("username"),
+	password: text("password"),
+	qos: integer("qos").default(1),
+	topicRoot: text("topic_root").notNull(),
+	protocol: text("protocol", {
+		enum: MQTT_PROTOCOL_ENUM_VALUES,
+	})
+		.notNull()
+		.default(MQTT_PROTOCOL_ENUM.MQTT),
+	port: integer("port").default(1883),
+	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+})
+
 export const interactionSessionTrace = sqliteTable(
 	"interaction_session_trace",
 	{
@@ -306,7 +362,27 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
 })
 
+export const capabilityDelegation = sqliteTable("capability_delegation", {
+	id: text("id").primaryKey(),
+	domiaId: text("domia_id")
+		.notNull()
+		.references(() => domia.id),
+	capability: text("capability", {
+		enum: CAPABILITY_ENUM_VALUES,
+	}).notNull(),
+	delegateToDomiaId: text("delegate_to_domia_id").references(() => domia.id),
+	delegateToDomiaKey: text("delegate_to_domia_key").notNull(),
+	priority: integer("priority").default(0),
+	isActive: integer("is_active", { mode: "boolean" }).default(true),
+	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+})
+
 export const domiaRelations = relations(domia, ({ one, many }) => ({
+	runtimeCapabilities: one(runtimeCapabilities, {
+		fields: [domia.id],
+		references: [runtimeCapabilities.domiaId],
+	}),
 	emotionState: one(emotionState, {
 		fields: [domia.id],
 		references: [emotionState.domiaId],
@@ -320,9 +396,26 @@ export const domiaRelations = relations(domia, ({ one, many }) => ({
 	ttsConfigs: many(ttsConfig),
 	mcpServerConfigs: many(mcpServerConfig),
 	audioPlaybackConfigs: many(audioPlaybackConfig),
+	mqttConfigs: many(mqttConfig),
 	interactionTraces: many(interactionTrace),
 	interactionSessionTraces: many(interactionSessionTrace),
+	capabilityDelegations: many(capabilityDelegation, {
+		relationName: "delegator",
+	}),
+	capabilityDelegatedToMe: many(capabilityDelegation, {
+		relationName: "delegatee",
+	}),
 }))
+
+export const runtimeCapabilitiesRelations = relations(
+	runtimeCapabilities,
+	({ one }) => ({
+		domia: one(domia, {
+			fields: [runtimeCapabilities.domiaId],
+			references: [domia.id],
+		}),
+	}),
+)
 
 export const emotionStateRelations = relations(emotionState, ({ one }) => ({
 	domia: one(domia, {
@@ -403,6 +496,13 @@ export const audioPlaybackConfigRelations = relations(
 	}),
 )
 
+export const mqttConfigRelations = relations(mqttConfig, ({ one }) => ({
+	domia: one(domia, {
+		fields: [mqttConfig.domiaId],
+		references: [domia.id],
+	}),
+}))
+
 export const interactionSessionTraceRelations = relations(
 	interactionSessionTrace,
 	({ one, many }) => ({
@@ -424,6 +524,22 @@ export const interactionTraceRelations = relations(
 		interactionSessionTrace: one(interactionSessionTrace, {
 			fields: [interactionTrace.interactionSessionTraceId],
 			references: [interactionSessionTrace.id],
+		}),
+	}),
+)
+
+export const capabilityDelegationRelations = relations(
+	capabilityDelegation,
+	({ one }) => ({
+		domia: one(domia, {
+			fields: [capabilityDelegation.domiaId],
+			references: [domia.id],
+			relationName: "delegator",
+		}),
+		delegateToDomia: one(domia, {
+			fields: [capabilityDelegation.delegateToDomiaId],
+			references: [domia.id],
+			relationName: "delegatee",
 		}),
 	}),
 )

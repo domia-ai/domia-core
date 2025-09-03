@@ -9,6 +9,7 @@ export const transformDomia = (
 ): DomiaType | undefined => {
 	if (!domia) return undefined
 
+	const runtimeCapabilities = domia?.runtimeCapabilities || null
 	const emotionState = domia?.emotionState || null
 	const characterProfile = domia?.characterProfiles?.[0] || null
 	const moduleSettings = domia?.moduleSettings?.[0] || null
@@ -18,6 +19,10 @@ export const transformDomia = (
 	const ttsConfig = domia?.ttsConfigs?.[0] || null
 	const audioPlaybackConfig = domia?.audioPlaybackConfigs?.[0] || null
 	const mcpServerConfigs = domia?.mcpServerConfigs || null
+	const localMqttConfig =
+		domia?.mqttConfigs?.find((config) => config?.type === "LOCAL") || null
+	const remoteMqttConfig =
+		domia?.mqttConfigs?.find((config) => config?.type === "REMOTE") || null
 
 	return {
 		id: domia?.id,
@@ -25,8 +30,10 @@ export const transformDomia = (
 		domiaKey: domia?.domiaKey,
 		isActive: domia?.isActive,
 		sessionIdTimeoutMs: domia?.sessionIdTimeoutMs || 300_000,
+		localIp: domia?.localIp,
 		createdAt: domia?.createdAt,
 		updatedAt: domia?.updatedAt,
+		runtimeCapabilities,
 		emotionState,
 		characterProfile,
 		moduleSettings,
@@ -36,6 +43,8 @@ export const transformDomia = (
 		ttsConfig,
 		mcpServerConfigs,
 		audioPlaybackConfig,
+		localMqttConfig,
+		remoteMqttConfig,
 	}
 }
 

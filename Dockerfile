@@ -8,11 +8,11 @@ WORKDIR $WORK_DIR
 
 # Copy folders.
 COPY package.json ./
-COPY yarn.lock ./
+COPY package-lock.json ./
 COPY tsconfig.json ./
 
 # Install dependencies.
-RUN yarn install
+RUN npm run install
 
 # Bundle app source.
 COPY . .
@@ -35,10 +35,10 @@ python3 -m pip install -r src/resources/python/requirements.txt
 FROM base as domia-core
 
 # Generate the sqlite db.
-RUN yarn run db:migrate
+RUN npm run db:migrate
 
 # Build the app.
-RUN yarn run build
+RUN npm run build
 
 USER node
 CMD ["node", "build/index.js"]

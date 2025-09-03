@@ -9,6 +9,7 @@ import { configEngineLogger, domiaError, CORE_ERRORS } from "@/utils"
 import { DEFAULT_CONFIG_VALUES } from "../constants"
 import { type ConfigType, type ModuleNameType } from "../types"
 import {
+	getRuntimeCapabilitiesCreateInputFromConfig,
 	getCharacterProfileCreateInputFromConfig,
 	getDomiaCreateInputFromConfig,
 	getModuleSettingsCreateInputFromConfig,
@@ -18,7 +19,8 @@ import {
 	getSttConfigCreateInputFromConfig,
 	getLlmModelConfigCreateInputFromConfig,
 	getTtsConfigCreateInputFromConfig,
-	getAudioPlaybackCOnfigCreateInputFromConfig,
+	getAudioPlaybackConfigCreateInputFromConfig,
+	getMqttConfigCreateInputFromConfig,
 } from "../utils"
 import dbAdapter from "../db-adapter"
 import { configSchema } from "../schemas"
@@ -26,10 +28,7 @@ import { configSchema } from "../schemas"
 export const initialize = async (
 	initialConfig: ConfigType = DEFAULT_CONFIG_VALUES,
 ) => {
-	configEngineLogger.info(
-		"Initializing config engine with config",
-		initialConfig,
-	)
+	configEngineLogger.info("Initializing config engine with config")
 
 	const validatedConfig = configSchema.parse(initialConfig)
 	const currentDomia = await getDomia(validatedConfig.domiaKey)
@@ -62,6 +61,14 @@ export const initialize = async (
 		domiaId,
 	})
 	dbClient.transaction((tx) => {
+		configEngineLogger.debug("Creating runtime capabilities", { domiaId })
+		dbAdapter
+			.insertRuntimeCapabilities(
+				getRuntimeCapabilitiesCreateInputFromConfig(domiaId, validatedConfig),
+				tx,
+			)
+			.run()
+
 		configEngineLogger.debug("Creating module settings", { domiaId })
 		dbAdapter
 			.insertModuleSettings(
@@ -109,14 +116,28 @@ export const initialize = async (
 		configEngineLogger.debug("Creating audio playback config", { domiaId })
 		dbAdapter
 			.insertAudioPlaybackConfig(
-				getAudioPlaybackCOnfigCreateInputFromConfig(domiaId),
+				getAudioPlaybackConfigCreateInputFromConfig(domiaId),
 				tx,
 			)
+			.run()
+
+		configEngineLogger.debug("Creating mqtt config", { domiaId })
+		dbAdapter
+			.insertMqttConfig(getMqttConfigCreateInputFromConfig(domiaId), tx)
 			.run()
 	})
 
 	const finalizedDomia = await getDomia(domiaId, false)
 	configEngineLogger.info("Config engine initialization completed", { domiaId })
+
+	if (!finalizedDomia) {
+		throw domiaError(CORE_ERRORS.DOMIA_NOT_FOUND, {
+			logger: configEngineLogger,
+			meta: {
+				initializedDomia,
+			},
+		})
+	}
 
 	return finalizedDomia
 }
@@ -202,6 +223,14 @@ export const reset = async (
 		domiaId,
 	})
 	dbClient.transaction((tx) => {
+		configEngineLogger.debug("Upserting runtime capabilities", { domiaId })
+		dbAdapter
+			.upsertRuntimeCapabilities(
+				getRuntimeCapabilitiesCreateInputFromConfig(domiaId, validatedConfig),
+				tx,
+			)
+			.run()
+
 		configEngineLogger.debug("Upserting module settings", { domiaId })
 		dbAdapter
 			.upsertModuleSettings(
@@ -249,9 +278,14 @@ export const reset = async (
 		configEngineLogger.debug("Upserting audio playback config", { domiaId })
 		dbAdapter
 			.upsertAudioPlaybackConfig(
-				getAudioPlaybackCOnfigCreateInputFromConfig(domiaId),
+				getAudioPlaybackConfigCreateInputFromConfig(domiaId),
 				tx,
 			)
+			.run()
+
+		configEngineLogger.debug("Upserting mqtt config", { domiaId })
+		dbAdapter
+			.upsertMqttConfig(getMqttConfigCreateInputFromConfig(domiaId), tx)
 			.run()
 	})
 

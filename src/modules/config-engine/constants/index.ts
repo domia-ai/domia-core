@@ -14,6 +14,8 @@ import {
 
 import type { ConfigType } from "../types"
 
+export const isSmart = env.DOMIA_TYPE === "SMART"
+
 export const DEFAULT_CONFIG_VALUES: ConfigType = {
 	domiaKey: env.DOMIA_KEY,
 	name: "Domia",
@@ -23,6 +25,15 @@ export const DEFAULT_CONFIG_VALUES: ConfigType = {
 	remoteAccessEngine: true,
 	narrativeEngine: true,
 	identityEngine: true,
+	wakeword: !isSmart,
+	record: !isSmart,
+	stt: isSmart,
+	intentDetection: isSmart,
+	intentExecution: isSmart,
+	promptGeneration: isSmart,
+	llm: isSmart,
+	tts: isSmart,
+	playback: !isSmart,
 	emotion: DEFAULT_EMOTION_PRESET,
 	personality: DEFAULT_PERSONALITY,
 	language: "en",

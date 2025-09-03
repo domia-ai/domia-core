@@ -11,6 +11,20 @@ CREATE TABLE `audio_playback_config` (
 	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE TABLE `capability_delegation` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`capability` text NOT NULL,
+	`delegate_to_domia_id` text,
+	`delegate_to_domia_key` text NOT NULL,
+	`priority` integer DEFAULT 0,
+	`is_active` integer DEFAULT true,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`delegate_to_domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `character_profile` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -40,6 +54,7 @@ CREATE TABLE `domia` (
 	`domia_key` text NOT NULL,
 	`is_active` integer DEFAULT true,
 	`session_id_timeout_ms` integer DEFAULT 300000,
+	`local_ip` text,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP,
 	`updated_at` text DEFAULT CURRENT_TIMESTAMP
 );
@@ -117,7 +132,7 @@ CREATE TABLE `llm_model_config` (
 	`is_active` integer DEFAULT false,
 	`domia_id` text NOT NULL,
 	`engine` text DEFAULT 'OLLAMA' NOT NULL,
-	`model_name` text DEFAULT 'phi3:mini' NOT NULL,
+	`model_name` text DEFAULT 'llama3.2' NOT NULL,
 	`temperature` real DEFAULT 0.7,
 	`context_window` integer DEFAULT 2048,
 	`use_compact_prompt` integer DEFAULT false,
@@ -156,6 +171,42 @@ CREATE TABLE `module_settings` (
 	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE TABLE `mqtt_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT true,
+	`domia_id` text NOT NULL,
+	`type` text DEFAULT 'LOCAL' NOT NULL,
+	`host` text NOT NULL,
+	`username` text,
+	`password` text,
+	`qos` integer DEFAULT 1,
+	`topic_root` text NOT NULL,
+	`protocol` text DEFAULT 'mqtt' NOT NULL,
+	`port` integer DEFAULT 1883,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `runtime_capabilities` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`wakeword` integer DEFAULT false,
+	`record` integer DEFAULT false,
+	`stt` integer DEFAULT false,
+	`intent_detection` integer DEFAULT false,
+	`intent_execution` integer DEFAULT false,
+	`prompt_generation` integer DEFAULT false,
+	`llm` integer DEFAULT false,
+	`tts` integer DEFAULT false,
+	`playback` integer DEFAULT false,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `runtime_capabilities_domia_id_unique` ON `runtime_capabilities` (`domia_id`);--> statement-breakpoint
 CREATE TABLE `stt_config` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
