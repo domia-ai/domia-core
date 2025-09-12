@@ -1,26 +1,9 @@
-import os from "os"
-
 import { MQTT_TYPE_ENUM } from "@/db"
 import { MQTT_EVENT_ENUM } from "@/setups"
 import type { ReceiveHeartbeatArgsType, SendHeartbeatArgsType } from "../types"
 import { heartbeatLogger } from "@/utils"
 import { env } from "@/config"
-
-export const getLocalIp = (): string | null => {
-	const interfaces = os.networkInterfaces()
-
-	for (const iface of Object.values(interfaces)) {
-		if (!iface) continue
-
-		for (const config of iface) {
-			if (config.family === "IPv4" && !config.internal) {
-				return config.address
-			}
-		}
-	}
-
-	return null
-}
+import { getLocalIp, upsertDomiaFromNetwork } from "@/modules/network-sync"
 
 export const sendHeartbeat = ({ domia, mqttClient }: SendHeartbeatArgsType) => {
 	try {
@@ -44,4 +27,5 @@ export const receiveHeartbeat = async ({ domia }: ReceiveHeartbeatArgsType) => {
 	}
 
 	heartbeatLogger.info(`🧠 Upserting Domia record for ${domiaKey}`)
+	await upsertDomiaFromNetwork(domia)
 }

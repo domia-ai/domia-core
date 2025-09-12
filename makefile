@@ -137,3 +137,9 @@ doctor: ##🩺 Run all environment checks (binaries, Python, .env)
 	@$(MAKE) doctor-binaries
 	@$(MAKE) doctor-py
 	@echo "✅ All system checks passed!"
+
+##@ Dev
+dev: ##🧪 Start development environment (Ollama + Mosquitto)
+	@echo "🧪 Starting dev environment with Ollama and Mosquitto..."
+	@$(MAKE) ollama
+	@$(MAKE) mosquitto

@@ -19,7 +19,7 @@ import {
 	MQTT_TYPE_ENUM,
 } from "@/db"
 import { generateUuid } from "@/utils"
-import { getLocalIp } from "@/modules/heartbeat-manager"
+import { getLocalIp } from "@/modules/network-sync"
 
 import { type ConfigType } from "../types"
 import { configSchema } from "../schemas"

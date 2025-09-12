@@ -11,6 +11,7 @@ import {
 	type SelectMcpServerConfigType,
 	type SelectAudioPlaybackConfigType,
 	type SelectMqttConfigType,
+	type SelectCapabilityDelegationType,
 } from "@/db"
 
 export type DomiaType = SelectDomiaType & {
@@ -26,6 +27,7 @@ export type DomiaType = SelectDomiaType & {
 	mcpServerConfigs: SelectMcpServerConfigType[] | null
 	localMqttConfig: SelectMqttConfigType | null
 	remoteMqttConfig: SelectMqttConfigType | null
+	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }
 
 export type DomiaWithRawRelationsType = SelectDomiaType & {
@@ -40,4 +42,5 @@ export type DomiaWithRawRelationsType = SelectDomiaType & {
 	audioPlaybackConfigs: SelectAudioPlaybackConfigType[] | null
 	mcpServerConfigs: SelectMcpServerConfigType[] | null
 	mqttConfigs: SelectMqttConfigType[] | null
+	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }

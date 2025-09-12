@@ -23,6 +23,7 @@ export const transformDomia = (
 		domia?.mqttConfigs?.find((config) => config?.type === "LOCAL") || null
 	const remoteMqttConfig =
 		domia?.mqttConfigs?.find((config) => config?.type === "REMOTE") || null
+	const capabilityDelegations = domia?.capabilityDelegations || null
 
 	return {
 		id: domia?.id,
@@ -45,6 +46,7 @@ export const transformDomia = (
 		audioPlaybackConfig,
 		localMqttConfig,
 		remoteMqttConfig,
+		capabilityDelegations,
 	}
 }
 

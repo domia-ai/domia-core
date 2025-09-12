@@ -188,6 +188,16 @@ export type UpdateInteractionSessionTraceType = Partial<
 	Omit<InsertInteractionSessionTraceType, "id">
 > & { id: string }
 
+export type SelectCapabilityDelegationType = InferSelectModel<
+	typeof schema.capabilityDelegation
+>
+export type InsertCapabilityDelegationType = InferInsertModel<
+	typeof schema.capabilityDelegation
+>
+export type UpdateCapabilityDelegationType = Partial<
+	Omit<InsertCapabilityDelegationType, "id">
+> & { id: string }
+
 export type WithParsedDatesType<T> = Omit<T, "createdAt" | "updatedAt"> & {
 	createdAt: Date | null
 	updatedAt: Date | null

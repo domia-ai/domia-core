@@ -55,6 +55,10 @@ const dbAdapter = {
 				mqttConfigs: {
 					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
 				},
+				capabilityDelegations: {
+					where: (capabilityDelegation, { eq }) =>
+						eq(capabilityDelegation.isActive, true),
+				},
 			},
 		}),
 	getDomiaById: (id: string, client: DBClientOrTxType = dbClient) =>
@@ -100,6 +104,10 @@ const dbAdapter = {
 				mqttConfigs: {
 					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
 				},
+				capabilityDelegations: {
+					where: (capabilityDelegation, { eq }) =>
+						eq(capabilityDelegation.isActive, true),
+				},
 			},
 		}),
 	getActiveDomias: (client: DBClientOrTxType = dbClient) =>
@@ -144,6 +152,10 @@ const dbAdapter = {
 				},
 				mqttConfigs: {
 					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
+				},
+				capabilityDelegations: {
+					where: (capabilityDelegation, { eq }) =>
+						eq(capabilityDelegation.isActive, true),
 				},
 			},
 		}),

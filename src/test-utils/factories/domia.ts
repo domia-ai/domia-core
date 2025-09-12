@@ -13,6 +13,7 @@ import { getMcpServerConfig } from "./mcp-server-config"
 import { getAudioPlaybackConfig } from "./audio-playback-config"
 import { getRuntimeCapabilities } from "./runtime-capabilities"
 import { getMqttConfig } from "./mqtt-config"
+import { getCapabilityDelegation } from "./capability-delegation"
 
 export const getBaseDomia = (
 	overrides: Partial<SelectDomiaType> = {},
@@ -34,6 +35,7 @@ export const getDomia = ({
 	audioPlaybackConfigOverrides = {},
 	mcpServerConfigOverrides = {},
 	mqttConfigOverrides = {},
+	capabilityDelegationOverrides = {},
 }: GetDomiaParamsType): DomiaType => {
 	const baseDomia = getBaseDomia(domiaOverrides)
 	const runtimeCapabilities = getRuntimeCapabilities({
@@ -85,6 +87,10 @@ export const getDomia = ({
 		type: "REMOTE",
 		domiaId: baseDomia?.id,
 	})
+	const capabilityDelegation = getCapabilityDelegation({
+		...capabilityDelegationOverrides,
+		domiaId: baseDomia?.id,
+	})
 
 	return {
 		...baseDomia,
@@ -100,5 +106,6 @@ export const getDomia = ({
 		mcpServerConfigs: [mcpServerConfig],
 		localMqttConfig,
 		remoteMqttConfig,
+		capabilityDelegations: [capabilityDelegation],
 	}
 }
