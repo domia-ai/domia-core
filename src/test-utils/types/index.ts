@@ -9,10 +9,14 @@ import {
 	type SelectTtsConfigType,
 	type SelectAudioPlaybackConfigType,
 	type SelectWakeWordConfigType,
+	type SelectRuntimeCapabilitiesType,
+	type SelectMqttConfigType,
+	type SelectCapabilityDelegationType,
 } from "@/db"
 
 export type GetDomiaParamsType = {
 	domiaOverrides?: Partial<SelectDomiaType>
+	runtimeCapabilitiesOverrides?: Partial<SelectRuntimeCapabilitiesType>
 	emotionStateOverrides?: Partial<SelectEmotionStateType>
 	moduleSettingsOverrides?: Partial<SelectModuleSettingsType>
 	characterProfileOverrides?: Partial<SelectCharacterProfileType>
@@ -22,4 +26,6 @@ export type GetDomiaParamsType = {
 	ttsConfigOverrides?: Partial<SelectTtsConfigType>
 	audioPlaybackConfigOverrides?: Partial<SelectAudioPlaybackConfigType>
 	mcpServerConfigOverrides?: Partial<SelectMcpServerConfigType>
+	mqttConfigOverrides?: Partial<SelectMqttConfigType>
+	capabilityDelegationOverrides?: Partial<SelectCapabilityDelegationType>
 }

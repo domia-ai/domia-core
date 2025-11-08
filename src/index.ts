@@ -1,16 +1,14 @@
-import "dotenv/config"
-
 import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
 import { initialize } from "./modules/config-engine"
-import { getActiveDomias } from "./modules/core"
 import {
-	setupOwnDomia,
+	setupVoiceListener,
 	setupDomiaBus,
-	setupLocalMqtt,
-	setupRemoteMqtt,
+	setupMqtt,
 	setupEnvironment,
+	normalizeRuntimeCapabilities,
+	setupHttpServer,
+	setupHeartbeat,
 } from "./setups"
-import { env } from "@/config"
 
 process.on("uncaughtException", (err) => {
 	appLogger.error("Uncaught Exception:", err)
@@ -21,33 +19,42 @@ process.on("unhandledRejection", (reason) => {
 })
 
 async function main() {
-	setupEnvironment()
-
 	appLogger.info("Initialize Domia with default config")
-	await initialize()
+	const ownDomia = await initialize()
 
-	const domias = await getActiveDomias()
-
-	if (!domias || !domias.length) {
-		appLogger.error(getErrorMessage(CORE_ERRORS.DOMIAS_NOT_FOUND))
+	const domiaRuntimeCapabilities = ownDomia?.runtimeCapabilities
+	if (!domiaRuntimeCapabilities) {
+		appLogger.error(getErrorMessage(CORE_ERRORS.MISSING_CAPABILITIES))
 		process.exit(1)
 	}
 
-	appLogger.info(`🧠 Found ${domias.length} active Domia(s)`)
-	const ownDomia = domias?.find((domia) => domia?.domiaKey === env.DOMIA_KEY)
+	const runtimeCapabilities = normalizeRuntimeCapabilities(
+		domiaRuntimeCapabilities,
+	)
+	setupEnvironment(runtimeCapabilities)
 
-	if (ownDomia) {
-		await setupOwnDomia(ownDomia)
-		appLogger.info(`🤖 Running local Domia: ${ownDomia.name}`)
+	const localMqttConfig = ownDomia?.localMqttConfig
+	const remoteMqttConfig = ownDomia?.remoteMqttConfig
+
+	const localMqttClient = setupMqtt({
+		domia: ownDomia,
+		config: localMqttConfig,
+	})
+	setupMqtt({ domia: ownDomia, config: remoteMqttConfig })
+	setupDomiaBus({
+		domia: ownDomia,
+		runtimeCapabilities,
+		mqttClient: localMqttClient,
+	})
+	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
+	setupHttpServer()
+
+	if (runtimeCapabilities?.wakeword && runtimeCapabilities?.record) {
+		await setupVoiceListener(ownDomia)
+		appLogger.info(`🤖 Running voice listener: ${ownDomia.name}`)
 	}
 
-	setupDomiaBus(domias)
-	setupLocalMqtt(domias)
-	setupRemoteMqtt(domias)
-
-	await new Promise(() => {
-		appLogger.info(`DOMIA is running and waiting for events...`)
-	})
+	appLogger.info(`DOMIA is running and waiting for events...`)
 }
 
 main()

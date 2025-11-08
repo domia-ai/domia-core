@@ -6,6 +6,7 @@ build/
 
 # local env files
 .env
+.env.dump
 
 # Personal cursor configuration files
 .cursor/
@@ -14,6 +15,8 @@ build/
 
 # SQLite
 local.db
+smart.db
+dump.db
 
 # Temp files for local testing
 /tmp/
@@ -39,3 +42,10 @@ src/resources/stt-models/vosk/*
 src/resources/wake-word/*
 # Except the default model
 src/resources/wake-word/open-wake-word/
+
+# MQTT runtime files
+/data/mqtt/
+/log/mqtt/
+
+# Ignore Mosquitto password file (security)
+/config/mqtt/password.txt

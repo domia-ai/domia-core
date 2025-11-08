@@ -23,6 +23,7 @@ import {
 	WAKE_WORD_FRAMEWORK_ENUM_VALUES,
 	INTERACTION_INPUT_TYPE_ENUM_VALUES,
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
+	CAPABILITY_ENUM_VALUES,
 } from "./constants"
 
 export type DbClientType = BetterSQLite3Database<typeof schema> & {
@@ -41,6 +42,18 @@ export type DBClientOrTxType = DbClientType | DbTxType
 export type SelectDomiaType = InferSelectModel<typeof schema.domia>
 export type InsertDomiaType = InferInsertModel<typeof schema.domia>
 export type UpdateDomiaType = Partial<Omit<InsertDomiaType, "id">> & {
+	id: string
+}
+
+export type SelectRuntimeCapabilitiesType = InferSelectModel<
+	typeof schema.runtimeCapabilities
+>
+export type InsertRuntimeCapabilitiesType = InferInsertModel<
+	typeof schema.runtimeCapabilities
+>
+export type UpdateRuntimeCapabilitiesType = Partial<
+	Omit<InsertRuntimeCapabilitiesType, "id">
+> & {
 	id: string
 }
 
@@ -89,6 +102,12 @@ export type InsertAudioPlaybackConfigType = InferInsertModel<
 export type UpdateAudioPlaybackConfigType = Partial<
 	Omit<InsertAudioPlaybackConfigType, "id">
 > & {
+	id: string
+}
+
+export type SelectMqttConfigType = InferSelectModel<typeof schema.mqttConfig>
+export type InsertMqttConfigType = InferInsertModel<typeof schema.mqttConfig>
+export type UpdateMqttConfigType = Partial<Omit<InsertMqttConfigType, "id">> & {
 	id: string
 }
 
@@ -170,6 +189,16 @@ export type UpdateInteractionSessionTraceType = Partial<
 	Omit<InsertInteractionSessionTraceType, "id">
 > & { id: string }
 
+export type SelectCapabilityDelegationType = InferSelectModel<
+	typeof schema.capabilityDelegation
+>
+export type InsertCapabilityDelegationType = InferInsertModel<
+	typeof schema.capabilityDelegation
+>
+export type UpdateCapabilityDelegationType = Partial<
+	Omit<InsertCapabilityDelegationType, "id">
+> & { id: string }
+
 export type WithParsedDatesType<T> = Omit<T, "createdAt" | "updatedAt"> & {
 	createdAt: Date | null
 	updatedAt: Date | null
@@ -196,3 +225,4 @@ export type AudioPlaybackEngineEnumType =
 	(typeof AUDIO_PLAYBACK_ENGINE_ENUM_VALUES)[number]
 export type InteractionInputTypeEnumType =
 	(typeof INTERACTION_INPUT_TYPE_ENUM_VALUES)[number]
+export type CapabilityEnumType = (typeof CAPABILITY_ENUM_VALUES)[number]

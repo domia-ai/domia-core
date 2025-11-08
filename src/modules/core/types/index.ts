@@ -1,5 +1,6 @@
 import {
 	type SelectDomiaType,
+	type SelectRuntimeCapabilitiesType,
 	type SelectEmotionStateType,
 	type SelectCharacterProfileType,
 	type SelectModuleSettingsType,
@@ -9,9 +10,12 @@ import {
 	type SelectTtsConfigType,
 	type SelectMcpServerConfigType,
 	type SelectAudioPlaybackConfigType,
+	type SelectMqttConfigType,
+	type SelectCapabilityDelegationType,
 } from "@/db"
 
 export type DomiaType = SelectDomiaType & {
+	runtimeCapabilities: SelectRuntimeCapabilitiesType | null
 	emotionState: SelectEmotionStateType | null
 	characterProfile: SelectCharacterProfileType | null
 	moduleSettings: SelectModuleSettingsType | null
@@ -21,9 +25,13 @@ export type DomiaType = SelectDomiaType & {
 	ttsConfig: SelectTtsConfigType | null
 	audioPlaybackConfig: SelectAudioPlaybackConfigType | null
 	mcpServerConfigs: SelectMcpServerConfigType[] | null
+	localMqttConfig: SelectMqttConfigType | null
+	remoteMqttConfig: SelectMqttConfigType | null
+	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }
 
 export type DomiaWithRawRelationsType = SelectDomiaType & {
+	runtimeCapabilities: SelectRuntimeCapabilitiesType | null
 	emotionState: SelectEmotionStateType | null
 	characterProfiles: SelectCharacterProfileType[] | null
 	moduleSettings: SelectModuleSettingsType[] | null
@@ -33,4 +41,6 @@ export type DomiaWithRawRelationsType = SelectDomiaType & {
 	ttsConfigs: SelectTtsConfigType[] | null
 	audioPlaybackConfigs: SelectAudioPlaybackConfigType[] | null
 	mcpServerConfigs: SelectMcpServerConfigType[] | null
+	mqttConfigs: SelectMqttConfigType[] | null
+	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }

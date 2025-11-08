@@ -7,7 +7,7 @@
 	"license": "MIT",
 	"private": true,
 	"engines": {
-		"node": ">=22"
+		"node": ">=24"
 	},
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
@@ -18,16 +18,24 @@
 		"format": "prettier --check \"src/**/*.ts\"",
 		"format:fix": "prettier --write \"src/**/*.ts\"",
 		"prepare": "husky",
-		"dev": "nodemon --config nodemon.json",
-		"db:generate": "drizzle-kit generate",
-		"db:pull": "drizzle-kit pull",
-		"db:migrate": "drizzle-kit migrate",
-		"db:studio": "drizzle-kit studio",
-		"db:push": "drizzle-kit push",
-		"db:reset": "rm -rf local.db && rm -rf drizzle && yarn db:generate && yarn db:migrate",
-		"dev-cli": "ts-node -r tsconfig-paths/register src/cli/dev/index.ts"
+		"dev:smart": "dotenvx run -f .env -- nodemon --watch src --ext ts,js --ignore src/**/*.spec.ts --exec 'ts-node -r tsconfig-paths/register ./src/index.ts'",
+		"dev:dump": "dotenvx run -f .env.dump -- nodemon --watch src --ext ts,js --ignore src/**/*.spec.ts --exec 'ts-node -r tsconfig-paths/register ./src/index.ts'",
+		"db:generate:smart": "dotenvx run -f .env -- drizzle-kit generate",
+		"db:generate:dump": "dotenvx run -f .env.dump -- drizzle-kit generate",
+		"db:pull:smart": "dotenvx run -f .env -- drizzle-kit pull",
+		"db:pull:dump": "dotenvx run -f .env.dump -- drizzle-kit pull",
+		"db:migrate:smart": "dotenvx run -f .env -- drizzle-kit migrate",
+		"db:migrate:dump": "dotenvx run -f .env.dump -- drizzle-kit migrate",
+		"db:studio:smart": "dotenvx run -f .env -- drizzle-kit studio --port 6789",
+		"db:studio:dump": "dotenvx run -f .env.dump -- drizzle-kit studio --port 6790",
+		"db:push:smart": "dotenvx run -f .env -- drizzle-kit push",
+		"db:push:dump": "dotenvx run -f .env.dump -- drizzle-kit push",
+		"db:reset:smart": "rm data/db/smart.db && rm -rf drizzle && npm run db:generate:smart && npm run db:migrate:smart",
+		"db:reset:dump": "rm data/db/dump.db && rm -rf drizzle && npm run db:generate:dump && npm run db:migrate:dump",
+		"dev-cli": "dotenvx run -f .env -- ts-node -r tsconfig-paths/register src/cli/dev/index.ts"
 	},
 	"devDependencies": {
+		"@dotenvx/dotenvx": "^1.48.4",
 		"@eslint/js": "^9.28.0",
 		"@faker-js/faker": "^9.8.0",
 		"@types/better-sqlite3": "^7.6.13",
@@ -55,10 +63,11 @@
 		"chalk": "^5.4.1",
 		"commander": "^14.0.0",
 		"debug": "^4.4.1",
-		"dotenv": "^16.5.0",
 		"drizzle-orm": "^0.44.2",
 		"drizzle-zod": "^0.8.2",
+		"fastify": "^5.5.0",
 		"inquirer": "^12.6.3",
+		"mqtt": "^5.13.3",
 		"ollama": "^0.5.16",
 		"zod": "^3.25.50"
 	}

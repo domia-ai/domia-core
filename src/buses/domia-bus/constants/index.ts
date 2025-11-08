@@ -5,4 +5,5 @@ export enum DOMIA_EVENT_BUS_ENUM {
 	LLM_DONE = "llm_done",
 	TTS_DONE = "tts_done",
 	AUDIO_ERROR = "audio_error",
+	CAPABILITY_MISSING = "capability_missing",
 }

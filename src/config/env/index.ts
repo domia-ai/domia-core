@@ -1,5 +1,4 @@
 import { z } from "zod"
-import "dotenv/config"
 
 const envSchema = z.object({
 	NODE_ENV: z
@@ -8,7 +7,10 @@ const envSchema = z.object({
 	DATABASE_URL: z.string(),
 	DEBUG: z.string().optional(),
 	DOMIA_KEY: z.string(),
+	DOMIA_TYPE: z.enum(["SMART", "DUMP"]).default("SMART"),
 	PYTHON_BIN: z.string().default(".venv/bin/python3"),
+	HTTP_SERVER_HOST: z.string().default("default"),
+	HTTP_SERVER_PORT: z.string().default("3000"),
 })
 
 export const env = envSchema.parse(process.env)

@@ -11,6 +11,10 @@ export const CORE_ERRORS = {
 		code: "CORE/WRONG_ENVIRONMENT",
 		message: "Environment configuration is invalid or incomplete.",
 	},
+	MISSING_CAPABILITIES: {
+		code: "CORE/MISSING_CAPABILITIES",
+		message: "No runtine capabilities founded for the own domia.",
+	},
 } as const
 
 export const AUDIO_ERRORS = {

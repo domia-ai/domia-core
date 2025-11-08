@@ -9,6 +9,7 @@ export const baseDomia: SelectDomiaType = {
 	domiaKey: `DOMIA-${faker.word.adjective()}-${faker.number.int(999)}`,
 	isActive: true,
 	sessionIdTimeoutMs: faker.number.int({ min: 150_000, max: 300_000 }),
+	localIp: `192.168.${faker.number.int(255)}.${faker.number.int({ min: 1, max: 254 })}`,
 	createdAt: now(),
 	updatedAt: now(),
 }

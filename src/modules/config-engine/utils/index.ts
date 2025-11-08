@@ -14,8 +14,12 @@ import {
 	type InsertLlmModelConfigType,
 	type InsertTtsConfigType,
 	type InsertAudioPlaybackConfigType,
+	type InsertMqttConfigType,
+	type InsertRuntimeCapabilitiesType,
+	MQTT_TYPE_ENUM,
 } from "@/db"
 import { generateUuid } from "@/utils"
+import { getLocalIp } from "@/modules/network-sync"
 
 import { type ConfigType } from "../types"
 import { configSchema } from "../schemas"
@@ -27,6 +31,26 @@ export const getDomiaCreateInputFromConfig = (
 		id: generateUuid(),
 		name: config?.name,
 		domiaKey: config?.domiaKey,
+		localIp: getLocalIp(),
+	}
+}
+
+export const getRuntimeCapabilitiesCreateInputFromConfig = (
+	domiaId: string,
+	config: ConfigType,
+): InsertRuntimeCapabilitiesType => {
+	return {
+		id: generateUuid(),
+		domiaId,
+		wakeword: config?.wakeword,
+		record: config?.record,
+		stt: config?.stt,
+		intentDetection: config?.intentDetection,
+		intentExecution: config?.intentExecution,
+		promptGeneration: config?.promptGeneration,
+		llm: config?.llm,
+		tts: config?.tts,
+		playback: config?.playback,
 	}
 }
 
@@ -130,7 +154,7 @@ export const getTtsConfigCreateInputFromConfig = (
 	}
 }
 
-export const getAudioPlaybackCOnfigCreateInputFromConfig = (
+export const getAudioPlaybackConfigCreateInputFromConfig = (
 	domiaId: string,
 ): InsertAudioPlaybackConfigType => {
 	return {
@@ -138,6 +162,24 @@ export const getAudioPlaybackCOnfigCreateInputFromConfig = (
 		name: "Default",
 		isActive: true,
 		domiaId,
+	}
+}
+
+export const getMqttConfigCreateInputFromConfig = (
+	domiaId: string,
+): InsertMqttConfigType => {
+	return {
+		id: generateUuid(),
+		name: "Default",
+		isActive: true,
+		domiaId,
+		type: MQTT_TYPE_ENUM.LOCAL,
+		host: "localhost",
+		username: "domia",
+		password: "domia",
+		topicRoot: "domia",
+		protocol: "mqtt",
+		port: 1883,
 	}
 }
 
