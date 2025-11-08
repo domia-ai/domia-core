@@ -54,9 +54,7 @@ async function main() {
 		appLogger.info(`🤖 Running voice listener: ${ownDomia.name}`)
 	}
 
-	await new Promise(() => {
-		appLogger.info(`DOMIA is running and waiting for events...`)
-	})
+	appLogger.info(`DOMIA is running and waiting for events...`)
 }
 
 main()

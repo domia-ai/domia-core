@@ -4,7 +4,7 @@ import { sendHeartbeat } from "@/modules/heartbeat-manager"
 
 export const setupHeartbeat = ({
 	domia,
-	intervalSeconds = 10,
+	intervalSeconds = 3600,
 	mqttClient,
 }: SetupHeartbeatArgsType) => {
 	const domiaKey = domia.domiaKey

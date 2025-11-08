@@ -28,14 +28,16 @@ export const handleMqttMessage = ({
 	logger.info(`domiaKey: ${domiaKey}`)
 	logger.info(`type: ${type}`)
 	logger.info(`eventName: ${eventName}`)
+	logger.info(`message: ${message}`)
 
 	if (!domiaKey || !eventName) return
 
 	try {
 		const payload = JSON.parse(message?.toString())
+		logger.info(`payload: ${payload}`)
 		if (isDomiaBusEvent(eventName)) {
 			logger.info(`📥 [${type}] ${eventName} from ${domiaKey}`, { payload })
-			publishToDomiaBus(domia?.id, eventName)
+			publishToDomiaBus(domia?.id, eventName, payload)
 		} else if (isMqttEvent(eventName)) {
 			logger.info(`📥 [${type}] ${eventName} from ${domiaKey}`)
 			switch (eventName) {

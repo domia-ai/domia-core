@@ -11,8 +11,9 @@ import {
 	updateInteraction,
 } from "@/modules/session-manager"
 import {
+	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
-	// MQTT_TYPE_ENUM
+	MQTT_TYPE_ENUM,
 } from "@/db"
 import {
 	classifyInputIntent,
@@ -24,15 +25,15 @@ import { runLLM } from "@/modules/llm-engine"
 import { runTTS } from "@/modules/tts-engine"
 import { playAudio } from "@/modules/audio-playback"
 import { DomiaBusArgsType } from "./types"
+import { resolveCapabilityDelegation } from "@/modules/capability-resolver"
 
 export const setupDomiaBus = ({
 	domia,
 	runtimeCapabilities,
-	// mqttClient,
+	mqttClient,
 }: DomiaBusArgsType) => {
 	const { record, stt, llm, tts, playback } = runtimeCapabilities
 	const domiaId = domia.id
-	// const domiaKey = domia?.domiaKey
 
 	domiaBusLogger.info(
 		`🔗 Subscribing to bus events for DOMIA ${domia.name} (${domiaId})`,
@@ -45,11 +46,6 @@ export const setupDomiaBus = ({
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 				filePath,
 			})
-		} else {
-			// mqttClient?.publish(
-			// 	`domia/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED}`,
-			// 	"{}",
-			// )
 		}
 	})
 
@@ -73,13 +69,22 @@ export const setupDomiaBus = ({
 					interactionId,
 				})
 			} else {
-				// Upload file to shared storage to be processed by the other Domia(s).
-				console.log("stt", stt)
-				// TODO: MQTT comunication find domia key that have stt functionality.
-				// mqttClient?.publish(
-				// 	`domia/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.AUDIO_READY}`,
-				// 	JSON.stringify({ filePath }),
-				// )
+				const deletegateTo = await resolveCapabilityDelegation(
+					domia,
+					CAPABILITY_ENUM.STT,
+				)
+
+				if (deletegateTo) {
+					// TODO: Upload file to shared storage to be processed by the other Domia(s).
+					mqttClient?.publish(
+						`domia/${deletegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.AUDIO_READY}`,
+						JSON.stringify({ filePath }),
+					)
+				} else {
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
+						capability: CAPABILITY_ENUM.STT,
+					})
+				}
 			}
 		},
 	)
@@ -104,7 +109,7 @@ export const setupDomiaBus = ({
 			const promptContext = buildPromptContext(domia, transcript)
 
 			if (inputIntent?.type === INPUT_INTENT_TYPE_ENUM.MCP_CALL) {
-				// MORE LOGIC HERE RELATED WITH THE MCP SERVERS RESPONSE.
+				// TODO: MORE LOGIC HERE RELATED WITH THE MCP SERVERS RESPONSE.
 			}
 
 			if (llm) {
@@ -124,7 +129,21 @@ export const setupDomiaBus = ({
 					interactionId,
 				})
 			} else {
-				// TODO: MQTT comunication
+				const deletegateTo = await resolveCapabilityDelegation(
+					domia,
+					CAPABILITY_ENUM.LLM,
+				)
+
+				if (deletegateTo) {
+					mqttClient?.publish(
+						`domia/${deletegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.STT_DONE}`,
+						JSON.stringify({ transcript, interactionId }),
+					)
+				} else {
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
+						capability: CAPABILITY_ENUM.LLM,
+					})
+				}
 			}
 		},
 	)
@@ -151,7 +170,21 @@ export const setupDomiaBus = ({
 					interactionId,
 				})
 			} else {
-				// TODO: MQTT comunication
+				const deletegateTo = await resolveCapabilityDelegation(
+					domia,
+					CAPABILITY_ENUM.TTS,
+				)
+
+				if (deletegateTo) {
+					mqttClient?.publish(
+						`domia/${deletegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.LLM_DONE}`,
+						JSON.stringify({ reply, interactionId }),
+					)
+				} else {
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
+						capability: CAPABILITY_ENUM.TTS,
+					})
+				}
 			}
 		},
 	)
@@ -164,7 +197,22 @@ export const setupDomiaBus = ({
 				domiaBusLogger.info(`🗣️ TTS_DONE: ${filePath}`, { domiaId })
 				await playAudio(domia, filePath)
 			} else {
-				// TODO: MQTT comunication
+				const deletegateTo = await resolveCapabilityDelegation(
+					domia,
+					CAPABILITY_ENUM.PLAYBACK,
+				)
+
+				if (deletegateTo) {
+					// TODO: Upload file to shared storage to be processed by the other Domia(s).
+					mqttClient?.publish(
+						`domia/${deletegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.TTS_DONE}`,
+						JSON.stringify({ filePath }),
+					)
+				} else {
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
+						capability: CAPABILITY_ENUM.PLAYBACK,
+					})
+				}
 			}
 		},
 	)
@@ -174,6 +222,14 @@ export const setupDomiaBus = ({
 		DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR,
 		({ error }) => {
 			domiaBusLogger.error("❌ AUDIO_ERROR", { domiaId, error })
+		},
+	)
+
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING,
+		({ capability }) => {
+			domiaBusLogger.error("❌ CAPABILITY_MISSING", { domiaId, capability })
 		},
 	)
 }
