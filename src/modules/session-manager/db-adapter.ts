@@ -17,6 +17,10 @@ const dbAdapter = {
 		data: InsertInteractionTraceType,
 		client: DBClientOrTxType = dbClient,
 	) => client.insert(interactionTrace).values(data),
+	getInteractionById: (id: string, client: DBClientOrTxType = dbClient) =>
+		client.query.interactionTrace.findFirst({
+			where: eq(interactionTrace.id, id),
+		}),
 	updateInteractionTrace: (
 		{ id, ...data }: UpdateInteractionTraceType,
 		client: DBClientOrTxType = dbClient,

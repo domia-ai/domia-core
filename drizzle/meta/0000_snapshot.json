@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "3f842709-c1f1-4f2c-8cd7-09bc7ce51ad4",
+	"id": "4d77b689-fd05-4569-b350-b864638d920b",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
 		"audio_playback_config": {
@@ -731,6 +731,14 @@
 					"notNull": true,
 					"autoincrement": false,
 					"default": "'VOICE'"
+				},
+				"response_type": {
+					"name": "response_type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "'voice'"
 				},
 				"is_active": {
 					"name": "is_active",

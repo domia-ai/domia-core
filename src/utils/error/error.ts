@@ -30,3 +30,9 @@ export const domiaError = (
 	logger.error(`[${error.code}] ${message}`, options?.meta)
 	return new DomiaError(error.code, message, options?.meta)
 }
+
+export const toError = (value: unknown): Error => {
+	if (value instanceof Error) return value
+	if (typeof value === "string") return new Error(value)
+	return new Error(String(value))
+}

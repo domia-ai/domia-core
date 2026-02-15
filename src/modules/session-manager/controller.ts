@@ -69,9 +69,38 @@ export const registerNewInteraction = async (
 	}
 }
 
+export const getOrCreateInteractionId = async (
+	domia: DomiaType,
+	existingInteractionId: string | undefined,
+	defaultData: NewInteractionDataType,
+	client?: DBClientOrTxType,
+): Promise<string | null> => {
+	if (existingInteractionId) {
+		return existingInteractionId
+	}
+	try {
+		const { interactionId } = await registerNewInteraction(
+			domia,
+			defaultData,
+			client,
+		)
+		return interactionId
+	} catch {
+		return null
+	}
+}
+
 export const updateInteraction = async (
 	data: UpdateInteractionTraceType,
 	client?: DBClientOrTxType,
 ) => {
 	await dbAdapter.updateInteractionTrace(data, client)
+}
+
+export const getInteractionById = async (
+	interactionId: string,
+	client?: DBClientOrTxType,
+) => {
+	const rows = await dbAdapter.getInteractionById(interactionId, client)
+	return rows
 }

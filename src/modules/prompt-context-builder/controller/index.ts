@@ -7,14 +7,15 @@ import {
 	STATIC_DOMIA_PROMPT_FULL,
 	STATIC_DOMIA_PROMPT_COMPACT,
 } from "../constants"
+import { promptContextBuilderLogger } from "@/utils"
 
 export const classifyInputIntent = (
 	domia: DomiaType,
 	transcript: string,
 ): InputIntentType => {
-	console.log("domia ==", domia)
-	console.log("transcript ==", transcript)
-
+	promptContextBuilderLogger.info("classifyInputIntent", { domia, transcript })
+	// TODO: Implement intent classification logic
+	// For now, all inputs are treated as LLM requests
 	return {
 		type: INPUT_INTENT_TYPE_ENUM.LLM_REQUEST,
 	}

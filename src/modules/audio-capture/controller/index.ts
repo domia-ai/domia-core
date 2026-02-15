@@ -56,8 +56,8 @@ export const startAudioRecording = async (domia: DomiaType) => {
 		"0.1",
 		"1%",
 		"1",
-		"1.0",
-		"1%",
+		"0.5",
+		"3%",
 	]
 
 	audioCaptureLogger.info(`[🎙️] Starting recording to: ${outputPath}`)

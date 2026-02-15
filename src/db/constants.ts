@@ -193,6 +193,15 @@ export const INTERACTION_INPUT_TYPE_ENUM_VALUES = [
 	INTERACTION_INPUT_TYPE_ENUM.TEXT,
 ] as const
 
+export const RESPONSE_TYPE_ENUM = {
+	TEXT: "text",
+	VOICE: "voice",
+} as const
+export const RESPONSE_TYPE_ENUM_VALUES = [
+	RESPONSE_TYPE_ENUM.TEXT,
+	RESPONSE_TYPE_ENUM.VOICE,
+] as const
+
 export const MQTT_TYPE_ENUM = {
 	LOCAL: "LOCAL",
 	REMOTE: "REMOTE",

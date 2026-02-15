@@ -1,1 +1,1 @@
-export * from "./domia-bus"
+export * from "./core-bus"

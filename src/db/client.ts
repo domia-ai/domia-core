@@ -8,7 +8,13 @@ import * as schema from "./schema"
 const dbPath = path.resolve(__dirname, env.DATABASE_URL)
 
 const sqlite = new Database(dbPath)
+
 sqlite.pragma("foreign_keys = ON")
+
+sqlite.pragma("journal_mode = WAL")
+sqlite.pragma("synchronous = NORMAL")
+sqlite.pragma("cache_size = -64000")
+sqlite.pragma("temp_store = MEMORY")
 
 export const dbClient = drizzle(sqlite, { schema })
 

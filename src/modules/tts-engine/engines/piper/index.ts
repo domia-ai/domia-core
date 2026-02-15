@@ -46,7 +46,10 @@ export const runPiper = async (
 		process.on("error", reject)
 
 		process.stderr.on("data", (data) => {
-			console.error(`❌ Piper Python error: ${data}`)
+			ttsEngineLogger.error(`Piper Python error: ${data}`, {
+				domiaId: domia.id,
+				voiceName,
+			})
 		})
 
 		process.on("close", (code) => {

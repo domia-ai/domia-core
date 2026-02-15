@@ -2,7 +2,7 @@ import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
 import { initialize } from "./modules/config-engine"
 import {
 	setupVoiceListener,
-	setupDomiaBus,
+	setupCoreBus,
 	setupMqtt,
 	setupEnvironment,
 	normalizeRuntimeCapabilities,
@@ -41,13 +41,13 @@ async function main() {
 		config: localMqttConfig,
 	})
 	setupMqtt({ domia: ownDomia, config: remoteMqttConfig })
-	setupDomiaBus({
+	setupCoreBus({
 		domia: ownDomia,
 		runtimeCapabilities,
 		mqttClient: localMqttClient,
 	})
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
-	setupHttpServer()
+	setupHttpServer({ domia: ownDomia })
 
 	if (runtimeCapabilities?.wakeword && runtimeCapabilities?.record) {
 		await setupVoiceListener(ownDomia)

@@ -34,6 +34,8 @@ import {
 	DEFAULT_STT_MODEL_NAME,
 	INTERACTION_INPUT_TYPE_ENUM_VALUES,
 	INTERACTION_INPUT_TYPE_ENUM,
+	RESPONSE_TYPE_ENUM_VALUES,
+	RESPONSE_TYPE_ENUM,
 	DEFAULT_LLM_MODEL_NAME,
 	DEFAULT_TTS_VOICE_NAME,
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
@@ -343,6 +345,9 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	inputType: text("input_type", { enum: INTERACTION_INPUT_TYPE_ENUM_VALUES })
 		.notNull()
 		.default(INTERACTION_INPUT_TYPE_ENUM.VOICE),
+	responseType: text("response_type", { enum: RESPONSE_TYPE_ENUM_VALUES })
+		.notNull()
+		.default(RESPONSE_TYPE_ENUM.VOICE),
 	isActive: integer("is_active", { mode: "boolean" }).default(true),
 	inputRaw: text("input_raw"),
 	inputAudioPath: text("input_audio_path"),

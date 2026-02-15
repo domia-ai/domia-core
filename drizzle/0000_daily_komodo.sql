@@ -105,6 +105,7 @@ CREATE TABLE `interaction_trace` (
 	`interaction_session_trace_id` text NOT NULL,
 	`session_id` text NOT NULL,
 	`input_type` text DEFAULT 'VOICE' NOT NULL,
+	`response_type` text DEFAULT 'voice' NOT NULL,
 	`is_active` integer DEFAULT true,
 	`input_raw` text,
 	`input_audio_path` text,

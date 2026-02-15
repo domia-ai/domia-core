@@ -1,4 +1,4 @@
-export * from "./domia-bus"
+export * from "./core-bus"
 export * from "./mqtt"
 export * from "./voice-listener"
 export * from "./environment"

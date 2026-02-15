@@ -6,4 +6,5 @@ export enum DOMIA_EVENT_BUS_ENUM {
 	TTS_DONE = "tts_done",
 	AUDIO_ERROR = "audio_error",
 	CAPABILITY_MISSING = "capability_missing",
+	INTERACTION_FAILED = "interaction_failed",
 }
