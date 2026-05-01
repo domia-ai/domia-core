@@ -1,0 +1,2 @@
+# Model file (~466 MB) is not committed. Download with: make download-whisper-model
+pywhispercpp==1.4.1

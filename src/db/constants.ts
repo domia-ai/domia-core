@@ -159,11 +159,11 @@ export const LLM_ENGINE_ENUM_VALUES = [
 
 export const TTS_ENGINE_ENUM = {
 	PIPER: "PIPER",
-	COQUI: "COQUI",
+	KOKORO: "KOKORO",
 } as const
 export const TTS_ENGINE_ENUM_VALUES = [
 	TTS_ENGINE_ENUM.PIPER,
-	TTS_ENGINE_ENUM.COQUI,
+	TTS_ENGINE_ENUM.KOKORO,
 ] as const
 
 export const WAKE_WORD_FRAMEWORK_ENUM = {

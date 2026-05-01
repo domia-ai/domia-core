@@ -2,12 +2,32 @@ import fs from "fs"
 import path from "path"
 
 import { runSTT } from "@/modules/stt-engine"
+import { type SttEngineEnumType, STT_ENGINE_ENUM_VALUES } from "@/db"
 import { getDomia, measure, formatDuration } from "@/test-utils"
 import { devCliLogger } from "@/utils"
 
-export const sttCommand = async (filePath: string) => {
+export const sttCommand = async (
+	filePath: string,
+	engine?: string,
+	model?: string,
+) => {
 	try {
-		const domia = getDomia({})
+		if (
+			engine &&
+			!STT_ENGINE_ENUM_VALUES.includes(engine as SttEngineEnumType)
+		) {
+			devCliLogger.error(
+				`❌ Invalid STT engine '${engine}'. Allowed: ${STT_ENGINE_ENUM_VALUES.join(", ")}`,
+			)
+			process.exit(1)
+		}
+
+		const domia = getDomia({
+			sttConfigOverrides: {
+				...(engine && { engine: engine as SttEngineEnumType }),
+				...(model && { modelName: model }),
+			},
+		})
 		const audioFile = path.resolve(filePath)
 
 		if (!fs.existsSync(audioFile)) {
@@ -15,7 +35,10 @@ export const sttCommand = async (filePath: string) => {
 			process.exit(1)
 		}
 
-		devCliLogger.info("🔊 Running STT on:", audioFile)
+		devCliLogger.info(
+			`🔊 Running STT (${domia.sttConfig?.engine} / ${domia.sttConfig?.modelName}) on:`,
+			audioFile,
+		)
 		const transcript = await measure(
 			() => runSTT(domia, audioFile),
 			(duration) => {

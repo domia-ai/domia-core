@@ -49,7 +49,12 @@ program
 		"Path to audio file for STT",
 		"tmp/mic_test_output.wav",
 	)
-	.action((options) => sttCommand(options.file))
+	.option(
+		"-e, --engine <engine>",
+		"STT engine to use (VOSK | WHISPER). Defaults to mock factory value.",
+	)
+	.option("-m, --model <model>", "Model name (engine-specific)")
+	.action((options) => sttCommand(options.file, options.engine, options.model))
 
 program
 	.command("llm")
@@ -86,7 +91,12 @@ program
 		"Text to convert to speech",
 		"Hey, I'm Domia. This is a test.",
 	)
-	.action((options) => ttsCommand(options.text))
+	.option(
+		"-e, --engine <engine>",
+		"TTS engine to use (PIPER | KOKORO). Defaults to mock factory value.",
+	)
+	.option("-v, --voice <voice>", "Voice name (engine-specific)")
+	.action((options) => ttsCommand(options.text, options.engine, options.voice))
 
 program
 	.command("play-audio")

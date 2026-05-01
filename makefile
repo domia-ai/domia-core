@@ -118,6 +118,27 @@ install-deps: ##🔧 Install required system binaries (sox)
 	esac
 	@echo "✅ Binary installation complete."
 
+install-deps-kokoro: ##🔧 Optional: install espeak-ng (only required if using KOKORO TTS engine)
+	@echo "🔧 Installing espeak-ng for Kokoro TTS engine..."
+	@unameOut=$$(uname -s); \
+	case $$unameOut in \
+		Linux*) \
+			sudo apt-get update && sudo apt-get install -y espeak-ng ;; \
+		Darwin*) \
+			command -v brew >/dev/null 2>&1 || { echo "❌ Homebrew not found. Install from https://brew.sh"; exit 1; }; \
+			brew install espeak-ng ;; \
+		*) \
+			echo "❌ Unsupported OS. Please install 'espeak-ng' manually."; exit 1 ;; \
+	esac
+	@echo "✅ espeak-ng installed. Kokoro engine ready."
+
+download-whisper-model: ##📥 Optional: download Whisper small.en model (~466 MB) for the WHISPER STT engine
+	@echo "📥 Downloading whisper.cpp small.en model..."
+	@mkdir -p src/resources/stt-models/whisper/small.en
+	@curl -L --progress-bar -o src/resources/stt-models/whisper/small.en/ggml-model.bin \
+		https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+	@echo "✅ Whisper small.en model downloaded."
+
 ##@ Diagnostics
 doctor-py: ##🩺 Check if Python, virtualenv, and required modules are correctly set up
 	@echo "🩺 Running Python environment check..."

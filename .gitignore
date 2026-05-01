@@ -35,6 +35,9 @@ src/resources/stt-models/vosk/*
 # Except the default model
 !src/resources/stt-models/vosk/vosk-model-small-en-us-0.15/
 
+# Ignore Whisper models (large, downloaded via `make download-whisper-model`)
+src/resources/stt-models/whisper/
+
 
 # Ignore all models in stt-models/vosk/
 src/resources/wake-word/*

@@ -113,6 +113,35 @@ make mosquitto-password
 > docker run --rm -v "$PWD/config/mqtt:/data" eclipse-mosquitto mosquitto_passwd -c /data/password.txt domia
 > ```
 
+## 🧩 Optional Engines
+
+DOMIA's voice pipeline ships with sensible defaults (Vosk for STT, Piper for TTS). Alternative engines are opt-in:
+
+### Whisper STT (more accurate transcription)
+
+```bash
+make download-whisper-model   # ~466 MB, one-time download
+```
+
+Then switch the active STT engine to `WHISPER` in your `stt_config` (model name `small.en`).
+
+### Kokoro TTS (more expressive voice)
+
+Kokoro requires `espeak-ng` as a system dependency:
+
+```bash
+make install-deps-kokoro
+```
+
+Models are auto-downloaded by the `kokoro` Python package on first use. Switch the active TTS engine to `KOKORO` in your `tts_config` (e.g., voice `af_heart`).
+
+### Try engines via dev CLI without changing config
+
+```bash
+npm run dev-cli -- tts --engine KOKORO --voice af_heart --text "Hello from Kokoro"
+npm run dev-cli -- stt --engine WHISPER --model small.en --file tmp/mic_test_output.wav
+```
+
 ## 🎯 Next Steps
 
 After completing the setup, you can:
