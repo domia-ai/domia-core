@@ -32,6 +32,21 @@ export const getLocalIp = (): string | null => {
 	return null
 }
 
+export const refreshDomiaLocalIp = (domia: DomiaType): DomiaType => {
+	const currentIp = getLocalIp()
+	if (!currentIp || currentIp === domia?.localIp) return domia
+
+	networkSyncLogger.info("Refreshing localIp", {
+		domiaId: domia?.id,
+		previous: domia?.localIp,
+		current: currentIp,
+	})
+
+	const refreshed = { ...domia, localIp: currentIp }
+	dbAdapter.upsertDomia(normalizeDomia(refreshed)).run()
+	return refreshed
+}
+
 export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 	const domiaId = domia?.id
 	const domiaKey = domia?.domiaKey

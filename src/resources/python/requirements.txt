@@ -15,3 +15,8 @@ soundfile==0.12.1
 
 # Whisper (whisper.cpp via pywhispercpp)
 pywhispercpp==1.4.1
+
+# ML server (FastAPI host for all inference engines)
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+httpx==0.28.1

@@ -4,6 +4,7 @@ import {
 	type DBClientOrTxType,
 } from "@/db"
 import { getDomia, insertDomia, type DomiaType } from "@/modules/core"
+import { refreshDomiaLocalIp } from "@/modules/network-sync"
 import { configEngineLogger, domiaError, CORE_ERRORS } from "@/utils"
 
 import { DEFAULT_CONFIG_VALUES } from "../constants"
@@ -37,7 +38,7 @@ export const initialize = async (
 		configEngineLogger.info("Found existing Domia instance", {
 			domiaId: currentDomia.id,
 		})
-		return currentDomia
+		return refreshDomiaLocalIp(currentDomia)
 	}
 
 	configEngineLogger.info("Creating new Domia instance")

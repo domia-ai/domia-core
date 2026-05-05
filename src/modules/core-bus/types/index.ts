@@ -9,7 +9,8 @@ export type CoreBusContextType = {
 }
 
 export type AudioReadyPayloadType = {
-	filePath: string
+	filePath?: string
+	audioUrl?: string
 	originDomiaKey?: string
 	interactionId?: string
 }

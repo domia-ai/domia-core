@@ -120,6 +120,25 @@ export const DB_ERRORS = {
 	},
 } as const
 
+export const ML_ERRORS = {
+	SERVER_UNAVAILABLE: {
+		code: "ML/SERVER_UNAVAILABLE",
+		message: "ML inference server is not available or not ready.",
+	},
+	SERVER_START_FAILED: {
+		code: "ML/SERVER_START_FAILED",
+		message: "Failed to start the ML inference server.",
+	},
+	SYNTHESIS_FAILED: {
+		code: "ML/SYNTHESIS_FAILED",
+		message: "ML server failed to synthesize audio.",
+	},
+	TRANSCRIPTION_FAILED: {
+		code: "ML/TRANSCRIPTION_FAILED",
+		message: "ML server failed to transcribe audio.",
+	},
+} as const
+
 export const ERROR_CODES = {
 	core: CORE_ERRORS,
 	audio: AUDIO_ERRORS,
@@ -129,6 +148,7 @@ export const ERROR_CODES = {
 	"llm-engine": LLM_ERRORS,
 	"stt-engine": STT_ERRORS,
 	"audio-playback": AUDIO_PLAYBACK_ERRORS,
+	"ml-server": ML_ERRORS,
 	validation: VALIDATION_ERRORS,
 	db: DB_ERRORS,
 } as const

@@ -1,34 +1,37 @@
-import { readFile } from "fs/promises"
+import { writeFile, mkdir, readFile } from "fs/promises"
 import path from "path"
 import { spawn } from "child_process"
 
 import { DomiaType } from "@/modules/core"
-import { generateUuid, ttsEngineLogger } from "@/utils"
-import { TTS_ERRORS, domiaError } from "@/utils"
+import { synthesizeTts } from "@/modules/ml-client"
+import { generateUuid, ttsEngineLogger, TTS_ERRORS, domiaError } from "@/utils"
+import { TTS_ENGINE_ENUM } from "@/db"
+import { env, PYTHON_BIN } from "@/config"
 import { type RunTtsResultType } from "../../types"
-import { PYTHON_BIN } from "@/config"
 
-export const runPiper = async (
-	domia: DomiaType,
+const synthesizeViaMlServer = async (
+	voiceName: string,
 	text: string,
-): Promise<RunTtsResultType> => {
-	const ttsConfig = domia.ttsConfig
-	const voiceName = ttsConfig?.voiceName
+	filePath: string,
+): Promise<Buffer> => {
+	const result = await synthesizeTts({
+		engine: TTS_ENGINE_ENUM.PIPER,
+		text,
+		voice: voiceName,
+	})
+	await writeFile(filePath, result.audio)
+	return result.audio
+}
 
-	if (!voiceName) {
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
-			logger: ttsEngineLogger,
-			meta: {
-				domiaId: domia.id,
-				voiceName,
-			},
-		})
-	}
-
+const synthesizeViaSpawn = async (
+	domiaId: string,
+	voiceName: string,
+	text: string,
+	filePath: string,
+): Promise<Buffer> => {
 	const voiceDir = path.resolve("src/resources/tts-models/piper", voiceName)
-	const modelPath = path.join(voiceDir, `voice.onnx`)
+	const modelPath = path.join(voiceDir, "voice.onnx")
 	const scriptPath = path.resolve("src/resources/python/piper/runner.py")
-	const filePath = path.resolve("tmp/tts-output", `domia-${generateUuid()}.wav`)
 
 	const args = [
 		scriptPath,
@@ -41,18 +44,15 @@ export const runPiper = async (
 	]
 
 	await new Promise<void>((resolve, reject) => {
-		const process = spawn(PYTHON_BIN, args)
-
-		process.on("error", reject)
-
-		process.stderr.on("data", (data) => {
+		const proc = spawn(PYTHON_BIN, args)
+		proc.on("error", reject)
+		proc.stderr.on("data", (data) => {
 			ttsEngineLogger.error(`Piper Python error: ${data}`, {
-				domiaId: domia.id,
+				domiaId,
 				voiceName,
 			})
 		})
-
-		process.on("close", (code) => {
+		proc.on("close", (code) => {
 			if (code !== 0) {
 				return reject(new Error(`run_piper.py exited with code ${code}`))
 			}
@@ -60,7 +60,30 @@ export const runPiper = async (
 		})
 	})
 
-	const buffer = await readFile(filePath)
+	return await readFile(filePath)
+}
+
+export const runPiper = async (
+	domia: DomiaType,
+	text: string,
+): Promise<RunTtsResultType> => {
+	const ttsConfig = domia.ttsConfig
+	const voiceName = ttsConfig?.voiceName
+
+	if (!voiceName) {
+		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
+			logger: ttsEngineLogger,
+			meta: { domiaId: domia.id, voiceName },
+		})
+	}
+
+	const outputDir = path.resolve("tmp/tts-output")
+	await mkdir(outputDir, { recursive: true })
+	const filePath = path.join(outputDir, `domia-${generateUuid()}.wav`)
+
+	const buffer = env.DOMIA_ML_SERVER_DISABLED
+		? await synthesizeViaSpawn(domia.id, voiceName, text, filePath)
+		: await synthesizeViaMlServer(voiceName, text, filePath)
 
 	return {
 		engineUsed: "PIPER",

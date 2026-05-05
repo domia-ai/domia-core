@@ -68,9 +68,13 @@ export const handleAudioReady = async (
 	const { domia, runtimeCapabilities, mqttClient } = ctx
 	const { stt } = runtimeCapabilities
 	const domiaId = domia.id
-	const { filePath, originDomiaKey } = payload
+	const { filePath, audioUrl, originDomiaKey } = payload
 
-	domiaBusLogger.info(`🎧 AUDIO_READY received`, { domiaId, filePath })
+	domiaBusLogger.info(`🎧 AUDIO_READY received`, {
+		domiaId,
+		filePath,
+		audioUrl,
+	})
 	const interactionId = await getOrCreateInteractionId(
 		domia,
 		payload.interactionId,
@@ -84,7 +88,18 @@ export const handleAudioReady = async (
 
 	try {
 		if (stt) {
-			const transcript = await runSTT(domia, filePath)
+			let pathForStt = filePath
+			if (!pathForStt && audioUrl) {
+				domiaBusLogger.info(
+					`🎧 AUDIO_READY: fetching remote audio from ${audioUrl}`,
+					{ domiaId, interactionId },
+				)
+				pathForStt = await downloadAudioToTemp(audioUrl, interactionId)
+			}
+			if (!pathForStt) {
+				throw new Error("AUDIO_READY: missing filePath and audioUrl")
+			}
+			const transcript = await runSTT(domia, pathForStt)
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,
@@ -96,9 +111,27 @@ export const handleAudioReady = async (
 				CAPABILITY_ENUM.STT,
 			)
 			if (delegateTo) {
+				let audioUrlToForward = audioUrl
+				if (!audioUrlToForward && filePath) {
+					registerAudioForServing(interactionId, filePath)
+					audioUrlToForward = buildAudioUrl(domia, interactionId)
+				}
+				if (!audioUrlToForward) {
+					throw new Error(
+						"AUDIO_READY: cannot delegate without filePath or audioUrl",
+					)
+				}
+				domiaBusLogger.info(
+					`📡 delegating STT to ${delegateTo.delegateToDomiaKey} via ${audioUrlToForward}`,
+					{ domiaId, interactionId },
+				)
 				mqttClient?.publish(
 					`domia/${delegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.AUDIO_READY}`,
-					JSON.stringify({ filePath, originDomiaKey, interactionId }),
+					JSON.stringify({
+						audioUrl: audioUrlToForward,
+						originDomiaKey,
+						interactionId,
+					}),
 				)
 			} else {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {

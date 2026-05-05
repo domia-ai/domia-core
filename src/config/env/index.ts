@@ -11,6 +11,13 @@ const envSchema = z.object({
 	PYTHON_BIN: z.string().default(".venv/bin/python3"),
 	HTTP_SERVER_HOST: z.string().default("default"),
 	HTTP_SERVER_PORT: z.string().default("3000"),
+	DOMIA_ML_HOST: z.string().default("127.0.0.1"),
+	DOMIA_ML_PORT: z.string().default("5051"),
+	DOMIA_ML_SERVER_DISABLED: z
+		.string()
+		.optional()
+		.transform((v) => v === "true" || v === "1"),
+	DOMIA_ML_READY_TIMEOUT_MS: z.string().default("30000"),
 })
 
 export const env = envSchema.parse(process.env)
