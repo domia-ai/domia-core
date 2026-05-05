@@ -85,10 +85,6 @@ const handleExit = (warm: string[]) => (code: number | null) => {
 }
 
 const shouldStart = (domia: DomiaType): boolean => {
-	if (env.DOMIA_ML_SERVER_DISABLED) {
-		mlServerLogger.info("DOMIA_ML_SERVER_DISABLED set — skipping ml-server")
-		return false
-	}
 	const caps = domia.runtimeCapabilities
 	const needsMl = Boolean(caps?.tts) || Boolean(caps?.stt)
 	if (!needsMl) {

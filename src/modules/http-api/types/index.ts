@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { postChatBodySchema } from "../schemas"
+import { postChatBodySchema, postVoiceBodySchema } from "../schemas"
 
 export type PostChatBodyType = z.infer<typeof postChatBodySchema>
 
@@ -17,4 +17,25 @@ export type GetAudioParamsType = {
 
 export type GetAudioRouteType = {
 	Params: GetAudioParamsType
+}
+
+export type PostVoiceBodyType = z.infer<typeof postVoiceBodySchema>
+
+export type PostVoiceTimingsType = {
+	sttMs: number
+	llmMs: number
+	ttsMs: number
+	totalMs: number
+}
+
+export type PostVoiceResponseType = {
+	interactionId: string
+	transcript: string
+	reply: string
+	audioUrl: string | null
+	timings: PostVoiceTimingsType
+}
+
+export type PostVoiceRouteType = {
+	Body: PostVoiceBodyType
 }

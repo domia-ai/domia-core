@@ -7,8 +7,10 @@ import {
 	handleGetHealth,
 	handleGetAudio,
 	handlePostChat,
+	handlePostVoice,
 	type PostChatRouteType,
 	type GetAudioRouteType,
+	type PostVoiceRouteType,
 } from "@/modules/http-api"
 
 const HTTP_SERVER_HOST = env?.HTTP_SERVER_HOST
@@ -32,6 +34,10 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.post<PostChatRouteType>("/chat", async (request) =>
 		handlePostChat(domia, request.body),
+	)
+
+	fastify.post<PostVoiceRouteType>("/voice", async (request) =>
+		handlePostVoice(domia, request.body),
 	)
 
 	try {

@@ -12,6 +12,7 @@ import {
 	benchmarkCommand,
 	interactiveCommand,
 	statusCommand,
+	simulateVoiceCommand,
 } from "./commands"
 
 const program = new Command()
@@ -124,5 +125,17 @@ program
 	.command("interactive")
 	.description("🧭 Run interactive developer menu to test modules manually")
 	.action(interactiveCommand)
+
+program
+	.command("simulate-voice")
+	.description(
+		"🎙️ Simulate the full voice flow (AUDIO_READY → STT → LLM → TTS → playback) via the bus",
+	)
+	.option(
+		"-f, --file <path>",
+		"Path to audio file to inject as AUDIO_READY",
+		"tmp/mic_test_output.wav",
+	)
+	.action((options) => simulateVoiceCommand(options.file))
 
 program.parse()

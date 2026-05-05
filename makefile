@@ -96,12 +96,6 @@ mic-test: ##🎙️ Record a short audio sample to test microphone input and RMS
 	@echo "🎙️ Starting microphone test recording..."
 	@$(PYTHON) src/resources/python/open-wake-word/mic_test.py
 
-run-vosk: ##🗣️ Run the Vosk STT runner with a sample audio file
-	@echo "🗣️ Running Vosk transcription with mic_test_output.wav..."
-	@$(PYTHON) src/resources/python/vosk/runner.py \
-		--file tmp/mic_test_output.wav \
-		--model src/resources/stt-models/vosk/vosk-model-small-en-us-0.15 \
-		--timeout 5
 
 ##@ System Dependencies
 install-deps: ##🔧 Install required system binaries (sox)

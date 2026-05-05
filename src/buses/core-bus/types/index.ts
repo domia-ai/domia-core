@@ -4,8 +4,10 @@ import { DOMIA_EVENT_BUS_ENUM } from "../constants"
 export type DomiaEventBusPayloadMapType = {
 	[DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED]: { reply: string }
 	[DOMIA_EVENT_BUS_ENUM.AUDIO_READY]: {
-		filePath: string
+		filePath?: string
+		audioUrl?: string
 		originDomiaKey?: string
+		interactionId?: string
 	}
 	[DOMIA_EVENT_BUS_ENUM.STT_DONE]: {
 		transcript: string

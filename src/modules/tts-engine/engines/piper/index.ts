@@ -1,67 +1,11 @@
-import { writeFile, mkdir, readFile } from "fs/promises"
+import { writeFile, mkdir } from "fs/promises"
 import path from "path"
-import { spawn } from "child_process"
 
 import { DomiaType } from "@/modules/core"
 import { synthesizeTts } from "@/modules/ml-client"
 import { generateUuid, ttsEngineLogger, TTS_ERRORS, domiaError } from "@/utils"
 import { TTS_ENGINE_ENUM } from "@/db"
-import { env, PYTHON_BIN } from "@/config"
 import { type RunTtsResultType } from "../../types"
-
-const synthesizeViaMlServer = async (
-	voiceName: string,
-	text: string,
-	filePath: string,
-): Promise<Buffer> => {
-	const result = await synthesizeTts({
-		engine: TTS_ENGINE_ENUM.PIPER,
-		text,
-		voice: voiceName,
-	})
-	await writeFile(filePath, result.audio)
-	return result.audio
-}
-
-const synthesizeViaSpawn = async (
-	domiaId: string,
-	voiceName: string,
-	text: string,
-	filePath: string,
-): Promise<Buffer> => {
-	const voiceDir = path.resolve("src/resources/tts-models/piper", voiceName)
-	const modelPath = path.join(voiceDir, "voice.onnx")
-	const scriptPath = path.resolve("src/resources/python/piper/runner.py")
-
-	const args = [
-		scriptPath,
-		"--text",
-		text,
-		"--model_path",
-		modelPath,
-		"--output_path",
-		filePath,
-	]
-
-	await new Promise<void>((resolve, reject) => {
-		const proc = spawn(PYTHON_BIN, args)
-		proc.on("error", reject)
-		proc.stderr.on("data", (data) => {
-			ttsEngineLogger.error(`Piper Python error: ${data}`, {
-				domiaId,
-				voiceName,
-			})
-		})
-		proc.on("close", (code) => {
-			if (code !== 0) {
-				return reject(new Error(`run_piper.py exited with code ${code}`))
-			}
-			resolve()
-		})
-	})
-
-	return await readFile(filePath)
-}
 
 export const runPiper = async (
 	domia: DomiaType,
@@ -81,16 +25,19 @@ export const runPiper = async (
 	await mkdir(outputDir, { recursive: true })
 	const filePath = path.join(outputDir, `domia-${generateUuid()}.wav`)
 
-	const buffer = env.DOMIA_ML_SERVER_DISABLED
-		? await synthesizeViaSpawn(domia.id, voiceName, text, filePath)
-		: await synthesizeViaMlServer(voiceName, text, filePath)
+	const result = await synthesizeTts({
+		engine: TTS_ENGINE_ENUM.PIPER,
+		text,
+		voice: voiceName,
+	})
+	await writeFile(filePath, result.audio)
 
 	return {
 		engineUsed: "PIPER",
 		voiceUsed: voiceName,
 		format: "wav",
 		filePath,
-		buffer,
+		buffer: result.audio,
 		metadata: { text },
 	}
 }
