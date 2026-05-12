@@ -9,6 +9,7 @@ import {
 	handleAudioError,
 	handleCapabilityMissing,
 	handleInteractionFailed,
+	resolveCoreBusFeatures,
 } from "@/modules/core-bus"
 import type { CoreBusArgsType } from "./types"
 
@@ -23,7 +24,19 @@ export const setupCoreBus = ({
 		`🔗 Subscribing to bus events for DOMIA ${domia.name} (${domiaId})`,
 	)
 
-	const ctx = { domia, runtimeCapabilities, mqttClient }
+	const features = resolveCoreBusFeatures(domia, runtimeCapabilities)
+	domiaBusLogger.info(`🔧 Resolved features`, {
+		domiaId,
+		stt: features.stt?.adapter.id ?? null,
+		tts: features.tts?.adapter.id ?? null,
+		llm: features.llm?.adapter.id ?? null,
+		canStreamStt: features.canStreamStt,
+		canStreamLlm: features.canStreamLlm,
+		canStreamTts: features.canStreamTts,
+		canFullStreamVoice: features.canFullStreamVoice,
+	})
+
+	const ctx = { domia, features, mqttClient }
 
 	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED, () =>
 		handleWakeDetected(ctx),

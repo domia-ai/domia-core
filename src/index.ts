@@ -8,7 +8,7 @@ import {
 	normalizeRuntimeCapabilities,
 	setupHttpServer,
 	setupHeartbeat,
-	setupMlServer,
+	setupGrpcServer,
 } from "./setups"
 
 process.on("uncaughtException", (err) => {
@@ -50,7 +50,7 @@ async function main() {
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
 	setupHttpServer({ domia: ownDomia })
 
-	await setupMlServer({ domia: ownDomia })
+	await setupGrpcServer({ domia: ownDomia })
 
 	if (runtimeCapabilities?.wakeword && runtimeCapabilities?.record) {
 		await setupVoiceListener(ownDomia)

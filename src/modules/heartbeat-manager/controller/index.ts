@@ -11,7 +11,8 @@ export const sendHeartbeat = ({ domia, mqttClient }: SendHeartbeatArgsType) => {
 		const topic = `domia/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.HEARTBEAT}`
 		heartbeatLogger.debug(`💓 Heartbeat sent for ${domiaKey}`)
 		const localIp = getLocalIp()
-		mqttClient?.publish(topic, JSON.stringify({ ...domia, localIp }))
+		const grpcPort = Number(env.GRPC_PORT)
+		mqttClient?.publish(topic, JSON.stringify({ ...domia, localIp, grpcPort }))
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })
 	}

@@ -57,12 +57,11 @@ export const setupMqtt = ({
 		logger.info(`🔄 ${type} MQTT attempting to reconnect`)
 	})
 
-	logger.info("📡 Starting topic subscription process")
-	const topic = `domia/${domiaKey}/${type}/#`
-	logger.info(`🔗 Subscribing to topic ${topic}`)
-	client.subscribe(topic)
+	logger.info(
+		"📡 Subscribing to heartbeat topic only (delegations now via gRPC)",
+	)
 	const heartbeatTopic = `domia/+/${type}/${MQTT_EVENT_ENUM.HEARTBEAT}`
-	logger.info(`🔗 Subscribing to heartbeat topic ${heartbeatTopic}`)
+	logger.info(`🔗 Subscribing to ${heartbeatTopic}`)
 	client.subscribe(heartbeatTopic)
 
 	logger.success("✅ MQTT setup completed successfully")

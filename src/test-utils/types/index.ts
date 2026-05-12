@@ -29,3 +29,20 @@ export type GetDomiaParamsType = {
 	mqttConfigOverrides?: Partial<SelectMqttConfigType>
 	capabilityDelegationOverrides?: Partial<SelectCapabilityDelegationType>
 }
+
+export type VoiceCorpusEntryType = {
+	id: string
+	category: string
+	text: string
+	transcriptKeywords: string[]
+	minReplyChars: number
+	maxTotalMs: number
+}
+
+export type VoiceCorpusType = {
+	version: number
+	ttsEngine: string
+	ttsVoice: string
+	sampleRateHz: number
+	entries: VoiceCorpusEntryType[]
+}

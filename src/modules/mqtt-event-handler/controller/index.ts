@@ -1,23 +1,13 @@
-import { DOMIA_EVENT_BUS_ENUM, publishToDomiaBus } from "@/buses"
 import type { handleMqttMessageArgsType } from "../types"
 import { MQTT_EVENT_ENUM } from "@/setups"
 import { type DomiaType } from "@/modules/core"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
-
-export const isDomiaBusEvent = (
-	value: string,
-): value is DOMIA_EVENT_BUS_ENUM => {
-	return Object.values(DOMIA_EVENT_BUS_ENUM).includes(
-		value as DOMIA_EVENT_BUS_ENUM,
-	)
-}
 
 export const isMqttEvent = (value: string): value is MQTT_EVENT_ENUM => {
 	return Object.values(MQTT_EVENT_ENUM).includes(value as MQTT_EVENT_ENUM)
 }
 
 export const handleMqttMessage = ({
-	domia,
 	topic,
 	message,
 	logger,
@@ -25,30 +15,19 @@ export const handleMqttMessage = ({
 	const parts = topic?.split("/")
 	const [, domiaKey, type, eventName] = parts
 
-	logger.info(`domiaKey: ${domiaKey}`)
-	logger.info(`type: ${type}`)
-	logger.info(`eventName: ${eventName}`)
-	logger.info(`message: ${message}`)
-
 	if (!domiaKey || !eventName) return
+	if (!isMqttEvent(eventName)) return
 
 	try {
 		const payload = JSON.parse(message?.toString())
-		logger.info(`payload: ${payload}`)
-		if (isDomiaBusEvent(eventName)) {
-			logger.info(`📥 [${type}] ${eventName} from ${domiaKey}`, { payload })
-			publishToDomiaBus(domia?.id, eventName, payload)
-		} else if (isMqttEvent(eventName)) {
-			logger.info(`📥 [${type}] ${eventName} from ${domiaKey}`)
-			switch (eventName) {
-				case MQTT_EVENT_ENUM.HEARTBEAT: {
-					logger.info(`${eventName} received for domiaKey ${domiaKey}`)
-					const domia = payload as DomiaType
-					receiveHeartbeat({ domia })
-				}
+		switch (eventName) {
+			case MQTT_EVENT_ENUM.HEARTBEAT: {
+				logger.info(`💓 heartbeat from ${domiaKey} [${type}]`)
+				receiveHeartbeat({ domia: payload as DomiaType })
+				break
 			}
-		} else {
-			logger.warn(`⚠️ Unknown MQTT event: ${eventName}`)
+			default:
+				logger.warn(`⚠️ unhandled MQTT event: ${eventName}`)
 		}
 	} catch (err) {
 		logger.error("❌ Error parsing MQTT message", { topic, err })

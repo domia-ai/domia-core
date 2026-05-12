@@ -3,7 +3,8 @@ import { type DomiaType } from "@/modules/core"
 import { domiaError, AUDIO_PLAYBACK_ERRORS, audioPlaybackLogger } from "@/utils"
 
 import { audioPlaybackEngines } from "../engines"
-import { AudioPlaybackResult } from "../types"
+import { runSoxStream } from "../engines/sox"
+import type { AudioPlaybackResult, SoxStreamOptionsType } from "../types"
 
 export const playAudio = async (
 	domia: DomiaType,
@@ -24,4 +25,12 @@ export const playAudio = async (
 	const handler = audioPlaybackEngines[engine]
 
 	return await handler(domia, filePath)
+}
+
+export const playAudioStream = async (
+	domia: DomiaType,
+	chunks: AsyncIterable<Buffer>,
+	options: SoxStreamOptionsType,
+): Promise<AudioPlaybackResult> => {
+	return runSoxStream(domia, chunks, options)
 }

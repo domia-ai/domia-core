@@ -10,6 +10,7 @@ export const baseDomia: SelectDomiaType = {
 	isActive: true,
 	sessionIdTimeoutMs: faker.number.int({ min: 150_000, max: 300_000 }),
 	localIp: `192.168.${faker.number.int(255)}.${faker.number.int({ min: 1, max: 254 })}`,
+	grpcPort: 5052,
 	createdAt: now(),
 	updatedAt: now(),
 }

@@ -14,7 +14,6 @@ export type PartialRuntimeCapabilitiesType = Partial<RuntimeCapabilitiesType>
 
 export type RuntimeCapabilitiesValueType = {
 	binaries?: { name: string; command: string; required: boolean }[]
-	pythonModules?: string[]
 	tempDirs?: string[]
 }
 

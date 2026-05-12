@@ -8,3 +8,9 @@ export type LogPrefixType = {
 	prefix: string
 	color: (text: string) => string
 }
+
+export type TraceContextType = {
+	interactionId?: string
+	originDomiaKey?: string
+	traceId?: string
+}

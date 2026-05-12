@@ -1,0 +1,128 @@
+{
+	"version": 1,
+	"ttsEngine": "KOKORO",
+	"ttsVoice": "af_heart",
+	"sampleRateHz": 16000,
+	"entries": [
+		{
+			"id": "h-breakfast",
+			"category": "hospitality.short",
+			"text": "What time is breakfast served?",
+			"transcriptKeywords": ["breakfast"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "h-wifi",
+			"category": "hospitality.short",
+			"text": "What is the wifi password?",
+			"transcriptKeywords": ["wifi"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "h-towels",
+			"category": "hospitality.short",
+			"text": "Can I have extra towels in my room?",
+			"transcriptKeywords": ["towels"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "h-checkout",
+			"category": "hospitality.short",
+			"text": "When is checkout time?",
+			"transcriptKeywords": ["checkout"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "h-gym",
+			"category": "hospitality.short",
+			"text": "Where is the gym located?",
+			"transcriptKeywords": ["gym"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "l-breakfast-gym",
+			"category": "hospitality.long",
+			"text": "Can you tell me what time breakfast is served and whether the gym is open early?",
+			"transcriptKeywords": ["breakfast", "gym"],
+			"minReplyChars": 20,
+			"maxTotalMs": 45000
+		},
+		{
+			"id": "l-restaurants",
+			"category": "hospitality.long",
+			"text": "Is there a restaurant nearby that is open late, and does it serve vegetarian food?",
+			"transcriptKeywords": ["restaurant"],
+			"minReplyChars": 20,
+			"maxTotalMs": 45000
+		},
+		{
+			"id": "l-wifi-printer",
+			"category": "hospitality.long",
+			"text": "I'd like to know the wifi password and also if there is a printer I can use.",
+			"transcriptKeywords": ["wifi", "printer"],
+			"minReplyChars": 20,
+			"maxTotalMs": 45000
+		},
+		{
+			"id": "n-table",
+			"category": "stt.numbers",
+			"text": "Can you book table seven for eight thirty PM?",
+			"transcriptKeywords": ["table"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "n-room",
+			"category": "stt.numbers",
+			"text": "Is room three twelve available for two nights?",
+			"transcriptKeywords": ["room"],
+			"minReplyChars": 10,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "s-hello",
+			"category": "stt.short",
+			"text": "Hello there.",
+			"transcriptKeywords": ["hello"],
+			"minReplyChars": 5,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "s-thanks",
+			"category": "stt.short",
+			"text": "Thank you very much.",
+			"transcriptKeywords": ["thank"],
+			"minReplyChars": 5,
+			"maxTotalMs": 30000
+		},
+		{
+			"id": "c-area",
+			"category": "conversational",
+			"text": "Tell me about the local area.",
+			"transcriptKeywords": ["area"],
+			"minReplyChars": 20,
+			"maxTotalMs": 45000
+		},
+		{
+			"id": "c-weekend",
+			"category": "conversational",
+			"text": "What activities do you recommend for the weekend?",
+			"transcriptKeywords": ["weekend"],
+			"minReplyChars": 20,
+			"maxTotalMs": 45000
+		},
+		{
+			"id": "c-dinner",
+			"category": "conversational",
+			"text": "What is a good restaurant nearby for dinner?",
+			"transcriptKeywords": ["restaurant"],
+			"minReplyChars": 20,
+			"maxTotalMs": 45000
+		}
+	]
+}

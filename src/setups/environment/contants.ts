@@ -13,18 +13,14 @@ export const RUNTIME_CAPABILITIES: RuntimeCapabilitiesType = {
 }
 
 export const CAPABILITY_RESOURCES: CapabilityResourcesType = {
-	wakeword: {
-		pythonModules: ["sounddevice", "numpy", "openwakeword"],
-	},
 	record: {
-		binaries: [{ name: "sox", command: "sox --version", required: true }],
+		binaries: [
+			{ name: "sox", command: "sox --version", required: true },
+			{ name: "rec", command: "rec --version", required: true },
+		],
 		tempDirs: ["tmp", "tmp/recordings"],
 	},
-	stt: {
-		pythonModules: ["vosk"],
-	},
 	tts: {
-		pythonModules: ["piper"],
 		tempDirs: ["tmp", "tmp/tts-output"],
 	},
 	playback: {

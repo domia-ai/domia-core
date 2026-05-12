@@ -32,6 +32,7 @@ export const transformDomia = (
 		isActive: domia?.isActive,
 		sessionIdTimeoutMs: domia?.sessionIdTimeoutMs || 300_000,
 		localIp: domia?.localIp,
+		grpcPort: domia?.grpcPort,
 		createdAt: domia?.createdAt,
 		updatedAt: domia?.updatedAt,
 		runtimeCapabilities,

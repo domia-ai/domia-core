@@ -1,5 +1,4 @@
-import { createReadStream, existsSync } from "fs"
-import path from "path"
+import { createReadStream } from "fs"
 import { type DomiaType } from "@/modules/core"
 import type {
 	PostChatBodyType,
@@ -13,24 +12,11 @@ import {
 	requestTextReply,
 	getAudioFilePath,
 	registerAudioForServing,
-	type SttDonePayloadType,
-	type LlmDonePayloadType,
-	type TtsDonePayloadType,
-	type InteractionFailedPayloadType,
+	requestVoiceReply,
+	type RequestVoiceReplyStage,
 } from "@/modules/core-bus"
-import {
-	publishToDomiaBus,
-	subscribeToDomiaBus,
-	unsubscribeFromDomiaBus,
-	DOMIA_EVENT_BUS_ENUM,
-	type DomiaEventBusPayloadMapType,
-} from "@/buses"
-import { getOrCreateInteractionId } from "@/modules/session-manager"
-import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { httpServerLogger } from "@/utils"
 import type { FastifyRequest, FastifyReply } from "fastify"
-
-const VOICE_FLOW_TIMEOUT_MS = 60_000
 
 export const handleGetRoot = () => {
 	return { message: "DOMIA HTTP Server is running ✅" }
@@ -72,114 +58,31 @@ export const handlePostVoice = async (
 	body: PostVoiceBodyType,
 ): Promise<PostVoiceResponseType> => {
 	const { filePath } = postVoiceBodySchema.parse(body)
-	const absPath = path.resolve(filePath)
-	if (!existsSync(absPath)) {
-		throw new Error(`Audio file not found: ${absPath}`)
-	}
-
-	const interactionId = await getOrCreateInteractionId(domia, undefined, {
-		inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
-		responseType: RESPONSE_TYPE_ENUM.VOICE,
-		inputAudioPath: absPath,
-	})
-	if (!interactionId) {
-		throw new Error("Failed to create interaction")
-	}
-
-	const domiaId = domia.id
-	const t0 = Date.now()
-	const stages: { sttDone?: number; llmDone?: number; ttsDone?: number } = {}
-	let transcript = ""
-	let reply = ""
-	let ttsFilePath: string | undefined
-	const subs: {
-		event: DOMIA_EVENT_BUS_ENUM
-		fn: (p: unknown) => void
-	}[] = []
-
-	const sub = <E extends DOMIA_EVENT_BUS_ENUM>(
-		event: E,
-		fn: (p: DomiaEventBusPayloadMapType[E]) => void,
-	) => {
-		subs.push({ event, fn: fn as (p: unknown) => void })
-		subscribeToDomiaBus(domiaId, event, fn)
-	}
-
-	const cleanup = () => {
-		for (const { event, fn } of subs) {
-			unsubscribeFromDomiaBus(domiaId, event, fn)
-		}
-	}
-
 	try {
-		await new Promise<void>((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				reject(new Error(`voice flow timeout after ${VOICE_FLOW_TIMEOUT_MS}ms`))
-			}, VOICE_FLOW_TIMEOUT_MS)
-
-			sub(DOMIA_EVENT_BUS_ENUM.STT_DONE, (p: SttDonePayloadType) => {
-				if (p.interactionId !== interactionId) return
-				stages.sttDone = Date.now() - t0
-				transcript = p.transcript
-			})
-			sub(DOMIA_EVENT_BUS_ENUM.LLM_DONE, (p: LlmDonePayloadType) => {
-				if (p.interactionId !== interactionId) return
-				stages.llmDone = Date.now() - t0
-				reply = p.reply
-			})
-			sub(DOMIA_EVENT_BUS_ENUM.TTS_DONE, (p: TtsDonePayloadType) => {
-				if (p.interactionId !== interactionId) return
-				stages.ttsDone = Date.now() - t0
-				ttsFilePath = p.filePath
-				clearTimeout(timeout)
-				resolve()
-			})
-			sub(
-				DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED,
-				(p: InteractionFailedPayloadType) => {
-					if (p.interactionId !== interactionId) return
-					clearTimeout(timeout)
-					reject(
-						new Error(
-							`Voice flow failed at ${p.step ?? "unknown"}: ${p.error}`,
-						),
-					)
-				},
-			)
-
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
-				filePath: absPath,
-				interactionId,
-				originDomiaKey: domia.domiaKey,
-			})
+		const stages: Partial<Record<RequestVoiceReplyStage, number>> = {}
+		const result = await requestVoiceReply(domia, filePath, {
+			onStage: (stage, elapsedMs) => {
+				stages[stage] = elapsedMs
+			},
 		})
-
-		let audioUrl: string | null = null
-		if (ttsFilePath) {
-			registerAudioForServing(interactionId, ttsFilePath)
-			audioUrl = `/audio/${interactionId}`
-		}
-
+		const audioUrl = result.ttsFilePath
+			? (registerAudioForServing(result.interactionId, result.ttsFilePath),
+				`/audio/${result.interactionId}`)
+			: null
 		return {
-			interactionId,
-			transcript,
-			reply,
+			interactionId: result.interactionId,
+			transcript: result.transcript,
+			reply: result.reply,
 			audioUrl,
 			timings: {
-				sttMs: stages.sttDone ?? 0,
-				llmMs: (stages.llmDone ?? 0) - (stages.sttDone ?? 0),
-				ttsMs: (stages.ttsDone ?? 0) - (stages.llmDone ?? 0),
-				totalMs: stages.ttsDone ?? 0,
+				sttMs: stages.stt ?? 0,
+				llmMs: (stages.llm ?? 0) - (stages.stt ?? 0),
+				ttsMs: (stages.tts ?? 0) - (stages.llm ?? 0),
+				totalMs: stages.tts ?? 0,
 			},
 		}
 	} catch (err) {
-		httpServerLogger.error("Voice request failed", {
-			domiaId,
-			interactionId,
-			err,
-		})
+		httpServerLogger.error("Voice request failed", { domiaId: domia.id, err })
 		throw err
-	} finally {
-		cleanup()
 	}
 }

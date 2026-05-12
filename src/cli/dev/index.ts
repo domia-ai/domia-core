@@ -13,6 +13,10 @@ import {
 	interactiveCommand,
 	statusCommand,
 	simulateVoiceCommand,
+	prepareCorpus,
+	runCorpus,
+	compareCorpus,
+	DEFAULT_CORPUS_PATH,
 } from "./commands"
 
 const program = new Command()
@@ -52,7 +56,7 @@ program
 	)
 	.option(
 		"-e, --engine <engine>",
-		"STT engine to use (VOSK | WHISPER). Defaults to mock factory value.",
+		"STT engine to use (WHISPER | MOONSHINE). Defaults to mock factory value.",
 	)
 	.option("-m, --model <model>", "Model name (engine-specific)")
 	.action((options) => sttCommand(options.file, options.engine, options.model))
@@ -94,7 +98,7 @@ program
 	)
 	.option(
 		"-e, --engine <engine>",
-		"TTS engine to use (PIPER | KOKORO). Defaults to mock factory value.",
+		"TTS engine to use (KOKORO). Defaults to mock factory value.",
 	)
 	.option("-v, --voice <voice>", "Voice name (engine-specific)")
 	.action((options) => ttsCommand(options.text, options.engine, options.voice))
@@ -112,14 +116,18 @@ program
 program
 	.command("benchmark")
 	.description(
-		"📊 Run full performance benchmark from audio input (STT → LLM → TTS)",
+		"📊 Run engine-direct performance benchmark (STT → LLM → TTS, bypasses bus)",
 	)
 	.option(
 		"-f, --file <path>",
-		"Path to audio file for STT",
+		"Path to a single audio file for STT (ignored if --corpus is set)",
 		"tmp/mic_test_output.wav",
 	)
-	.action((options) => benchmarkCommand(options.file))
+	.option(
+		"-c, --corpus <path>",
+		"Path to a corpus JSON to run engine-direct timings over each entry",
+	)
+	.action((options) => benchmarkCommand(options.file, options.corpus))
 
 program
 	.command("interactive")
@@ -137,5 +145,31 @@ program
 		"tmp/mic_test_output.wav",
 	)
 	.action((options) => simulateVoiceCommand(options.file))
+
+const testCorpus = program
+	.command("test-corpus")
+	.description("🧪 Voice corpus regression harness for full e2e pipeline")
+
+testCorpus
+	.command("prepare")
+	.description(
+		"Synthesize and resample audio for each corpus entry (idempotent)",
+	)
+	.option("-c, --corpus <path>", "Path to corpus JSON", DEFAULT_CORPUS_PATH)
+	.action((options) => prepareCorpus(options.corpus))
+
+testCorpus
+	.command("run")
+	.description("Run the full corpus through the bus and capture timings")
+	.option("-c, --corpus <path>", "Path to corpus JSON", DEFAULT_CORPUS_PATH)
+	.option("-o, --out <path>", "Path to write JSON results")
+	.action((options) => runCorpus(options.corpus, options.out))
+
+testCorpus
+	.command("compare")
+	.description("Compare two run JSONs and print regression deltas")
+	.requiredOption("-b, --baseline <path>", "Baseline JSON")
+	.requiredOption("-c, --candidate <path>", "Candidate JSON")
+	.action((options) => compareCorpus(options.baseline, options.candidate))
 
 program.parse()

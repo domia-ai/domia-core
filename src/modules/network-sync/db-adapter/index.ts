@@ -64,7 +64,7 @@ const dbAdapter = {
 			.onConflictDoUpdate({
 				target: moduleSettings.id,
 				set: data,
-				where: eq(characterProfile.domiaId, data.domiaId),
+				where: eq(moduleSettings.domiaId, data.domiaId),
 			}),
 	upsertCharacterProfile: (
 		data: InsertCharacterProfileType,
@@ -160,7 +160,7 @@ const dbAdapter = {
 			.onConflictDoUpdate({
 				target: audioPlaybackConfig.id,
 				set: data,
-				where: eq(characterProfile.domiaId, data.domiaId),
+				where: eq(audioPlaybackConfig.domiaId, data.domiaId),
 			}),
 	upsertMqttConfig: (
 		data: InsertMqttConfigType,
@@ -172,7 +172,7 @@ const dbAdapter = {
 			.onConflictDoUpdate({
 				target: mqttConfig.id,
 				set: data,
-				where: eq(characterProfile.domiaId, data.domiaId),
+				where: eq(mqttConfig.domiaId, data.domiaId),
 			}),
 	upsertCapabilityDelegation: (
 		data: InsertCapabilityDelegationType,
@@ -184,7 +184,7 @@ const dbAdapter = {
 			.onConflictDoUpdate({
 				target: capabilityDelegation.id,
 				set: data,
-				where: eq(characterProfile.domiaId, data.domiaId),
+				where: eq(capabilityDelegation.domiaId, data.domiaId),
 			}),
 }
 

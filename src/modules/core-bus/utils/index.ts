@@ -1,4 +1,7 @@
 export * from "./audio"
+export * from "./features"
 export * from "./helpers"
 export * from "./pending-requests"
 export * from "./request-text-reply"
+export * from "./request-voice-reply"
+export * from "./sentence-buffer"

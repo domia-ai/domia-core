@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "4d77b689-fd05-4569-b350-b864638d920b",
+	"id": "ebf9b0ae-042b-4e04-a56f-16b63e8b6bbe",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
 		"audio_playback_config": {
@@ -399,6 +399,13 @@
 					"notNull": false,
 					"autoincrement": false
 				},
+				"grpc_port": {
+					"name": "grpc_port",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
@@ -768,7 +775,7 @@
 					"primaryKey": false,
 					"notNull": false,
 					"autoincrement": false,
-					"default": "'domia'"
+					"default": "'alexa'"
 				},
 				"stt_result": {
 					"name": "stt_result",
@@ -935,7 +942,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'llama3.2'"
+					"default": "'gpt-oss:20b'"
 				},
 				"temperature": {
 					"name": "temperature",
@@ -1487,7 +1494,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'VOSK'"
+					"default": "'WHISPER'"
 				},
 				"model_name": {
 					"name": "model_name",
@@ -1495,7 +1502,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'vosk-model-small-en-us-0.15'"
+					"default": "'tiny.en'"
 				},
 				"language": {
 					"name": "language",
@@ -1510,7 +1517,16 @@
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false,
-					"autoincrement": false
+					"autoincrement": false,
+					"default": "'data/models/whisper-tiny.en'"
+				},
+				"quantization": {
+					"name": "quantization",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false,
+					"default": "'int8'"
 				},
 				"silence_threshold": {
 					"name": "silence_threshold",
@@ -1605,7 +1621,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'PIPER'"
+					"default": "'KOKORO'"
 				},
 				"voice_name": {
 					"name": "voice_name",
@@ -1613,7 +1629,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'en_US-libritts_r-medium'"
+					"default": "'af_heart'"
 				},
 				"language": {
 					"name": "language",
@@ -1622,6 +1638,21 @@
 					"notNull": false,
 					"autoincrement": false,
 					"default": "'en'"
+				},
+				"model_path": {
+					"name": "model_path",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false,
+					"default": "'data/models/kokoro-en-v0_19'"
+				},
+				"quantization": {
+					"name": "quantization",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
 				},
 				"pitch": {
 					"name": "pitch",
@@ -1710,7 +1741,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'OPEN_WAKE_WORD'"
+					"default": "'KWS'"
 				},
 				"wake_word": {
 					"name": "wake_word",
@@ -1718,7 +1749,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'domia'"
+					"default": "'alexa'"
 				},
 				"sensitivity": {
 					"name": "sensitivity",
@@ -1758,14 +1789,39 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'domia'"
+					"default": "'kws-zipformer-gigaspeech'"
 				},
 				"custom_model_path": {
 					"name": "custom_model_path",
 					"type": "text",
 					"primaryKey": false,
 					"notNull": false,
-					"autoincrement": false
+					"autoincrement": false,
+					"default": "'data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01'"
+				},
+				"quantization": {
+					"name": "quantization",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false,
+					"default": "'int8'"
+				},
+				"vad_engine": {
+					"name": "vad_engine",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false,
+					"default": "'SILERO'"
+				},
+				"vad_model_path": {
+					"name": "vad_model_path",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false,
+					"default": "'data/models/silero_vad.onnx'"
 				},
 				"device": {
 					"name": "device",

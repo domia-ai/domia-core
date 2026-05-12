@@ -1,13 +1,22 @@
-import { DomiaType } from "@/modules/core"
 import { type SttEngineEnumType, STT_ENGINE_ENUM } from "@/db"
 
-import { runVosk } from "./vosk"
-import { runWhisper } from "./whisper"
+import { whisperEngine } from "./whisper"
+import { moonshineEngine } from "./moonshine"
+import type { SttEngineAdapterType } from "../types"
 
-export const sttEngines: Record<
+export const sttEngineRegistry: Record<
 	SttEngineEnumType,
-	(domia: DomiaType, filePath: string) => Promise<string>
+	SttEngineAdapterType
 > = {
-	[STT_ENGINE_ENUM.VOSK]: runVosk,
-	[STT_ENGINE_ENUM.WHISPER]: runWhisper,
+	[STT_ENGINE_ENUM.WHISPER]: whisperEngine,
+	[STT_ENGINE_ENUM.MOONSHINE]: moonshineEngine,
+}
+
+export const getSttEngine = (
+	id: SttEngineEnumType,
+): SttEngineAdapterType | null => sttEngineRegistry[id] ?? null
+
+export const sttEngines = {
+	[STT_ENGINE_ENUM.WHISPER]: whisperEngine.run,
+	[STT_ENGINE_ENUM.MOONSHINE]: moonshineEngine.run,
 }

@@ -1,10 +1,43 @@
 import type { MqttClient } from "mqtt"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
+import type { SttEngineAdapterType } from "@/modules/stt-engine"
+import type { TtsEngineAdapterType } from "@/modules/tts-engine"
+import type { LlmEngineAdapterType } from "@/modules/llm-engine"
+
+export type ResolvedSttEngineType = {
+	adapter: SttEngineAdapterType
+	canStream: boolean
+} | null
+
+export type ResolvedTtsEngineType = {
+	adapter: TtsEngineAdapterType
+	canStream: boolean
+} | null
+
+export type ResolvedLlmEngineType = {
+	adapter: LlmEngineAdapterType
+	canStream: boolean
+} | null
+
+export type CoreBusFeaturesType = {
+	capabilities: RuntimeCapabilitiesType
+	stt: ResolvedSttEngineType
+	tts: ResolvedTtsEngineType
+	llm: ResolvedLlmEngineType
+	canRunStt: boolean
+	canRunLlm: boolean
+	canRunTts: boolean
+	canPlayback: boolean
+	canStreamStt: boolean
+	canStreamLlm: boolean
+	canStreamTts: boolean
+	canFullStreamVoice: boolean
+}
 
 export type CoreBusContextType = {
 	domia: DomiaType
-	runtimeCapabilities: RuntimeCapabilitiesType
+	features: CoreBusFeaturesType
 	mqttClient: MqttClient | null
 }
 
@@ -13,6 +46,7 @@ export type AudioReadyPayloadType = {
 	audioUrl?: string
 	originDomiaKey?: string
 	interactionId?: string
+	traceId?: string
 }
 
 export type SttDonePayloadType = {
@@ -20,6 +54,7 @@ export type SttDonePayloadType = {
 	interactionId?: string
 	originDomiaKey?: string
 	responseType?: string
+	traceId?: string
 }
 
 export type LlmDonePayloadType = {
@@ -27,6 +62,8 @@ export type LlmDonePayloadType = {
 	interactionId?: string
 	originDomiaKey?: string
 	responseType?: string
+	alreadyStreamed?: boolean
+	traceId?: string
 }
 
 export type TtsDonePayloadType = {
@@ -34,6 +71,7 @@ export type TtsDonePayloadType = {
 	interactionId?: string
 	originDomiaKey?: string
 	audioUrl?: string
+	traceId?: string
 }
 
 export type AudioErrorPayloadType = {
@@ -63,7 +101,43 @@ export type NotifyInteractionFailedArgsType = {
 	step?: string
 }
 
+export type AudioFallbackReasonType = "tts_failed" | "playback_failed"
+
+export type NotifyAudioFallbackArgsType = {
+	interactionId: string
+	originDomiaKey?: string
+	reason: AudioFallbackReasonType
+	error: Error | string
+	reply?: string
+}
+
 export type ServeEntryType = {
 	filePath: string
 	createdAt: number
+}
+
+export type RequestVoiceReplyStage = "stt" | "llm" | "tts" | "firstAudioChunk"
+
+export type PlaybackStartedPayloadType = {
+	interactionId?: string
+	originDomiaKey?: string
+	traceId?: string
+}
+
+export type PlaybackFinishedPayloadType = {
+	interactionId?: string
+	originDomiaKey?: string
+	traceId?: string
+}
+
+export type RequestVoiceReplyOptions = {
+	timeoutMs?: number
+	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
+}
+
+export type RequestVoiceReplyResult = {
+	interactionId: string
+	transcript: string
+	reply: string
+	ttsFilePath?: string
 }

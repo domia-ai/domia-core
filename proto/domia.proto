@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package domia;
+
+service DomiaNode {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc DeliverEvent(EventEnvelope) returns (DeliveryAck);
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1;
+  string domia_id = 2;
+  string domia_key = 3;
+  int64 server_time_ms = 4;
+}
+
+message AudioReadyPayload {
+  optional string file_path = 1;
+  optional string audio_url = 2;
+  optional string origin_domia_key = 3;
+  optional string interaction_id = 4;
+}
+
+message SttDonePayload {
+  string transcript = 1;
+  optional string interaction_id = 2;
+  optional string origin_domia_key = 3;
+  optional string response_type = 4;
+}
+
+message LlmDonePayload {
+  string reply = 1;
+  optional string interaction_id = 2;
+  optional string origin_domia_key = 3;
+  optional string response_type = 4;
+}
+
+message TtsDonePayload {
+  optional string file_path = 1;
+  optional string audio_url = 2;
+  optional string interaction_id = 3;
+  optional string origin_domia_key = 4;
+}
+
+message EventEnvelope {
+  string sender_domia_key = 1;
+  oneof payload {
+    AudioReadyPayload audio_ready = 10;
+    SttDonePayload stt_done = 11;
+    LlmDonePayload llm_done = 12;
+    TtsDonePayload tts_done = 13;
+  }
+}
+
+message DeliveryAck {
+  bool accepted = 1;
+  string reason = 2;
+  bool deduplicated = 3;
+}

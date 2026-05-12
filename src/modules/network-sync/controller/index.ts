@@ -1,5 +1,6 @@
 import os from "os"
 
+import { env } from "@/config"
 import { dbClient } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { networkSyncLogger } from "@/utils"
@@ -34,15 +35,27 @@ export const getLocalIp = (): string | null => {
 
 export const refreshDomiaLocalIp = (domia: DomiaType): DomiaType => {
 	const currentIp = getLocalIp()
-	if (!currentIp || currentIp === domia?.localIp) return domia
+	const currentGrpcPort = Number(env.GRPC_PORT) || null
+	const ipChanged = currentIp && currentIp !== domia?.localIp
+	const grpcPortChanged = currentGrpcPort !== domia?.grpcPort
 
-	networkSyncLogger.info("Refreshing localIp", {
+	if (!ipChanged && !grpcPortChanged) return domia
+
+	networkSyncLogger.info("Refreshing self domia row", {
 		domiaId: domia?.id,
-		previous: domia?.localIp,
-		current: currentIp,
+		ipChanged,
+		grpcPortChanged,
+		previousIp: domia?.localIp,
+		currentIp,
+		previousGrpcPort: domia?.grpcPort,
+		currentGrpcPort,
 	})
 
-	const refreshed = { ...domia, localIp: currentIp }
+	const refreshed = {
+		...domia,
+		localIp: currentIp ?? domia?.localIp,
+		grpcPort: currentGrpcPort,
+	}
 	dbAdapter.upsertDomia(normalizeDomia(refreshed)).run()
 	return refreshed
 }

@@ -1,11 +1,18 @@
 export const DEFAULT_LANGUAGE = "en"
-export const DEFAULT_WAKE_WORD = "domia"
-export const DEFAULT_WAKE_WORD_MODEL = "domia"
+export const DEFAULT_WAKE_WORD = "alexa"
+export const DEFAULT_WAKE_WORD_MODEL = "kws-zipformer-gigaspeech"
+export const DEFAULT_WAKE_WORD_MODEL_PATH =
+	"data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01"
+export const DEFAULT_VAD_ENGINE = "SILERO"
+export const DEFAULT_VAD_MODEL_PATH = "data/models/silero_vad.onnx"
 export const DEFAULT_LLM_MODEL_TEMPERATURE = 0.7
-export const DEFAULT_LLM_MODEL_CONTEXT_WINDOW = 2048
-export const DEFAULT_STT_MODEL_NAME = "vosk-model-small-en-us-0.15"
-export const DEFAULT_LLM_MODEL_NAME = "llama3.2"
-export const DEFAULT_TTS_VOICE_NAME = "en_US-libritts_r-medium"
+export const DEFAULT_LLM_MODEL_CONTEXT_WINDOW = 4096
+export const DEFAULT_STT_MODEL_NAME = "tiny.en"
+export const DEFAULT_STT_MODEL_PATH = "data/models/whisper-tiny.en"
+export const DEFAULT_LLM_MODEL_NAME = "llama3.2:3b"
+export const DEFAULT_TTS_VOICE_NAME = "af_heart"
+export const DEFAULT_TTS_MODEL_PATH = "data/models/kokoro-en-v0_19"
+export const DEFAULT_QUANTIZATION = "int8"
 
 export const PERSONALITY_ENUM = {
 	OPTIMISTIC: "OPTIMISTIC",
@@ -131,21 +138,17 @@ export const ROLE_MODE_ENUM_VALUES = [
 ] as const
 
 export const WAKE_WORD_ENGINE_ENUM = {
-	OPEN_WAKE_WORD: "OPEN_WAKE_WORD",
-	PORCUPINE: "PORCUPINE",
+	KWS: "KWS",
 } as const
-export const WAKE_WORD_ENGINE_ENUM_VALUES = [
-	WAKE_WORD_ENGINE_ENUM.OPEN_WAKE_WORD,
-	WAKE_WORD_ENGINE_ENUM.PORCUPINE,
-] as const
+export const WAKE_WORD_ENGINE_ENUM_VALUES = [WAKE_WORD_ENGINE_ENUM.KWS] as const
 
 export const STT_ENGINE_ENUM = {
-	VOSK: "VOSK",
 	WHISPER: "WHISPER",
+	MOONSHINE: "MOONSHINE",
 } as const
 export const STT_ENGINE_ENUM_VALUES = [
-	STT_ENGINE_ENUM.VOSK,
 	STT_ENGINE_ENUM.WHISPER,
+	STT_ENGINE_ENUM.MOONSHINE,
 ] as const
 
 export const LLM_ENGINE_ENUM = {
@@ -158,13 +161,9 @@ export const LLM_ENGINE_ENUM_VALUES = [
 ] as const
 
 export const TTS_ENGINE_ENUM = {
-	PIPER: "PIPER",
 	KOKORO: "KOKORO",
 } as const
-export const TTS_ENGINE_ENUM_VALUES = [
-	TTS_ENGINE_ENUM.PIPER,
-	TTS_ENGINE_ENUM.KOKORO,
-] as const
+export const TTS_ENGINE_ENUM_VALUES = [TTS_ENGINE_ENUM.KOKORO] as const
 
 export const WAKE_WORD_FRAMEWORK_ENUM = {
 	ONNX: "onnx",

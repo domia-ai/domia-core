@@ -1,0 +1,267 @@
+CREATE TABLE `audio_playback_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`engine` text DEFAULT 'SOX' NOT NULL,
+	`volume` integer DEFAULT 100,
+	`output_device` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `capability_delegation` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`capability` text NOT NULL,
+	`delegate_to_domia_id` text,
+	`delegate_to_domia_key` text NOT NULL,
+	`priority` integer DEFAULT 0,
+	`is_active` integer DEFAULT true,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`delegate_to_domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `character_profile` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`personality` text DEFAULT 'NEUTRAL',
+	`language` text DEFAULT 'en',
+	`profession` text DEFAULT 'HOST',
+	`communication_style` text DEFAULT 'FRIENDLY',
+	`perceived_age` text DEFAULT 'ADULT',
+	`cultural_background` text,
+	`languages_spoken` text,
+	`knowledge_depth` text DEFAULT 'INTERMEDIATE',
+	`interests` text,
+	`hobbies` text,
+	`skills` text,
+	`relationship_type` text DEFAULT 'COMPANION',
+	`role_mode` text DEFAULT 'PASSIVE',
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `domia` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`domia_key` text NOT NULL,
+	`is_active` integer DEFAULT true,
+	`session_id_timeout_ms` integer DEFAULT 300000,
+	`local_ip` text,
+	`grpc_port` integer,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `domia_domia_key_unique` ON `domia` (`domia_key`);--> statement-breakpoint
+CREATE TABLE `emotion_event` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`cause` text NOT NULL,
+	`delta` text NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `emotion_state` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`joy` real DEFAULT 0,
+	`sadness` real DEFAULT 0,
+	`anger` real DEFAULT 0,
+	`fear` real DEFAULT 0,
+	`trust` real DEFAULT 0,
+	`disgust` real DEFAULT 0,
+	`anticipation` real DEFAULT 0,
+	`surprise` real DEFAULT 0,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `emotion_state_domia_id_unique` ON `emotion_state` (`domia_id`);--> statement-breakpoint
+CREATE TABLE `interaction_session_trace` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`session_id` text NOT NULL,
+	`started_at` text DEFAULT CURRENT_TIMESTAMP,
+	`last_used_at` text DEFAULT CURRENT_TIMESTAMP,
+	`session_id_timeout_ms` integer DEFAULT 300000,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `interaction_trace` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`interaction_session_trace_id` text NOT NULL,
+	`session_id` text NOT NULL,
+	`input_type` text DEFAULT 'VOICE' NOT NULL,
+	`response_type` text DEFAULT 'voice' NOT NULL,
+	`is_active` integer DEFAULT true,
+	`input_raw` text,
+	`input_audio_path` text,
+	`wakeword_used` text DEFAULT 'alexa',
+	`stt_result` text,
+	`mcp_server_used` text,
+	`mcp_prompt` text,
+	`mcp_response` text,
+	`llm_prompt` text,
+	`llm_response` text,
+	`tts_engine_used` text,
+	`tts_audio_path` text,
+	`final_output` text,
+	`emotion_snapshot` text,
+	`character_snapshot` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`interaction_session_trace_id`) REFERENCES `interaction_session_trace`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `llm_model_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`engine` text DEFAULT 'OLLAMA' NOT NULL,
+	`model_name` text DEFAULT 'gpt-oss:20b' NOT NULL,
+	`temperature` real DEFAULT 0.7,
+	`context_window` integer DEFAULT 2048,
+	`use_compact_prompt` integer DEFAULT false,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `mcp_server_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`url` text NOT NULL,
+	`description` text,
+	`timeout_ms` integer DEFAULT 2000,
+	`priority` integer DEFAULT 0,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `module_settings` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`emotion_engine` integer NOT NULL,
+	`memory_engine` integer NOT NULL,
+	`collective_mind` integer NOT NULL,
+	`remote_access_engine` integer NOT NULL,
+	`narrative_engine` integer NOT NULL,
+	`identity_engine` integer NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `mqtt_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT true,
+	`domia_id` text NOT NULL,
+	`type` text DEFAULT 'LOCAL' NOT NULL,
+	`host` text NOT NULL,
+	`username` text,
+	`password` text,
+	`qos` integer DEFAULT 1,
+	`topic_root` text NOT NULL,
+	`protocol` text DEFAULT 'mqtt' NOT NULL,
+	`port` integer DEFAULT 1883,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `runtime_capabilities` (
+	`id` text PRIMARY KEY NOT NULL,
+	`domia_id` text NOT NULL,
+	`wakeword` integer DEFAULT false,
+	`record` integer DEFAULT false,
+	`stt` integer DEFAULT false,
+	`intent_detection` integer DEFAULT false,
+	`intent_execution` integer DEFAULT false,
+	`prompt_generation` integer DEFAULT false,
+	`llm` integer DEFAULT false,
+	`tts` integer DEFAULT false,
+	`playback` integer DEFAULT false,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `runtime_capabilities_domia_id_unique` ON `runtime_capabilities` (`domia_id`);--> statement-breakpoint
+CREATE TABLE `stt_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`engine` text DEFAULT 'WHISPER' NOT NULL,
+	`model_name` text DEFAULT 'tiny.en' NOT NULL,
+	`language` text DEFAULT 'en',
+	`model_path` text DEFAULT 'data/models/whisper-tiny.en',
+	`quantization` text DEFAULT 'int8',
+	`silence_threshold` real,
+	`buffer_size` integer,
+	`timeout_ms` integer DEFAULT 5000,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `tts_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`engine` text DEFAULT 'KOKORO' NOT NULL,
+	`voice_name` text DEFAULT 'af_heart' NOT NULL,
+	`language` text DEFAULT 'en',
+	`model_path` text DEFAULT 'data/models/kokoro-en-v0_19',
+	`quantization` text,
+	`pitch` real DEFAULT 1,
+	`speed` real DEFAULT 1,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `wake_word_config` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`is_active` integer DEFAULT false,
+	`domia_id` text NOT NULL,
+	`engine` text DEFAULT 'KWS' NOT NULL,
+	`wake_word` text DEFAULT 'alexa' NOT NULL,
+	`sensitivity` real DEFAULT 0.5,
+	`threshold` real DEFAULT 0.5,
+	`cooldown` real DEFAULT 2,
+	`framework` text DEFAULT 'onnx',
+	`model` text DEFAULT 'kws-zipformer-gigaspeech' NOT NULL,
+	`custom_model_path` text DEFAULT 'data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01',
+	`quantization` text DEFAULT 'int8',
+	`vad_engine` text DEFAULT 'SILERO',
+	`vad_model_path` text DEFAULT 'data/models/silero_vad.onnx',
+	`device` integer DEFAULT 0 NOT NULL,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (`domia_id`) REFERENCES `domia`(`id`) ON UPDATE no action ON DELETE no action
+);

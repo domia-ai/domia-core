@@ -11,6 +11,7 @@ export const setupVoiceListener = async (domia: DomiaType) => {
 		onRecordingEnd: (filePath) =>
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 				filePath,
+				originDomiaKey: domia.domiaKey,
 			}),
 		onError: (error) =>
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR, { error }),

@@ -2,9 +2,11 @@ import debug from "debug"
 
 import { env } from "@/config"
 import { colors } from "./constants"
+import { getTraceContext } from "./context"
 import type { LogLevelType, LogPrefixType } from "./types"
 
 const isDevelopment = env.NODE_ENV !== "production"
+const isJsonMode = process.env.DOMIA_LOG_FORMAT === "json"
 
 export const createLogger = (namespace: string) => {
 	const debugInstance = debug(`domia:${namespace}`)
@@ -30,7 +32,36 @@ export const createLogger = (namespace: string) => {
 
 	const formatMessage = (level: LogLevelType, message: string): string => {
 		const { prefix, color } = getPrefix(level)
-		return `${color(prefix)} ${message}`
+		const trace = getTraceContext()
+		const traceSuffix =
+			trace && trace.interactionId ? ` [iid=${trace.interactionId}]` : ""
+		return `${color(prefix)}${traceSuffix} ${message}`
+	}
+
+	const logJson = (
+		level: LogLevelType,
+		message: string,
+		args: unknown[],
+	): void => {
+		const meta =
+			args.length === 1 ? args[0] : args.length > 1 ? args : undefined
+		const trace = getTraceContext()
+		const entry = {
+			ts: new Date().toISOString(),
+			level,
+			ns: namespace,
+			msg: message,
+			...(trace?.interactionId ? { interactionId: trace.interactionId } : {}),
+			...(trace?.originDomiaKey
+				? { originDomiaKey: trace.originDomiaKey }
+				: {}),
+			...(trace?.traceId ? { traceId: trace.traceId } : {}),
+			...(meta && typeof meta === "object" ? meta : meta ? { meta } : {}),
+		}
+		const out = JSON.stringify(entry)
+		if (level === "error") console.error(out)
+		else if (level === "warn") console.warn(out)
+		else console.log(out)
 	}
 
 	const log = (
@@ -38,6 +69,10 @@ export const createLogger = (namespace: string) => {
 		message: string,
 		...args: unknown[]
 	): void => {
+		if (isJsonMode) {
+			logJson(level, message, args)
+			return
+		}
 		const timestamp = new Date().toISOString()
 		const formattedMessage = formatMessage(level, message)
 
@@ -93,5 +128,5 @@ export const httpServerLogger = createLogger("http-server")
 export const heartbeatLogger = createLogger("heartbeat")
 export const networkSyncLogger = createLogger("network-sync")
 export const promptContextBuilderLogger = createLogger("prompt-context-builder")
-export const mlServerLogger = createLogger("ml-server")
-export const mlClientLogger = createLogger("ml-client")
+export const grpcServerLogger = createLogger("grpc-server")
+export const grpcClientLogger = createLogger("grpc-client")

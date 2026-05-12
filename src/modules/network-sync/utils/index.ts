@@ -19,6 +19,7 @@ export const normalizeDomia = (domia: DomiaType): InsertDomiaType => {
 		isActive: domia?.isActive,
 		sessionIdTimeoutMs: domia?.sessionIdTimeoutMs,
 		localIp: domia?.localIp,
+		grpcPort: domia?.grpcPort,
 	}
 }
 

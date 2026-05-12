@@ -1,13 +1,22 @@
-import { DomiaType } from "@/modules/core"
 import { type LlmEngineEnumType, LLM_ENGINE_ENUM } from "@/db"
 
-import { runOllama } from "./ollama"
-import { runLlamaCpp } from "./llamaCpp"
+import { ollamaEngine } from "./ollama"
+import { llamaCppEngine } from "./llamaCpp"
+import type { LlmEngineAdapterType } from "../types"
 
-export const llmEngines: Record<
+export const llmEngineRegistry: Record<
 	LlmEngineEnumType,
-	(domia: DomiaType, promptContext: string) => Promise<string>
+	LlmEngineAdapterType
 > = {
-	[LLM_ENGINE_ENUM.OLLAMA]: runOllama,
-	[LLM_ENGINE_ENUM.LLAMA_CPP]: runLlamaCpp,
+	[LLM_ENGINE_ENUM.OLLAMA]: ollamaEngine,
+	[LLM_ENGINE_ENUM.LLAMA_CPP]: llamaCppEngine,
+}
+
+export const getLlmEngine = (
+	id: LlmEngineEnumType,
+): LlmEngineAdapterType | null => llmEngineRegistry[id] ?? null
+
+export const llmEngines = {
+	[LLM_ENGINE_ENUM.OLLAMA]: ollamaEngine.run,
+	[LLM_ENGINE_ENUM.LLAMA_CPP]: llamaCppEngine.run,
 }

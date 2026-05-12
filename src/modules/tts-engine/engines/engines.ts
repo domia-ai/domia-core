@@ -1,14 +1,19 @@
-import { DomiaType } from "@/modules/core"
 import { type TtsEngineEnumType, TTS_ENGINE_ENUM } from "@/db"
 
-import { runPiper } from "./piper"
-import { runKokoro } from "./kokoro"
-import { type RunTtsResultType } from "../types"
+import { kokoroEngine } from "./kokoro"
+import type { TtsEngineAdapterType } from "../types"
 
-export const ttsEngines: Record<
+export const ttsEngineRegistry: Record<
 	TtsEngineEnumType,
-	(domia: DomiaType, text: string) => Promise<RunTtsResultType>
+	TtsEngineAdapterType
 > = {
-	[TTS_ENGINE_ENUM.PIPER]: runPiper,
-	[TTS_ENGINE_ENUM.KOKORO]: runKokoro,
+	[TTS_ENGINE_ENUM.KOKORO]: kokoroEngine,
+}
+
+export const getTtsEngine = (
+	id: TtsEngineEnumType,
+): TtsEngineAdapterType | null => ttsEngineRegistry[id] ?? null
+
+export const ttsEngines = {
+	[TTS_ENGINE_ENUM.KOKORO]: kokoroEngine.run,
 }

@@ -1,9 +1,10 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { toError } from "@/utils"
+import { domiaBusLogger, toError } from "@/utils"
 import { rejectPending } from "./pending-requests"
 import { MQTT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type {
 	CoreBusContextType,
+	NotifyAudioFallbackArgsType,
 	NotifyInteractionFailedArgsType,
 } from "../types"
 
@@ -35,4 +36,26 @@ export const notifyInteractionFailed = (
 	if (responseType === RESPONSE_TYPE_ENUM.TEXT) {
 		rejectPending(interactionId, err)
 	}
+}
+
+export const notifyAudioFallback = (
+	ctx: CoreBusContextType,
+	args: NotifyAudioFallbackArgsType,
+): void => {
+	const { interactionId, originDomiaKey, reason, error, reply } = args
+	const err = toError(error)
+	domiaBusLogger.warn(
+		`⚠️ audio fallback (${reason}) — interaction continues without playback`,
+		{
+			domiaId: ctx.domia.id,
+			interactionId,
+			reason,
+			error: err.message,
+			...(reply ? { replyPreview: reply.slice(0, 200) } : {}),
+		},
+	)
+	publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+		interactionId,
+		originDomiaKey,
+	})
 }

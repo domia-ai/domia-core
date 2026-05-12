@@ -1,14 +1,18 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, toError } from "@/utils"
+import { domiaBusLogger, setTraceContext, toError } from "@/utils"
 import {
 	buildAudioUrl,
 	downloadAudioToTemp,
+	notifyAudioFallback,
 	notifyInteractionFailed,
 	registerAudioForServing,
 	rejectPending,
 	resolvePending,
+	splitSentences,
+	concatStreams,
+	AsyncQueue,
 } from "../utils"
-import { startAudioRecording } from "@/modules/audio-capture"
+import { startAudioRecording, startAudioStream } from "@/modules/audio-capture"
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
@@ -16,7 +20,6 @@ import {
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
-	MQTT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
 import {
@@ -27,8 +30,10 @@ import {
 import { runSTT } from "@/modules/stt-engine"
 import { runLLM } from "@/modules/llm-engine"
 import { runTTS } from "@/modules/tts-engine"
-import { playAudio } from "@/modules/audio-playback"
-import { resolveCapabilityDelegation } from "@/modules/capability-resolver"
+import { playAudio, playAudioStream } from "@/modules/audio-playback"
+import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
+import { deliverEvent } from "@/modules/grpc-client"
+import { getDomiaByDomiaKey } from "@/modules/core"
 import type {
 	CoreBusContextType,
 	AudioReadyPayloadType,
@@ -40,24 +45,67 @@ import type {
 	InteractionFailedPayloadType,
 } from "../types"
 
+const recordingInProgress = new Set<string>()
+
 export const handleWakeDetected = async (ctx: CoreBusContextType) => {
-	const { domia, runtimeCapabilities } = ctx
-	const { record } = runtimeCapabilities
+	const { domia, features } = ctx
+	const { capabilities, stt, canStreamStt } = features
 	const domiaId = domia.id
 
 	domiaBusLogger.info(`🎧 WAKE_DETECTED received`, { domiaId })
-	if (!record) return
+	if (!capabilities.record) return
+
+	if (recordingInProgress.has(domiaId)) {
+		domiaBusLogger.warn(
+			`🚫 wake_detected ignored — recording already in progress for ${domiaId}`,
+		)
+		return
+	}
+	recordingInProgress.add(domiaId)
 
 	try {
+		if (canStreamStt && stt?.adapter.runStream) {
+			const interactionId = await getOrCreateInteractionId(domia, undefined, {
+				inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
+				responseType: RESPONSE_TYPE_ENUM.VOICE,
+			})
+			if (!interactionId) return
+			setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
+
+			domiaBusLogger.info(
+				`🎙️ streaming STT path: capturing live audio chunks`,
+				{ domiaId, interactionId },
+			)
+			const { chunks, filePathPromise } = startAudioStream(domia)
+			const transcript = await stt.adapter.runStream(domia, chunks)
+			const filePath = await filePathPromise
+
+			await updateInteraction({
+				id: interactionId,
+				inputAudioPath: filePath,
+				sttResult: transcript,
+			})
+
+			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+				transcript,
+				interactionId,
+				originDomiaKey: domia.domiaKey,
+			})
+			return
+		}
+
 		const filePath = await startAudioRecording(domia)
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath,
+			originDomiaKey: domia.domiaKey,
 		})
 	} catch (err) {
-		domiaBusLogger.error("WAKE_DETECTED / AUDIO_READY failed", { domiaId, err })
+		domiaBusLogger.error("WAKE_DETECTED / recording failed", { domiaId, err })
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR, {
 			error: toError(err),
 		})
+	} finally {
+		recordingInProgress.delete(domiaId)
 	}
 }
 
@@ -65,11 +113,12 @@ export const handleAudioReady = async (
 	ctx: CoreBusContextType,
 	payload: AudioReadyPayloadType,
 ) => {
-	const { domia, runtimeCapabilities, mqttClient } = ctx
-	const { stt } = runtimeCapabilities
+	const { domia, features } = ctx
+	const { canRunStt } = features
 	const domiaId = domia.id
 	const { filePath, audioUrl, originDomiaKey } = payload
 
+	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`🎧 AUDIO_READY received`, {
 		domiaId,
 		filePath,
@@ -84,10 +133,11 @@ export const handleAudioReady = async (
 		},
 	)
 	if (!interactionId) return
+	setTraceContext({ interactionId, originDomiaKey })
 	domiaBusLogger.info(`🆕 Interaction ${interactionId}`, { domiaId })
 
 	try {
-		if (stt) {
+		if (canRunStt) {
 			let pathForStt = filePath
 			if (!pathForStt && audioUrl) {
 				domiaBusLogger.info(
@@ -106,11 +156,11 @@ export const handleAudioReady = async (
 				originDomiaKey,
 			})
 		} else {
-			const delegateTo = await resolveCapabilityDelegation(
+			const targets = await resolveCapabilityDelegations(
 				domia,
 				CAPABILITY_ENUM.STT,
 			)
-			if (delegateTo) {
+			if (targets.length > 0) {
 				let audioUrlToForward = audioUrl
 				if (!audioUrlToForward && filePath) {
 					registerAudioForServing(interactionId, filePath)
@@ -122,17 +172,24 @@ export const handleAudioReady = async (
 					)
 				}
 				domiaBusLogger.info(
-					`📡 delegating STT to ${delegateTo.delegateToDomiaKey} via ${audioUrlToForward}`,
+					`📡 delegating STT (${targets.length} targets) via ${audioUrlToForward}`,
 					{ domiaId, interactionId },
 				)
-				mqttClient?.publish(
-					`domia/${delegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.AUDIO_READY}`,
-					JSON.stringify({
+				const result = await deliverEvent(
+					domia.domiaKey,
+					targets,
+					"audioReady",
+					{
 						audioUrl: audioUrlToForward,
 						originDomiaKey,
 						interactionId,
-					}),
+					},
 				)
+				if (!result.delivered) {
+					throw new Error(
+						`AUDIO_READY delegation failed: ${result.error ?? "unknown"} (tried ${result.attemptedTargets})`,
+					)
+				}
 			} else {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.STT,
@@ -162,11 +219,12 @@ export const handleSttDone = async (
 	ctx: CoreBusContextType,
 	payload: SttDonePayloadType,
 ) => {
-	const { domia, runtimeCapabilities, mqttClient } = ctx
-	const { llm } = runtimeCapabilities
+	const { domia, features } = ctx
+	const { canRunLlm, tts, llm, canFullStreamVoice } = features
 	const domiaId = domia.id
 	const { transcript, originDomiaKey, responseType } = payload
 
+	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`📝 STT_DONE: ${transcript}`, { domiaId })
 	const interactionId = await getOrCreateInteractionId(
 		domia,
@@ -182,6 +240,7 @@ export const handleSttDone = async (
 		},
 	)
 	if (!interactionId) return
+	setTraceContext({ interactionId, originDomiaKey })
 	const emotionState = domia?.emotionState
 	const characterProfile = domia?.characterProfile
 
@@ -217,7 +276,93 @@ export const handleSttDone = async (
 	}
 
 	try {
-		if (llm) {
+		if (canRunLlm) {
+			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PROCESSING_STARTED, {
+				interactionId,
+				originDomiaKey,
+			})
+			const isVoice = responseType !== RESPONSE_TYPE_ENUM.TEXT
+			const canFullStream = isVoice && canFullStreamVoice && llm && tts
+
+			if (canFullStream && llm.adapter.runStream && tts.adapter.runStream) {
+				const startTime = Date.now()
+				const ttsStreamQueue = new AsyncQueue<AsyncIterable<Buffer>>()
+				const caps = tts.adapter.capabilities
+
+				let firstChunkEmitted = false
+				const playbackPromise = playAudioStream(
+					domia,
+					concatStreams(ttsStreamQueue.iter()),
+					{
+						sampleRate: caps.sampleRate,
+						channels: caps.channels,
+						bitsPerSample: 16,
+						onFirstChunkWritten: () => {
+							if (firstChunkEmitted) return
+							firstChunkEmitted = true
+							publishToDomiaBus(
+								domiaId,
+								DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED,
+								{ interactionId, originDomiaKey },
+							)
+						},
+					},
+				)
+
+				let fullReply = ""
+				let audioFailed = false
+				let audioError: unknown = null
+				try {
+					const llmTokens = llm.adapter.runStream(domia, promptContext)
+					for await (const sentence of splitSentences(llmTokens)) {
+						fullReply += (fullReply.length > 0 ? " " : "") + sentence
+						ttsStreamQueue.push(tts.adapter.runStream(domia, sentence))
+					}
+					ttsStreamQueue.close()
+					await playbackPromise
+				} catch (err) {
+					audioFailed = true
+					audioError = err
+					ttsStreamQueue.close()
+				}
+
+				domiaBusLogger.info(
+					`⏱️ LLM+TTS streaming pipeline: ${Date.now() - startTime}ms`,
+				)
+				await updateInteraction({
+					id: interactionId,
+					llmPrompt: promptContext,
+					llmResponse: fullReply,
+					ttsEngineUsed: tts.adapter.id,
+				})
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+					reply: fullReply,
+					interactionId,
+					originDomiaKey,
+					responseType,
+					alreadyStreamed: true,
+				})
+				if (audioFailed) {
+					notifyAudioFallback(ctx, {
+						interactionId,
+						originDomiaKey,
+						reason: "tts_failed",
+						error: toError(audioError),
+						reply: fullReply,
+					})
+				} else {
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+						interactionId,
+						originDomiaKey,
+					})
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+						interactionId,
+						originDomiaKey,
+					})
+				}
+				return
+			}
+
 			const startTime = Date.now()
 			const reply = await runLLM(domia, promptContext)
 			const endTime = Date.now()
@@ -236,20 +381,22 @@ export const handleSttDone = async (
 				responseType,
 			})
 		} else {
-			const delegateTo = await resolveCapabilityDelegation(
+			const targets = await resolveCapabilityDelegations(
 				domia,
 				CAPABILITY_ENUM.LLM,
 			)
-			if (delegateTo) {
-				mqttClient?.publish(
-					`domia/${delegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.STT_DONE}`,
-					JSON.stringify({
-						transcript,
-						interactionId,
-						originDomiaKey,
-						responseType,
-					}),
-				)
+			if (targets.length > 0) {
+				const result = await deliverEvent(domia.domiaKey, targets, "sttDone", {
+					transcript,
+					interactionId,
+					originDomiaKey,
+					responseType,
+				})
+				if (!result.delivered) {
+					throw new Error(
+						`STT_DONE delegation failed: ${result.error ?? "unknown"}`,
+					)
+				}
 			} else {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.LLM,
@@ -279,12 +426,22 @@ export const handleLlmDone = async (
 	ctx: CoreBusContextType,
 	payload: LlmDonePayloadType,
 ) => {
-	const { domia, runtimeCapabilities, mqttClient } = ctx
-	const { tts } = runtimeCapabilities
+	const { domia, features } = ctx
+	const { canRunTts, tts, canPlayback, canStreamTts } = features
 	const domiaId = domia.id
 	const { reply, originDomiaKey, responseType } = payload
 
+	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`🗣️ LLM_DONE: ${reply}`, { domiaId })
+
+	if (payload.alreadyStreamed) {
+		domiaBusLogger.info(
+			`🗣️ LLM_DONE: alreadyStreamed flag set — handleSttDone already ran TTS+playback, skipping`,
+			{ domiaId, interactionId: payload.interactionId },
+		)
+		return
+	}
+
 	const interactionId = await getOrCreateInteractionId(
 		domia,
 		payload.interactionId,
@@ -297,57 +454,118 @@ export const handleLlmDone = async (
 		},
 	)
 	if (!interactionId) return
+	setTraceContext({ interactionId, originDomiaKey })
 
 	const isTextResponse = responseType === RESPONSE_TYPE_ENUM.TEXT
 	if (isTextResponse) {
 		resolvePending(interactionId, reply)
 		if (originDomiaKey && originDomiaKey !== domia.domiaKey) {
-			mqttClient?.publish(
-				`domia/${originDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.LLM_DONE}`,
-				JSON.stringify({
-					reply,
-					interactionId,
-					originDomiaKey,
-					responseType,
-				}),
-			)
+			const originDomia = await getDomiaByDomiaKey(originDomiaKey)
+			if (originDomia) {
+				await deliverEvent(
+					domia.domiaKey,
+					[
+						{
+							domiaKey: originDomia.domiaKey,
+							domiaId: originDomia.id,
+							localIp: originDomia.localIp,
+							grpcPort: originDomia.grpcPort,
+							source: "explicit",
+						},
+					],
+					"llmDone",
+					{ reply, interactionId, originDomiaKey, responseType },
+				)
+			}
 		}
 		return
 	}
 
 	try {
-		if (tts) {
-			const response = await runTTS(domia, reply)
-			const filePath = response?.filePath
-			const engineUsed = response?.engineUsed
+		if (canRunTts) {
+			const canStream = canStreamTts && canPlayback
 
-			await updateInteraction({
-				id: interactionId,
-				ttsEngineUsed: engineUsed,
-				ttsAudioPath: filePath,
-			})
+			if (canStream && tts?.adapter.runStream) {
+				const caps = tts.adapter.capabilities
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
+					interactionId,
+					originDomiaKey,
+				})
+				try {
+					await playAudioStream(domia, tts.adapter.runStream(domia, reply), {
+						sampleRate: caps.sampleRate,
+						channels: caps.channels,
+						bitsPerSample: 16,
+					})
+				} catch (err) {
+					notifyAudioFallback(ctx, {
+						interactionId,
+						originDomiaKey,
+						reason: "tts_failed",
+						error: toError(err),
+						reply,
+					})
+					return
+				}
+				await updateInteraction({
+					id: interactionId,
+					ttsEngineUsed: tts.adapter.id,
+				})
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+					interactionId,
+					originDomiaKey,
+				})
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+					interactionId,
+					originDomiaKey,
+				})
+			} else {
+				let response: Awaited<ReturnType<typeof runTTS>> | null = null
+				try {
+					response = await runTTS(domia, reply)
+				} catch (err) {
+					notifyAudioFallback(ctx, {
+						interactionId,
+						originDomiaKey,
+						reason: "tts_failed",
+						error: toError(err),
+						reply,
+					})
+					return
+				}
+				const filePath = response?.filePath
+				const engineUsed = response?.engineUsed
 
-			registerAudioForServing(interactionId, filePath)
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
-				filePath,
-				interactionId,
-				originDomiaKey,
-			})
+				await updateInteraction({
+					id: interactionId,
+					ttsEngineUsed: engineUsed,
+					ttsAudioPath: filePath,
+				})
+
+				registerAudioForServing(interactionId, filePath)
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+					filePath,
+					interactionId,
+					originDomiaKey,
+				})
+			}
 		} else {
-			const delegateTo = await resolveCapabilityDelegation(
+			const targets = await resolveCapabilityDelegations(
 				domia,
 				CAPABILITY_ENUM.TTS,
 			)
-			if (delegateTo) {
-				mqttClient?.publish(
-					`domia/${delegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.LLM_DONE}`,
-					JSON.stringify({
-						reply,
-						interactionId,
-						originDomiaKey,
-						responseType,
-					}),
-				)
+			if (targets.length > 0) {
+				const result = await deliverEvent(domia.domiaKey, targets, "llmDone", {
+					reply,
+					interactionId,
+					originDomiaKey,
+					responseType,
+				})
+				if (!result.delivered) {
+					throw new Error(
+						`LLM_DONE→TTS delegation failed: ${result.error ?? "unknown"}`,
+					)
+				}
 			} else {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.TTS,
@@ -377,10 +595,19 @@ export const handleTtsDone = async (
 	ctx: CoreBusContextType,
 	payload: TtsDonePayloadType,
 ) => {
-	const { domia, runtimeCapabilities, mqttClient } = ctx
-	const { playback } = runtimeCapabilities
+	const { domia, features } = ctx
+	const { canPlayback } = features
 	const domiaId = domia.id
 	const { filePath, originDomiaKey, audioUrl } = payload
+
+	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
+	if (!filePath && !audioUrl) {
+		domiaBusLogger.info(
+			`🗣️ TTS_DONE: no filePath/audioUrl — already streamed, skipping handler`,
+			{ domiaId, interactionId: payload.interactionId },
+		)
+		return
+	}
 
 	const interactionId = await getOrCreateInteractionId(
 		domia,
@@ -391,9 +618,10 @@ export const handleTtsDone = async (
 		},
 	)
 	if (!interactionId) return
+	setTraceContext({ interactionId, originDomiaKey })
 
 	try {
-		if (playback) {
+		if (canPlayback) {
 			let pathToPlay = filePath
 			if (audioUrl) {
 				domiaBusLogger.info(`🗣️ TTS_DONE: fetching audio from ${audioUrl}`, {
@@ -404,7 +632,25 @@ export const handleTtsDone = async (
 				domiaBusLogger.info(`🗣️ TTS_DONE: ${filePath}`, { domiaId })
 			}
 			if (pathToPlay) {
-				await playAudio(domia, pathToPlay)
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
+					interactionId,
+					originDomiaKey,
+				})
+				try {
+					await playAudio(domia, pathToPlay)
+				} catch (err) {
+					notifyAudioFallback(ctx, {
+						interactionId,
+						originDomiaKey,
+						reason: "playback_failed",
+						error: toError(err),
+					})
+					return
+				}
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+					interactionId,
+					originDomiaKey,
+				})
 			} else {
 				notifyInteractionFailed(ctx, {
 					interactionId,
@@ -415,20 +661,22 @@ export const handleTtsDone = async (
 				})
 			}
 		} else {
-			const delegateTo = await resolveCapabilityDelegation(
+			const targets = await resolveCapabilityDelegations(
 				domia,
 				CAPABILITY_ENUM.PLAYBACK,
 			)
-			if (delegateTo) {
+			if (targets.length > 0) {
 				const audioUrlBuilt = buildAudioUrl(domia, interactionId)
-				mqttClient?.publish(
-					`domia/${delegateTo?.delegateToDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.TTS_DONE}`,
-					JSON.stringify({
-						audioUrl: audioUrlBuilt,
-						interactionId,
-						originDomiaKey,
-					}),
-				)
+				const result = await deliverEvent(domia.domiaKey, targets, "ttsDone", {
+					audioUrl: audioUrlBuilt,
+					interactionId,
+					originDomiaKey,
+				})
+				if (!result.delivered) {
+					throw new Error(
+						`TTS_DONE→playback delegation failed: ${result.error ?? "unknown"}`,
+					)
+				}
 			} else {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.PLAYBACK,
