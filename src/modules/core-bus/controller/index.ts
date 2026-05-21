@@ -1,7 +1,13 @@
+import { readFile } from "fs/promises"
+
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, setTraceContext, toError } from "@/utils"
 import {
-	buildAudioUrl,
+	domiaBusLogger,
+	setTraceContext,
+	toError,
+	wavFileToPcmChunks,
+} from "@/utils"
+import {
 	downloadAudioToTemp,
 	notifyAudioFallback,
 	notifyInteractionFailed,
@@ -31,8 +37,16 @@ import { runSTT } from "@/modules/stt-engine"
 import { runLLM } from "@/modules/llm-engine"
 import { runTTS } from "@/modules/tts-engine"
 import { playAudio, playAudioStream } from "@/modules/audio-playback"
-import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
-import { deliverEvent } from "@/modules/grpc-client"
+import {
+	resolveCapabilityDelegations,
+	resolveDomiaStreamingCapabilities,
+} from "@/modules/capability-resolver"
+import {
+	deliverEvent,
+	streamSttToTarget,
+	streamLlmFromTarget,
+	streamTtsFromTarget,
+} from "@/modules/grpc-client"
 import { getDomiaByDomiaKey } from "@/modules/core"
 import type {
 	CoreBusContextType,
@@ -160,43 +174,69 @@ export const handleAudioReady = async (
 				domia,
 				CAPABILITY_ENUM.STT,
 			)
-			if (targets.length > 0) {
-				let audioUrlToForward = audioUrl
-				if (!audioUrlToForward && filePath) {
-					registerAudioForServing(interactionId, filePath)
-					audioUrlToForward = buildAudioUrl(domia, interactionId)
-				}
-				if (!audioUrlToForward) {
-					throw new Error(
-						"AUDIO_READY: cannot delegate without filePath or audioUrl",
-					)
-				}
-				domiaBusLogger.info(
-					`📡 delegating STT (${targets.length} targets) via ${audioUrlToForward}`,
-					{ domiaId, interactionId },
-				)
-				const result = await deliverEvent(
-					domia.domiaKey,
-					targets,
-					"audioReady",
-					{
-						audioUrl: audioUrlToForward,
-						originDomiaKey,
-						interactionId,
-					},
-				)
-				if (!result.delivered) {
-					throw new Error(
-						`AUDIO_READY delegation failed: ${result.error ?? "unknown"} (tried ${result.attemptedTargets})`,
-					)
-				}
-			} else {
+			if (targets.length === 0) {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.STT,
 					interactionId,
 					originDomiaKey,
 					responseType: RESPONSE_TYPE_ENUM.VOICE,
 				})
+				return
+			}
+
+			let localPath = filePath
+			if (!localPath && audioUrl) {
+				localPath = await downloadAudioToTemp(audioUrl, interactionId)
+			}
+			if (!localPath) {
+				throw new Error(
+					"AUDIO_READY: cannot delegate without filePath or audioUrl",
+				)
+			}
+			const audioPath: string = localPath
+
+			const streamingTargets = targets.filter(
+				(target) => target.streamingCapabilities.stt,
+			)
+			if (streamingTargets.length > 0) {
+				domiaBusLogger.info(
+					`📡 streaming STT delegation (${streamingTargets.length} targets)`,
+					{ domiaId, interactionId },
+				)
+				const streamed = await streamSttToTarget(
+					domia.domiaKey,
+					streamingTargets,
+					{
+						originDomiaKey,
+						interactionId,
+						responseType: RESPONSE_TYPE_ENUM.VOICE,
+					},
+					() => wavFileToPcmChunks(audioPath),
+				)
+				if (streamed.delivered && streamed.transcript !== undefined) {
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+						transcript: streamed.transcript,
+						interactionId,
+						originDomiaKey,
+					})
+					return
+				}
+				domiaBusLogger.warn(
+					`streaming STT delegation failed (${streamed.error ?? "unknown"}) — falling back to unary`,
+					{ domiaId, interactionId },
+				)
+			}
+
+			const audio = await readFile(audioPath)
+			const result = await deliverEvent(domia.domiaKey, targets, "audioReady", {
+				audio,
+				originDomiaKey,
+				interactionId,
+			})
+			if (!result.delivered) {
+				throw new Error(
+					`AUDIO_READY delegation failed: ${result.error ?? "unknown"} (tried ${result.attemptedTargets})`,
+				)
 			}
 		}
 	} catch (err) {
@@ -385,25 +425,56 @@ export const handleSttDone = async (
 				domia,
 				CAPABILITY_ENUM.LLM,
 			)
-			if (targets.length > 0) {
-				const result = await deliverEvent(domia.domiaKey, targets, "sttDone", {
-					transcript,
-					interactionId,
-					originDomiaKey,
-					responseType,
-				})
-				if (!result.delivered) {
-					throw new Error(
-						`STT_DONE delegation failed: ${result.error ?? "unknown"}`,
-					)
-				}
-			} else {
+			if (targets.length === 0) {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.LLM,
 					interactionId,
 					originDomiaKey,
 					responseType,
 				})
+				return
+			}
+
+			const streamingTargets = targets.filter(
+				(target) => target.streamingCapabilities.llm,
+			)
+			if (streamingTargets.length > 0) {
+				domiaBusLogger.info(
+					`📡 streaming LLM delegation (${streamingTargets.length} targets)`,
+					{ domiaId, interactionId },
+				)
+				const streamed = await streamLlmFromTarget(
+					domia.domiaKey,
+					streamingTargets,
+					{ transcript, originDomiaKey, interactionId, responseType },
+				)
+				if (streamed.delivered && streamed.tokens) {
+					let reply = ""
+					for await (const token of streamed.tokens) reply += token
+					publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+						reply,
+						interactionId,
+						originDomiaKey,
+						responseType,
+					})
+					return
+				}
+				domiaBusLogger.warn(
+					`streaming LLM delegation failed (${streamed.error ?? "unknown"}) — falling back to unary`,
+					{ domiaId, interactionId },
+				)
+			}
+
+			const result = await deliverEvent(domia.domiaKey, targets, "sttDone", {
+				transcript,
+				interactionId,
+				originDomiaKey,
+				responseType,
+			})
+			if (!result.delivered) {
+				throw new Error(
+					`STT_DONE delegation failed: ${result.error ?? "unknown"}`,
+				)
 			}
 		}
 	} catch (err) {
@@ -471,6 +542,8 @@ export const handleLlmDone = async (
 							localIp: originDomia.localIp,
 							grpcPort: originDomia.grpcPort,
 							source: "explicit",
+							streamingCapabilities:
+								resolveDomiaStreamingCapabilities(originDomia),
 						},
 					],
 					"llmDone",
@@ -554,25 +627,78 @@ export const handleLlmDone = async (
 				domia,
 				CAPABILITY_ENUM.TTS,
 			)
-			if (targets.length > 0) {
-				const result = await deliverEvent(domia.domiaKey, targets, "llmDone", {
-					reply,
-					interactionId,
-					originDomiaKey,
-					responseType,
-				})
-				if (!result.delivered) {
-					throw new Error(
-						`LLM_DONE→TTS delegation failed: ${result.error ?? "unknown"}`,
-					)
-				}
-			} else {
+			if (targets.length === 0) {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.TTS,
 					interactionId,
 					originDomiaKey,
 					responseType,
 				})
+				return
+			}
+
+			if (canPlayback) {
+				const streamingTargets = targets.filter(
+					(target) => target.streamingCapabilities.tts,
+				)
+				if (streamingTargets.length > 0) {
+					domiaBusLogger.info(
+						`📡 streaming TTS delegation (${streamingTargets.length} targets)`,
+						{ domiaId, interactionId },
+					)
+					const streamed = await streamTtsFromTarget(
+						domia.domiaKey,
+						streamingTargets,
+						{ reply, originDomiaKey, interactionId },
+					)
+					if (streamed.delivered && streamed.audio) {
+						publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
+							interactionId,
+							originDomiaKey,
+						})
+						try {
+							await playAudioStream(domia, streamed.audio, {
+								sampleRate: streamed.sampleRate ?? 24000,
+								channels: streamed.channels === 2 ? 2 : 1,
+								bitsPerSample: 16,
+							})
+						} catch (err) {
+							notifyAudioFallback(ctx, {
+								interactionId,
+								originDomiaKey,
+								reason: "tts_failed",
+								error: toError(err),
+								reply,
+							})
+							return
+						}
+						publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+							interactionId,
+							originDomiaKey,
+						})
+						publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+							interactionId,
+							originDomiaKey,
+						})
+						return
+					}
+					domiaBusLogger.warn(
+						`streaming TTS delegation failed (${streamed.error ?? "unknown"}) — falling back to unary`,
+						{ domiaId, interactionId },
+					)
+				}
+			}
+
+			const result = await deliverEvent(domia.domiaKey, targets, "llmDone", {
+				reply,
+				interactionId,
+				originDomiaKey,
+				responseType,
+			})
+			if (!result.delivered) {
+				throw new Error(
+					`LLM_DONE→TTS delegation failed: ${result.error ?? "unknown"}`,
+				)
 			}
 		}
 	} catch (err) {
@@ -665,25 +791,35 @@ export const handleTtsDone = async (
 				domia,
 				CAPABILITY_ENUM.PLAYBACK,
 			)
-			if (targets.length > 0) {
-				const audioUrlBuilt = buildAudioUrl(domia, interactionId)
-				const result = await deliverEvent(domia.domiaKey, targets, "ttsDone", {
-					audioUrl: audioUrlBuilt,
-					interactionId,
-					originDomiaKey,
-				})
-				if (!result.delivered) {
-					throw new Error(
-						`TTS_DONE→playback delegation failed: ${result.error ?? "unknown"}`,
-					)
-				}
-			} else {
+			if (targets.length === 0) {
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 					capability: CAPABILITY_ENUM.PLAYBACK,
 					interactionId,
 					originDomiaKey,
 					responseType: RESPONSE_TYPE_ENUM.VOICE,
 				})
+				return
+			}
+
+			let localPath = filePath
+			if (!localPath && audioUrl) {
+				localPath = await downloadAudioToTemp(audioUrl, interactionId)
+			}
+			if (!localPath) {
+				throw new Error(
+					"TTS_DONE: cannot delegate playback without filePath or audioUrl",
+				)
+			}
+			const audio = await readFile(localPath)
+			const result = await deliverEvent(domia.domiaKey, targets, "ttsDone", {
+				audio,
+				interactionId,
+				originDomiaKey,
+			})
+			if (!result.delivered) {
+				throw new Error(
+					`TTS_DONE→playback delegation failed: ${result.error ?? "unknown"}`,
+				)
 			}
 		}
 	} catch (err) {

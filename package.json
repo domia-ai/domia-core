@@ -39,6 +39,7 @@
 		"setup:models:whisper": "bash scripts/download-models.sh whisper",
 		"setup:models:kokoro": "bash scripts/download-models.sh kokoro",
 		"setup:models:moonshine": "bash scripts/download-models.sh moonshine",
+		"setup:models:zipformer": "bash scripts/download-models.sh zipformer",
 		"setup:models:kws": "bash scripts/download-models.sh kws",
 		"setup:models:vad": "bash scripts/download-models.sh vad"
 	},

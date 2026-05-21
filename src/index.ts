@@ -50,7 +50,10 @@ async function main() {
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
 	setupHttpServer({ domia: ownDomia })
 
-	await setupGrpcServer({ domia: ownDomia })
+	await setupGrpcServer({
+		domia: ownDomia,
+		capabilities: runtimeCapabilities,
+	})
 
 	if (runtimeCapabilities?.wakeword && runtimeCapabilities?.record) {
 		await setupVoiceListener(ownDomia)

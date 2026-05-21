@@ -15,3 +15,7 @@ export const UNHEALTHY_GRPC_STATES: ReadonlySet<number> = new Set([
 ])
 
 export const GRPC_UNAVAILABLE_CODE = 14
+export const GRPC_UNIMPLEMENTED_CODE = 12
+
+export const STREAM_IDLE_TIMEOUT_MS = 15_000
+export const STREAM_DEADLINE_MS = 60_000

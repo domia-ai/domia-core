@@ -5,6 +5,9 @@ package domia;
 service DomiaNode {
   rpc Health(HealthRequest) returns (HealthResponse);
   rpc DeliverEvent(EventEnvelope) returns (DeliveryAck);
+  rpc StreamStt(stream AudioChunk) returns (SttDonePayload);
+  rpc StreamLlm(LlmStreamRequest) returns (stream TokenChunk);
+  rpc StreamTts(TtsStreamRequest) returns (stream AudioChunk);
 }
 
 message HealthRequest {}
@@ -21,6 +24,7 @@ message AudioReadyPayload {
   optional string audio_url = 2;
   optional string origin_domia_key = 3;
   optional string interaction_id = 4;
+  optional bytes audio = 5;
 }
 
 message SttDonePayload {
@@ -42,6 +46,7 @@ message TtsDonePayload {
   optional string audio_url = 2;
   optional string interaction_id = 3;
   optional string origin_domia_key = 4;
+  optional bytes audio = 5;
 }
 
 message EventEnvelope {
@@ -58,4 +63,37 @@ message DeliveryAck {
   bool accepted = 1;
   string reason = 2;
   bool deduplicated = 3;
+}
+
+message StreamSttMeta {
+  string sender_domia_key = 1;
+  optional string origin_domia_key = 2;
+  optional string interaction_id = 3;
+  optional string response_type = 4;
+}
+
+message AudioChunk {
+  bytes pcm = 1;
+  optional uint32 sample_rate = 2;
+  optional uint32 channels = 3;
+  optional StreamSttMeta meta = 4;
+}
+
+message TokenChunk {
+  string token = 1;
+}
+
+message LlmStreamRequest {
+  string sender_domia_key = 1;
+  string transcript = 2;
+  optional string origin_domia_key = 3;
+  optional string interaction_id = 4;
+  optional string response_type = 5;
+}
+
+message TtsStreamRequest {
+  string sender_domia_key = 1;
+  string reply = 2;
+  optional string origin_domia_key = 3;
+  optional string interaction_id = 4;
 }

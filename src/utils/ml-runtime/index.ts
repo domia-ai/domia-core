@@ -1,10 +1,11 @@
-// @ts-expect-error vendor package ships no types
 import * as runtime from "sherpa-onnx-node"
 
 import type {
 	Waveform,
 	OfflineRecognizerConfig,
 	OfflineRecognizerInstance,
+	OnlineRecognizerConfig,
+	OnlineRecognizerInstance,
 	OfflineTtsConfig,
 	OfflineTtsInstance,
 	KeywordSpotterConfig,
@@ -16,12 +17,17 @@ import type {
 
 export * from "./types"
 
-const runtimeAddon = runtime as unknown as RuntimeAddon
+const runtimeAddon: RuntimeAddon = runtime
 
 export const createOfflineRecognizer = (
 	config: OfflineRecognizerConfig,
 ): OfflineRecognizerInstance =>
 	new runtimeAddon.OfflineRecognizer(config) as OfflineRecognizerInstance
+
+export const createOnlineRecognizer = (
+	config: OnlineRecognizerConfig,
+): OnlineRecognizerInstance =>
+	new runtimeAddon.OnlineRecognizer(config) as OnlineRecognizerInstance
 
 export const createOfflineTts = (
 	config: OfflineTtsConfig,

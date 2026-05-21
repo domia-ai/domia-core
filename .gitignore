@@ -28,5 +28,8 @@ build/
 /data/mqtt/
 /log/mqtt/
 
+# Persistent JSON logs
+/log/*.log
+
 # Ignore Mosquitto password file (security)
 /config/mqtt/password.txt

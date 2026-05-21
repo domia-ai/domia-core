@@ -1,3 +1,6 @@
+import fs from "fs"
+import path from "path"
+
 import debug from "debug"
 
 import { env } from "@/config"
@@ -7,6 +10,57 @@ import type { LogLevelType, LogPrefixType } from "./types"
 
 const isDevelopment = env.NODE_ENV !== "production"
 const isJsonMode = process.env.DOMIA_LOG_FORMAT === "json"
+
+let fileStream: fs.WriteStream | null = null
+
+const getFileStream = (): fs.WriteStream | null => {
+	if (!env.DOMIA_LOG_FILE) return null
+	if (fileStream) return fileStream
+	try {
+		fs.mkdirSync(path.dirname(env.DOMIA_LOG_FILE), { recursive: true })
+		fileStream = fs.createWriteStream(env.DOMIA_LOG_FILE, { flags: "a" })
+		const close = () => {
+			fileStream?.end()
+			fileStream = null
+		}
+		process.once("exit", close)
+		process.once("SIGINT", close)
+		process.once("SIGTERM", close)
+	} catch {
+		fileStream = null
+	}
+	return fileStream
+}
+
+const buildJsonEntry = (
+	namespace: string,
+	level: LogLevelType,
+	message: string,
+	args: unknown[],
+): Record<string, unknown> => {
+	const meta = args.length === 1 ? args[0] : args.length > 1 ? args : undefined
+	const trace = getTraceContext()
+	return {
+		ts: new Date().toISOString(),
+		level,
+		ns: namespace,
+		msg: message,
+		...(trace?.interactionId ? { interactionId: trace.interactionId } : {}),
+		...(trace?.originDomiaKey ? { originDomiaKey: trace.originDomiaKey } : {}),
+		...(trace?.traceId ? { traceId: trace.traceId } : {}),
+		...(meta && typeof meta === "object" ? meta : meta ? { meta } : {}),
+	}
+}
+
+const writeToFile = (entry: Record<string, unknown>): void => {
+	const stream = getFileStream()
+	if (!stream) return
+	try {
+		stream.write(JSON.stringify(entry) + "\n")
+	} catch {
+		return
+	}
+}
 
 export const createLogger = (namespace: string) => {
 	const debugInstance = debug(`domia:${namespace}`)
@@ -38,39 +92,19 @@ export const createLogger = (namespace: string) => {
 		return `${color(prefix)}${traceSuffix} ${message}`
 	}
 
-	const logJson = (
-		level: LogLevelType,
-		message: string,
-		args: unknown[],
-	): void => {
-		const meta =
-			args.length === 1 ? args[0] : args.length > 1 ? args : undefined
-		const trace = getTraceContext()
-		const entry = {
-			ts: new Date().toISOString(),
-			level,
-			ns: namespace,
-			msg: message,
-			...(trace?.interactionId ? { interactionId: trace.interactionId } : {}),
-			...(trace?.originDomiaKey
-				? { originDomiaKey: trace.originDomiaKey }
-				: {}),
-			...(trace?.traceId ? { traceId: trace.traceId } : {}),
-			...(meta && typeof meta === "object" ? meta : meta ? { meta } : {}),
-		}
-		const out = JSON.stringify(entry)
-		if (level === "error") console.error(out)
-		else if (level === "warn") console.warn(out)
-		else console.log(out)
-	}
-
 	const log = (
 		level: LogLevelType,
 		message: string,
 		...args: unknown[]
 	): void => {
+		const entry = buildJsonEntry(namespace, level, message, args)
+		writeToFile(entry)
+
 		if (isJsonMode) {
-			logJson(level, message, args)
+			const out = JSON.stringify(entry)
+			if (level === "error") console.error(out)
+			else if (level === "warn") console.warn(out)
+			else console.log(out)
 			return
 		}
 		const timestamp = new Date().toISOString()

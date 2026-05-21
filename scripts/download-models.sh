@@ -45,6 +45,14 @@ case "${1:-all}" in
 esac
 
 case "${1:-all}" in
+  zipformer|all)
+    download_and_extract "streaming-zipformer-en" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2" \
+      "sherpa-onnx-streaming-zipformer-en-2023-06-26"
+    ;;
+esac
+
+case "${1:-all}" in
   kokoro|all)
     download_and_extract "kokoro-en-v0_19" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2" \

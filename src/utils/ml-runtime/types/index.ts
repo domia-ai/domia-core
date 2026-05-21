@@ -22,6 +22,29 @@ export type OfflineRecognizerInstance = {
 	getResult: (stream: OfflineStream) => OfflineRecognizerResult
 }
 
+export type OnlineStream = {
+	handle: unknown
+	acceptWaveform: (input: Waveform) => void
+	inputFinished: () => void
+}
+
+export type OnlineRecognizerResult = {
+	text: string
+	tokens?: string[]
+	timestamps?: number[]
+}
+
+export type OnlineRecognizerConfig = Record<string, unknown>
+
+export type OnlineRecognizerInstance = {
+	createStream: () => OnlineStream
+	isReady: (stream: OnlineStream) => boolean
+	decode: (stream: OnlineStream) => void
+	isEndpoint: (stream: OnlineStream) => boolean
+	reset: (stream: OnlineStream) => void
+	getResult: (stream: OnlineStream) => OnlineRecognizerResult
+}
+
 export type GeneratedAudio = {
 	samples: Float32Array
 	sampleRate: number
@@ -73,6 +96,7 @@ export type VadInstance = {
 
 export type RuntimeAddon = {
 	OfflineRecognizer: new (config: unknown) => unknown
+	OnlineRecognizer: new (config: unknown) => unknown
 	OfflineTts: new (config: unknown) => unknown
 	KeywordSpotter: new (config: unknown) => unknown
 	Vad: new (config: unknown, bufferSizeInSeconds: number) => unknown

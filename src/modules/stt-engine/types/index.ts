@@ -31,3 +31,11 @@ export type MoonshinePathsType = {
 	cachedDecoder: string
 	tokens: string
 }
+
+export type ZipformerPathsType = {
+	dir: string
+	encoder: string
+	decoder: string
+	joiner: string
+	tokens: string
+}

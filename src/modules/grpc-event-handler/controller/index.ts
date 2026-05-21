@@ -1,5 +1,5 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { grpcServerLogger, runWithTraceContext } from "@/utils"
+import { grpcServerLogger, runWithTraceContext, writeWavToTemp } from "@/utils"
 import type { EventEnvelope, DeliveryAck } from "@/generated/proto/domia"
 import type { GrpcEventHandlerContextType, DedupEntry } from "../types"
 
@@ -45,8 +45,12 @@ export const handleDeliverEvent = async (
 			const p = envelope.payload.audioReady
 			event = DOMIA_EVENT_BUS_ENUM.AUDIO_READY
 			interactionId = p.interactionId
+			const filePath =
+				p.audio && p.audio.length > 0
+					? await writeWavToTemp(p.audio, p.interactionId ?? "", "audio-in")
+					: p.filePath
 			busPayload = {
-				filePath: p.filePath,
+				filePath,
 				audioUrl: p.audioUrl,
 				originDomiaKey: p.originDomiaKey,
 				interactionId: p.interactionId,
@@ -81,8 +85,12 @@ export const handleDeliverEvent = async (
 			const p = envelope.payload.ttsDone
 			event = DOMIA_EVENT_BUS_ENUM.TTS_DONE
 			interactionId = p.interactionId
+			const filePath =
+				p.audio && p.audio.length > 0
+					? await writeWavToTemp(p.audio, p.interactionId ?? "", "tts-in")
+					: p.filePath
 			busPayload = {
-				filePath: p.filePath,
+				filePath,
 				audioUrl: p.audioUrl,
 				interactionId: p.interactionId,
 				originDomiaKey: p.originDomiaKey,

@@ -14,6 +14,7 @@ const envSchema = z.object({
 	GRPC_PORT: z.string().default("5052"),
 	GRPC_DEADLINE_MS: z.string().default("10000"),
 	GRPC_STREAM_IDLE_MS: z.string().default("30000"),
+	DOMIA_LOG_FILE: z.string().optional(),
 })
 
 export const env = envSchema.parse(process.env)

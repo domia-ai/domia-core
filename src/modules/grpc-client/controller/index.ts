@@ -6,17 +6,29 @@ import {
 	DomiaNodeDefinition,
 	type DomiaNodeClient,
 	type EventEnvelope,
+	type AudioChunk,
+	type TokenChunk,
 } from "@/generated/proto/domia"
 import type {
 	DeliverEventTarget,
 	DeliverEventPayloadMap,
 	DeliverEventResult,
+	StreamSttMetaType,
+	StreamSttResult,
+	StreamLlmRequestType,
+	StreamLlmResult,
+	StreamTtsRequestType,
+	StreamTtsResult,
+	OpenedServerStream,
 } from "../types"
 import {
 	DEFAULT_DEADLINE_MS,
 	GRPC_UNAVAILABLE_CODE,
+	GRPC_UNIMPLEMENTED_CODE,
 	RETRYABLE_GRPC_CODES,
 	UNHEALTHY_GRPC_STATES,
+	STREAM_IDLE_TIMEOUT_MS,
+	STREAM_DEADLINE_MS,
 } from "../constants"
 
 const channels = new Map<string, Channel>()
@@ -195,6 +207,230 @@ export const deliverEvent = async <K extends keyof DeliverEventPayloadMap>(
 		deduplicated: false,
 		error: "all targets failed",
 		attemptedTargets: attempted,
+	}
+}
+
+const addrOf = (target: DeliverEventTarget): string =>
+	`${target.localIp}:${target.grpcPort}`
+
+const errMsg = (err: unknown): string =>
+	err instanceof Error ? err.message : String(err)
+
+const isUnimplementedError = (err: unknown): boolean => {
+	if (!err || typeof err !== "object") return false
+	return (err as { code?: number }).code === GRPC_UNIMPLEMENTED_CODE
+}
+
+export const streamSttToTarget = async (
+	senderDomiaKey: string,
+	targets: DeliverEventTarget[],
+	meta: StreamSttMetaType,
+	audioFactory: () => AsyncIterable<Buffer>,
+): Promise<StreamSttResult> => {
+	if (targets.length === 0) {
+		return { delivered: false, error: "no targets", attemptedTargets: 0 }
+	}
+	let attempted = 0
+	let allUnsupported = true
+	for (const target of targets) {
+		attempted++
+		const client = getClient(target)
+		if (!client) {
+			allUnsupported = false
+			continue
+		}
+		const addr = addrOf(target)
+		const ac = new AbortController()
+		const timer = setTimeout(() => ac.abort(), STREAM_DEADLINE_MS)
+		try {
+			const request = (async function* (): AsyncIterable<AudioChunk> {
+				yield {
+					pcm: new Uint8Array(0),
+					meta: {
+						senderDomiaKey,
+						originDomiaKey: meta.originDomiaKey,
+						interactionId: meta.interactionId,
+						responseType: meta.responseType,
+					},
+				}
+				for await (const buf of audioFactory()) {
+					yield { pcm: buf }
+				}
+			})()
+			const ack = await client.streamStt(request, { signal: ac.signal })
+			grpcClientLogger.info(
+				`✓ streamStt → ${target.domiaKey} @ ${addr}: "${ack.transcript}"`,
+			)
+			return {
+				delivered: true,
+				transcript: ack.transcript,
+				interactionId: ack.interactionId,
+				originDomiaKey: ack.originDomiaKey,
+				responseType: ack.responseType,
+				target,
+				attemptedTargets: attempted,
+			}
+		} catch (err) {
+			if (!isUnimplementedError(err)) allUnsupported = false
+			if (isUnavailableError(err)) closeChannel(addr)
+			grpcClientLogger.warn(
+				`✗ streamStt to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
+			)
+		} finally {
+			clearTimeout(timer)
+		}
+	}
+	return {
+		delivered: false,
+		unsupported: allUnsupported,
+		error: "all targets failed",
+		attemptedTargets: attempted,
+	}
+}
+
+const openServerStream = async <T>(
+	targets: DeliverEventTarget[],
+	invoke: (client: DomiaNodeClient, signal: AbortSignal) => AsyncIterable<T>,
+): Promise<OpenedServerStream<T>> => {
+	if (targets.length === 0) {
+		return { delivered: false, error: "no targets", attemptedTargets: 0 }
+	}
+	let attempted = 0
+	let allUnsupported = true
+	for (const target of targets) {
+		attempted++
+		const client = getClient(target)
+		if (!client) {
+			allUnsupported = false
+			continue
+		}
+		const addr = addrOf(target)
+		const ac = new AbortController()
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const resetIdle = () => {
+			clearTimeout(timer)
+			timer = setTimeout(() => ac.abort(), STREAM_IDLE_TIMEOUT_MS)
+		}
+		resetIdle()
+		const iterator = invoke(client, ac.signal)[Symbol.asyncIterator]()
+		let first: IteratorResult<T>
+		try {
+			first = await iterator.next()
+		} catch (err) {
+			clearTimeout(timer)
+			if (!isUnimplementedError(err)) allUnsupported = false
+			if (isUnavailableError(err)) closeChannel(addr)
+			grpcClientLogger.warn(
+				`✗ stream open to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
+			)
+			continue
+		}
+		const stream = (async function* (): AsyncIterable<T> {
+			try {
+				if (!first.done) {
+					resetIdle()
+					yield first.value
+				}
+				while (true) {
+					const next = await iterator.next()
+					if (next.done) break
+					resetIdle()
+					yield next.value
+				}
+			} finally {
+				clearTimeout(timer)
+			}
+		})()
+		return {
+			delivered: true,
+			target,
+			attemptedTargets: attempted,
+			firstValue: first.done ? undefined : first.value,
+			stream,
+		}
+	}
+	return {
+		delivered: false,
+		unsupported: allUnsupported,
+		error: "all targets failed",
+		attemptedTargets: attempted,
+	}
+}
+
+export const streamLlmFromTarget = async (
+	senderDomiaKey: string,
+	targets: DeliverEventTarget[],
+	request: StreamLlmRequestType,
+): Promise<StreamLlmResult> => {
+	const opened = await openServerStream<TokenChunk>(targets, (client, signal) =>
+		client.streamLlm(
+			{
+				senderDomiaKey,
+				transcript: request.transcript,
+				originDomiaKey: request.originDomiaKey,
+				interactionId: request.interactionId,
+				responseType: request.responseType,
+			},
+			{ signal },
+		),
+	)
+	if (!opened.delivered || !opened.stream) {
+		return {
+			delivered: false,
+			unsupported: opened.unsupported,
+			error: opened.error,
+			attemptedTargets: opened.attemptedTargets,
+		}
+	}
+	const sourceStream = opened.stream
+	const tokens = (async function* (): AsyncIterable<string> {
+		for await (const chunk of sourceStream) yield chunk.token
+	})()
+	return {
+		delivered: true,
+		tokens,
+		target: opened.target,
+		attemptedTargets: opened.attemptedTargets,
+	}
+}
+
+export const streamTtsFromTarget = async (
+	senderDomiaKey: string,
+	targets: DeliverEventTarget[],
+	request: StreamTtsRequestType,
+): Promise<StreamTtsResult> => {
+	const opened = await openServerStream<AudioChunk>(targets, (client, signal) =>
+		client.streamTts(
+			{
+				senderDomiaKey,
+				reply: request.reply,
+				originDomiaKey: request.originDomiaKey,
+				interactionId: request.interactionId,
+			},
+			{ signal },
+		),
+	)
+	if (!opened.delivered || !opened.stream) {
+		return {
+			delivered: false,
+			unsupported: opened.unsupported,
+			error: opened.error,
+			attemptedTargets: opened.attemptedTargets,
+		}
+	}
+	const sourceStream = opened.stream
+	const audio = (async function* (): AsyncIterable<Buffer> {
+		for await (const chunk of sourceStream) {
+			if (chunk.pcm && chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
+		}
+	})()
+	return {
+		delivered: true,
+		audio,
+		sampleRate: opened.firstValue?.sampleRate,
+		channels: opened.firstValue?.channels,
+		target: opened.target,
+		attemptedTargets: opened.attemptedTargets,
 	}
 }
 

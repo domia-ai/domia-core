@@ -2,6 +2,7 @@ import { type DomiaType } from "@/modules/core"
 import { getDomiaById } from "@/modules/core"
 import { type CapabilityEnumType } from "@/db"
 import dbAdapter from "../db-adapter"
+import { resolveDomiaStreamingCapabilities } from "../utils"
 import type { ResolvedDelegateType } from "../types"
 
 export const resolveCapabilityDelegations = async (
@@ -34,6 +35,7 @@ export const resolveCapabilityDelegations = async (
 			localIp: target.localIp,
 			grpcPort: target.grpcPort,
 			source: "explicit",
+			streamingCapabilities: resolveDomiaStreamingCapabilities(target),
 		})
 	}
 
@@ -43,15 +45,17 @@ export const resolveCapabilityDelegations = async (
 		const cd = candidate?.domia
 		if (!cd) continue
 		if (cd.id === domia?.id) continue
-		if (!cd.isActive) continue
 		if (seen.has(cd.id)) continue
-		seen.add(cd.id)
+		const target = await getDomiaById(cd.id)
+		if (!target || !target.isActive) continue
+		seen.add(target.id)
 		result.push({
-			domiaKey: cd.domiaKey,
-			domiaId: cd.id,
-			localIp: cd.localIp,
-			grpcPort: cd.grpcPort,
+			domiaKey: target.domiaKey,
+			domiaId: target.id,
+			localIp: target.localIp,
+			grpcPort: target.grpcPort,
 			source: "discovered",
+			streamingCapabilities: resolveDomiaStreamingCapabilities(target),
 		})
 	}
 
