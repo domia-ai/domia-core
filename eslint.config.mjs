@@ -16,5 +16,5 @@ export default tseslint.config(
 			"@typescript-eslint/consistent-type-definitions": ["warn", "type"],
 		},
 	},
-	globalIgnores(["build/**/*", ".venv/*"]),
+	globalIgnores(["build/**/*", ".venv/*", "tmp/**/*"]),
 )

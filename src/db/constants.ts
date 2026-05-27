@@ -5,13 +5,25 @@ export const DEFAULT_WAKE_WORD_MODEL_PATH =
 	"data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01"
 export const DEFAULT_VAD_ENGINE = "SILERO"
 export const DEFAULT_VAD_MODEL_PATH = "data/models/silero_vad.onnx"
+export const DEFAULT_AUDIO_CAPTURE_SAMPLE_RATE = 16000
+export const DEFAULT_AUDIO_CAPTURE_BITS_PER_SAMPLE = 16
+export const DEFAULT_AUDIO_CAPTURE_CHANNELS = 1
+export const DEFAULT_AUDIO_CAPTURE_MAX_RECORDING_MS = 15000
 export const DEFAULT_LLM_MODEL_TEMPERATURE = 0.7
 export const DEFAULT_LLM_MODEL_CONTEXT_WINDOW = 4096
-export const DEFAULT_STT_MODEL_NAME = "tiny.en"
-export const DEFAULT_STT_MODEL_PATH = "data/models/whisper-tiny.en"
-export const DEFAULT_LLM_MODEL_NAME = "llama3.2:3b"
+export const DEFAULT_STT_MODEL_NAME = "streaming-zipformer-en"
+export const DEFAULT_STT_MODEL_PATH = "data/models/streaming-zipformer-en"
+export const DEFAULT_LLM_MODEL_NAME = "llama3.1:8b"
 export const DEFAULT_TTS_VOICE_NAME = "af_heart"
 export const DEFAULT_TTS_MODEL_PATH = "data/models/kokoro-en-v0_19"
+export const DEFAULT_TTS_NUM_THREADS = 2
+export const DEFAULT_TTS_PROVIDER = "cpu"
+export const DEFAULT_TTS_MAX_NUM_SENTENCES = 1
+export const DEFAULT_TTS_SILENCE_SCALE = 0.2
+export const DEFAULT_TTS_SPEED = 1.0
+export const DEFAULT_TTS_STREAMING_ENABLED = false
+export const DEFAULT_AUDIO_PLAYBACK_VOLUME = 100
+export const DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED = true
 export const DEFAULT_QUANTIZATION = "int8"
 
 export const PERSONALITY_ENUM = {
@@ -169,11 +181,9 @@ export const TTS_ENGINE_ENUM_VALUES = [TTS_ENGINE_ENUM.KOKORO] as const
 
 export const WAKE_WORD_FRAMEWORK_ENUM = {
 	ONNX: "onnx",
-	TFLITE: "tflite",
 } as const
 export const WAKE_WORD_FRAMEWORK_ENUM_VALUES = [
 	WAKE_WORD_FRAMEWORK_ENUM.ONNX,
-	WAKE_WORD_FRAMEWORK_ENUM.TFLITE,
 ] as const
 
 export const AUDIO_PLAYBACK_ENGINE_ENUM = {

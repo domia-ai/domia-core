@@ -15,6 +15,7 @@ const envSchema = z.object({
 	GRPC_DEADLINE_MS: z.string().default("10000"),
 	GRPC_STREAM_IDLE_MS: z.string().default("30000"),
 	DOMIA_LOG_FILE: z.string().optional(),
+	OLLAMA_HOST: z.string().default("http://localhost:11434"),
 })
 
 export const env = envSchema.parse(process.env)

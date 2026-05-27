@@ -29,26 +29,26 @@ download_and_extract() {
 }
 
 case "${1:-all}" in
-  whisper-tiny|whisper|all)
+  zipformer|all)
+    download_and_extract "streaming-zipformer-en" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2" \
+      "sherpa-onnx-streaming-zipformer-en-2023-06-26"
+    ;;
+esac
+
+case "${1:-}" in
+  whisper-tiny|whisper)
     download_and_extract "whisper-tiny.en" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.en.tar.bz2" \
       "sherpa-onnx-whisper-tiny.en"
     ;;
 esac
 
-case "${1:-all}" in
-  moonshine|all)
+case "${1:-}" in
+  moonshine)
     download_and_extract "moonshine-tiny-en-int8" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-int8.tar.bz2" \
       "sherpa-onnx-moonshine-tiny-en-int8"
-    ;;
-esac
-
-case "${1:-all}" in
-  zipformer|all)
-    download_and_extract "streaming-zipformer-en" \
-      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2" \
-      "sherpa-onnx-streaming-zipformer-en-2023-06-26"
     ;;
 esac
 

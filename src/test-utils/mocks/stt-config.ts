@@ -4,6 +4,7 @@ import { generateUuid, now } from "@/utils"
 import {
 	STT_ENGINE_ENUM,
 	DEFAULT_STT_MODEL_NAME,
+	DEFAULT_STT_MODEL_PATH,
 	DEFAULT_LANGUAGE,
 } from "@/db/constants"
 import { type SelectSttConfigType } from "@/db"
@@ -14,10 +15,10 @@ export const baseSttConfig = (domiaId?: string): SelectSttConfigType => {
 		name: faker.word.words(2),
 		isActive: true,
 		domiaId: domiaId ?? generateUuid(),
-		engine: STT_ENGINE_ENUM.WHISPER,
+		engine: STT_ENGINE_ENUM.ZIPFORMER,
 		modelName: DEFAULT_STT_MODEL_NAME,
 		language: DEFAULT_LANGUAGE,
-		modelPath: "data/models/whisper-tiny.en",
+		modelPath: DEFAULT_STT_MODEL_PATH,
 		quantization: "int8",
 		silenceThreshold: faker.number.float({ min: 0.01, max: 0.2 }),
 		bufferSize: faker.number.int({ min: 1024, max: 8192 }),

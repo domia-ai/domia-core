@@ -26,10 +26,9 @@ build/
 
 # MQTT runtime files
 /data/mqtt/
-/log/mqtt/
 
-# Persistent JSON logs
-/log/*.log
+# Runtime logs (all contents of /log/ are local-only)
+/log/*
 
 # Ignore Mosquitto password file (security)
 /config/mqtt/password.txt

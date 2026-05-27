@@ -19,3 +19,16 @@ export type KwsPathsType = {
 	tokens: string
 	keywords: string
 }
+
+export type VadWindowType = {
+	feed: (data: Buffer) => void
+	completed: () => boolean
+}
+
+export type StopSoxType = (reason: string) => void
+
+export type CaptureFormatType = {
+	sampleRate: number
+	channels: number
+	bitsPerSample: number
+}

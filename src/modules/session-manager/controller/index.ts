@@ -2,8 +2,8 @@ import { type DomiaType } from "@/modules/core"
 import { generateUuid } from "@/utils"
 
 import { DBClientOrTxType, UpdateInteractionTraceType } from "@/db"
-import dbAdapter from "./db-adapter"
-import type { NewInteractionDataType } from "./types"
+import dbAdapter from "../db-adapter"
+import type { NewInteractionDataType } from "../types"
 
 export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	const now = Date.now()

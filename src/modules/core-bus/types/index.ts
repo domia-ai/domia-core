@@ -141,3 +141,19 @@ export type RequestVoiceReplyResult = {
 	reply: string
 	ttsFilePath?: string
 }
+
+export type SttFlowSessionType = {
+	interactionId: string
+	promptContext: string
+	transcript: string
+	originDomiaKey: string | undefined
+	responseType: string | undefined
+	isVoice: boolean
+}
+
+export type LlmFlowSessionType = {
+	interactionId: string
+	reply: string
+	originDomiaKey: string | undefined
+	responseType: string | undefined
+}

@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "ebf9b0ae-042b-4e04-a56f-16b63e8b6bbe",
+	"id": "a0b00897-e786-43ca-b4e0-050f8c5306bd",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
 		"audio_playback_config": {
@@ -25,7 +25,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -48,9 +48,17 @@
 					"name": "volume",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 100
+				},
+				"streaming_enabled": {
+					"name": "streaming_enabled",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
 				},
 				"output_device": {
 					"name": "output_device",
@@ -63,7 +71,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -71,7 +79,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -134,7 +142,7 @@
 					"name": "priority",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -142,7 +150,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": true
 				},
@@ -150,7 +158,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -158,7 +166,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -209,7 +217,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -224,7 +232,7 @@
 					"name": "personality",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'NEUTRAL'"
 				},
@@ -232,7 +240,7 @@
 					"name": "language",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'en'"
 				},
@@ -240,7 +248,7 @@
 					"name": "profession",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'HOST'"
 				},
@@ -248,7 +256,7 @@
 					"name": "communication_style",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'FRIENDLY'"
 				},
@@ -256,7 +264,7 @@
 					"name": "perceived_age",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'ADULT'"
 				},
@@ -278,7 +286,7 @@
 					"name": "knowledge_depth",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'INTERMEDIATE'"
 				},
@@ -307,7 +315,7 @@
 					"name": "relationship_type",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'COMPANION'"
 				},
@@ -315,7 +323,7 @@
 					"name": "role_mode",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'PASSIVE'"
 				},
@@ -323,7 +331,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -331,7 +339,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -380,7 +388,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": true
 				},
@@ -388,7 +396,7 @@
 					"name": "session_id_timeout_ms",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 300000
 				},
@@ -410,7 +418,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -418,7 +426,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -470,7 +478,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -478,7 +486,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -520,7 +528,7 @@
 					"name": "joy",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -528,7 +536,7 @@
 					"name": "sadness",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -536,7 +544,7 @@
 					"name": "anger",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -544,7 +552,7 @@
 					"name": "fear",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -552,7 +560,7 @@
 					"name": "trust",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -560,7 +568,7 @@
 					"name": "disgust",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -568,7 +576,7 @@
 					"name": "anticipation",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -576,7 +584,7 @@
 					"name": "surprise",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -584,7 +592,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -592,7 +600,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -647,7 +655,7 @@
 					"name": "started_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -655,7 +663,7 @@
 					"name": "last_used_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -663,7 +671,7 @@
 					"name": "session_id_timeout_ms",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 300000
 				},
@@ -671,7 +679,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -679,7 +687,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -751,7 +759,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": true
 				},
@@ -773,7 +781,7 @@
 					"name": "wakeword_used",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'alexa'"
 				},
@@ -858,7 +866,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -866,7 +874,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -917,7 +925,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -942,13 +950,13 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'gpt-oss:20b'"
+					"default": "'llama3.1:8b'"
 				},
 				"temperature": {
 					"name": "temperature",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0.7
 				},
@@ -956,15 +964,15 @@
 					"name": "context_window",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
-					"default": 2048
+					"default": 4096
 				},
 				"use_compact_prompt": {
 					"name": "use_compact_prompt",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -972,7 +980,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -980,7 +988,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1022,7 +1030,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1051,7 +1059,7 @@
 					"name": "timeout_ms",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 2000
 				},
@@ -1059,7 +1067,7 @@
 					"name": "priority",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0
 				},
@@ -1067,7 +1075,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1075,7 +1083,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1117,7 +1125,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1174,7 +1182,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1182,7 +1190,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1224,7 +1232,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": true
 				},
@@ -1268,7 +1276,7 @@
 					"name": "qos",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 1
 				},
@@ -1291,7 +1299,7 @@
 					"name": "port",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 1883
 				},
@@ -1299,7 +1307,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1307,7 +1315,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1349,7 +1357,7 @@
 					"name": "wakeword",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1357,7 +1365,7 @@
 					"name": "record",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1365,7 +1373,7 @@
 					"name": "stt",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1373,7 +1381,7 @@
 					"name": "intent_detection",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1381,7 +1389,7 @@
 					"name": "intent_execution",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1389,7 +1397,7 @@
 					"name": "prompt_generation",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1397,7 +1405,7 @@
 					"name": "llm",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1405,7 +1413,7 @@
 					"name": "tts",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1413,7 +1421,7 @@
 					"name": "playback",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1421,7 +1429,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1429,7 +1437,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1477,7 +1485,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1494,7 +1502,7 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'WHISPER'"
+					"default": "'ZIPFORMER'"
 				},
 				"model_name": {
 					"name": "model_name",
@@ -1502,13 +1510,13 @@
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false,
-					"default": "'tiny.en'"
+					"default": "'streaming-zipformer-en'"
 				},
 				"language": {
 					"name": "language",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'en'"
 				},
@@ -1516,15 +1524,15 @@
 					"name": "model_path",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
-					"default": "'data/models/whisper-tiny.en'"
+					"default": "'data/models/streaming-zipformer-en'"
 				},
 				"quantization": {
 					"name": "quantization",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'int8'"
 				},
@@ -1546,7 +1554,7 @@
 					"name": "timeout_ms",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 5000
 				},
@@ -1554,7 +1562,7 @@
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1562,7 +1570,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1604,7 +1612,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1635,7 +1643,7 @@
 					"name": "language",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'en'"
 				},
@@ -1643,7 +1651,7 @@
 					"name": "model_path",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'data/models/kokoro-en-v0_19'"
 				},
@@ -1658,7 +1666,7 @@
 					"name": "pitch",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 1
 				},
@@ -1666,15 +1674,55 @@
 					"name": "speed",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 1
+				},
+				"silence_scale": {
+					"name": "silence_scale",
+					"type": "real",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0.2
+				},
+				"num_threads": {
+					"name": "num_threads",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 2
+				},
+				"provider": {
+					"name": "provider",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "'cpu'"
+				},
+				"max_num_sentences": {
+					"name": "max_num_sentences",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1
+				},
+				"streaming_enabled": {
+					"name": "streaming_enabled",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": false
 				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1682,7 +1730,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}
@@ -1724,7 +1772,7 @@
 					"name": "is_active",
 					"type": "integer",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": false
 				},
@@ -1755,7 +1803,7 @@
 					"name": "sensitivity",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0.5
 				},
@@ -1763,7 +1811,7 @@
 					"name": "threshold",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 0.5
 				},
@@ -1771,7 +1819,7 @@
 					"name": "cooldown",
 					"type": "real",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": 2
 				},
@@ -1779,7 +1827,7 @@
 					"name": "framework",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'onnx'"
 				},
@@ -1795,7 +1843,7 @@
 					"name": "custom_model_path",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01'"
 				},
@@ -1803,7 +1851,7 @@
 					"name": "quantization",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'int8'"
 				},
@@ -1811,7 +1859,7 @@
 					"name": "vad_engine",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'SILERO'"
 				},
@@ -1819,7 +1867,7 @@
 					"name": "vad_model_path",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "'data/models/silero_vad.onnx'"
 				},
@@ -1831,11 +1879,43 @@
 					"autoincrement": false,
 					"default": 0
 				},
+				"sample_rate": {
+					"name": "sample_rate",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 16000
+				},
+				"bits_per_sample": {
+					"name": "bits_per_sample",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 16
+				},
+				"channels": {
+					"name": "channels",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1
+				},
+				"max_recording_ms": {
+					"name": "max_recording_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 15000
+				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				},
@@ -1843,7 +1923,7 @@
 					"name": "updated_at",
 					"type": "text",
 					"primaryKey": false,
-					"notNull": false,
+					"notNull": true,
 					"autoincrement": false,
 					"default": "CURRENT_TIMESTAMP"
 				}

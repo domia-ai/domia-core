@@ -115,5 +115,5 @@
 	"ts-node": {
 		"files": true
 	},
-	"exclude": ["drizzle.config.ts"]
+	"exclude": ["drizzle.config.ts", "tmp"]
 }

@@ -99,6 +99,10 @@ export interface TtsStreamRequest {
   interactionId?: string | undefined;
 }
 
+export interface ReplyAudioMessage {
+  payload: { $case: "audio"; audio: AudioChunk } | { $case: "finalReply"; finalReply: string } | undefined;
+}
+
 function createBaseHealthRequest(): HealthRequest {
   return {};
 }
@@ -1613,6 +1617,100 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
   },
 };
 
+function createBaseReplyAudioMessage(): ReplyAudioMessage {
+  return { payload: undefined };
+}
+
+export const ReplyAudioMessage: MessageFns<ReplyAudioMessage> = {
+  encode(message: ReplyAudioMessage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.payload?.$case) {
+      case "audio":
+        AudioChunk.encode(message.payload.audio, writer.uint32(10).fork()).join();
+        break;
+      case "finalReply":
+        writer.uint32(18).string(message.payload.finalReply);
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReplyAudioMessage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReplyAudioMessage();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.payload = { $case: "audio", audio: AudioChunk.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.payload = { $case: "finalReply", finalReply: reader.string() };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReplyAudioMessage {
+    return {
+      payload: isSet(object.audio)
+        ? { $case: "audio", audio: AudioChunk.fromJSON(object.audio) }
+        : isSet(object.finalReply)
+        ? { $case: "finalReply", finalReply: globalThis.String(object.finalReply) }
+        : isSet(object.final_reply)
+        ? { $case: "finalReply", finalReply: globalThis.String(object.final_reply) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: ReplyAudioMessage): unknown {
+    const obj: any = {};
+    if (message.payload?.$case === "audio") {
+      obj.audio = AudioChunk.toJSON(message.payload.audio);
+    } else if (message.payload?.$case === "finalReply") {
+      obj.finalReply = message.payload.finalReply;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ReplyAudioMessage>): ReplyAudioMessage {
+    return ReplyAudioMessage.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ReplyAudioMessage>): ReplyAudioMessage {
+    const message = createBaseReplyAudioMessage();
+    switch (object.payload?.$case) {
+      case "audio": {
+        if (object.payload?.audio !== undefined && object.payload?.audio !== null) {
+          message.payload = { $case: "audio", audio: AudioChunk.fromPartial(object.payload.audio) };
+        }
+        break;
+      }
+      case "finalReply": {
+        if (object.payload?.finalReply !== undefined && object.payload?.finalReply !== null) {
+          message.payload = { $case: "finalReply", finalReply: object.payload.finalReply };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
 export type DomiaNodeDefinition = typeof DomiaNodeDefinition;
 export const DomiaNodeDefinition = {
   name: "DomiaNode",
@@ -1658,6 +1756,14 @@ export const DomiaNodeDefinition = {
       responseStream: true,
       options: {},
     },
+    streamReplyAudio: {
+      name: "StreamReplyAudio",
+      requestType: LlmStreamRequest as typeof LlmStreamRequest,
+      requestStream: false,
+      responseType: ReplyAudioMessage as typeof ReplyAudioMessage,
+      responseStream: true,
+      options: {},
+    },
   },
 } as const;
 
@@ -1676,6 +1782,10 @@ export interface DomiaNodeServiceImplementation<CallContextExt = {}> {
     request: TtsStreamRequest,
     context: CallContext & CallContextExt,
   ): ServerStreamingMethodResult<DeepPartial<AudioChunk>>;
+  streamReplyAudio(
+    request: LlmStreamRequest,
+    context: CallContext & CallContextExt,
+  ): ServerStreamingMethodResult<DeepPartial<ReplyAudioMessage>>;
 }
 
 export interface DomiaNodeClient<CallOptionsExt = {}> {
@@ -1687,6 +1797,10 @@ export interface DomiaNodeClient<CallOptionsExt = {}> {
   ): Promise<SttDonePayload>;
   streamLlm(request: DeepPartial<LlmStreamRequest>, options?: CallOptions & CallOptionsExt): AsyncIterable<TokenChunk>;
   streamTts(request: DeepPartial<TtsStreamRequest>, options?: CallOptions & CallOptionsExt): AsyncIterable<AudioChunk>;
+  streamReplyAudio(
+    request: DeepPartial<LlmStreamRequest>,
+    options?: CallOptions & CallOptionsExt,
+  ): AsyncIterable<ReplyAudioMessage>;
 }
 
 function bytesFromBase64(b64: string): Uint8Array {

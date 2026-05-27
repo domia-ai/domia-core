@@ -74,6 +74,25 @@ export type StreamTtsResult = {
 	attemptedTargets: number
 }
 
+export type StreamReplyAudioRequestType = {
+	transcript: string
+	originDomiaKey?: string
+	interactionId?: string
+	responseType?: string
+}
+
+export type StreamReplyAudioResult = {
+	delivered: boolean
+	audio?: AsyncIterable<Buffer>
+	finalReplyPromise?: Promise<string>
+	sampleRate?: number
+	channels?: number
+	target?: DeliverEventTarget
+	error?: string
+	unsupported?: boolean
+	attemptedTargets: number
+}
+
 export type OpenedServerStream<T> = {
 	delivered: boolean
 	target?: DeliverEventTarget

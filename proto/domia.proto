@@ -8,6 +8,7 @@ service DomiaNode {
   rpc StreamStt(stream AudioChunk) returns (SttDonePayload);
   rpc StreamLlm(LlmStreamRequest) returns (stream TokenChunk);
   rpc StreamTts(TtsStreamRequest) returns (stream AudioChunk);
+  rpc StreamReplyAudio(LlmStreamRequest) returns (stream ReplyAudioMessage);
 }
 
 message HealthRequest {}
@@ -96,4 +97,11 @@ message TtsStreamRequest {
   string reply = 2;
   optional string origin_domia_key = 3;
   optional string interaction_id = 4;
+}
+
+message ReplyAudioMessage {
+  oneof payload {
+    AudioChunk audio = 1;
+    string final_reply = 2;
+  }
 }

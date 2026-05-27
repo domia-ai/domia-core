@@ -8,6 +8,7 @@ import {
 	type EventEnvelope,
 	type AudioChunk,
 	type TokenChunk,
+	type ReplyAudioMessage,
 } from "@/generated/proto/domia"
 import type {
 	DeliverEventTarget,
@@ -19,6 +20,8 @@ import type {
 	StreamLlmResult,
 	StreamTtsRequestType,
 	StreamTtsResult,
+	StreamReplyAudioRequestType,
+	StreamReplyAudioResult,
 	OpenedServerStream,
 } from "../types"
 import {
@@ -429,6 +432,69 @@ export const streamTtsFromTarget = async (
 		audio,
 		sampleRate: opened.firstValue?.sampleRate,
 		channels: opened.firstValue?.channels,
+		target: opened.target,
+		attemptedTargets: opened.attemptedTargets,
+	}
+}
+
+export const streamReplyAudioFromTarget = async (
+	senderDomiaKey: string,
+	targets: DeliverEventTarget[],
+	request: StreamReplyAudioRequestType,
+): Promise<StreamReplyAudioResult> => {
+	const opened = await openServerStream<ReplyAudioMessage>(
+		targets,
+		(client, signal) =>
+			client.streamReplyAudio(
+				{
+					senderDomiaKey,
+					transcript: request.transcript,
+					originDomiaKey: request.originDomiaKey,
+					interactionId: request.interactionId,
+					responseType: request.responseType,
+				},
+				{ signal },
+			),
+	)
+	if (!opened.delivered || !opened.stream) {
+		return {
+			delivered: false,
+			unsupported: opened.unsupported,
+			error: opened.error,
+			attemptedTargets: opened.attemptedTargets,
+		}
+	}
+	const sourceStream = opened.stream
+	let resolveFinalReply!: (v: string) => void
+	const finalReplyPromise = new Promise<string>((r) => {
+		resolveFinalReply = r
+	})
+	let sampleRate: number | undefined
+	let channels: number | undefined
+	if (opened.firstValue?.payload?.$case === "audio") {
+		sampleRate = opened.firstValue.payload.audio.sampleRate
+		channels = opened.firstValue.payload.audio.channels
+	}
+	const audio = (async function* (): AsyncIterable<Buffer> {
+		try {
+			for await (const msg of sourceStream) {
+				if (msg.payload?.$case === "audio") {
+					const pcm = msg.payload.audio.pcm
+					if (pcm && pcm.length > 0) yield Buffer.from(pcm)
+				} else if (msg.payload?.$case === "finalReply") {
+					resolveFinalReply(msg.payload.finalReply)
+				}
+			}
+		} finally {
+			resolveFinalReply("")
+		}
+	})()
+	return {
+		delivered: true,
+		audio,
+		finalReplyPromise,
+		sampleRate,
+		channels,
 		target: opened.target,
 		attemptedTargets: opened.attemptedTargets,
 	}

@@ -1,0 +1,2 @@
+export const DEFAULT_SAMPLE_RATE = 24000
+export const DEFAULT_CHANNELS = 1

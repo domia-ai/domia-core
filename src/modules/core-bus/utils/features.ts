@@ -30,7 +30,8 @@ const resolveTts = (domia: DomiaType): ResolvedTtsEngineType => {
 		adapter,
 		canStream:
 			adapter.capabilities.streaming === true &&
-			typeof adapter.runStream === "function",
+			typeof adapter.runStream === "function" &&
+			domia.ttsConfig?.streamingEnabled === true,
 	}
 }
 

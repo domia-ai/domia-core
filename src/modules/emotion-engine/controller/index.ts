@@ -120,22 +120,3 @@ export const resetEmotion = async (
 export const getInitialEmotionState = (personality: PersonalityEnumType) => {
 	return EMOTION_PRESETS?.[personality]
 }
-
-export const getEmotionContext = (domia: DomiaType): string => {
-	const emotionVector = getEmotionVectorFromEmotionState(domia?.emotionState)
-	const entries = Object.entries(emotionVector) as [keyof EmotionType, number][]
-	const sorted = entries.sort(([, a], [, b]) => b - a)
-	const significant = sorted.filter(([, v]) => v > 0.2).slice(0, 2)
-
-	if (significant.length === 0) {
-		return `DOMIA is currently in a neutral emotional state.`
-	}
-
-	const emotionalPhrases = significant.map(([emotion, value]) => {
-		if (value > 0.75) return `strong ${emotion}`
-		if (value > 0.5) return `moderate ${emotion}`
-		return `slight ${emotion}`
-	})
-
-	return `DOMIA is currently feeling ${emotionalPhrases.join(" and ")}.`
-}

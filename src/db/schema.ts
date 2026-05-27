@@ -32,6 +32,10 @@ import {
 	DEFAULT_WAKE_WORD_MODEL_PATH,
 	DEFAULT_VAD_ENGINE,
 	DEFAULT_VAD_MODEL_PATH,
+	DEFAULT_AUDIO_CAPTURE_SAMPLE_RATE,
+	DEFAULT_AUDIO_CAPTURE_BITS_PER_SAMPLE,
+	DEFAULT_AUDIO_CAPTURE_CHANNELS,
+	DEFAULT_AUDIO_CAPTURE_MAX_RECORDING_MS,
 	WAKE_WORD_FRAMEWORK_ENUM_VALUES,
 	WAKE_WORD_FRAMEWORK_ENUM,
 	DEFAULT_STT_MODEL_NAME,
@@ -43,6 +47,14 @@ import {
 	DEFAULT_LLM_MODEL_NAME,
 	DEFAULT_TTS_VOICE_NAME,
 	DEFAULT_TTS_MODEL_PATH,
+	DEFAULT_TTS_NUM_THREADS,
+	DEFAULT_TTS_PROVIDER,
+	DEFAULT_TTS_MAX_NUM_SENTENCES,
+	DEFAULT_TTS_SILENCE_SCALE,
+	DEFAULT_TTS_SPEED,
+	DEFAULT_TTS_STREAMING_ENABLED,
+	DEFAULT_AUDIO_PLAYBACK_VOLUME,
+	DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED,
 	DEFAULT_QUANTIZATION,
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
 	AUDIO_PLAYBACK_ENGINE_ENUM,
@@ -59,12 +71,14 @@ export const domia = sqliteTable("domia", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
 	domiaKey: text("domia_key").notNull().unique(),
-	isActive: integer("is_active", { mode: "boolean" }).default(true),
-	sessionIdTimeoutMs: integer("session_id_timeout_ms").default(300_000),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+	sessionIdTimeoutMs: integer("session_id_timeout_ms")
+		.notNull()
+		.default(300_000),
 	localIp: text("local_ip"),
 	grpcPort: integer("grpc_port"),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const runtimeCapabilities = sqliteTable("runtime_capabilities", {
@@ -73,23 +87,23 @@ export const runtimeCapabilities = sqliteTable("runtime_capabilities", {
 		.notNull()
 		.unique()
 		.references(() => domia.id),
-	wakeword: integer("wakeword", { mode: "boolean" }).default(false),
-	record: integer("record", { mode: "boolean" }).default(false),
-	stt: integer("stt", { mode: "boolean" }).default(false),
-	intentDetection: integer("intent_detection", { mode: "boolean" }).default(
-		false,
-	),
-	intentExecution: integer("intent_execution", { mode: "boolean" }).default(
-		false,
-	),
-	promptGeneration: integer("prompt_generation", { mode: "boolean" }).default(
-		false,
-	),
-	llm: integer("llm", { mode: "boolean" }).default(false),
-	tts: integer("tts", { mode: "boolean" }).default(false),
-	playback: integer("playback", { mode: "boolean" }).default(false),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	wakeword: integer("wakeword", { mode: "boolean" }).notNull().default(false),
+	record: integer("record", { mode: "boolean" }).notNull().default(false),
+	stt: integer("stt", { mode: "boolean" }).notNull().default(false),
+	intentDetection: integer("intent_detection", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	intentExecution: integer("intent_execution", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	promptGeneration: integer("prompt_generation", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	llm: integer("llm", { mode: "boolean" }).notNull().default(false),
+	tts: integer("tts", { mode: "boolean" }).notNull().default(false),
+	playback: integer("playback", { mode: "boolean" }).notNull().default(false),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const emotionState = sqliteTable("emotion_state", {
@@ -98,16 +112,16 @@ export const emotionState = sqliteTable("emotion_state", {
 		.notNull()
 		.unique()
 		.references(() => domia.id),
-	joy: real("joy").default(0),
-	sadness: real("sadness").default(0),
-	anger: real("anger").default(0),
-	fear: real("fear").default(0),
-	trust: real("trust").default(0),
-	disgust: real("disgust").default(0),
-	anticipation: real("anticipation").default(0),
-	surprise: real("surprise").default(0),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	joy: real("joy").notNull().default(0),
+	sadness: real("sadness").notNull().default(0),
+	anger: real("anger").notNull().default(0),
+	fear: real("fear").notNull().default(0),
+	trust: real("trust").notNull().default(0),
+	disgust: real("disgust").notNull().default(0),
+	anticipation: real("anticipation").notNull().default(0),
+	surprise: real("surprise").notNull().default(0),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const emotionEvent = sqliteTable("emotion_event", {
@@ -117,14 +131,14 @@ export const emotionEvent = sqliteTable("emotion_event", {
 		.references(() => domia.id),
 	cause: text("cause").notNull(),
 	delta: text("delta", { mode: "json" }).notNull(),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const moduleSettings = sqliteTable("module_settings", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
@@ -136,52 +150,66 @@ export const moduleSettings = sqliteTable("module_settings", {
 	}).notNull(),
 	narrativeEngine: integer("narrative_engine", { mode: "boolean" }).notNull(),
 	identityEngine: integer("identity_engine", { mode: "boolean" }).notNull(),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const characterProfile = sqliteTable("character_profile", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
 	personality: text("personality", {
 		enum: PERSONALITY_ENUM_VALUES,
-	}).default(PERSONALITY_ENUM.NEUTRAL),
-	language: text("language").default(DEFAULT_LANGUAGE),
+	})
+		.notNull()
+		.default(PERSONALITY_ENUM.NEUTRAL),
+	language: text("language").notNull().default(DEFAULT_LANGUAGE),
 	profession: text("profession", {
 		enum: PROFESSION_ENUM_VALUES,
-	}).default(PROFESSION_ENUM.HOST),
+	})
+		.notNull()
+		.default(PROFESSION_ENUM.HOST),
 	communicationStyle: text("communication_style", {
 		enum: COMMUNICATION_STYLE_ENUM_VALUES,
-	}).default(COMMUNICATION_STYLE_ENUM.FRIENDLY),
+	})
+		.notNull()
+		.default(COMMUNICATION_STYLE_ENUM.FRIENDLY),
 	perceivedAge: text("perceived_age", {
 		enum: PERCEIVED_AGE_ENUM_VALUES,
-	}).default(PERCEIVED_AGE_ENUM.ADULT),
+	})
+		.notNull()
+		.default(PERCEIVED_AGE_ENUM.ADULT),
 	culturalBackground: text("cultural_background"),
 	languagesSpoken: text("languages_spoken", { mode: "json" }),
 	knowledgeDepth: text("knowledge_depth", {
 		enum: KNOWLEDGE_DEPTH_ENUM_VALUES,
-	}).default(KNOWLEDGE_DEPTH_ENUM.INTERMEDIATE),
+	})
+		.notNull()
+		.default(KNOWLEDGE_DEPTH_ENUM.INTERMEDIATE),
 	interests: text("interests", { mode: "json" }),
 	hobbies: text("hobbies", { mode: "json" }),
 	skills: text("skills", { mode: "json" }),
 	relationshipType: text("relationship_type", {
 		enum: RELATIONSHIP_TYPE_ENUM_VALUES,
-	}).default(RELATIONSHIP_TYPE_ENUM.COMPANION),
+	})
+		.notNull()
+		.default(RELATIONSHIP_TYPE_ENUM.COMPANION),
 	roleMode: text("role_mode", {
 		enum: ROLE_MODE_ENUM_VALUES,
-	}).default(ROLE_MODE_ENUM.PASSIVE),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	})
+		.notNull()
+		.default(ROLE_MODE_ENUM.PASSIVE),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const wakeWordConfig = sqliteTable("wake_word_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
@@ -191,49 +219,65 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 		.notNull()
 		.default(WAKE_WORD_ENGINE_ENUM.KWS),
 	wakeWord: text("wake_word").notNull().default(DEFAULT_WAKE_WORD),
-	sensitivity: real("sensitivity").default(0.5),
-	threshold: real("threshold").default(0.5),
-	cooldown: real("cooldown").default(2.0),
+	sensitivity: real("sensitivity").notNull().default(0.5),
+	threshold: real("threshold").notNull().default(0.5),
+	cooldown: real("cooldown").notNull().default(2.0),
 	framework: text("framework", {
 		enum: WAKE_WORD_FRAMEWORK_ENUM_VALUES,
-	}).default(WAKE_WORD_FRAMEWORK_ENUM.ONNX),
+	})
+		.notNull()
+		.default(WAKE_WORD_FRAMEWORK_ENUM.ONNX),
 	model: text("model").notNull().default(DEFAULT_WAKE_WORD_MODEL),
-	customModelPath: text("custom_model_path").default(
-		DEFAULT_WAKE_WORD_MODEL_PATH,
-	),
-	quantization: text("quantization").default(DEFAULT_QUANTIZATION),
-	vadEngine: text("vad_engine").default(DEFAULT_VAD_ENGINE),
-	vadModelPath: text("vad_model_path").default(DEFAULT_VAD_MODEL_PATH),
+	customModelPath: text("custom_model_path")
+		.notNull()
+		.default(DEFAULT_WAKE_WORD_MODEL_PATH),
+	quantization: text("quantization").notNull().default(DEFAULT_QUANTIZATION),
+	vadEngine: text("vad_engine").notNull().default(DEFAULT_VAD_ENGINE),
+	vadModelPath: text("vad_model_path")
+		.notNull()
+		.default(DEFAULT_VAD_MODEL_PATH),
 	inputDeviceIndex: integer("device").notNull().default(0),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	sampleRate: integer("sample_rate")
+		.notNull()
+		.default(DEFAULT_AUDIO_CAPTURE_SAMPLE_RATE),
+	bitsPerSample: integer("bits_per_sample")
+		.notNull()
+		.default(DEFAULT_AUDIO_CAPTURE_BITS_PER_SAMPLE),
+	channels: integer("channels")
+		.notNull()
+		.default(DEFAULT_AUDIO_CAPTURE_CHANNELS),
+	maxRecordingMs: integer("max_recording_ms")
+		.notNull()
+		.default(DEFAULT_AUDIO_CAPTURE_MAX_RECORDING_MS),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const sttConfig = sqliteTable("stt_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
 	engine: text("engine", { enum: STT_ENGINE_ENUM_VALUES })
 		.notNull()
-		.default(STT_ENGINE_ENUM.WHISPER),
+		.default(STT_ENGINE_ENUM.ZIPFORMER),
 	modelName: text("model_name").notNull().default(DEFAULT_STT_MODEL_NAME),
-	language: text("language").default(DEFAULT_LANGUAGE),
-	modelPath: text("model_path").default(DEFAULT_STT_MODEL_PATH),
-	quantization: text("quantization").default(DEFAULT_QUANTIZATION),
+	language: text("language").notNull().default(DEFAULT_LANGUAGE),
+	modelPath: text("model_path").notNull().default(DEFAULT_STT_MODEL_PATH),
+	quantization: text("quantization").notNull().default(DEFAULT_QUANTIZATION),
 	silenceThreshold: real("silence_threshold"),
 	bufferSize: integer("buffer_size"),
-	timeoutMs: integer("timeout_ms").default(5000),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	timeoutMs: integer("timeout_ms").notNull().default(5000),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const llmModelConfig = sqliteTable("llm_model_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
@@ -241,21 +285,23 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 		.notNull()
 		.default(LLM_ENGINE_ENUM.OLLAMA),
 	modelName: text("model_name").notNull().default(DEFAULT_LLM_MODEL_NAME),
-	temperature: real("temperature").default(DEFAULT_LLM_MODEL_TEMPERATURE),
-	contextWindow: integer("context_window").default(
-		DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
-	),
-	useCompactPrompt: integer("use_compact_prompt", { mode: "boolean" }).default(
-		false,
-	),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	temperature: real("temperature")
+		.notNull()
+		.default(DEFAULT_LLM_MODEL_TEMPERATURE),
+	contextWindow: integer("context_window")
+		.notNull()
+		.default(DEFAULT_LLM_MODEL_CONTEXT_WINDOW),
+	useCompactPrompt: integer("use_compact_prompt", { mode: "boolean" })
+		.notNull()
+		.default(false),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const ttsConfig = sqliteTable("tts_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
@@ -265,34 +311,45 @@ export const ttsConfig = sqliteTable("tts_config", {
 		.notNull()
 		.default(TTS_ENGINE_ENUM.KOKORO),
 	voiceName: text("voice_name").notNull().default(DEFAULT_TTS_VOICE_NAME),
-	language: text("language").default(DEFAULT_LANGUAGE),
-	modelPath: text("model_path").default(DEFAULT_TTS_MODEL_PATH),
+	language: text("language").notNull().default(DEFAULT_LANGUAGE),
+	modelPath: text("model_path").notNull().default(DEFAULT_TTS_MODEL_PATH),
 	quantization: text("quantization"),
-	pitch: real("pitch").default(1),
-	speed: real("speed").default(1),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	pitch: real("pitch").notNull().default(1),
+	speed: real("speed").notNull().default(DEFAULT_TTS_SPEED),
+	silenceScale: real("silence_scale")
+		.notNull()
+		.default(DEFAULT_TTS_SILENCE_SCALE),
+	numThreads: integer("num_threads").notNull().default(DEFAULT_TTS_NUM_THREADS),
+	provider: text("provider").notNull().default(DEFAULT_TTS_PROVIDER),
+	maxNumSentences: integer("max_num_sentences")
+		.notNull()
+		.default(DEFAULT_TTS_MAX_NUM_SENTENCES),
+	streamingEnabled: integer("streaming_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_TTS_STREAMING_ENABLED),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const mcpServerConfig = sqliteTable("mcp_server_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
 	url: text("url").notNull(),
 	description: text("description"),
-	timeout: integer("timeout_ms").default(2000),
-	priority: integer("priority").default(0),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	timeout: integer("timeout_ms").notNull().default(2000),
+	priority: integer("priority").notNull().default(0),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(false),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
@@ -301,16 +358,19 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	})
 		.notNull()
 		.default(AUDIO_PLAYBACK_ENGINE_ENUM.SOX),
-	volume: integer("volume").default(100),
+	volume: integer("volume").notNull().default(DEFAULT_AUDIO_PLAYBACK_VOLUME),
+	streamingEnabled: integer("streaming_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED),
 	outputDevice: text("output_device"),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const mqttConfig = sqliteTable("mqtt_config", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	isActive: integer("is_active", { mode: "boolean" }).default(true),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
@@ -320,16 +380,16 @@ export const mqttConfig = sqliteTable("mqtt_config", {
 	host: text("host").notNull(),
 	username: text("username"),
 	password: text("password"),
-	qos: integer("qos").default(1),
+	qos: integer("qos").notNull().default(1),
 	topicRoot: text("topic_root").notNull(),
 	protocol: text("protocol", {
 		enum: MQTT_PROTOCOL_ENUM_VALUES,
 	})
 		.notNull()
 		.default(MQTT_PROTOCOL_ENUM.MQTT),
-	port: integer("port").default(1883),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	port: integer("port").notNull().default(1883),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const interactionSessionTrace = sqliteTable(
@@ -340,11 +400,11 @@ export const interactionSessionTrace = sqliteTable(
 			.notNull()
 			.references(() => domia.id),
 		sessionId: text("session_id").notNull(),
-		startedAt: text("started_at").default(DEFAULT_TIMESTAMP),
-		lastUsedAt: text("last_used_at").default(DEFAULT_TIMESTAMP),
-		timeoutMs: integer("session_id_timeout_ms").default(300_000),
-		createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-		updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+		startedAt: text("started_at").notNull().default(DEFAULT_TIMESTAMP),
+		lastUsedAt: text("last_used_at").notNull().default(DEFAULT_TIMESTAMP),
+		timeoutMs: integer("session_id_timeout_ms").notNull().default(300_000),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
 )
 
@@ -363,10 +423,10 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	responseType: text("response_type", { enum: RESPONSE_TYPE_ENUM_VALUES })
 		.notNull()
 		.default(RESPONSE_TYPE_ENUM.VOICE),
-	isActive: integer("is_active", { mode: "boolean" }).default(true),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
 	inputRaw: text("input_raw"),
 	inputAudioPath: text("input_audio_path"),
-	wakewordUsed: text("wakeword_used").default(DEFAULT_WAKE_WORD),
+	wakewordUsed: text("wakeword_used").notNull().default(DEFAULT_WAKE_WORD),
 	sttResult: text("stt_result"),
 	mcpServerUsed: text("mcp_server_used"),
 	mcpPrompt: text("mcp_prompt"),
@@ -378,8 +438,8 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	finalOutput: text("final_output"),
 	emotionSnapshot: text("emotion_snapshot", { mode: "json" }),
 	characterSnapshot: text("character_snapshot", { mode: "json" }),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const capabilityDelegation = sqliteTable("capability_delegation", {
@@ -392,10 +452,10 @@ export const capabilityDelegation = sqliteTable("capability_delegation", {
 	}).notNull(),
 	delegateToDomiaId: text("delegate_to_domia_id").references(() => domia.id),
 	delegateToDomiaKey: text("delegate_to_domia_key").notNull(),
-	priority: integer("priority").default(0),
-	isActive: integer("is_active", { mode: "boolean" }).default(true),
-	createdAt: text("created_at").default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").default(DEFAULT_TIMESTAMP),
+	priority: integer("priority").notNull().default(0),
+	isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const domiaRelations = relations(domia, ({ one, many }) => ({

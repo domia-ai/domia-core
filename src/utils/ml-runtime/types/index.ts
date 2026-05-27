@@ -56,6 +56,21 @@ export type TtsGenerationConfig = {
 	silenceScale?: number
 }
 
+export type TtsOnProgressInfo = {
+	samples: Float32Array
+	progress: number
+}
+
+export type TtsOnProgressCallbackType = (
+	info: TtsOnProgressInfo,
+) => number | boolean | undefined
+
+export type TtsGenerateAsyncRequest = {
+	text: string
+	generationConfig?: TtsGenerationConfig
+	onProgress?: TtsOnProgressCallbackType
+}
+
 export type OfflineTtsInstance = {
 	sampleRate: number
 	numSpeakers: number
@@ -63,6 +78,7 @@ export type OfflineTtsInstance = {
 		text: string
 		generationConfig?: TtsGenerationConfig
 	}) => GeneratedAudio
+	generateAsync: (req: TtsGenerateAsyncRequest) => Promise<GeneratedAudio>
 }
 
 export type OfflineTtsConfig = Record<string, unknown>
