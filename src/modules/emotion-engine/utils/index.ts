@@ -38,28 +38,24 @@ export const applyDelta = (
 	return normalizeEmotionVector(updated)
 }
 
-export const decay = (vector: EmotionType): EmotionType => {
-	const decayed = Object.fromEntries(
-		Object.entries(vector).map(([emotion, value]) => [
-			emotion,
-			value * 0.95, // 5% decay
-		]),
+export const decayTowardBaseline = (
+	vector: EmotionType,
+	baseline: EmotionType,
+	elapsedMs: number,
+	halfLifeMs: Record<keyof EmotionType, number>,
+): EmotionType => {
+	const elapsed = Math.max(0, elapsedMs)
+	const relaxed = Object.fromEntries(
+		Object.entries(vector).map(([emotion, value]) => {
+			const key = emotion as keyof EmotionType
+			const halfLife = halfLifeMs[key]
+			const fraction = halfLife > 0 ? 1 - Math.pow(0.5, elapsed / halfLife) : 1
+			const target = baseline[key]
+			return [emotion, value + (target - value) * fraction]
+		}),
 	) as EmotionType
 
-	return normalizeEmotionVector(decayed)
-}
-
-export const fillNullValues = <T extends Record<string, number>>(obj: {
-	[K in keyof T]: T[K] | null
-}): { [K in keyof T]: number } => {
-	const filled = Object.fromEntries(
-		Object.entries(obj).map(([key, value]) => [
-			key,
-			value === null ? 0 : value,
-		]),
-	) as { [K in keyof T]: number }
-
-	return filled
+	return normalizeEmotionVector(relaxed)
 }
 
 export const getEmotionVectorFromEmotionState = (

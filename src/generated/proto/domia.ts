@@ -71,6 +71,21 @@ export interface StreamSttMeta {
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
   responseType?: string | undefined;
+  personaContextJson?: string | undefined;
+}
+
+export interface ReflectionReport {
+  senderDomiaKey: string;
+  originDomiaKey?: string | undefined;
+  interactionId?: string | undefined;
+  emotionDeltaJson?: string | undefined;
+  cause?: string | undefined;
+  factsJson?: string | undefined;
+  userEmotionJson?: string | undefined;
+}
+
+export interface ReflectionAck {
+  accepted: boolean;
 }
 
 export interface AudioChunk {
@@ -90,6 +105,7 @@ export interface LlmStreamRequest {
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
   responseType?: string | undefined;
+  personaContextJson?: string | undefined;
 }
 
 export interface TtsStreamRequest {
@@ -100,7 +116,10 @@ export interface TtsStreamRequest {
 }
 
 export interface ReplyAudioMessage {
-  payload: { $case: "audio"; audio: AudioChunk } | { $case: "finalReply"; finalReply: string } | undefined;
+  payload: { $case: "audio"; audio: AudioChunk } | { $case: "finalReply"; finalReply: string } | {
+    $case: "transcript";
+    transcript: string;
+  } | undefined;
 }
 
 function createBaseHealthRequest(): HealthRequest {
@@ -1056,7 +1075,13 @@ export const DeliveryAck: MessageFns<DeliveryAck> = {
 };
 
 function createBaseStreamSttMeta(): StreamSttMeta {
-  return { senderDomiaKey: "", originDomiaKey: undefined, interactionId: undefined, responseType: undefined };
+  return {
+    senderDomiaKey: "",
+    originDomiaKey: undefined,
+    interactionId: undefined,
+    responseType: undefined,
+    personaContextJson: undefined,
+  };
 }
 
 export const StreamSttMeta: MessageFns<StreamSttMeta> = {
@@ -1072,6 +1097,9 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     }
     if (message.responseType !== undefined) {
       writer.uint32(34).string(message.responseType);
+    }
+    if (message.personaContextJson !== undefined) {
+      writer.uint32(42).string(message.personaContextJson);
     }
     return writer;
   },
@@ -1115,6 +1143,14 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
           message.responseType = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.personaContextJson = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1146,6 +1182,11 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
         : isSet(object.response_type)
         ? globalThis.String(object.response_type)
         : undefined,
+      personaContextJson: isSet(object.personaContextJson)
+        ? globalThis.String(object.personaContextJson)
+        : isSet(object.persona_context_json)
+        ? globalThis.String(object.persona_context_json)
+        : undefined,
     };
   },
 
@@ -1163,6 +1204,9 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     if (message.responseType !== undefined) {
       obj.responseType = message.responseType;
     }
+    if (message.personaContextJson !== undefined) {
+      obj.personaContextJson = message.personaContextJson;
+    }
     return obj;
   },
 
@@ -1175,6 +1219,253 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
     message.responseType = object.responseType ?? undefined;
+    message.personaContextJson = object.personaContextJson ?? undefined;
+    return message;
+  },
+};
+
+function createBaseReflectionReport(): ReflectionReport {
+  return {
+    senderDomiaKey: "",
+    originDomiaKey: undefined,
+    interactionId: undefined,
+    emotionDeltaJson: undefined,
+    cause: undefined,
+    factsJson: undefined,
+    userEmotionJson: undefined,
+  };
+}
+
+export const ReflectionReport: MessageFns<ReflectionReport> = {
+  encode(message: ReflectionReport, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.senderDomiaKey !== "") {
+      writer.uint32(10).string(message.senderDomiaKey);
+    }
+    if (message.originDomiaKey !== undefined) {
+      writer.uint32(18).string(message.originDomiaKey);
+    }
+    if (message.interactionId !== undefined) {
+      writer.uint32(26).string(message.interactionId);
+    }
+    if (message.emotionDeltaJson !== undefined) {
+      writer.uint32(34).string(message.emotionDeltaJson);
+    }
+    if (message.cause !== undefined) {
+      writer.uint32(42).string(message.cause);
+    }
+    if (message.factsJson !== undefined) {
+      writer.uint32(50).string(message.factsJson);
+    }
+    if (message.userEmotionJson !== undefined) {
+      writer.uint32(58).string(message.userEmotionJson);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReflectionReport {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReflectionReport();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.senderDomiaKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.originDomiaKey = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.interactionId = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.emotionDeltaJson = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.cause = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.factsJson = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.userEmotionJson = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReflectionReport {
+    return {
+      senderDomiaKey: isSet(object.senderDomiaKey)
+        ? globalThis.String(object.senderDomiaKey)
+        : isSet(object.sender_domia_key)
+        ? globalThis.String(object.sender_domia_key)
+        : "",
+      originDomiaKey: isSet(object.originDomiaKey)
+        ? globalThis.String(object.originDomiaKey)
+        : isSet(object.origin_domia_key)
+        ? globalThis.String(object.origin_domia_key)
+        : undefined,
+      interactionId: isSet(object.interactionId)
+        ? globalThis.String(object.interactionId)
+        : isSet(object.interaction_id)
+        ? globalThis.String(object.interaction_id)
+        : undefined,
+      emotionDeltaJson: isSet(object.emotionDeltaJson)
+        ? globalThis.String(object.emotionDeltaJson)
+        : isSet(object.emotion_delta_json)
+        ? globalThis.String(object.emotion_delta_json)
+        : undefined,
+      cause: isSet(object.cause) ? globalThis.String(object.cause) : undefined,
+      factsJson: isSet(object.factsJson)
+        ? globalThis.String(object.factsJson)
+        : isSet(object.facts_json)
+        ? globalThis.String(object.facts_json)
+        : undefined,
+      userEmotionJson: isSet(object.userEmotionJson)
+        ? globalThis.String(object.userEmotionJson)
+        : isSet(object.user_emotion_json)
+        ? globalThis.String(object.user_emotion_json)
+        : undefined,
+    };
+  },
+
+  toJSON(message: ReflectionReport): unknown {
+    const obj: any = {};
+    if (message.senderDomiaKey !== "") {
+      obj.senderDomiaKey = message.senderDomiaKey;
+    }
+    if (message.originDomiaKey !== undefined) {
+      obj.originDomiaKey = message.originDomiaKey;
+    }
+    if (message.interactionId !== undefined) {
+      obj.interactionId = message.interactionId;
+    }
+    if (message.emotionDeltaJson !== undefined) {
+      obj.emotionDeltaJson = message.emotionDeltaJson;
+    }
+    if (message.cause !== undefined) {
+      obj.cause = message.cause;
+    }
+    if (message.factsJson !== undefined) {
+      obj.factsJson = message.factsJson;
+    }
+    if (message.userEmotionJson !== undefined) {
+      obj.userEmotionJson = message.userEmotionJson;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ReflectionReport>): ReflectionReport {
+    return ReflectionReport.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ReflectionReport>): ReflectionReport {
+    const message = createBaseReflectionReport();
+    message.senderDomiaKey = object.senderDomiaKey ?? "";
+    message.originDomiaKey = object.originDomiaKey ?? undefined;
+    message.interactionId = object.interactionId ?? undefined;
+    message.emotionDeltaJson = object.emotionDeltaJson ?? undefined;
+    message.cause = object.cause ?? undefined;
+    message.factsJson = object.factsJson ?? undefined;
+    message.userEmotionJson = object.userEmotionJson ?? undefined;
+    return message;
+  },
+};
+
+function createBaseReflectionAck(): ReflectionAck {
+  return { accepted: false };
+}
+
+export const ReflectionAck: MessageFns<ReflectionAck> = {
+  encode(message: ReflectionAck, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.accepted !== false) {
+      writer.uint32(8).bool(message.accepted);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReflectionAck {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReflectionAck();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.accepted = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReflectionAck {
+    return { accepted: isSet(object.accepted) ? globalThis.Boolean(object.accepted) : false };
+  },
+
+  toJSON(message: ReflectionAck): unknown {
+    const obj: any = {};
+    if (message.accepted !== false) {
+      obj.accepted = message.accepted;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ReflectionAck>): ReflectionAck {
+    return ReflectionAck.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ReflectionAck>): ReflectionAck {
+    const message = createBaseReflectionAck();
+    message.accepted = object.accepted ?? false;
     return message;
   },
 };
@@ -1358,6 +1649,7 @@ function createBaseLlmStreamRequest(): LlmStreamRequest {
     originDomiaKey: undefined,
     interactionId: undefined,
     responseType: undefined,
+    personaContextJson: undefined,
   };
 }
 
@@ -1377,6 +1669,9 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     }
     if (message.responseType !== undefined) {
       writer.uint32(42).string(message.responseType);
+    }
+    if (message.personaContextJson !== undefined) {
+      writer.uint32(50).string(message.personaContextJson);
     }
     return writer;
   },
@@ -1428,6 +1723,14 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
           message.responseType = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.personaContextJson = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1460,6 +1763,11 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
         : isSet(object.response_type)
         ? globalThis.String(object.response_type)
         : undefined,
+      personaContextJson: isSet(object.personaContextJson)
+        ? globalThis.String(object.personaContextJson)
+        : isSet(object.persona_context_json)
+        ? globalThis.String(object.persona_context_json)
+        : undefined,
     };
   },
 
@@ -1480,6 +1788,9 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     if (message.responseType !== undefined) {
       obj.responseType = message.responseType;
     }
+    if (message.personaContextJson !== undefined) {
+      obj.personaContextJson = message.personaContextJson;
+    }
     return obj;
   },
 
@@ -1493,6 +1804,7 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
     message.responseType = object.responseType ?? undefined;
+    message.personaContextJson = object.personaContextJson ?? undefined;
     return message;
   },
 };
@@ -1630,6 +1942,9 @@ export const ReplyAudioMessage: MessageFns<ReplyAudioMessage> = {
       case "finalReply":
         writer.uint32(18).string(message.payload.finalReply);
         break;
+      case "transcript":
+        writer.uint32(26).string(message.payload.transcript);
+        break;
     }
     return writer;
   },
@@ -1657,6 +1972,14 @@ export const ReplyAudioMessage: MessageFns<ReplyAudioMessage> = {
           message.payload = { $case: "finalReply", finalReply: reader.string() };
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.payload = { $case: "transcript", transcript: reader.string() };
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1674,6 +1997,8 @@ export const ReplyAudioMessage: MessageFns<ReplyAudioMessage> = {
         ? { $case: "finalReply", finalReply: globalThis.String(object.finalReply) }
         : isSet(object.final_reply)
         ? { $case: "finalReply", finalReply: globalThis.String(object.final_reply) }
+        : isSet(object.transcript)
+        ? { $case: "transcript", transcript: globalThis.String(object.transcript) }
         : undefined,
     };
   },
@@ -1684,6 +2009,8 @@ export const ReplyAudioMessage: MessageFns<ReplyAudioMessage> = {
       obj.audio = AudioChunk.toJSON(message.payload.audio);
     } else if (message.payload?.$case === "finalReply") {
       obj.finalReply = message.payload.finalReply;
+    } else if (message.payload?.$case === "transcript") {
+      obj.transcript = message.payload.transcript;
     }
     return obj;
   },
@@ -1703,6 +2030,12 @@ export const ReplyAudioMessage: MessageFns<ReplyAudioMessage> = {
       case "finalReply": {
         if (object.payload?.finalReply !== undefined && object.payload?.finalReply !== null) {
           message.payload = { $case: "finalReply", finalReply: object.payload.finalReply };
+        }
+        break;
+      }
+      case "transcript": {
+        if (object.payload?.transcript !== undefined && object.payload?.transcript !== null) {
+          message.payload = { $case: "transcript", transcript: object.payload.transcript };
         }
         break;
       }
@@ -1764,6 +2097,22 @@ export const DomiaNodeDefinition = {
       responseStream: true,
       options: {},
     },
+    streamVoiceReply: {
+      name: "StreamVoiceReply",
+      requestType: AudioChunk as typeof AudioChunk,
+      requestStream: true,
+      responseType: ReplyAudioMessage as typeof ReplyAudioMessage,
+      responseStream: true,
+      options: {},
+    },
+    reportReflection: {
+      name: "ReportReflection",
+      requestType: ReflectionReport as typeof ReflectionReport,
+      requestStream: false,
+      responseType: ReflectionAck as typeof ReflectionAck,
+      responseStream: false,
+      options: {},
+    },
   },
 } as const;
 
@@ -1786,6 +2135,14 @@ export interface DomiaNodeServiceImplementation<CallContextExt = {}> {
     request: LlmStreamRequest,
     context: CallContext & CallContextExt,
   ): ServerStreamingMethodResult<DeepPartial<ReplyAudioMessage>>;
+  streamVoiceReply(
+    request: AsyncIterable<AudioChunk>,
+    context: CallContext & CallContextExt,
+  ): ServerStreamingMethodResult<DeepPartial<ReplyAudioMessage>>;
+  reportReflection(
+    request: ReflectionReport,
+    context: CallContext & CallContextExt,
+  ): Promise<DeepPartial<ReflectionAck>>;
 }
 
 export interface DomiaNodeClient<CallOptionsExt = {}> {
@@ -1801,6 +2158,14 @@ export interface DomiaNodeClient<CallOptionsExt = {}> {
     request: DeepPartial<LlmStreamRequest>,
     options?: CallOptions & CallOptionsExt,
   ): AsyncIterable<ReplyAudioMessage>;
+  streamVoiceReply(
+    request: AsyncIterable<DeepPartial<AudioChunk>>,
+    options?: CallOptions & CallOptionsExt,
+  ): AsyncIterable<ReplyAudioMessage>;
+  reportReflection(
+    request: DeepPartial<ReflectionReport>,
+    options?: CallOptions & CallOptionsExt,
+  ): Promise<ReflectionAck>;
 }
 
 function bytesFromBase64(b64: string): Uint8Array {

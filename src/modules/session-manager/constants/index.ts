@@ -1,0 +1,2 @@
+export const RECENT_TURNS_WINDOW = 8
+export const RECENT_TURNS_MAX_AGE_MS = 1_800_000

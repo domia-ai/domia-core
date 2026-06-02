@@ -4,6 +4,7 @@ import { type RuntimeCapabilitiesType } from "@/setups/environment"
 import type { SttEngineAdapterType } from "@/modules/stt-engine"
 import type { TtsEngineAdapterType } from "@/modules/tts-engine"
 import type { LlmEngineAdapterType } from "@/modules/llm-engine"
+import type { RecentTurnType } from "@/modules/prompt-context-builder"
 
 export type ResolvedSttEngineType = {
 	adapter: SttEngineAdapterType
@@ -54,6 +55,7 @@ export type SttDonePayloadType = {
 	interactionId?: string
 	originDomiaKey?: string
 	responseType?: string
+	alreadyHandled?: boolean
 	traceId?: string
 }
 
@@ -149,6 +151,9 @@ export type SttFlowSessionType = {
 	originDomiaKey: string | undefined
 	responseType: string | undefined
 	isVoice: boolean
+	recentTurns: RecentTurnType[]
+	knownFacts: string[]
+	userMoodTrend: string[]
 }
 
 export type LlmFlowSessionType = {

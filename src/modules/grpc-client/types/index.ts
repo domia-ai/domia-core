@@ -46,6 +46,7 @@ export type StreamLlmRequestType = {
 	originDomiaKey?: string
 	interactionId?: string
 	responseType?: string
+	personaContextJson?: string
 }
 
 export type StreamLlmResult = {
@@ -79,6 +80,7 @@ export type StreamReplyAudioRequestType = {
 	originDomiaKey?: string
 	interactionId?: string
 	responseType?: string
+	personaContextJson?: string
 }
 
 export type StreamReplyAudioResult = {
@@ -90,6 +92,28 @@ export type StreamReplyAudioResult = {
 	target?: DeliverEventTarget
 	error?: string
 	unsupported?: boolean
+	atCapacity?: boolean
+	attemptedTargets: number
+}
+
+export type StreamVoiceReplyRequestType = {
+	originDomiaKey?: string
+	interactionId?: string
+	responseType?: string
+	personaContextJson?: string
+	audioFactory: () => AsyncIterable<Buffer>
+}
+
+export type StreamVoiceReplyResult = {
+	delivered: boolean
+	audio?: AsyncIterable<Buffer>
+	transcriptPromise?: Promise<string>
+	finalReplyPromise?: Promise<string>
+	audioMeta?: { sampleRate?: number; channels?: number }
+	target?: DeliverEventTarget
+	error?: string
+	unsupported?: boolean
+	atCapacity?: boolean
 	attemptedTargets: number
 }
 
@@ -98,6 +122,7 @@ export type OpenedServerStream<T> = {
 	target?: DeliverEventTarget
 	error?: string
 	unsupported?: boolean
+	atCapacity?: boolean
 	attemptedTargets: number
 	firstValue?: T
 	stream?: AsyncIterable<T>

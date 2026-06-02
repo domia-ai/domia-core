@@ -1,6 +1,7 @@
 const HARD_TERMINATORS = /([.!?])\s/
 const SOFT_TERMINATORS = /([,;:])\s/
 const SOFT_FLUSH_MIN_CHARS = 20
+const FIRST_UNIT_MAX_WORDS = 8
 const MEDIUM_FLUSH_CHARS = 60
 const HARD_FLUSH_CHARS = 200
 
@@ -19,6 +20,22 @@ const trySoftTerminator = (buffer: string): FlushResultType => {
 	if (!match || match.index === undefined) return null
 	const cut = match.index + match[0].length
 	return { sentence: buffer.slice(0, cut).trim(), remaining: buffer.slice(cut) }
+}
+
+const tryFirstUnitWordFlush = (buffer: string): FlushResultType => {
+	const re = /\S+\s+/g
+	let count = 0
+	for (let match = re.exec(buffer); match !== null; match = re.exec(buffer)) {
+		count++
+		if (count >= FIRST_UNIT_MAX_WORDS) {
+			const cut = re.lastIndex
+			return {
+				sentence: buffer.slice(0, cut).trim(),
+				remaining: buffer.slice(cut),
+			}
+		}
+	}
+	return null
 }
 
 const tryMediumFlush = (buffer: string): FlushResultType => {
@@ -41,6 +58,7 @@ const tryHardFlush = (buffer: string): FlushResultType => {
 const nextFlush = (buffer: string, emittedAny: boolean): FlushResultType =>
 	tryHardTerminator(buffer) ??
 	(emittedAny ? null : trySoftTerminator(buffer)) ??
+	(emittedAny ? null : tryFirstUnitWordFlush(buffer)) ??
 	(emittedAny ? null : tryMediumFlush(buffer)) ??
 	tryHardFlush(buffer)
 
@@ -64,6 +82,26 @@ export const splitSentences = async function* (
 
 	const tail = buffer.trim()
 	if (tail.length > 0) yield tail
+}
+
+export const splitTextIntoSentences = (text: string): string[] => {
+	const trimmed = text.trim()
+	if (trimmed.length === 0) return []
+	const out: string[] = []
+	let rest = trimmed
+	for (
+		let match = HARD_TERMINATORS.exec(rest);
+		match !== null && match.index !== undefined;
+		match = HARD_TERMINATORS.exec(rest)
+	) {
+		const cut = match.index + match[0].length
+		const sentence = rest.slice(0, cut).trim()
+		if (sentence.length > 0) out.push(sentence)
+		rest = rest.slice(cut)
+	}
+	const tail = rest.trim()
+	if (tail.length > 0) out.push(tail)
+	return out.length > 0 ? out : [trimmed]
 }
 
 export class AsyncQueue<T> {

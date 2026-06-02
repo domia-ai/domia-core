@@ -9,6 +9,8 @@ service DomiaNode {
   rpc StreamLlm(LlmStreamRequest) returns (stream TokenChunk);
   rpc StreamTts(TtsStreamRequest) returns (stream AudioChunk);
   rpc StreamReplyAudio(LlmStreamRequest) returns (stream ReplyAudioMessage);
+  rpc StreamVoiceReply(stream AudioChunk) returns (stream ReplyAudioMessage);
+  rpc ReportReflection(ReflectionReport) returns (ReflectionAck);
 }
 
 message HealthRequest {}
@@ -71,6 +73,21 @@ message StreamSttMeta {
   optional string origin_domia_key = 2;
   optional string interaction_id = 3;
   optional string response_type = 4;
+  optional string persona_context_json = 5;
+}
+
+message ReflectionReport {
+  string sender_domia_key = 1;
+  optional string origin_domia_key = 2;
+  optional string interaction_id = 3;
+  optional string emotion_delta_json = 4;
+  optional string cause = 5;
+  optional string facts_json = 6;
+  optional string user_emotion_json = 7;
+}
+
+message ReflectionAck {
+  bool accepted = 1;
 }
 
 message AudioChunk {
@@ -90,6 +107,7 @@ message LlmStreamRequest {
   optional string origin_domia_key = 3;
   optional string interaction_id = 4;
   optional string response_type = 5;
+  optional string persona_context_json = 6;
 }
 
 message TtsStreamRequest {
@@ -103,5 +121,6 @@ message ReplyAudioMessage {
   oneof payload {
     AudioChunk audio = 1;
     string final_reply = 2;
+    string transcript = 3;
   }
 }

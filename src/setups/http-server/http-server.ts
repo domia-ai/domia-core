@@ -1,20 +1,35 @@
 import Fastify from "fastify"
 import { httpServerLogger } from "@/utils"
 import { env } from "@/config"
-import { type DomiaType } from "@/modules/core"
+import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import {
 	handleGetRoot,
 	handleGetHealth,
 	handleGetAudio,
 	handlePostChat,
 	handlePostVoice,
+	handleGetMind,
+	handleImportMind,
+	handleGetTemplates,
+	handleActivateTemplate,
 	type PostChatRouteType,
 	type GetAudioRouteType,
 	type PostVoiceRouteType,
+	type PostImportMindRouteType,
+	type TemplateIdRouteType,
 } from "@/modules/http-api"
 
 const HTTP_SERVER_HOST = env?.HTTP_SERVER_HOST
 const HTTP_SERVER_PORT = Number(env?.HTTP_SERVER_PORT)
+
+const liveDomia = async (fallback: DomiaType): Promise<DomiaType> => {
+	try {
+		return (await getOwnDomia()) ?? fallback
+	} catch (err) {
+		httpServerLogger.warn("getOwnDomia failed — using boot domia", { err })
+		return fallback
+	}
+}
 
 export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 	httpServerLogger.info("🚀 Starting HTTP server...")
@@ -33,11 +48,33 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 	)
 
 	fastify.post<PostChatRouteType>("/chat", async (request) =>
-		handlePostChat(domia, request.body),
+		handlePostChat(await liveDomia(domia), request.body),
 	)
 
 	fastify.post<PostVoiceRouteType>("/voice", async (request) =>
-		handlePostVoice(domia, request.body),
+		handlePostVoice(await liveDomia(domia), request.body),
+	)
+
+	fastify.post("/config/refresh", async () => {
+		invalidateOwnDomia()
+		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
+		return { refreshed: true }
+	})
+
+	fastify.get("/mind", async () => handleGetMind(await liveDomia(domia)))
+
+	fastify.post<PostImportMindRouteType>(
+		"/mind/import",
+		async (request, reply) =>
+			handleImportMind(await liveDomia(domia), request.body, reply),
+	)
+
+	fastify.get("/templates", async () => handleGetTemplates())
+
+	fastify.post<TemplateIdRouteType>(
+		"/templates/:id/activate",
+		async (request, reply) =>
+			handleActivateTemplate(await liveDomia(domia), request.params.id, reply),
 	)
 
 	try {

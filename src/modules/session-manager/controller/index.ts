@@ -2,7 +2,9 @@ import { type DomiaType } from "@/modules/core"
 import { generateUuid } from "@/utils"
 
 import { DBClientOrTxType, UpdateInteractionTraceType } from "@/db"
+import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import dbAdapter from "../db-adapter"
+import { RECENT_TURNS_WINDOW, RECENT_TURNS_MAX_AGE_MS } from "../constants"
 import type { NewInteractionDataType } from "../types"
 
 export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
@@ -103,4 +105,66 @@ export const getInteractionById = async (
 ) => {
 	const rows = await dbAdapter.getInteractionById(interactionId, client)
 	return rows
+}
+
+export const getRecentUserMoods = async (
+	domia: DomiaType,
+	limit: number = RECENT_TURNS_WINDOW,
+): Promise<string[]> => {
+	try {
+		const rows = await dbAdapter.getRecentInteractionsForDomia(
+			domia.id,
+			limit * 3,
+		)
+		const now = Date.now()
+		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
+		return rows
+			.filter((row) => {
+				const ts = row.createdAt ? Date.parse(row.createdAt + "Z") : NaN
+				return !Number.isNaN(ts) && now - ts <= maxAgeMs
+			})
+			.map((row) => row.userEmotionSnapshot)
+			.filter(
+				(s): s is { primary: string; intensity?: number; note?: string } =>
+					!!s &&
+					typeof s === "object" &&
+					typeof (s as { primary?: unknown }).primary === "string",
+			)
+			.map((s) => (s.note ? `${s.primary} (${s.note})` : s.primary))
+			.slice(0, limit)
+			.reverse()
+	} catch {
+		return []
+	}
+}
+
+export const getRecentTurns = async (
+	domia: DomiaType,
+	excludeInteractionId: string | undefined,
+): Promise<RecentTurnType[]> => {
+	try {
+		const limit = domia?.memoryWindowTurns ?? RECENT_TURNS_WINDOW
+		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
+		const rows = await dbAdapter.getRecentInteractionsForDomia(
+			domia.id,
+			limit * 3,
+		)
+		const now = Date.now()
+		return rows
+			.filter((row) => row.id !== excludeInteractionId)
+			.filter((row) => {
+				const ts = row.createdAt ? Date.parse(row.createdAt + "Z") : NaN
+				return !Number.isNaN(ts) && now - ts <= maxAgeMs
+			})
+			.map((row) => ({
+				userText: row.inputRaw ?? row.sttResult ?? null,
+				domiaText: row.llmResponse ?? row.finalOutput ?? null,
+				createdAt: row.createdAt,
+			}))
+			.filter((turn) => turn.userText && turn.domiaText)
+			.slice(0, limit)
+			.reverse()
+	} catch {
+		return []
+	}
 }

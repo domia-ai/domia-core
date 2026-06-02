@@ -22,12 +22,15 @@ import type {
 	StreamTtsResult,
 	StreamReplyAudioRequestType,
 	StreamReplyAudioResult,
+	StreamVoiceReplyRequestType,
+	StreamVoiceReplyResult,
 	OpenedServerStream,
 } from "../types"
 import {
 	DEFAULT_DEADLINE_MS,
 	GRPC_UNAVAILABLE_CODE,
 	GRPC_UNIMPLEMENTED_CODE,
+	GRPC_RESOURCE_EXHAUSTED_CODE,
 	RETRYABLE_GRPC_CODES,
 	UNHEALTHY_GRPC_STATES,
 	STREAM_IDLE_TIMEOUT_MS,
@@ -224,6 +227,11 @@ const isUnimplementedError = (err: unknown): boolean => {
 	return (err as { code?: number }).code === GRPC_UNIMPLEMENTED_CODE
 }
 
+const isResourceExhaustedError = (err: unknown): boolean => {
+	if (!err || typeof err !== "object") return false
+	return (err as { code?: number }).code === GRPC_RESOURCE_EXHAUSTED_CODE
+}
+
 export const streamSttToTarget = async (
 	senderDomiaKey: string,
 	targets: DeliverEventTarget[],
@@ -300,6 +308,7 @@ const openServerStream = async <T>(
 	}
 	let attempted = 0
 	let allUnsupported = true
+	let atCapacity = false
 	for (const target of targets) {
 		attempted++
 		const client = getClient(target)
@@ -323,6 +332,7 @@ const openServerStream = async <T>(
 			clearTimeout(timer)
 			if (!isUnimplementedError(err)) allUnsupported = false
 			if (isUnavailableError(err)) closeChannel(addr)
+			if (isResourceExhaustedError(err)) atCapacity = true
 			grpcClientLogger.warn(
 				`✗ stream open to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
 			)
@@ -355,7 +365,8 @@ const openServerStream = async <T>(
 	return {
 		delivered: false,
 		unsupported: allUnsupported,
-		error: "all targets failed",
+		atCapacity,
+		error: atCapacity ? "hub at capacity" : "all targets failed",
 		attemptedTargets: attempted,
 	}
 }
@@ -373,6 +384,7 @@ export const streamLlmFromTarget = async (
 				originDomiaKey: request.originDomiaKey,
 				interactionId: request.interactionId,
 				responseType: request.responseType,
+				personaContextJson: request.personaContextJson,
 			},
 			{ signal },
 		),
@@ -452,6 +464,7 @@ export const streamReplyAudioFromTarget = async (
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
 					responseType: request.responseType,
+					personaContextJson: request.personaContextJson,
 				},
 				{ signal },
 			),
@@ -460,6 +473,7 @@ export const streamReplyAudioFromTarget = async (
 		return {
 			delivered: false,
 			unsupported: opened.unsupported,
+			atCapacity: opened.atCapacity,
 			error: opened.error,
 			attemptedTargets: opened.attemptedTargets,
 		}
@@ -497,6 +511,125 @@ export const streamReplyAudioFromTarget = async (
 		channels,
 		target: opened.target,
 		attemptedTargets: opened.attemptedTargets,
+	}
+}
+
+export const streamVoiceReplyFromTarget = async (
+	senderDomiaKey: string,
+	targets: DeliverEventTarget[],
+	request: StreamVoiceReplyRequestType,
+): Promise<StreamVoiceReplyResult> => {
+	const opened = await openServerStream<ReplyAudioMessage>(
+		targets,
+		(client, signal) => {
+			const audioRequest = (async function* (): AsyncIterable<AudioChunk> {
+				yield {
+					pcm: new Uint8Array(0),
+					meta: {
+						senderDomiaKey,
+						originDomiaKey: request.originDomiaKey,
+						interactionId: request.interactionId,
+						responseType: request.responseType,
+						personaContextJson: request.personaContextJson,
+					},
+				}
+				for await (const buf of request.audioFactory()) {
+					yield { pcm: buf }
+				}
+			})()
+			return client.streamVoiceReply(audioRequest, { signal })
+		},
+	)
+	if (!opened.delivered || !opened.stream) {
+		return {
+			delivered: false,
+			unsupported: opened.unsupported,
+			atCapacity: opened.atCapacity,
+			error: opened.error,
+			attemptedTargets: opened.attemptedTargets,
+		}
+	}
+	const sourceStream = opened.stream
+	let resolveTranscript!: (v: string) => void
+	let resolveFinalReply!: (v: string) => void
+	const transcriptPromise = new Promise<string>((r) => {
+		resolveTranscript = r
+	})
+	const finalReplyPromise = new Promise<string>((r) => {
+		resolveFinalReply = r
+	})
+	const audioMeta: { sampleRate?: number; channels?: number } = {}
+	const audio = (async function* (): AsyncIterable<Buffer> {
+		try {
+			for await (const msg of sourceStream) {
+				if (msg.payload?.$case === "audio") {
+					const chunk = msg.payload.audio
+					if (audioMeta.sampleRate === undefined)
+						audioMeta.sampleRate = chunk.sampleRate
+					if (audioMeta.channels === undefined)
+						audioMeta.channels = chunk.channels
+					if (chunk.pcm && chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
+				} else if (msg.payload?.$case === "transcript") {
+					resolveTranscript(msg.payload.transcript)
+				} else if (msg.payload?.$case === "finalReply") {
+					resolveFinalReply(msg.payload.finalReply)
+				}
+			}
+		} finally {
+			resolveTranscript("")
+			resolveFinalReply("")
+		}
+	})()
+	return {
+		delivered: true,
+		audio,
+		transcriptPromise,
+		finalReplyPromise,
+		audioMeta,
+		target: opened.target,
+		attemptedTargets: opened.attemptedTargets,
+	}
+}
+
+export const reportReflectionToTarget = async (
+	senderDomiaKey: string,
+	target: DeliverEventTarget,
+	payload: {
+		originDomiaKey?: string
+		interactionId?: string
+		emotionDeltaJson?: string
+		cause?: string
+		factsJson?: string
+		userEmotionJson?: string
+	},
+): Promise<boolean> => {
+	const client = getClient(target)
+	if (!client) return false
+	const addr = addrOf(target)
+	const ac = new AbortController()
+	const timer = setTimeout(() => ac.abort(), DEFAULT_DEADLINE_MS)
+	try {
+		const ack = await client.reportReflection(
+			{
+				senderDomiaKey,
+				originDomiaKey: payload.originDomiaKey,
+				interactionId: payload.interactionId,
+				emotionDeltaJson: payload.emotionDeltaJson,
+				cause: payload.cause,
+				factsJson: payload.factsJson,
+				userEmotionJson: payload.userEmotionJson,
+			},
+			{ signal: ac.signal },
+		)
+		return ack.accepted
+	} catch (err) {
+		if (isUnavailableError(err)) closeChannel(addr)
+		grpcClientLogger.warn(
+			`✗ reportReflection to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
+		)
+		return false
+	} finally {
+		clearTimeout(timer)
 	}
 }
 

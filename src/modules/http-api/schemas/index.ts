@@ -13,3 +13,7 @@ export const postVoiceBodySchema = z.object({
 		.min(1, "Body must include a non-empty 'filePath' string.")
 		.trim(),
 })
+
+export const postImportMindBodySchema = z.object({
+	mind: z.unknown(),
+})

@@ -1,0 +1,4 @@
+export const MEMORY_FACT_RECALL_LIMIT = 20
+export const MEMORY_FACT_EXTRACT_MAX = 5
+export const DEFAULT_FACT_CONFIDENCE = 0.7
+export const MIN_RECALL_CONFIDENCE = 0.35

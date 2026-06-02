@@ -43,19 +43,28 @@ export const handleWakeDetected = async (
 			)
 			const { chunks, filePathPromise } = startAudioStream(domia)
 			const transcript = await stt.adapter.runStream(domia, chunks)
-			const filePath = await filePathPromise
-
-			await updateInteraction({
-				id: interactionId,
-				inputAudioPath: filePath,
-				sttResult: transcript,
-			})
 
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,
 				originDomiaKey: domia.domiaKey,
 			})
+
+			void filePathPromise
+				.then((filePath) =>
+					updateInteraction({
+						id: interactionId,
+						inputAudioPath: filePath,
+						sttResult: transcript,
+					}),
+				)
+				.catch((err) =>
+					domiaBusLogger.error("WAKE_DETECTED: audio persistence failed", {
+						domiaId,
+						interactionId,
+						err,
+					}),
+				)
 			return
 		}
 

@@ -12,13 +12,21 @@ import {
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
+	getRecentTurns,
+	getRecentUserMoods,
 } from "@/modules/session-manager"
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
-import { buildPromptContext } from "@/modules/prompt-context-builder"
+import {
+	buildPromptContext,
+	personaContextFromDomia,
+	type RecentTurnType,
+} from "@/modules/prompt-context-builder"
+import { reflectOnInteraction } from "@/modules/reflection"
+import { getFactStrings } from "@/modules/memory"
 import { runLLM } from "@/modules/llm-engine"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
@@ -37,6 +45,9 @@ const buildSttFlowSession = (
 	payload: SttDonePayloadType,
 	interactionId: string,
 	promptContext: string,
+	recentTurns: RecentTurnType[],
+	knownFacts: string[],
+	userMoodTrend: string[],
 ): SttFlowSessionType => ({
 	interactionId,
 	promptContext,
@@ -44,6 +55,9 @@ const buildSttFlowSession = (
 	originDomiaKey: payload.originDomiaKey,
 	responseType: payload.responseType,
 	isVoice: payload.responseType !== RESPONSE_TYPE_ENUM.TEXT,
+	recentTurns,
+	knownFacts,
+	userMoodTrend,
 })
 
 const publishStreamedReplyComplete = (
@@ -135,6 +149,12 @@ const tryLocalFullStreamVoice = async (
 	}
 
 	publishStreamedReplyComplete(domia.id, session, fullReply)
+	void reflectOnInteraction(
+		domia,
+		session.transcript,
+		fullReply,
+		session.interactionId,
+	)
 	return true
 }
 
@@ -158,6 +178,12 @@ const runLocalSyncLlm = async (
 		originDomiaKey: session.originDomiaKey,
 		responseType: session.responseType,
 	})
+	void reflectOnInteraction(
+		ctx.domia,
+		session.transcript,
+		reply,
+		session.interactionId,
+	)
 }
 
 const tryDelegatedReplyAudio = async (
@@ -187,8 +213,31 @@ const tryDelegatedReplyAudio = async (
 			originDomiaKey: session.originDomiaKey,
 			interactionId: session.interactionId,
 			responseType: session.responseType,
+			personaContextJson: JSON.stringify(
+				personaContextFromDomia(
+					domia,
+					session.recentTurns,
+					session.knownFacts,
+					session.userMoodTrend,
+				),
+			),
 		},
 	)
+
+	if (streamed.atCapacity) {
+		domiaBusLogger.warn(
+			`replyAudio delegation: hub at capacity — surfacing graceful busy (no fallback)`,
+			{ domiaId: domia.id, interactionId: session.interactionId },
+		)
+		notifyInteractionFailed(ctx, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			responseType: session.responseType,
+			error: "hub at capacity",
+			step: "capacity",
+		})
+		return true
+	}
 
 	if (!streamed.delivered || !streamed.audio) {
 		domiaBusLogger.warn(
@@ -252,6 +301,14 @@ const tryDelegatedStreamLlm = async (
 		originDomiaKey: session.originDomiaKey,
 		interactionId: session.interactionId,
 		responseType: session.responseType,
+		personaContextJson: JSON.stringify(
+			personaContextFromDomia(
+				domia,
+				session.recentTurns,
+				session.knownFacts,
+				session.userMoodTrend,
+			),
+		),
 	})
 
 	if (!streamed.delivered || !streamed.tokens) {
@@ -300,6 +357,14 @@ export const handleSttDone = async (
 	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`📝 STT_DONE: ${transcript}`, { domiaId })
 
+	if (payload.alreadyHandled) {
+		domiaBusLogger.info(
+			`📝 STT_DONE: alreadyHandled — fused voice reply already ran, skipping`,
+			{ domiaId, interactionId: payload.interactionId },
+		)
+		return
+	}
+
 	const interactionId = await getOrCreateInteractionId(
 		domia,
 		payload.interactionId,
@@ -316,34 +381,41 @@ export const handleSttDone = async (
 	if (!interactionId) return
 	setTraceContext({ interactionId, originDomiaKey })
 
-	try {
-		await updateInteraction({
-			id: interactionId,
-			inputRaw: transcript,
-			sttResult: transcript,
-			emotionSnapshot: domia?.emotionState,
-			characterSnapshot: domia?.characterProfile,
-		})
-	} catch (err) {
-		domiaBusLogger.error("STT_DONE: updateInteraction failed", {
+	void updateInteraction({
+		id: interactionId,
+		inputRaw: transcript,
+		sttResult: transcript,
+		emotionSnapshot: domia?.emotionState,
+		characterSnapshot: domia?.characterProfile,
+	}).catch((err) =>
+		domiaBusLogger.error("STT_DONE: snapshot persistence failed", {
 			domiaId,
 			interactionId,
 			err,
-		})
-		notifyInteractionFailed(ctx, {
-			interactionId,
-			originDomiaKey,
-			responseType,
-			error: toError(err),
-			step: "stt",
-		})
-		return
-	}
+		}),
+	)
+
+	const recentTurns = await getRecentTurns(domia, interactionId)
+	const knownFacts =
+		domia.moduleSettings?.factRecall !== false
+			? await getFactStrings(domia)
+			: []
+	const userMoodTrend =
+		domia.moduleSettings?.emotionEngine !== false
+			? await getRecentUserMoods(domia)
+			: []
 
 	const session = buildSttFlowSession(
 		payload,
 		interactionId,
-		buildPromptContext(domia, transcript),
+		buildPromptContext(domia, transcript, {
+			recentTurns,
+			knownFacts,
+			userMoodTrend,
+		}),
+		recentTurns,
+		knownFacts,
+		userMoodTrend,
 	)
 
 	try {

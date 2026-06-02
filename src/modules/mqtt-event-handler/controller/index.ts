@@ -1,6 +1,6 @@
 import type { handleMqttMessageArgsType } from "../types"
 import { MQTT_EVENT_ENUM } from "@/setups"
-import { type DomiaType } from "@/modules/core"
+import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
 
 export const isMqttEvent = (value: string): value is MQTT_EVENT_ENUM => {
@@ -24,6 +24,11 @@ export const handleMqttMessage = ({
 			case MQTT_EVENT_ENUM.HEARTBEAT: {
 				logger.info(`💓 heartbeat from ${domiaKey} [${type}]`)
 				receiveHeartbeat({ domia: payload as DomiaType })
+				break
+			}
+			case MQTT_EVENT_ENUM.CONFIG_CHANGED: {
+				invalidateOwnDomia()
+				logger.info(`🔄 config cache invalidated via MQTT [${domiaKey}]`)
 				break
 			}
 			default:

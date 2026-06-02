@@ -1,88 +1,26 @@
-import { mkdir } from "fs/promises"
-import fs from "fs"
+import { mkdir, writeFile } from "fs/promises"
 import path from "path"
 
 import { DomiaType } from "@/modules/core"
-import { generateUuid, ttsEngineLogger, TTS_ERRORS, domiaError } from "@/utils"
 import {
-	createOfflineTts,
-	writeWave,
-	type OfflineTtsInstance,
-} from "@/utils/ml-runtime"
+	generateUuid,
+	ttsEngineLogger,
+	TTS_ERRORS,
+	domiaError,
+	wrapPcmToWav,
+} from "@/utils"
 import { type SelectTtsConfigType, TTS_ENGINE_ENUM } from "@/db"
+import { splitTextIntoSentences } from "@/modules/core-bus/utils/sentence-buffer"
+import { getTtsPool } from "../../utils"
 import type {
 	RunTtsResultType,
 	TtsEngineAdapterType,
-	KokoroPathsType,
+	TtsWorkerEngineConfigType,
+	TtsWorkerJobType,
+	TtsWorkerResultType,
 } from "../../types"
 
-let tts: OfflineTtsInstance | null = null
-let loadedDir: string | null = null
-
-const resolvePaths = (modelDir: string): KokoroPathsType => {
-	const dir = path.resolve(modelDir)
-	return {
-		dir,
-		model: path.join(dir, "model.onnx"),
-		voices: path.join(dir, "voices.bin"),
-		tokens: path.join(dir, "tokens.txt"),
-		dataDir: path.join(dir, "espeak-ng-data"),
-	}
-}
-
-const validatePaths = (paths: KokoroPathsType) => {
-	const missing = [
-		paths.model,
-		paths.voices,
-		paths.tokens,
-		paths.dataDir,
-	].filter((p) => !fs.existsSync(p))
-	if (!fs.existsSync(paths.dir) || missing.length > 0) {
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
-			logger: ttsEngineLogger,
-			meta: {
-				message: `Kokoro model files missing at ${paths.dir}. Run npm run setup:models:kokoro`,
-				dir: paths.dir,
-				missing,
-			},
-		})
-	}
-}
-
-const buildConfig = (
-	paths: KokoroPathsType,
-	ttsConfig: SelectTtsConfigType,
-) => ({
-	model: {
-		kokoro: {
-			model: paths.model,
-			voices: paths.voices,
-			tokens: paths.tokens,
-			dataDir: paths.dataDir,
-		},
-		debug: false,
-		numThreads: ttsConfig.numThreads,
-		provider: ttsConfig.provider,
-	},
-	maxNumSentences: ttsConfig.maxNumSentences,
-})
-
-const getTts = (ttsConfig: SelectTtsConfigType) => {
-	const dir = path.resolve(ttsConfig.modelPath)
-	if (!tts || loadedDir !== dir) {
-		const paths = resolvePaths(ttsConfig.modelPath)
-		validatePaths(paths)
-		ttsEngineLogger.info("🚀 Loading Kokoro TTS", {
-			modelDir: dir,
-			numThreads: ttsConfig.numThreads,
-			provider: ttsConfig.provider,
-			maxNumSentences: ttsConfig.maxNumSentences,
-		})
-		tts = createOfflineTts(buildConfig(paths, ttsConfig))
-		loadedDir = dir
-	}
-	return tts
-}
+const KOKORO_SAMPLE_RATE = 24000
 
 const KOKORO_VOICE_TO_SID: Record<string, number> = {
 	af_heart: 0,
@@ -121,6 +59,26 @@ const requireTtsConfig = (domia: DomiaType): SelectTtsConfigType => {
 	return ttsConfig
 }
 
+const engineConfigOf = (
+	ttsConfig: SelectTtsConfigType,
+): TtsWorkerEngineConfigType => ({
+	modelPath: path.resolve(ttsConfig.modelPath),
+	numThreads: ttsConfig.numThreads,
+	provider: ttsConfig.provider,
+	maxNumSentences: ttsConfig.maxNumSentences,
+})
+
+const jobOf = (
+	ttsConfig: SelectTtsConfigType,
+	text: string,
+): TtsWorkerJobType => ({
+	engineConfig: engineConfigOf(ttsConfig),
+	text,
+	sid: resolveSid(ttsConfig.voiceName),
+	speed: ttsConfig.speed,
+	silenceScale: ttsConfig.silenceScale,
+})
+
 export const runKokoro = async (
 	domia: DomiaType,
 	text: string,
@@ -133,19 +91,20 @@ export const runKokoro = async (
 	const filePath = path.join(outputDir, `domia-${generateUuid()}.wav`)
 
 	try {
-		const engine = getTts(ttsConfig)
-		const audio = engine.generate({
-			text,
-			generationConfig: {
-				sid,
-				speed: ttsConfig.speed,
-				silenceScale: ttsConfig.silenceScale,
-			},
-		})
-		writeWave(filePath, {
-			samples: audio.samples,
-			sampleRate: audio.sampleRate,
-		})
+		const pool = getTtsPool(ttsConfig)
+		const parts: Buffer[] = []
+		let sampleRate = KOKORO_SAMPLE_RATE
+		for (const sentence of splitTextIntoSentences(text)) {
+			const result = await pool.submit<TtsWorkerResultType>(
+				jobOf(ttsConfig, sentence),
+			)
+			if (result.pcm && result.pcm.length > 0) {
+				parts.push(result.pcm)
+				sampleRate = result.sampleRate
+			}
+		}
+		const pcm = Buffer.concat(parts)
+		await writeFile(filePath, wrapPcmToWav(pcm, sampleRate, 1, 16))
 		return {
 			engineUsed: TTS_ENGINE_ENUM.KOKORO,
 			voiceUsed: voiceName,
@@ -154,8 +113,8 @@ export const runKokoro = async (
 			metadata: {
 				text,
 				lang: ttsConfig.language,
-				sampleRate: audio.sampleRate,
-				samples: audio.samples.length,
+				sampleRate,
+				samples: pcm.length / 2,
 				sid,
 			},
 		}
@@ -171,91 +130,17 @@ export const runKokoro = async (
 	}
 }
 
-const float32ToInt16Buffer = (samples: Float32Array): Buffer => {
-	const out = Buffer.alloc(samples.length * 2)
-	for (let i = 0; i < samples.length; i++) {
-		const clamped = Math.max(-1, Math.min(1, samples[i]))
-		out.writeInt16LE(Math.round(clamped * 32767), i * 2)
-	}
-	return out
-}
-
 const runKokoroStream = async function* (
 	domia: DomiaType,
 	text: string,
 ): AsyncIterable<Buffer> {
 	const ttsConfig = requireTtsConfig(domia)
-	const sid = resolveSid(ttsConfig.voiceName)
-	const engine = getTts(ttsConfig)
-
-	const queue: Buffer[] = []
-	let resolveNext: (() => void) | null = null
-	let done = false
-	let totalChunks = 0
-	let asyncError: unknown = null
-
-	const signal = () => {
-		if (resolveNext) {
-			const r = resolveNext
-			resolveNext = null
-			r()
-		}
-	}
-
-	const generationPromise = engine
-		.generateAsync({
-			text,
-			generationConfig: {
-				sid,
-				speed: ttsConfig.speed,
-				silenceScale: ttsConfig.silenceScale,
-			},
-			onProgress: (info) => {
-				if (info.samples.length > 0) {
-					queue.push(float32ToInt16Buffer(info.samples))
-					totalChunks++
-					signal()
-				}
-				return 1
-			},
-		})
-		.catch((err) => {
-			asyncError = err
-			return null
-		})
-		.finally(() => {
-			done = true
-			signal()
-		})
-
-	while (true) {
-		const next = queue.shift()
-		if (next) {
-			yield next
-			continue
-		}
-		if (done) break
-		await new Promise<void>((r) => {
-			resolveNext = r
-		})
-	}
-
-	const finalAudio = await generationPromise
-
-	if (asyncError) {
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
-			logger: ttsEngineLogger,
-			meta: {
-				message:
-					asyncError instanceof Error ? asyncError.message : String(asyncError),
-				voiceName: ttsConfig.voiceName,
-				sid,
-			},
-		})
-	}
-
-	if (totalChunks === 0 && finalAudio && finalAudio.samples.length > 0) {
-		yield float32ToInt16Buffer(finalAudio.samples)
+	const pool = getTtsPool(ttsConfig)
+	for (const sentence of splitTextIntoSentences(text)) {
+		const result = await pool.submit<TtsWorkerResultType>(
+			jobOf(ttsConfig, sentence),
+		)
+		if (result.pcm && result.pcm.length > 0) yield result.pcm
 	}
 }
 

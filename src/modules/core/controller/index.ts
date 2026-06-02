@@ -1,7 +1,16 @@
 import { env } from "@/config"
 
 import dbAdapter from "../db-adapter"
-import type { InsertDomiaType, DBClientOrTxType } from "@/db"
+import {
+	type InsertDomiaType,
+	type DBClientOrTxType,
+	DEFAULT_MEMORY_WINDOW_TURNS,
+	DEFAULT_MEMORY_MAX_AGE_MS,
+	DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
+	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
+	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
+	DEFAULT_OWN_CONFIG_TTL_MS,
+} from "@/db"
 import type { DomiaWithRawRelationsType, DomiaType } from "../types"
 
 export const transformDomia = (
@@ -31,6 +40,15 @@ export const transformDomia = (
 		domiaKey: domia?.domiaKey,
 		isActive: domia?.isActive,
 		sessionIdTimeoutMs: domia?.sessionIdTimeoutMs || 300_000,
+		memoryWindowTurns: domia?.memoryWindowTurns ?? DEFAULT_MEMORY_WINDOW_TURNS,
+		memoryMaxAgeMs: domia?.memoryMaxAgeMs ?? DEFAULT_MEMORY_MAX_AGE_MS,
+		maxConcurrentVoiceReplies:
+			domia?.maxConcurrentVoiceReplies ?? DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
+		maxQueuedVoiceReplies:
+			domia?.maxQueuedVoiceReplies ?? DEFAULT_MAX_QUEUED_VOICE_REPLIES,
+		voiceQueueTimeoutMs:
+			domia?.voiceQueueTimeoutMs ?? DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
+		ownConfigTtlMs: domia?.ownConfigTtlMs ?? DEFAULT_OWN_CONFIG_TTL_MS,
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
 		createdAt: domia?.createdAt,

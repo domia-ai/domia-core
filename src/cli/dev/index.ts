@@ -17,6 +17,11 @@ import {
 	runCorpus,
 	compareCorpus,
 	DEFAULT_CORPUS_PATH,
+	mindShowCommand,
+	mindExportCommand,
+	mindImportCommand,
+	mindTemplatesCommand,
+	mindUseCommand,
 } from "./commands"
 
 const program = new Command()
@@ -172,4 +177,40 @@ testCorpus
 	.requiredOption("-c, --candidate <path>", "Candidate JSON")
 	.action((options) => compareCorpus(options.baseline, options.candidate))
 
-program.parse()
+const mind = program
+	.command("mind")
+	.description("🧠 Inspect, move and template the domia's mind")
+
+mind
+	.command("show")
+	.description("Print the current mind (character + mood + modules) as JSON")
+	.action(mindShowCommand)
+
+mind
+	.command("templates")
+	.description("List the built-in personality templates")
+	.action(mindTemplatesCommand)
+
+mind
+	.command("use <templateId>")
+	.description("Start the mind from a built-in template")
+	.action(mindUseCommand)
+
+mind
+	.command("export")
+	.description("Export the current mind bundle to a JSON file")
+	.option("-o, --out <path>", "Output path", "tmp/mind.json")
+	.action((options) => mindExportCommand(options.out))
+
+mind
+	.command("import <file>")
+	.description("Import a mind bundle from a JSON file into the live mind")
+	.action((file) => mindImportCommand(file))
+
+program
+	.parseAsync()
+	.then(() => process.exit(0))
+	.catch((err) => {
+		console.error(err)
+		process.exit(1)
+	})

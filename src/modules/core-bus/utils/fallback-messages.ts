@@ -2,6 +2,7 @@ export const FALLBACK_MESSAGES: Record<string, string> = {
 	llm: "Sorry, I couldn't think of a reply. Please try again.",
 	stt: "I didn't catch that. Could you say it again?",
 	network: "I had a network problem. One moment, please.",
+	capacity: "I'm helping another room right now. Give me a moment.",
 	generic: "Sorry, something went wrong. Please try again.",
 }
 

@@ -33,3 +33,24 @@ export type KokoroPathsType = {
 	tokens: string
 	dataDir: string
 }
+
+export type TtsWorkerEngineConfigType = {
+	modelPath: string
+	numThreads: number
+	provider: string
+	maxNumSentences: number
+}
+
+export type TtsWorkerJobType = {
+	engineConfig: TtsWorkerEngineConfigType
+	text: string
+	sid: number
+	speed: number
+	silenceScale: number
+}
+
+export type TtsWorkerResultType = {
+	pcm: Buffer
+	sampleRate: number
+	channels: 1 | 2
+}

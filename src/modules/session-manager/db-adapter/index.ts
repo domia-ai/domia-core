@@ -38,6 +38,16 @@ const dbAdapter = {
 			orderBy: desc(interactionSessionTrace.lastUsedAt),
 			limit: 1,
 		}),
+	getRecentInteractionsForDomia: (
+		domiaId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.interactionTrace.findMany({
+			where: eq(interactionTrace.domiaId, domiaId),
+			orderBy: desc(interactionTrace.createdAt),
+			limit,
+		}),
 	insertInteractionSessionTrace: (
 		data: InsertInteractionSessionTraceType,
 		client: DBClientOrTxType = dbClient,

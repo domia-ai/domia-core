@@ -199,6 +199,12 @@ export type UpdateCapabilityDelegationType = Partial<
 	Omit<InsertCapabilityDelegationType, "id">
 > & { id: string }
 
+export type SelectMemoryFactType = InferSelectModel<typeof schema.memoryFact>
+export type InsertMemoryFactType = InferInsertModel<typeof schema.memoryFact>
+export type UpdateMemoryFactType = Partial<Omit<InsertMemoryFactType, "id">> & {
+	id: string
+}
+
 export type WithParsedDatesType<T> = Omit<T, "createdAt" | "updatedAt"> & {
 	createdAt: Date | null
 	updatedAt: Date | null

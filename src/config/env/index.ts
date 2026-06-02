@@ -8,7 +8,7 @@ const envSchema = z.object({
 	DEBUG: z.string().optional(),
 	DOMIA_KEY: z.string(),
 	DOMIA_TYPE: z.enum(["SMART", "DUMP"]).default("SMART"),
-	HTTP_SERVER_HOST: z.string().default("default"),
+	HTTP_SERVER_HOST: z.string().default("localhost"),
 	HTTP_SERVER_PORT: z.string().default("3000"),
 	GRPC_HOST: z.string().default("127.0.0.1"),
 	GRPC_PORT: z.string().default("5052"),

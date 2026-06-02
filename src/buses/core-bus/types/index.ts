@@ -15,6 +15,7 @@ export type DomiaEventBusPayloadMapType = {
 		interactionId?: string
 		originDomiaKey?: string
 		responseType?: string
+		alreadyHandled?: boolean
 		traceId?: string
 	}
 	[DOMIA_EVENT_BUS_ENUM.PROCESSING_STARTED]: {

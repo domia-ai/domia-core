@@ -7,17 +7,197 @@ import {
 	toError,
 	wavFileToPcmChunks,
 } from "@/utils"
-import { downloadAudioToTemp, notifyInteractionFailed } from "../utils"
-import { getOrCreateInteractionId } from "@/modules/session-manager"
+import {
+	downloadAudioToTemp,
+	notifyInteractionFailed,
+	playStreamedAudio,
+	DEFAULT_SAMPLE_RATE,
+} from "../utils"
+import {
+	getOrCreateInteractionId,
+	updateInteraction,
+	getRecentTurns,
+	getRecentUserMoods,
+} from "@/modules/session-manager"
+import { getFactStrings } from "@/modules/memory"
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
 import { runSTT } from "@/modules/stt-engine"
+import { personaContextFromDomia } from "@/modules/prompt-context-builder"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
-import { deliverEvent, streamSttToTarget } from "@/modules/grpc-client"
+import {
+	deliverEvent,
+	streamSttToTarget,
+	streamVoiceReplyFromTarget,
+	type DeliverEventTarget,
+} from "@/modules/grpc-client"
 import type { AudioReadyPayloadType, CoreBusContextType } from "../types"
+
+const tryFusedVoiceReply = async (
+	ctx: CoreBusContextType,
+	args: {
+		interactionId: string
+		originDomiaKey: string | undefined
+		audioPath: string
+	},
+	targets: DeliverEventTarget[],
+): Promise<boolean> => {
+	const { domia } = ctx
+	const { interactionId, originDomiaKey, audioPath } = args
+	const startTime = Date.now()
+	domiaBusLogger.info(
+		`📡 fused voice reply delegation (${targets.length} targets)`,
+		{ domiaId: domia.id, interactionId },
+	)
+
+	const recentTurns = await getRecentTurns(domia, interactionId)
+	const knownFacts =
+		domia.moduleSettings?.factRecall !== false
+			? await getFactStrings(domia)
+			: []
+	const userMoodTrend =
+		domia.moduleSettings?.emotionEngine !== false
+			? await getRecentUserMoods(domia)
+			: []
+	const streamed = await streamVoiceReplyFromTarget(domia.domiaKey, targets, {
+		originDomiaKey,
+		interactionId,
+		responseType: RESPONSE_TYPE_ENUM.VOICE,
+		personaContextJson: JSON.stringify(
+			personaContextFromDomia(domia, recentTurns, knownFacts, userMoodTrend),
+		),
+		audioFactory: () => wavFileToPcmChunks(audioPath),
+	})
+
+	if (streamed.atCapacity) {
+		domiaBusLogger.warn(
+			`fused voice reply: hub at capacity — surfacing graceful busy (no fallback)`,
+			{ domiaId: domia.id, interactionId },
+		)
+		notifyInteractionFailed(ctx, {
+			interactionId,
+			originDomiaKey,
+			responseType: RESPONSE_TYPE_ENUM.VOICE,
+			error: "hub at capacity",
+			step: "capacity",
+		})
+		return true
+	}
+
+	if (!streamed.delivered || !streamed.audio) {
+		domiaBusLogger.warn(
+			`fused voice reply failed (${streamed.error ?? "unknown"}) — falling back to split STT path`,
+			{ domiaId: domia.id, interactionId },
+		)
+		return false
+	}
+
+	const audioIter = streamed.audio[Symbol.asyncIterator]()
+	let ttfaMs: number | null = null
+	let audioEmitted = false
+
+	let firstRes: IteratorResult<Buffer>
+	try {
+		firstRes = await audioIter.next()
+	} catch (err) {
+		domiaBusLogger.warn(
+			`fused voice reply produced no audio (${(err as Error)?.message ?? "unknown"}) — falling back`,
+			{ domiaId: domia.id, interactionId },
+		)
+		return false
+	}
+	if (firstRes.done) {
+		domiaBusLogger.warn(
+			`fused voice reply produced no audio — falling back to split STT path`,
+			{ domiaId: domia.id, interactionId },
+		)
+		return false
+	}
+
+	const sampleRate = streamed.audioMeta?.sampleRate ?? DEFAULT_SAMPLE_RATE
+	const channels = (streamed.audioMeta?.channels === 2 ? 2 : 1) as 1 | 2
+
+	const timedAudio = (async function* (): AsyncIterable<Buffer> {
+		ttfaMs = Date.now() - startTime
+		audioEmitted = true
+		yield firstRes.value
+		while (true) {
+			const next = await audioIter.next()
+			if (next.done) break
+			yield next.value
+		}
+	})()
+
+	try {
+		await playStreamedAudio(
+			ctx,
+			timedAudio,
+			{ interactionId, originDomiaKey },
+			{ sampleRate, channels },
+		)
+	} catch (err) {
+		if (!audioEmitted) {
+			domiaBusLogger.warn(
+				`fused voice reply failed before any audio (${(err as Error)?.message ?? "unknown"}) — falling back`,
+				{ domiaId: domia.id, interactionId },
+			)
+			return false
+		}
+		domiaBusLogger.warn(
+			`fused voice reply playback failed after audio started — NOT falling back (would double-reply)`,
+			{ domiaId: domia.id, interactionId, err },
+		)
+	}
+
+	const transcript = (await streamed.transcriptPromise) ?? ""
+	const reply = (await streamed.finalReplyPromise) ?? ""
+	domiaBusLogger.info(`⏱️ fused voice reply timings`, {
+		domiaId: domia.id,
+		interactionId,
+		ttfaMs,
+		totalMs: Date.now() - startTime,
+		transcriptChars: transcript.length,
+		replyChars: reply.length,
+	})
+	void updateInteraction({
+		id: interactionId,
+		sttResult: transcript,
+		llmResponse: reply,
+		ttsEngineUsed: streamed.target?.domiaKey,
+	}).catch((err) =>
+		domiaBusLogger.error("fused voice reply: persistence failed", {
+			domiaId: domia.id,
+			interactionId,
+			err,
+		}),
+	)
+	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+		transcript,
+		interactionId,
+		originDomiaKey,
+		responseType: RESPONSE_TYPE_ENUM.VOICE,
+		alreadyHandled: true,
+	})
+	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+		reply,
+		interactionId,
+		originDomiaKey,
+		responseType: RESPONSE_TYPE_ENUM.VOICE,
+		alreadyStreamed: true,
+	})
+	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+		interactionId,
+		originDomiaKey,
+	})
+	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+		interactionId,
+		originDomiaKey,
+	})
+	return true
+}
 
 export const handleAudioReady = async (
 	ctx: CoreBusContextType,
@@ -92,6 +272,25 @@ export const handleAudioReady = async (
 			)
 		}
 		const audioPath: string = localPath
+
+		if (features.canPlayback) {
+			const fusedTargets = targets.filter(
+				(target) =>
+					target.streamingCapabilities.stt &&
+					target.streamingCapabilities.llm &&
+					target.streamingCapabilities.tts,
+			)
+			if (
+				fusedTargets.length > 0 &&
+				(await tryFusedVoiceReply(
+					ctx,
+					{ interactionId, originDomiaKey, audioPath },
+					fusedTargets,
+				))
+			) {
+				return
+			}
+		}
 
 		const streamingTargets = targets.filter(
 			(target) => target.streamingCapabilities.stt,

@@ -6,18 +6,78 @@ import {
 	VOICE_RULES,
 	PERSONA_SIGNATURE_TEMPLATE,
 	TRANSPARENCY_CLAUSE,
-	EMOTION_FEW_SHOT_EXAMPLES,
 	DEFAULT_PERSONA_NAME,
 	DEFAULT_PERSONA_TRAITS,
 } from "../constants"
-import type { BuildPromptContextOptionsType, RecentTurnType } from "../types"
+import type {
+	BuildPromptContextOptionsType,
+	PersonaContextType,
+	RecentTurnType,
+} from "../types"
 
 const EMOTION_NOISE_THRESHOLD = 0.2
 
 type EmotionEntry = [string, number]
 
-const resolveDomiaName = (domia: DomiaType): string => {
-	const raw = domia?.characterProfile?.name?.trim()
+export const personaContextFromDomia = (
+	domia: DomiaType,
+	recentTurns?: RecentTurnType[],
+	knownFacts?: string[],
+	userMoodTrend?: string[],
+): PersonaContextType => {
+	const cp = domia?.characterProfile
+	const es = domia?.emotionState
+	const ms = domia?.moduleSettings
+	return {
+		characterProfile: cp
+			? {
+					name: cp.name,
+					personality: cp.personality,
+					communicationStyle: cp.communicationStyle,
+					profession: cp.profession,
+					relationshipType: cp.relationshipType,
+					knowledgeDepth: cp.knowledgeDepth,
+					language: cp.language,
+					interests: Array.isArray(cp.interests)
+						? (cp.interests as string[])
+						: null,
+				}
+			: null,
+		emotionState: es
+			? {
+					joy: es.joy ?? 0,
+					sadness: es.sadness ?? 0,
+					anger: es.anger ?? 0,
+					fear: es.fear ?? 0,
+					trust: es.trust ?? 0,
+					disgust: es.disgust ?? 0,
+					anticipation: es.anticipation ?? 0,
+					surprise: es.surprise ?? 0,
+				}
+			: null,
+		moduleSettings: ms
+			? {
+					identityEngine: ms.identityEngine,
+					emotionEngine: ms.emotionEngine,
+					emotionCapture: ms.emotionCapture,
+					memoryEngine: ms.memoryEngine,
+					factCapture: ms.factCapture,
+					factRecall: ms.factRecall,
+				}
+			: null,
+		useCompactPrompt: domia?.llmModelConfig?.useCompactPrompt ?? false,
+		recentTurns: recentTurns?.length ? recentTurns : null,
+		knownFacts: knownFacts?.length ? knownFacts : null,
+		userMoodTrend: userMoodTrend?.length ? userMoodTrend : null,
+		promptOverrides:
+			cp?.promptOverrides && typeof cp.promptOverrides === "object"
+				? (cp.promptOverrides as PersonaContextType["promptOverrides"])
+				: null,
+	}
+}
+
+const resolvePersonaName = (persona: PersonaContextType): string => {
+	const raw = persona.characterProfile?.name?.trim()
 	if (!raw || raw.toLowerCase() === "default") return DEFAULT_PERSONA_NAME
 	return raw
 }
@@ -25,22 +85,32 @@ const resolveDomiaName = (domia: DomiaType): string => {
 const substituteName = (template: string, name: string): string =>
 	template.split("{name}").join(name)
 
-const renderIdentity = (name: string, useCompactPrompt: boolean): string => {
-	const template = useCompactPrompt
+const renderIdentity = (persona: PersonaContextType, name: string): string => {
+	const override = persona.promptOverrides?.identity?.trim()
+	if (override) return substituteName(override, name)
+	const template = persona.useCompactPrompt
 		? STATIC_DOMIA_PROMPT_COMPACT
 		: STATIC_DOMIA_PROMPT_FULL
 	return substituteName(template, name)
 }
 
-const renderPersonaSignature = (domia: DomiaType, name: string): string => {
-	const personality = domia?.characterProfile?.personality?.toLowerCase()
-	const style = domia?.characterProfile?.communicationStyle?.toLowerCase()
+const renderPersonaSignature = (
+	persona: PersonaContextType,
+	name: string,
+): string => {
+	const override = persona.promptOverrides?.traits
 	const traits: string[] = []
-	if (personality && personality !== "neutral") traits.push(personality)
-	if (style && style !== "neutral") traits.push(style)
-	for (const fallback of DEFAULT_PERSONA_TRAITS) {
-		if (traits.length >= 3) break
-		if (!traits.includes(fallback)) traits.push(fallback)
+	if (override?.length) {
+		traits.push(...override)
+	} else {
+		const personality = persona.characterProfile?.personality?.toLowerCase()
+		const style = persona.characterProfile?.communicationStyle?.toLowerCase()
+		if (personality && personality !== "neutral") traits.push(personality)
+		if (style && style !== "neutral") traits.push(style)
+		for (const fallback of DEFAULT_PERSONA_TRAITS) {
+			if (traits.length >= 3) break
+			if (!traits.includes(fallback)) traits.push(fallback)
+		}
 	}
 	const traitText = traits.slice(0, 3).join(", ")
 	return substituteName(
@@ -52,8 +122,8 @@ const renderPersonaSignature = (domia: DomiaType, name: string): string => {
 const renderTransparency = (name: string): string =>
 	substituteName(TRANSPARENCY_CLAUSE, name)
 
-const renderLanguageClause = (domia: DomiaType): string => {
-	const lang = domia?.characterProfile?.language ?? "en"
+const renderLanguageClause = (persona: PersonaContextType): string => {
+	const lang = persona.characterProfile?.language ?? "en"
 	return `Reply in the user's language. If unclear, default to ${lang}.`
 }
 
@@ -61,39 +131,6 @@ const intensityDescriptor = (value: number): string => {
 	if (value > 0.75) return "strong"
 	if (value > 0.5) return "clear"
 	return "a touch of"
-}
-
-const renderEmotionalState = (domia: DomiaType): string => {
-	const state = domia?.emotionState
-	if (!state) return ""
-	const entries: EmotionEntry[] = [
-		["joy", state.joy ?? 0],
-		["sadness", state.sadness ?? 0],
-		["anger", state.anger ?? 0],
-		["fear", state.fear ?? 0],
-		["trust", state.trust ?? 0],
-		["disgust", state.disgust ?? 0],
-		["anticipation", state.anticipation ?? 0],
-		["surprise", state.surprise ?? 0],
-	]
-	const significant = entries
-		.filter(([, v]) => v > EMOTION_NOISE_THRESHOLD)
-		.sort((a, b) => b[1] - a[1])
-		.slice(0, 2)
-
-	if (significant.length === 0) return ""
-
-	const phrased = significant
-		.map(([name, value]) => `${intensityDescriptor(value)} ${name}`)
-		.join(" and ")
-	const dominant = significant[0][0]
-	const guidance = behavioralGuidanceFor(dominant)
-
-	return [
-		`Right now you carry ${phrased}. ${guidance} Stay yourself — let this color your tone, not replace it.`,
-		"",
-		EMOTION_FEW_SHOT_EXAMPLES,
-	].join("\n")
 }
 
 const behavioralGuidanceFor = (dominant: string): string => {
@@ -119,8 +156,37 @@ const behavioralGuidanceFor = (dominant: string): string => {
 	}
 }
 
-const renderCharacter = (domia: DomiaType, name: string): string => {
-	const profile = domia?.characterProfile
+const renderEmotionalState = (persona: PersonaContextType): string => {
+	const state = persona.emotionState
+	if (!state) return ""
+	const entries: EmotionEntry[] = [
+		["joy", state.joy ?? 0],
+		["sadness", state.sadness ?? 0],
+		["anger", state.anger ?? 0],
+		["fear", state.fear ?? 0],
+		["trust", state.trust ?? 0],
+		["disgust", state.disgust ?? 0],
+		["anticipation", state.anticipation ?? 0],
+		["surprise", state.surprise ?? 0],
+	]
+	const significant = entries
+		.filter(([, v]) => v > EMOTION_NOISE_THRESHOLD)
+		.sort((a, b) => b[1] - a[1])
+		.slice(0, 2)
+
+	if (significant.length === 0) return ""
+
+	const phrased = significant
+		.map(([name, value]) => `${intensityDescriptor(value)} ${name}`)
+		.join(" and ")
+	const dominant = significant[0][0]
+	const guidance = behavioralGuidanceFor(dominant)
+
+	return `Right now you carry ${phrased}. ${guidance} Stay yourself — let this color your tone, not replace it.`
+}
+
+const renderCharacter = (persona: PersonaContextType, name: string): string => {
+	const profile = persona.characterProfile
 	if (!profile) return ""
 	const parts: string[] = []
 	const profession = profile.profession?.toLowerCase()
@@ -158,40 +224,63 @@ const renderRecentTurns = (turns: RecentTurnType[]): string => {
 	return lines.join("\n")
 }
 
-export const buildPromptContext = (
-	domia: DomiaType,
+export const buildPromptFromPersona = (
+	persona: PersonaContextType,
 	transcript: string,
 	options?: BuildPromptContextOptionsType,
 ): string => {
-	const moduleSettings = domia?.moduleSettings
-	const useCompactPrompt = domia?.llmModelConfig?.useCompactPrompt ?? false
-	const name = resolveDomiaName(domia)
+	const moduleSettings = persona.moduleSettings
+	const name = resolvePersonaName(persona)
 
 	const sections: [string, string][] = []
 
-	sections.push(["IDENTITY", renderIdentity(name, useCompactPrompt)])
+	sections.push(["IDENTITY", renderIdentity(persona, name)])
 
 	if (moduleSettings?.identityEngine !== false) {
-		sections.push(["PERSONA SIGNATURE", renderPersonaSignature(domia, name)])
+		sections.push(["PERSONA SIGNATURE", renderPersonaSignature(persona, name)])
 	}
 
-	const voiceRules = `${VOICE_RULES}\n- ${renderLanguageClause(domia)}`
+	const voiceRules = `${VOICE_RULES}\n- ${renderLanguageClause(persona)}`
 	sections.push(["VOICE RULES", voiceRules])
 
 	sections.push(["TRANSPARENCY", renderTransparency(name)])
 
-	if (moduleSettings?.emotionEngine !== false) {
-		const mood = renderEmotionalState(domia)
-		if (mood) sections.push(["CURRENT MOOD", mood])
+	const styleNotes = persona.promptOverrides?.styleNotes?.trim()
+	if (moduleSettings?.identityEngine !== false && styleNotes) {
+		sections.push(["STYLE", styleNotes])
 	}
 
 	if (moduleSettings?.identityEngine !== false) {
-		const character = renderCharacter(domia, name)
+		const character = renderCharacter(persona, name)
 		if (character) sections.push(["CHARACTER", character])
 	}
 
-	if (moduleSettings?.memoryEngine !== false && options?.recentTurns?.length) {
-		const turns = renderRecentTurns(options.recentTurns)
+	const environmentContext = persona.promptOverrides?.environmentContext?.trim()
+	if (environmentContext) {
+		sections.push(["ENVIRONMENT", environmentContext])
+	}
+
+	if (moduleSettings?.emotionEngine !== false) {
+		const mood = renderEmotionalState(persona)
+		if (mood) sections.push(["CURRENT MOOD", mood])
+	}
+
+	const userMoodTrend = persona.userMoodTrend ?? options?.userMoodTrend
+	if (moduleSettings?.emotionEngine !== false && userMoodTrend?.length) {
+		sections.push([
+			"RECENT USER MOOD",
+			`Over recent messages the person has seemed: ${userMoodTrend.join(" → ")}. Attune to this; don't mention it mechanically.`,
+		])
+	}
+
+	const knownFacts = persona.knownFacts ?? options?.knownFacts
+	if (moduleSettings?.factRecall !== false && knownFacts?.length) {
+		sections.push(["WHAT YOU KNOW", knownFacts.map((f) => `- ${f}`).join("\n")])
+	}
+
+	const recentTurns = persona.recentTurns ?? options?.recentTurns
+	if (moduleSettings?.memoryEngine !== false && recentTurns?.length) {
+		const turns = renderRecentTurns(recentTurns)
 		if (turns) sections.push(["RECENT TURNS", turns])
 	}
 
@@ -203,3 +292,10 @@ export const buildPromptContext = (
 
 	return `${body}\n\n### YOUR REPLY (as ${name}, spoken aloud):`
 }
+
+export const buildPromptContext = (
+	domia: DomiaType,
+	transcript: string,
+	options?: BuildPromptContextOptionsType,
+): string =>
+	buildPromptFromPersona(personaContextFromDomia(domia), transcript, options)

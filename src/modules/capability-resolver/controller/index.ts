@@ -5,7 +5,12 @@ import dbAdapter from "../db-adapter"
 import { resolveDomiaStreamingCapabilities } from "../utils"
 import type { ResolvedDelegateType } from "../types"
 
-export const resolveCapabilityDelegations = async (
+const CACHE_TTL_MS = 4000
+const cache = new Map<string, { at: number; value: ResolvedDelegateType[] }>()
+
+export const invalidateCapabilityCache = (): void => cache.clear()
+
+const resolveCapabilityDelegationsUncached = async (
 	domia: DomiaType,
 	capability: CapabilityEnumType,
 ): Promise<ResolvedDelegateType[]> => {
@@ -60,6 +65,19 @@ export const resolveCapabilityDelegations = async (
 	}
 
 	return result
+}
+
+export const resolveCapabilityDelegations = async (
+	domia: DomiaType,
+	capability: CapabilityEnumType,
+): Promise<ResolvedDelegateType[]> => {
+	const key = `${domia?.id}|${capability}`
+	const hit = cache.get(key)
+	if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value
+
+	const value = await resolveCapabilityDelegationsUncached(domia, capability)
+	cache.set(key, { at: Date.now(), value })
+	return value
 }
 
 export const resolveCapabilityDelegation = async (

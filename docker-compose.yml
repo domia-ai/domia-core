@@ -6,6 +6,8 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=2
     restart: unless-stopped
 
   mosquitto:

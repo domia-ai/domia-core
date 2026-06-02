@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "a0b00897-e786-43ca-b4e0-050f8c5306bd",
+	"id": "533fc790-92a0-499f-a482-5b418a3fb1ec",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
 		"audio_playback_config": {
@@ -327,6 +327,13 @@
 					"autoincrement": false,
 					"default": "'PASSIVE'"
 				},
+				"prompt_overrides": {
+					"name": "prompt_overrides",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
@@ -399,6 +406,54 @@
 					"notNull": true,
 					"autoincrement": false,
 					"default": 300000
+				},
+				"memory_window_turns": {
+					"name": "memory_window_turns",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 8
+				},
+				"memory_max_age_ms": {
+					"name": "memory_max_age_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1800000
+				},
+				"max_concurrent_voice_replies": {
+					"name": "max_concurrent_voice_replies",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 2
+				},
+				"max_queued_voice_replies": {
+					"name": "max_queued_voice_replies",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 4
+				},
+				"voice_queue_timeout_ms": {
+					"name": "voice_queue_timeout_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 15000
+				},
+				"own_config_ttl_ms": {
+					"name": "own_config_ttl_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 30000
 				},
 				"local_ip": {
 					"name": "local_ip",
@@ -862,6 +917,13 @@
 					"notNull": false,
 					"autoincrement": false
 				},
+				"user_emotion_snapshot": {
+					"name": "user_emotion_snapshot",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
@@ -967,6 +1029,22 @@
 					"notNull": true,
 					"autoincrement": false,
 					"default": 4096
+				},
+				"num_predict": {
+					"name": "num_predict",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 80
+				},
+				"llm_concurrency": {
+					"name": "llm_concurrency",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 2
 				},
 				"use_compact_prompt": {
 					"name": "use_compact_prompt",
@@ -1104,6 +1182,98 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
+		"memory_fact": {
+			"name": "memory_fact",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"domia_id": {
+					"name": "domia_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"subject": {
+					"name": "subject",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"relation": {
+					"name": "relation",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"value": {
+					"name": "value",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"confidence": {
+					"name": "confidence",
+					"type": "real",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0.7
+				},
+				"source_interaction_id": {
+					"name": "source_interaction_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "CURRENT_TIMESTAMP"
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "CURRENT_TIMESTAMP"
+				}
+			},
+			"indexes": {
+				"memory_fact_domia_id_subject_relation_unique": {
+					"name": "memory_fact_domia_id_subject_relation_unique",
+					"columns": ["domia_id", "subject", "relation"],
+					"isUnique": true
+				}
+			},
+			"foreignKeys": {
+				"memory_fact_domia_id_domia_id_fk": {
+					"name": "memory_fact_domia_id_domia_id_fk",
+					"tableFrom": "memory_fact",
+					"tableTo": "domia",
+					"columnsFrom": ["domia_id"],
+					"columnsTo": ["id"],
+					"onDelete": "no action",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
 		"module_settings": {
 			"name": "module_settings",
 			"columns": {
@@ -1143,12 +1313,60 @@
 					"notNull": true,
 					"autoincrement": false
 				},
+				"emotion_capture": {
+					"name": "emotion_capture",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
 				"memory_engine": {
 					"name": "memory_engine",
 					"type": "integer",
 					"primaryKey": false,
 					"notNull": true,
 					"autoincrement": false
+				},
+				"fact_capture": {
+					"name": "fact_capture",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
+				"fact_recall": {
+					"name": "fact_recall",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
+				"reflection_only_when_idle": {
+					"name": "reflection_only_when_idle",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
+				"reflection_concurrency": {
+					"name": "reflection_concurrency",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1
+				},
+				"reflection_queue_max_depth": {
+					"name": "reflection_queue_max_depth",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 4
 				},
 				"collective_mind": {
 					"name": "collective_mind",
@@ -1558,6 +1776,118 @@
 					"autoincrement": false,
 					"default": 5000
 				},
+				"enable_endpoint": {
+					"name": "enable_endpoint",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
+				"rule1_min_trailing_silence": {
+					"name": "rule1_min_trailing_silence",
+					"type": "real",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1.2
+				},
+				"rule2_min_trailing_silence": {
+					"name": "rule2_min_trailing_silence",
+					"type": "real",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0.6
+				},
+				"rule3_min_utterance_length": {
+					"name": "rule3_min_utterance_length",
+					"type": "real",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 12
+				},
+				"stt_num_threads": {
+					"name": "stt_num_threads",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 2
+				},
+				"stt_provider": {
+					"name": "stt_provider",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "'cpu'"
+				},
+				"stt_decode_padding_ms": {
+					"name": "stt_decode_padding_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 600
+				},
+				"stt_pool_warm_workers": {
+					"name": "stt_pool_warm_workers",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1
+				},
+				"stt_pool_max_workers": {
+					"name": "stt_pool_max_workers",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
+				"stt_pool_auto_scale_enabled": {
+					"name": "stt_pool_auto_scale_enabled",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
+				"stt_pool_idle_timeout_ms": {
+					"name": "stt_pool_idle_timeout_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 60000
+				},
+				"stt_pool_queue_max_depth": {
+					"name": "stt_pool_queue_max_depth",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 8
+				},
+				"stt_pool_queue_timeout_ms": {
+					"name": "stt_pool_queue_timeout_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 15000
+				},
+				"stt_worker_recycle_after_jobs": {
+					"name": "stt_worker_recycle_after_jobs",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
@@ -1717,6 +2047,62 @@
 					"notNull": true,
 					"autoincrement": false,
 					"default": false
+				},
+				"tts_pool_warm_workers": {
+					"name": "tts_pool_warm_workers",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1
+				},
+				"tts_pool_max_workers": {
+					"name": "tts_pool_max_workers",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
+				"tts_pool_auto_scale_enabled": {
+					"name": "tts_pool_auto_scale_enabled",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": true
+				},
+				"tts_pool_idle_timeout_ms": {
+					"name": "tts_pool_idle_timeout_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 60000
+				},
+				"tts_pool_queue_max_depth": {
+					"name": "tts_pool_queue_max_depth",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 8
+				},
+				"tts_pool_queue_timeout_ms": {
+					"name": "tts_pool_queue_timeout_ms",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 15000
+				},
+				"tts_worker_recycle_after_jobs": {
+					"name": "tts_worker_recycle_after_jobs",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
 				},
 				"created_at": {
 					"name": "created_at",

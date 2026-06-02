@@ -1,5 +1,6 @@
 import { subscribeToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger } from "@/utils"
+import { resolveLiveDomia } from "@/setups/live-domia"
 import {
 	handleWakeDetected,
 	handleAudioReady,
@@ -10,6 +11,7 @@ import {
 	handleCapabilityMissing,
 	handleInteractionFailed,
 	resolveCoreBusFeatures,
+	type CoreBusContextType,
 } from "@/modules/core-bus"
 import type { CoreBusArgsType } from "./types"
 
@@ -36,41 +38,59 @@ export const setupCoreBus = ({
 		canFullStreamVoice: features.canFullStreamVoice,
 	})
 
-	const ctx = { domia, features, mqttClient }
+	const liveCtx = async (): Promise<CoreBusContextType> => ({
+		...(await resolveLiveDomia(domia, runtimeCapabilities)),
+		mqttClient,
+	})
 
-	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED, () =>
-		handleWakeDetected(ctx),
+	const onEvent =
+		<P>(handler: (ctx: CoreBusContextType, payload: P) => unknown) =>
+		async (payload: P): Promise<void> => {
+			try {
+				await handler(await liveCtx(), payload)
+			} catch (err) {
+				domiaBusLogger.error("core-bus event handler failed", { err })
+			}
+		}
+
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED,
+		onEvent(handleWakeDetected),
 	)
-
-	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, (payload) =>
-		handleAudioReady(ctx, payload),
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.AUDIO_READY,
+		onEvent(handleAudioReady),
 	)
-
-	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, (payload) =>
-		handleSttDone(ctx, payload),
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.STT_DONE,
+		onEvent(handleSttDone),
 	)
-
-	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, (payload) =>
-		handleLlmDone(ctx, payload),
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.LLM_DONE,
+		onEvent(handleLlmDone),
 	)
-
-	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, (payload) =>
-		handleTtsDone(ctx, payload),
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.TTS_DONE,
+		onEvent(handleTtsDone),
 	)
-
-	subscribeToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR, (payload) =>
-		handleAudioError(ctx, payload),
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR,
+		onEvent(handleAudioError),
 	)
-
 	subscribeToDomiaBus(
 		domiaId,
 		DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING,
-		(payload) => handleCapabilityMissing(ctx, payload),
+		onEvent(handleCapabilityMissing),
 	)
-
 	subscribeToDomiaBus(
 		domiaId,
 		DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED,
-		(payload) => handleInteractionFailed(ctx, payload),
+		onEvent(handleInteractionFailed),
 	)
 }

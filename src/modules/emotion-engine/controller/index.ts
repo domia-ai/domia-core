@@ -1,51 +1,180 @@
-import { dbClient, type PersonalityEnumType, type DBClientOrTxType } from "@/db"
-import { emotionEngineLogger } from "@/utils"
-import { type DomiaType } from "@/modules/core"
+import { dbClient } from "@/db"
+import { env } from "@/config"
+import { emotionEngineLogger, generateUuid } from "@/utils"
+import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
+import { type PersonaContextType } from "@/modules/prompt-context-builder"
 
-import { emotionSchema } from "../schemas"
-import { type EmotionType, type EmotionPartialType } from "../types"
 import {
-	normalizeEmotionVector,
+	emotionPartialSchema,
+	emotionSchema,
+	userEmotionSchema,
+} from "../schemas"
+import {
+	type EmotionType,
+	type EmotionPartialType,
+	type EmotionAppraisalType,
+	type EmotionTrajectoryEntryType,
+	type UserEmotionType,
+} from "../types"
+import {
 	applyDelta,
-	decay,
+	decayTowardBaseline,
 	getEmotionVectorFromEmotionState,
 } from "../utils"
-import { DEFAULT_EMOTION_PRESET, EMOTION_PRESETS } from "../constants"
+import {
+	DEFAULT_EMOTION_PRESET,
+	EMOTION_PRESETS,
+	EMOTION_DECAY_HALF_LIFE_MS,
+	EMOTION_APPRAISAL_MAX_DELTA,
+	EMOTION_TRAJECTORY_WINDOW,
+} from "../constants"
 import dbAdapter from "../db-adapter"
-import { generateUuid } from "@/utils"
 
-export const triggerEmotion = async (
-	domia: DomiaType,
-	cause: string,
-	delta: EmotionPartialType,
-) => {
-	const domiaId = domia?.id
-	const emotionState = domia?.emotionState
-	emotionEngineLogger.info("Triggering emotion change", {
-		domiaId,
-		cause,
-		delta,
+const EMOTION_KEYS = Object.keys(emotionSchema.shape) as (keyof EmotionType)[]
+
+const baselineFor = (domia: DomiaType): EmotionType => {
+	const personality = domia?.characterProfile?.personality
+	return (personality && EMOTION_PRESETS[personality]) ?? DEFAULT_EMOTION_PRESET
+}
+
+const applyInMemory = (domia: DomiaType, vector: EmotionType): void => {
+	if (domia?.emotionState) Object.assign(domia.emotionState, vector)
+}
+
+const elapsedSinceUpdate = (domia: DomiaType): number => {
+	const updatedAt = domia?.emotionState?.updatedAt
+	const last = updatedAt ? Date.parse(updatedAt) : Date.now()
+	return Date.now() - last
+}
+
+const moodFromPersona = (persona: PersonaContextType): EmotionType =>
+	persona.emotionState ?? DEFAULT_EMOTION_PRESET
+
+const renderTrajectory = (trajectory: EmotionTrajectoryEntryType[]): string => {
+	if (!trajectory.length) return ""
+	const lines = trajectory.map((entry) => {
+		const moves = Object.entries(entry.delta)
+			.map(([k, v]) => `${k}${(v ?? 0) >= 0 ? "↑" : "↓"}`)
+			.join(" ")
+		return `- ${entry.cause}${moves ? ` (${moves})` : ""}`
 	})
+	return lines.join("\n")
+}
 
-	const currentEmotionState = emotionState ?? {
-		id: generateUuid(),
-		domiaId,
+export const buildMoodContextLines = (
+	persona: PersonaContextType,
+	trajectory: EmotionTrajectoryEntryType[],
+): string[] => {
+	const name = persona.characterProfile?.name ?? "Domia"
+	const personality = persona.characterProfile?.personality ?? "NEUTRAL"
+	const mood = moodFromPersona(persona)
+	const moodLine = EMOTION_KEYS.map((k) => `${k}=${mood[k].toFixed(2)}`).join(
+		", ",
+	)
+	const lines = [
+		`You are the emotional core of ${name}, a companion whose nature is ${personality}.`,
+		`${name}'s current mood on a -1..1 scale: ${moodLine}.`,
+	]
+	if (trajectory.length) {
+		lines.push(
+			`Recent emotional shifts (oldest first):\n${renderTrajectory(trajectory)}`,
+		)
 	}
+	return lines
+}
 
-	const current = getEmotionVectorFromEmotionState(domia?.emotionState)
-	const updated = normalizeEmotionVector(applyDelta(current, delta))
-	const validatedEmotion = emotionSchema.parse(updated)
+export const emotionAppraisalInstructionLines = (): string[] => [
+	`In "emotion" return how this exchange shifted the companion's feelings: {"deltas": {emotion: signed number between -${EMOTION_APPRAISAL_MAX_DELTA} and ${EMOTION_APPRAISAL_MAX_DELTA}}, "cause": "2-5 word phrase"}. In "deltas" include only emotions that genuinely shifted (positive = increase); use {} if none. Valid emotion keys: ${EMOTION_KEYS.join(", ")}.`,
+]
 
+export const parseEmotionFromObject = (
+	emotionObj: unknown,
+): EmotionAppraisalType => {
+	if (!emotionObj || typeof emotionObj !== "object") {
+		return { delta: {}, cause: "conversation" }
+	}
+	const obj = emotionObj as Record<string, unknown>
+	const deltaSource =
+		obj.deltas && typeof obj.deltas === "object"
+			? (obj.deltas as Record<string, unknown>)
+			: obj
+	const clamped: Record<string, number> = {}
+	for (const key of EMOTION_KEYS) {
+		const value = deltaSource[key]
+		if (typeof value !== "number" || Number.isNaN(value)) continue
+		clamped[key] = Math.max(
+			-EMOTION_APPRAISAL_MAX_DELTA,
+			Math.min(EMOTION_APPRAISAL_MAX_DELTA, value),
+		)
+	}
+	const result = emotionPartialSchema.safeParse(clamped)
+	const cause =
+		typeof obj.cause === "string" && obj.cause.trim()
+			? obj.cause.trim().slice(0, 80)
+			: "conversation"
+	return { delta: result.success ? result.data : {}, cause }
+}
+
+export const userEmotionInstructionLines = (): string[] => [
+	`In "userEmotion" return how the PERSON (the user) seemed to feel in their message: {"primary": <one of ${EMOTION_KEYS.join(", ")} or "neutral">, "intensity": 0..1, "note": "short phrase"}. Read the person's tone, not yours.`,
+]
+
+export const parseUserEmotionFromObject = (
+	userEmotionObj: unknown,
+): UserEmotionType | null => {
+	const result = userEmotionSchema.safeParse(userEmotionObj)
+	if (!result.success) return null
+	return {
+		primary: result.data.primary.trim().slice(0, 40),
+		intensity: result.data.intensity,
+		note: result.data.note?.trim().slice(0, 120) ?? null,
+	}
+}
+
+export const getRecentTrajectory = async (
+	domiaId: string,
+): Promise<EmotionTrajectoryEntryType[]> => {
+	try {
+		const rows = await dbAdapter.getRecentEmotionEvents(
+			domiaId,
+			EMOTION_TRAJECTORY_WINDOW,
+		)
+		return rows
+			.map((row) => ({
+				cause: row.cause,
+				delta: (row.delta ?? {}) as EmotionPartialType,
+			}))
+			.reverse()
+	} catch {
+		return []
+	}
+}
+
+export const applyMoodDelta = (
+	origin: DomiaType,
+	delta: EmotionPartialType,
+	cause = "conversation",
+): void => {
+	if (!delta || Object.keys(delta).length === 0) return
+	const current = getEmotionVectorFromEmotionState(origin?.emotionState)
+	const relaxed = decayTowardBaseline(
+		current,
+		baselineFor(origin),
+		elapsedSinceUpdate(origin),
+		EMOTION_DECAY_HALF_LIFE_MS,
+	)
+	const next = applyDelta(relaxed, delta)
+	const base = origin?.emotionState ?? {
+		id: generateUuid(),
+		domiaId: origin?.id,
+	}
 	dbClient.transaction((tx) => {
-		dbAdapter
-			.upsertEmotionState({ ...currentEmotionState, ...validatedEmotion }, tx)
-			.run()
-
+		dbAdapter.upsertEmotionState({ ...base, ...next }, tx).run()
 		dbAdapter
 			.createEmotionEvent(
 				{
 					id: generateUuid(),
-					domiaId,
+					domiaId: origin?.id,
 					cause,
 					delta,
 				},
@@ -53,70 +182,13 @@ export const triggerEmotion = async (
 			)
 			.run()
 	})
-
-	emotionEngineLogger.info("Emotion change completed", {
-		domiaId,
+	applyInMemory(origin, next)
+	if (origin?.domiaKey === env.DOMIA_KEY) invalidateOwnDomia()
+	emotionEngineLogger.info("Mood delta applied", {
+		domiaId: origin?.id,
 		cause,
-		previousVector: current,
-		newVector: validatedEmotion,
+		delta,
+		from: current,
+		to: next,
 	})
-	return validatedEmotion
-}
-
-export const decayEmotion = async (
-	domia: DomiaType,
-	client?: DBClientOrTxType,
-) => {
-	const domiaId = domia?.id
-	emotionEngineLogger.info("Applying emotion decay", { domiaId })
-	const emotionState = domia?.emotionState
-	const current = getEmotionVectorFromEmotionState(emotionState)
-	const decayed = decay(current)
-
-	const currentEmotionState = emotionState ?? {
-		id: generateUuid(),
-		domiaId,
-	}
-
-	await dbAdapter.upsertEmotionState(
-		{ ...currentEmotionState, ...decayed },
-		client,
-	)
-
-	emotionEngineLogger.info("Emotion decay completed", {
-		domiaId,
-		previousVector: current,
-		decayedVector: decayed,
-	})
-	return decayed
-}
-
-export const resetEmotion = async (
-	domia: DomiaType,
-	emotionVector: EmotionType = DEFAULT_EMOTION_PRESET,
-	client?: DBClientOrTxType,
-) => {
-	const domiaId = domia?.id
-	emotionEngineLogger.info("Resetting emotion state", { domiaId })
-	const emotionState = domia?.emotionState
-
-	const currentEmotionState = emotionState ?? {
-		id: generateUuid(),
-		domiaId,
-	}
-
-	await dbAdapter.upsertEmotionState(
-		{ ...currentEmotionState, ...emotionVector },
-		client,
-	)
-
-	emotionEngineLogger.info("Emotion state reset completed", {
-		domiaId,
-		emotionVector,
-	})
-	return emotionVector
-}
-
-export const getInitialEmotionState = (personality: PersonalityEnumType) => {
-	return EMOTION_PRESETS?.[personality]
 }

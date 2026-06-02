@@ -1,4 +1,5 @@
 export * from "./audio-file"
+export * from "./concurrency"
 export * from "./db"
 export * from "./error"
 export * from "./http-client"

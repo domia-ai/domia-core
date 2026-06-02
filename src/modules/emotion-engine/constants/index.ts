@@ -96,3 +96,16 @@ export const EMOTION_PRESETS: Record<PersonalityEnumType, EmotionType> = {
 	[PERSONALITY_ENUM.CAUTIOUS]: CAUTIOUS_EMOTION_PRESET,
 	[PERSONALITY_ENUM.ADAPTIVE]: ADAPTIVE_EMOTION_PRESET,
 } as const
+
+export const EMOTION_DECAY_HALF_LIFE_MS: Record<keyof EmotionType, number> = {
+	joy: 1_200_000,
+	sadness: 1_500_000,
+	anger: 300_000,
+	fear: 360_000,
+	trust: 1_800_000,
+	disgust: 480_000,
+	anticipation: 1_200_000,
+	surprise: 120_000,
+}
+export const EMOTION_APPRAISAL_MAX_DELTA = 0.3
+export const EMOTION_TRAJECTORY_WINDOW = 5

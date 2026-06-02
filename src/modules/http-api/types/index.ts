@@ -1,5 +1,9 @@
 import { z } from "zod"
-import { postChatBodySchema, postVoiceBodySchema } from "../schemas"
+import {
+	postChatBodySchema,
+	postVoiceBodySchema,
+	postImportMindBodySchema,
+} from "../schemas"
 
 export type PostChatBodyType = z.infer<typeof postChatBodySchema>
 
@@ -25,6 +29,7 @@ export type PostVoiceTimingsType = {
 	sttMs: number
 	llmMs: number
 	ttsMs: number
+	ttfaMs: number
 	totalMs: number
 }
 
@@ -38,4 +43,18 @@ export type PostVoiceResponseType = {
 
 export type PostVoiceRouteType = {
 	Body: PostVoiceBodyType
+}
+
+export type PostImportMindBodyType = z.infer<typeof postImportMindBodySchema>
+
+export type PostImportMindRouteType = {
+	Body: PostImportMindBodyType
+}
+
+export type TemplateIdParamsType = {
+	id: string
+}
+
+export type TemplateIdRouteType = {
+	Params: TemplateIdParamsType
 }

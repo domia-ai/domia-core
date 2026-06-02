@@ -13,7 +13,8 @@ export const emotionSchema = z.object({
 
 export const emotionPartialSchema = emotionSchema.partial()
 
-export const emotionEventSchema = z.object({
-	cause: z.string(),
-	delta: emotionPartialSchema,
+export const userEmotionSchema = z.object({
+	primary: z.string().min(1).max(40),
+	intensity: z.number().min(0).max(1),
+	note: z.string().max(120).nullish(),
 })

@@ -34,6 +34,7 @@ export const baseCharacterProfile = (
 		skills: [faker.person.jobTitle(), faker.commerce.product()],
 		relationshipType: RELATIONSHIP_TYPE_ENUM.COMPANION,
 		roleMode: ROLE_MODE_ENUM.PASSIVE,
+		promptOverrides: null,
 		createdAt: now(),
 		updatedAt: now(),
 	}

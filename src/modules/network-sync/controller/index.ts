@@ -4,12 +4,11 @@ import { env } from "@/config"
 import { dbClient } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { networkSyncLogger } from "@/utils"
+import { invalidateCapabilityCache } from "@/modules/capability-resolver"
 import dbAdapter from "../db-adapter"
 import {
 	normalizeDomia,
 	normalizeRuntimeCapabilities,
-	normalizeCharacterProfile,
-	normalizeEmotionState,
 	normalizeCapabilityDelegations,
 	normalizeLlmModelConfig,
 	normalizeMcpServerConfigs,
@@ -92,21 +91,6 @@ export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 			dbAdapter.upsertRuntimeCapabilities(runtimeCapabilities, tx).run()
 		}
 
-		const characterProfile = normalizeCharacterProfile(domia)
-		if (characterProfile) {
-			networkSyncLogger.debug(
-				"Upserting character profile for Domia",
-				logParams,
-			)
-			dbAdapter.upsertCharacterProfile(characterProfile, tx).run()
-		}
-
-		const emotionState = normalizeEmotionState(domia)
-		if (emotionState) {
-			networkSyncLogger.debug("Upserting emotion state for Domia", logParams)
-			dbAdapter.upsertEmotionState(emotionState, tx).run()
-		}
-
 		const capabilityDelegations = normalizeCapabilityDelegations(domia)
 		if (capabilityDelegations) {
 			networkSyncLogger.debug(
@@ -149,4 +133,6 @@ export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 			dbAdapter.upsertTtsConfig(ttsConfig, tx).run()
 		}
 	})
+
+	invalidateCapabilityCache()
 }

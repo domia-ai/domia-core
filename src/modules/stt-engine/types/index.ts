@@ -39,3 +39,37 @@ export type ZipformerPathsType = {
 	joiner: string
 	tokens: string
 }
+
+export type ZipformerEndpointConfigType = {
+	enableEndpoint: boolean
+	rule1MinTrailingSilence: number
+	rule2MinTrailingSilence: number
+	rule3MinUtteranceLength: number
+}
+
+export type SttWorkerEngineConfigType = {
+	engine: SttEngineEnumType
+	modelPath: string
+	modelName: string | null
+	quantization: string | null
+	numThreads: number
+	provider: string
+	decodePaddingMs: number
+	enableEndpoint: boolean
+	rule1MinTrailingSilence: number
+	rule2MinTrailingSilence: number
+	rule3MinUtteranceLength: number
+}
+
+export type SttWorkerJobType =
+	| { kind: "file"; engineConfig: SttWorkerEngineConfigType; wavPath: string }
+	| {
+			kind: "pcm"
+			engineConfig: SttWorkerEngineConfigType
+			pcm: Buffer
+			sampleRate: number
+	  }
+
+export type SttWorkerResultType = {
+	text: string
+}

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm"
+import { eq, desc } from "drizzle-orm"
 
 import {
 	dbClient,
@@ -27,6 +27,16 @@ const dbAdapter = {
 		data: InsertEmotionEventType,
 		client: DBClientOrTxType = dbClient,
 	) => client.insert(emotionEvent).values(data),
+	getRecentEmotionEvents: (
+		domiaId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.emotionEvent.findMany({
+			where: eq(emotionEvent.domiaId, domiaId),
+			orderBy: desc(emotionEvent.createdAt),
+			limit,
+		}),
 }
 
 export default dbAdapter

@@ -1,13 +1,24 @@
 import { createReadStream } from "fs"
 import { type DomiaType } from "@/modules/core"
+import {
+	serializeMind,
+	importMind,
+	listTemplates,
+	activateTemplate,
+} from "@/modules/mind"
 import type {
 	PostChatBodyType,
 	PostChatResponseType,
 	GetAudioRouteType,
 	PostVoiceBodyType,
 	PostVoiceResponseType,
+	PostImportMindBodyType,
 } from "../types"
-import { postChatBodySchema, postVoiceBodySchema } from "../schemas"
+import {
+	postChatBodySchema,
+	postVoiceBodySchema,
+	postImportMindBodySchema,
+} from "../schemas"
 import {
 	requestTextReply,
 	getAudioFilePath,
@@ -78,11 +89,50 @@ export const handlePostVoice = async (
 				sttMs: stages.stt ?? 0,
 				llmMs: (stages.llm ?? 0) - (stages.stt ?? 0),
 				ttsMs: (stages.tts ?? 0) - (stages.llm ?? 0),
+				ttfaMs: stages.firstAudioChunk ?? 0,
 				totalMs: stages.tts ?? 0,
 			},
 		}
 	} catch (err) {
 		httpServerLogger.error("Voice request failed", { domiaId: domia.id, err })
 		throw err
+	}
+}
+
+export const handleGetMind = async (domia: DomiaType) => {
+	return { mind: serializeMind(domia) }
+}
+
+export const handleImportMind = async (
+	domia: DomiaType,
+	body: PostImportMindBodyType,
+	reply: FastifyReply,
+) => {
+	const { mind } = postImportMindBodySchema.parse(body)
+	try {
+		return { mind: importMind(domia, mind) }
+	} catch (err) {
+		httpServerLogger.error("Import mind failed", { domiaId: domia.id, err })
+		return reply.code(400).send({ error: "Invalid mind bundle" })
+	}
+}
+
+export const handleGetTemplates = async () => {
+	return { templates: listTemplates() }
+}
+
+export const handleActivateTemplate = async (
+	domia: DomiaType,
+	id: string,
+	reply: FastifyReply,
+) => {
+	try {
+		return { mind: activateTemplate(domia, id) }
+	} catch (err) {
+		httpServerLogger.error("Activate template failed", {
+			domiaId: domia.id,
+			err,
+		})
+		return reply.code(404).send({ error: "Template not found" })
 	}
 }

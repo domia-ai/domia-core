@@ -1,11 +1,13 @@
 import { createServer, type Server } from "nice-grpc"
 
 import { env } from "@/config"
-import { grpcServerLogger, pcmChunksToWavFile } from "@/utils"
+import { grpcServerLogger } from "@/utils"
+import { resolveLiveDomia } from "@/setups/live-domia"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
-import { resolveCoreBusFeatures } from "@/modules/core-bus"
-import { buildPromptContext } from "@/modules/prompt-context-builder"
-import { runSTT } from "@/modules/stt-engine"
+import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
+import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
+import { parseFacts, upsertFacts } from "@/modules/memory"
+import { updateInteraction } from "@/modules/session-manager"
 import { runLLM } from "@/modules/llm-engine"
 import {
 	DomiaNodeDefinition,
@@ -18,192 +20,215 @@ import {
 	type TokenChunk,
 	type LlmStreamRequest,
 	type TtsStreamRequest,
-	type StreamSttMeta,
 	type ReplyAudioMessage,
+	type ReflectionReport,
+	type ReflectionAck,
 } from "@/generated/proto/domia"
 import type { GrpcServerArgsType } from "./types"
 import {
 	bytesToAudioMs,
-	canPipelineReply,
 	canStreamLlm,
 	canStreamTts,
-	fullReplyChunks,
-	pipelinedReplyChunks,
 	ttsCapsOrDefaults,
 	ttsTextToChunks,
+	transcribeAudioStream,
+	streamReplyAudioMessages,
+	resolvePersonaContext,
+	reflectOnPersonaInteraction,
+	admitVoiceReplyOrBusy,
 } from "./utils"
 
 let server: Server | null = null
 
 const buildImplementation = ({
-	domia,
-	capabilities,
-}: GrpcServerArgsType): DomiaNodeServiceImplementation => ({
-	async health(): Promise<HealthResponse> {
-		return {
-			status: "ok",
-			domiaId: domia.id,
-			domiaKey: domia.domiaKey,
-			serverTimeMs: Date.now(),
-		}
-	},
+	domia: bootDomia,
+	capabilities: bootCapabilities,
+}: GrpcServerArgsType): DomiaNodeServiceImplementation => {
+	const resolveLive = () => resolveLiveDomia(bootDomia, bootCapabilities)
 
-	async deliverEvent(envelope: EventEnvelope): Promise<DeliveryAck> {
-		return handleDeliverEvent({ domia }, envelope)
-	},
-
-	async streamStt(request: AsyncIterable<AudioChunk>): Promise<SttDonePayload> {
-		const features = resolveCoreBusFeatures(domia, capabilities)
-		const captured: { meta?: StreamSttMeta } = {}
-
-		const pcm = (async function* (): AsyncIterable<Buffer> {
-			for await (const chunk of request) {
-				if (chunk.meta && !captured.meta) captured.meta = chunk.meta
-				if (chunk.pcm && chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
+	return {
+		async health(): Promise<HealthResponse> {
+			const { domia } = await resolveLive()
+			return {
+				status: "ok",
+				domiaId: domia.id,
+				domiaKey: domia.domiaKey,
+				serverTimeMs: Date.now(),
 			}
-		})()
+		},
 
-		const transcript =
-			features.canStreamStt && features.stt?.adapter.runStream
-				? await features.stt.adapter.runStream(domia, pcm)
-				: await runSTT(
-						domia,
-						await pcmChunksToWavFile(pcm, captured.meta?.interactionId ?? ""),
-					)
+		async deliverEvent(envelope: EventEnvelope): Promise<DeliveryAck> {
+			const { domia } = await resolveLive()
+			return handleDeliverEvent({ domia }, envelope)
+		},
 
-		grpcServerLogger.info(`📥 streamStt → "${transcript}"`, {
-			domiaId: domia.id,
-			interactionId: captured.meta?.interactionId,
-		})
-		return {
-			transcript,
-			interactionId: captured.meta?.interactionId,
-			originDomiaKey: captured.meta?.originDomiaKey,
-			responseType: captured.meta?.responseType,
-		}
-	},
-
-	async *streamLlm(request: LlmStreamRequest): AsyncIterable<TokenChunk> {
-		const features = resolveCoreBusFeatures(domia, capabilities)
-		const promptContext = buildPromptContext(domia, request.transcript)
-		const runStream = features.llm?.adapter.runStream
-
-		if (canStreamLlm(features) && runStream) {
-			for await (const token of runStream(domia, promptContext)) {
-				yield { token }
-			}
-			return
-		}
-
-		const reply = await runLLM(domia, promptContext)
-		yield { token: reply }
-	},
-
-	async *streamTts(request: TtsStreamRequest): AsyncIterable<AudioChunk> {
-		const features = resolveCoreBusFeatures(domia, capabilities)
-		const { sampleRate, channels } = ttsCapsOrDefaults(features)
-		const streaming = canStreamTts(features)
-		const startedAt = Date.now()
-		let chunkCount = 0
-		let totalBytes = 0
-
-		grpcServerLogger.info(`📤 streamTts ← "${request.reply.slice(0, 80)}…"`, {
-			interactionId: request.interactionId,
-			originDomiaKey: request.originDomiaKey,
-			replyLen: request.reply.length,
-			streaming,
-		})
-
-		try {
-			for await (const chunk of ttsTextToChunks(
+		async streamStt(
+			request: AsyncIterable<AudioChunk>,
+		): Promise<SttDonePayload> {
+			const { domia, features } = await resolveLive()
+			const { transcript, meta } = await transcribeAudioStream(
 				domia,
-				request.reply,
+				request,
 				features,
-			)) {
-				chunkCount++
-				totalBytes += chunk.length
-				yield { pcm: chunk, sampleRate, channels }
-			}
-		} finally {
-			grpcServerLogger.info(`📤 streamTts ended`, {
-				interactionId: request.interactionId,
-				originDomiaKey: request.originDomiaKey,
-				chunkCount,
-				totalBytes,
-				durationMs: Date.now() - startedAt,
-				approxAudioMs: bytesToAudioMs(totalBytes, sampleRate, channels),
-				sampleRate,
+			)
+
+			grpcServerLogger.info(`📥 streamStt → "${transcript}"`, {
+				domiaId: domia.id,
+				interactionId: meta?.interactionId,
 			})
-		}
-	},
-
-	async *streamReplyAudio(
-		request: LlmStreamRequest,
-	): AsyncIterable<ReplyAudioMessage> {
-		const features = resolveCoreBusFeatures(domia, capabilities)
-		const { sampleRate, channels } = ttsCapsOrDefaults(features)
-		const pipelined = canPipelineReply(features)
-		const startedAt = Date.now()
-		let chunkCount = 0
-		let totalBytes = 0
-		let firstChunkAt: number | null = null
-		let sentenceCount = 0
-		let assembled = ""
-
-		grpcServerLogger.info(
-			`📤 streamReplyAudio ← "${request.transcript.slice(0, 80)}…"`,
-			{
-				interactionId: request.interactionId,
-				originDomiaKey: request.originDomiaKey,
-				pipelined,
-				ttsMode: canStreamTts(features) ? "stream" : "sync",
-			},
-		)
-
-		try {
-			const promptContext = buildPromptContext(domia, request.transcript)
-			const onSentence = (sentence: string): void => {
-				sentenceCount++
-				assembled += (assembled.length > 0 ? " " : "") + sentence
+			return {
+				transcript,
+				interactionId: meta?.interactionId,
+				originDomiaKey: meta?.originDomiaKey,
+				responseType: meta?.responseType,
 			}
-			const onReply = (reply: string): void => {
-				assembled = reply
-			}
-			const audio = pipelined
-				? pipelinedReplyChunks(domia, promptContext, features, onSentence)
-				: fullReplyChunks(domia, promptContext, features, onReply)
+		},
 
-			for await (const chunk of audio) {
-				chunkCount++
-				totalBytes += chunk.length
-				if (firstChunkAt === null) firstChunkAt = Date.now()
-				yield {
-					payload: {
-						$case: "audio",
-						audio: { pcm: chunk, sampleRate, channels },
-					},
+		async *streamLlm(request: LlmStreamRequest): AsyncIterable<TokenChunk> {
+			const { domia, features } = await resolveLive()
+			const persona = resolvePersonaContext(request.personaContextJson, domia)
+			const promptContext = buildPromptFromPersona(persona, request.transcript)
+			const runStream = features.llm?.adapter.runStream
+			let reply = ""
+
+			if (canStreamLlm(features) && runStream) {
+				for await (const token of runStream(domia, promptContext)) {
+					reply += token
+					yield { token }
 				}
+			} else {
+				reply = await runLLM(domia, promptContext)
+				yield { token: reply }
 			}
 
-			yield {
-				payload: { $case: "finalReply", finalReply: assembled },
-			}
-		} finally {
-			grpcServerLogger.info(`📤 streamReplyAudio ended`, {
+			void reflectOnPersonaInteraction(
+				domia,
+				persona,
+				request.originDomiaKey,
+				request.transcript,
+				reply,
+				request.interactionId,
+			)
+		},
+
+		async *streamTts(request: TtsStreamRequest): AsyncIterable<AudioChunk> {
+			const { domia, features } = await resolveLive()
+			const { sampleRate, channels } = ttsCapsOrDefaults(features)
+			const streaming = canStreamTts(features)
+			const startedAt = Date.now()
+			let chunkCount = 0
+			let totalBytes = 0
+
+			grpcServerLogger.info(`📤 streamTts ← "${request.reply.slice(0, 80)}…"`, {
 				interactionId: request.interactionId,
 				originDomiaKey: request.originDomiaKey,
-				pipelined,
-				sentenceCount,
-				chunkCount,
-				totalBytes,
-				ttfaMs: firstChunkAt !== null ? firstChunkAt - startedAt : null,
-				durationMs: Date.now() - startedAt,
-				approxAudioMs: bytesToAudioMs(totalBytes, sampleRate, channels),
-				replyLen: assembled.length,
+				replyLen: request.reply.length,
+				streaming,
 			})
-		}
-	},
-})
+
+			try {
+				for await (const chunk of ttsTextToChunks(
+					domia,
+					request.reply,
+					features,
+				)) {
+					chunkCount++
+					totalBytes += chunk.length
+					yield { pcm: chunk, sampleRate, channels }
+				}
+			} finally {
+				grpcServerLogger.info(`📤 streamTts ended`, {
+					interactionId: request.interactionId,
+					originDomiaKey: request.originDomiaKey,
+					chunkCount,
+					totalBytes,
+					durationMs: Date.now() - startedAt,
+					approxAudioMs: bytesToAudioMs(totalBytes, sampleRate, channels),
+					sampleRate,
+				})
+			}
+		},
+
+		async *streamReplyAudio(
+			request: LlmStreamRequest,
+		): AsyncIterable<ReplyAudioMessage> {
+			const { domia, features } = await resolveLive()
+			const release = await admitVoiceReplyOrBusy(domia, {
+				interactionId: request.interactionId,
+				originDomiaKey: request.originDomiaKey,
+			})
+			try {
+				const persona = resolvePersonaContext(request.personaContextJson, domia)
+				yield* streamReplyAudioMessages(
+					domia,
+					persona,
+					request.transcript,
+					features,
+					{
+						label: "streamReplyAudio",
+						interactionId: request.interactionId,
+						originDomiaKey: request.originDomiaKey,
+					},
+				)
+			} finally {
+				release()
+			}
+		},
+
+		async *streamVoiceReply(
+			request: AsyncIterable<AudioChunk>,
+		): AsyncIterable<ReplyAudioMessage> {
+			const { domia, features } = await resolveLive()
+			const release = await admitVoiceReplyOrBusy(domia, {})
+			try {
+				const { transcript, meta } = await transcribeAudioStream(
+					domia,
+					request,
+					features,
+				)
+				grpcServerLogger.info(`📥 streamVoiceReply STT → "${transcript}"`, {
+					domiaId: domia.id,
+					interactionId: meta?.interactionId,
+				})
+
+				const persona = resolvePersonaContext(meta?.personaContextJson, domia)
+				yield { payload: { $case: "transcript", transcript } }
+				yield* streamReplyAudioMessages(domia, persona, transcript, features, {
+					label: "streamVoiceReply",
+					interactionId: meta?.interactionId,
+					originDomiaKey: meta?.originDomiaKey,
+				})
+			} finally {
+				release()
+			}
+		},
+
+		async reportReflection(request: ReflectionReport): Promise<ReflectionAck> {
+			const { domia } = await resolveLive()
+			try {
+				if (request.emotionDeltaJson) {
+					const parsed = emotionPartialSchema.safeParse(
+						JSON.parse(request.emotionDeltaJson),
+					)
+					if (parsed.success) applyMoodDelta(domia, parsed.data, request.cause)
+				}
+				if (request.factsJson) {
+					const facts = parseFacts(JSON.parse(request.factsJson))
+					await upsertFacts(domia, facts, request.interactionId)
+				}
+				if (request.userEmotionJson && request.interactionId) {
+					await updateInteraction({
+						id: request.interactionId,
+						userEmotionSnapshot: JSON.parse(request.userEmotionJson),
+					})
+				}
+				return { accepted: true }
+			} catch {
+				return { accepted: false }
+			}
+		},
+	}
+}
 
 export const setupGrpcServer = async ({
 	domia,

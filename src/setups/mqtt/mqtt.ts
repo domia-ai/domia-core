@@ -64,6 +64,9 @@ export const setupMqtt = ({
 	logger.info(`🔗 Subscribing to ${heartbeatTopic}`)
 	client.subscribe(heartbeatTopic)
 
+	const configChangedTopic = `domia/${domiaKey}/${type}/${MQTT_EVENT_ENUM.CONFIG_CHANGED}`
+	client.subscribe(configChangedTopic)
+
 	logger.success("✅ MQTT setup completed successfully")
 
 	client.on("message", (topic, message) => {

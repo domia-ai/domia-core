@@ -1,8 +1,6 @@
 import {
 	type InsertDomiaType,
 	type InsertRuntimeCapabilitiesType,
-	type InsertCharacterProfileType,
-	type InsertEmotionStateType,
 	type InsertCapabilityDelegationType,
 	type InsertLlmModelConfigType,
 	type InsertMcpServerConfigType,
@@ -18,6 +16,12 @@ export const normalizeDomia = (domia: DomiaType): InsertDomiaType => {
 		name: domia?.name,
 		isActive: domia?.isActive,
 		sessionIdTimeoutMs: domia?.sessionIdTimeoutMs,
+		memoryWindowTurns: domia?.memoryWindowTurns,
+		memoryMaxAgeMs: domia?.memoryMaxAgeMs,
+		maxConcurrentVoiceReplies: domia?.maxConcurrentVoiceReplies,
+		maxQueuedVoiceReplies: domia?.maxQueuedVoiceReplies,
+		voiceQueueTimeoutMs: domia?.voiceQueueTimeoutMs,
+		ownConfigTtlMs: domia?.ownConfigTtlMs,
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
 	}
@@ -43,57 +47,6 @@ export const normalizeRuntimeCapabilities = (
 		llm: runtimeCapabilities?.llm,
 		tts: runtimeCapabilities?.tts,
 		playback: runtimeCapabilities?.playback,
-	}
-}
-
-export const normalizeCharacterProfile = (
-	domia: DomiaType,
-): InsertCharacterProfileType | null => {
-	const characterProfile = domia?.characterProfile
-	if (!characterProfile) {
-		return null
-	}
-
-	return {
-		id: characterProfile?.id,
-		domiaId: domia?.id,
-		name: characterProfile?.name,
-		isActive: characterProfile?.isActive,
-		personality: characterProfile?.personality,
-		language: characterProfile?.language,
-		profession: characterProfile?.profession,
-		communicationStyle: characterProfile?.communicationStyle,
-		perceivedAge: characterProfile?.perceivedAge,
-		culturalBackground: characterProfile?.culturalBackground,
-		languagesSpoken: characterProfile?.languagesSpoken,
-		knowledgeDepth: characterProfile?.knowledgeDepth,
-		interests: characterProfile?.interests,
-		hobbies: characterProfile?.hobbies,
-		skills: characterProfile?.skills,
-		relationshipType: characterProfile?.relationshipType,
-		roleMode: characterProfile?.roleMode,
-	}
-}
-
-export const normalizeEmotionState = (
-	domia: DomiaType,
-): InsertEmotionStateType | null => {
-	const emotionState = domia?.emotionState
-	if (!emotionState) {
-		return null
-	}
-
-	return {
-		id: emotionState?.id,
-		domiaId: domia?.id,
-		joy: emotionState?.joy,
-		sadness: emotionState?.sadness,
-		anger: emotionState?.anger,
-		fear: emotionState?.fear,
-		trust: emotionState?.trust,
-		disgust: emotionState?.disgust,
-		anticipation: emotionState?.anticipation,
-		surprise: emotionState?.surprise,
 	}
 }
 
@@ -135,6 +88,8 @@ export const normalizeLlmModelConfig = (
 		modelName: llmModelConfig?.modelName,
 		temperature: llmModelConfig?.temperature,
 		contextWindow: llmModelConfig?.contextWindow,
+		numPredict: llmModelConfig?.numPredict,
+		llmConcurrency: llmModelConfig?.llmConcurrency,
 		useCompactPrompt: llmModelConfig?.useCompactPrompt,
 	}
 }
@@ -178,9 +133,24 @@ export const normalizeSttConfig = (
 		modelName: sttConfig?.modelName,
 		language: sttConfig?.language,
 		modelPath: sttConfig?.modelPath,
+		quantization: sttConfig?.quantization,
 		silenceThreshold: sttConfig?.silenceThreshold,
 		bufferSize: sttConfig?.bufferSize,
 		timeoutMs: sttConfig?.timeoutMs,
+		enableEndpoint: sttConfig?.enableEndpoint,
+		rule1MinTrailingSilence: sttConfig?.rule1MinTrailingSilence,
+		rule2MinTrailingSilence: sttConfig?.rule2MinTrailingSilence,
+		rule3MinUtteranceLength: sttConfig?.rule3MinUtteranceLength,
+		numThreads: sttConfig?.numThreads,
+		provider: sttConfig?.provider,
+		decodePaddingMs: sttConfig?.decodePaddingMs,
+		poolWarmWorkers: sttConfig?.poolWarmWorkers,
+		poolMaxWorkers: sttConfig?.poolMaxWorkers,
+		poolAutoScaleEnabled: sttConfig?.poolAutoScaleEnabled,
+		poolIdleTimeoutMs: sttConfig?.poolIdleTimeoutMs,
+		poolQueueMaxDepth: sttConfig?.poolQueueMaxDepth,
+		poolQueueTimeoutMs: sttConfig?.poolQueueTimeoutMs,
+		workerRecycleAfterJobs: sttConfig?.workerRecycleAfterJobs,
 	}
 }
 
@@ -200,7 +170,21 @@ export const normalizeTtsConfig = (
 		engine: ttsConfig?.engine,
 		voiceName: ttsConfig?.voiceName,
 		language: ttsConfig?.language,
+		modelPath: ttsConfig?.modelPath,
+		quantization: ttsConfig?.quantization,
 		pitch: ttsConfig?.pitch,
 		speed: ttsConfig?.speed,
+		silenceScale: ttsConfig?.silenceScale,
+		numThreads: ttsConfig?.numThreads,
+		provider: ttsConfig?.provider,
+		maxNumSentences: ttsConfig?.maxNumSentences,
+		streamingEnabled: ttsConfig?.streamingEnabled,
+		poolWarmWorkers: ttsConfig?.poolWarmWorkers,
+		poolMaxWorkers: ttsConfig?.poolMaxWorkers,
+		poolAutoScaleEnabled: ttsConfig?.poolAutoScaleEnabled,
+		poolIdleTimeoutMs: ttsConfig?.poolIdleTimeoutMs,
+		poolQueueMaxDepth: ttsConfig?.poolQueueMaxDepth,
+		poolQueueTimeoutMs: ttsConfig?.poolQueueTimeoutMs,
+		workerRecycleAfterJobs: ttsConfig?.workerRecycleAfterJobs,
 	}
 }

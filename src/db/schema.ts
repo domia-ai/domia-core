@@ -1,4 +1,10 @@
-import { sqliteTable, text, real, integer } from "drizzle-orm/sqlite-core"
+import {
+	sqliteTable,
+	text,
+	real,
+	integer,
+	unique,
+} from "drizzle-orm/sqlite-core"
 import { relations, sql } from "drizzle-orm"
 
 import {
@@ -28,6 +34,7 @@ import {
 	DEFAULT_WAKE_WORD,
 	DEFAULT_LLM_MODEL_TEMPERATURE,
 	DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
+	DEFAULT_LLM_MODEL_NUM_PREDICT,
 	DEFAULT_WAKE_WORD_MODEL,
 	DEFAULT_WAKE_WORD_MODEL_PATH,
 	DEFAULT_VAD_ENGINE,
@@ -38,8 +45,32 @@ import {
 	DEFAULT_AUDIO_CAPTURE_MAX_RECORDING_MS,
 	WAKE_WORD_FRAMEWORK_ENUM_VALUES,
 	WAKE_WORD_FRAMEWORK_ENUM,
+	DEFAULT_MEMORY_WINDOW_TURNS,
+	DEFAULT_MEMORY_MAX_AGE_MS,
+	DEFAULT_LLM_CONCURRENCY,
+	DEFAULT_REFLECTION_ONLY_WHEN_IDLE,
+	DEFAULT_REFLECTION_CONCURRENCY,
+	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
+	DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
+	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
+	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
+	DEFAULT_OWN_CONFIG_TTL_MS,
 	DEFAULT_STT_MODEL_NAME,
 	DEFAULT_STT_MODEL_PATH,
+	DEFAULT_STT_ENABLE_ENDPOINT,
+	DEFAULT_STT_RULE1_MIN_TRAILING_SILENCE,
+	DEFAULT_STT_RULE2_MIN_TRAILING_SILENCE,
+	DEFAULT_STT_RULE3_MIN_UTTERANCE_LENGTH,
+	DEFAULT_STT_NUM_THREADS,
+	DEFAULT_STT_PROVIDER,
+	DEFAULT_STT_DECODE_PADDING_MS,
+	DEFAULT_STT_POOL_WARM_WORKERS,
+	DEFAULT_STT_POOL_MAX_WORKERS,
+	DEFAULT_STT_POOL_AUTO_SCALE_ENABLED,
+	DEFAULT_STT_POOL_IDLE_TIMEOUT_MS,
+	DEFAULT_STT_POOL_QUEUE_MAX_DEPTH,
+	DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS,
+	DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS,
 	INTERACTION_INPUT_TYPE_ENUM_VALUES,
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM_VALUES,
@@ -53,6 +84,13 @@ import {
 	DEFAULT_TTS_SILENCE_SCALE,
 	DEFAULT_TTS_SPEED,
 	DEFAULT_TTS_STREAMING_ENABLED,
+	DEFAULT_TTS_POOL_WARM_WORKERS,
+	DEFAULT_TTS_POOL_MAX_WORKERS,
+	DEFAULT_TTS_POOL_AUTO_SCALE_ENABLED,
+	DEFAULT_TTS_POOL_IDLE_TIMEOUT_MS,
+	DEFAULT_TTS_POOL_QUEUE_MAX_DEPTH,
+	DEFAULT_TTS_POOL_QUEUE_TIMEOUT_MS,
+	DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS,
 	DEFAULT_AUDIO_PLAYBACK_VOLUME,
 	DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED,
 	DEFAULT_QUANTIZATION,
@@ -75,6 +113,24 @@ export const domia = sqliteTable("domia", {
 	sessionIdTimeoutMs: integer("session_id_timeout_ms")
 		.notNull()
 		.default(300_000),
+	memoryWindowTurns: integer("memory_window_turns")
+		.notNull()
+		.default(DEFAULT_MEMORY_WINDOW_TURNS),
+	memoryMaxAgeMs: integer("memory_max_age_ms")
+		.notNull()
+		.default(DEFAULT_MEMORY_MAX_AGE_MS),
+	maxConcurrentVoiceReplies: integer("max_concurrent_voice_replies")
+		.notNull()
+		.default(DEFAULT_MAX_CONCURRENT_VOICE_REPLIES),
+	maxQueuedVoiceReplies: integer("max_queued_voice_replies")
+		.notNull()
+		.default(DEFAULT_MAX_QUEUED_VOICE_REPLIES),
+	voiceQueueTimeoutMs: integer("voice_queue_timeout_ms")
+		.notNull()
+		.default(DEFAULT_VOICE_QUEUE_TIMEOUT_MS),
+	ownConfigTtlMs: integer("own_config_ttl_ms")
+		.notNull()
+		.default(DEFAULT_OWN_CONFIG_TTL_MS),
 	localIp: text("local_ip"),
 	grpcPort: integer("grpc_port"),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -135,6 +191,24 @@ export const emotionEvent = sqliteTable("emotion_event", {
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
+export const memoryFact = sqliteTable(
+	"memory_fact",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		subject: text("subject").notNull(),
+		relation: text("relation").notNull(),
+		value: text("value").notNull(),
+		confidence: real("confidence").notNull().default(0.7),
+		sourceInteractionId: text("source_interaction_id"),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [unique().on(t.domiaId, t.subject, t.relation)],
+)
+
 export const moduleSettings = sqliteTable("module_settings", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
@@ -143,7 +217,27 @@ export const moduleSettings = sqliteTable("module_settings", {
 		.notNull()
 		.references(() => domia.id),
 	emotionEngine: integer("emotion_engine", { mode: "boolean" }).notNull(),
+	emotionCapture: integer("emotion_capture", { mode: "boolean" })
+		.notNull()
+		.default(true),
 	memoryEngine: integer("memory_engine", { mode: "boolean" }).notNull(),
+	factCapture: integer("fact_capture", { mode: "boolean" })
+		.notNull()
+		.default(true),
+	factRecall: integer("fact_recall", { mode: "boolean" })
+		.notNull()
+		.default(true),
+	reflectionOnlyWhenIdle: integer("reflection_only_when_idle", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_REFLECTION_ONLY_WHEN_IDLE),
+	reflectionConcurrency: integer("reflection_concurrency")
+		.notNull()
+		.default(DEFAULT_REFLECTION_CONCURRENCY),
+	reflectionQueueMaxDepth: integer("reflection_queue_max_depth")
+		.notNull()
+		.default(DEFAULT_REFLECTION_QUEUE_MAX_DEPTH),
 	collectiveMind: integer("collective_mind", { mode: "boolean" }).notNull(),
 	remoteAccessEngine: integer("remote_access_engine", {
 		mode: "boolean",
@@ -202,6 +296,7 @@ export const characterProfile = sqliteTable("character_profile", {
 	})
 		.notNull()
 		.default(ROLE_MODE_ENUM.PASSIVE),
+	promptOverrides: text("prompt_overrides", { mode: "json" }),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -270,6 +365,48 @@ export const sttConfig = sqliteTable("stt_config", {
 	silenceThreshold: real("silence_threshold"),
 	bufferSize: integer("buffer_size"),
 	timeoutMs: integer("timeout_ms").notNull().default(5000),
+	enableEndpoint: integer("enable_endpoint", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_STT_ENABLE_ENDPOINT),
+	rule1MinTrailingSilence: real("rule1_min_trailing_silence")
+		.notNull()
+		.default(DEFAULT_STT_RULE1_MIN_TRAILING_SILENCE),
+	rule2MinTrailingSilence: real("rule2_min_trailing_silence")
+		.notNull()
+		.default(DEFAULT_STT_RULE2_MIN_TRAILING_SILENCE),
+	rule3MinUtteranceLength: real("rule3_min_utterance_length")
+		.notNull()
+		.default(DEFAULT_STT_RULE3_MIN_UTTERANCE_LENGTH),
+	numThreads: integer("stt_num_threads")
+		.notNull()
+		.default(DEFAULT_STT_NUM_THREADS),
+	provider: text("stt_provider").notNull().default(DEFAULT_STT_PROVIDER),
+	decodePaddingMs: integer("stt_decode_padding_ms")
+		.notNull()
+		.default(DEFAULT_STT_DECODE_PADDING_MS),
+	poolWarmWorkers: integer("stt_pool_warm_workers")
+		.notNull()
+		.default(DEFAULT_STT_POOL_WARM_WORKERS),
+	poolMaxWorkers: integer("stt_pool_max_workers")
+		.notNull()
+		.default(DEFAULT_STT_POOL_MAX_WORKERS),
+	poolAutoScaleEnabled: integer("stt_pool_auto_scale_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_STT_POOL_AUTO_SCALE_ENABLED),
+	poolIdleTimeoutMs: integer("stt_pool_idle_timeout_ms")
+		.notNull()
+		.default(DEFAULT_STT_POOL_IDLE_TIMEOUT_MS),
+	poolQueueMaxDepth: integer("stt_pool_queue_max_depth")
+		.notNull()
+		.default(DEFAULT_STT_POOL_QUEUE_MAX_DEPTH),
+	poolQueueTimeoutMs: integer("stt_pool_queue_timeout_ms")
+		.notNull()
+		.default(DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS),
+	workerRecycleAfterJobs: integer("stt_worker_recycle_after_jobs")
+		.notNull()
+		.default(DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -291,6 +428,12 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	contextWindow: integer("context_window")
 		.notNull()
 		.default(DEFAULT_LLM_MODEL_CONTEXT_WINDOW),
+	numPredict: integer("num_predict")
+		.notNull()
+		.default(DEFAULT_LLM_MODEL_NUM_PREDICT),
+	llmConcurrency: integer("llm_concurrency")
+		.notNull()
+		.default(DEFAULT_LLM_CONCURRENCY),
 	useCompactPrompt: integer("use_compact_prompt", { mode: "boolean" })
 		.notNull()
 		.default(false),
@@ -327,6 +470,29 @@ export const ttsConfig = sqliteTable("tts_config", {
 	streamingEnabled: integer("streaming_enabled", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_TTS_STREAMING_ENABLED),
+	poolWarmWorkers: integer("tts_pool_warm_workers")
+		.notNull()
+		.default(DEFAULT_TTS_POOL_WARM_WORKERS),
+	poolMaxWorkers: integer("tts_pool_max_workers")
+		.notNull()
+		.default(DEFAULT_TTS_POOL_MAX_WORKERS),
+	poolAutoScaleEnabled: integer("tts_pool_auto_scale_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_TTS_POOL_AUTO_SCALE_ENABLED),
+	poolIdleTimeoutMs: integer("tts_pool_idle_timeout_ms")
+		.notNull()
+		.default(DEFAULT_TTS_POOL_IDLE_TIMEOUT_MS),
+	poolQueueMaxDepth: integer("tts_pool_queue_max_depth")
+		.notNull()
+		.default(DEFAULT_TTS_POOL_QUEUE_MAX_DEPTH),
+	poolQueueTimeoutMs: integer("tts_pool_queue_timeout_ms")
+		.notNull()
+		.default(DEFAULT_TTS_POOL_QUEUE_TIMEOUT_MS),
+	workerRecycleAfterJobs: integer("tts_worker_recycle_after_jobs")
+		.notNull()
+		.default(DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -438,6 +604,7 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	finalOutput: text("final_output"),
 	emotionSnapshot: text("emotion_snapshot", { mode: "json" }),
 	characterSnapshot: text("character_snapshot", { mode: "json" }),
+	userEmotionSnapshot: text("user_emotion_snapshot", { mode: "json" }),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -470,6 +637,7 @@ export const domiaRelations = relations(domia, ({ one, many }) => ({
 	moduleSettings: many(moduleSettings),
 	characterProfiles: many(characterProfile),
 	emotionEvents: many(emotionEvent),
+	memoryFacts: many(memoryFact),
 	wakeWordConfigs: many(wakeWordConfig),
 	sttConfigs: many(sttConfig),
 	llmModelConfigs: many(llmModelConfig),
@@ -524,6 +692,13 @@ export const characterProfileRelations = relations(
 export const emotionEventRelations = relations(emotionEvent, ({ one }) => ({
 	domia: one(domia, {
 		fields: [emotionEvent.domiaId],
+		references: [domia.id],
+	}),
+}))
+
+export const memoryFactRelations = relations(memoryFact, ({ one }) => ({
+	domia: one(domia, {
+		fields: [memoryFact.domiaId],
 		references: [domia.id],
 	}),
 }))
