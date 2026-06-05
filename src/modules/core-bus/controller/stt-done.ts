@@ -107,6 +107,7 @@ const tryLocalFullStreamVoice = async (
 
 	let fullReply = ""
 	let audioError: unknown = null
+	let ttsAudioPath: string | undefined
 	try {
 		const tokens = llm.adapter.runStream(domia, session.promptContext)
 		for await (const sentence of splitSentences(tokens)) {
@@ -114,7 +115,7 @@ const tryLocalFullStreamVoice = async (
 			ttsStreamQueue.push(tts.adapter.runStream(domia, sentence))
 		}
 		ttsStreamQueue.close()
-		await playbackPromise
+		ttsAudioPath = await playbackPromise
 	} catch (err) {
 		audioError = err
 		ttsStreamQueue.close()
@@ -128,6 +129,7 @@ const tryLocalFullStreamVoice = async (
 		llmPrompt: session.promptContext,
 		llmResponse: fullReply,
 		ttsEngineUsed: tts.adapter.id,
+		ttsAudioPath,
 	})
 
 	if (audioError) {
@@ -249,7 +251,7 @@ const tryDelegatedReplyAudio = async (
 
 	try {
 		const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
-		await playStreamedAudio(
+		const ttsAudioPath = await playStreamedAudio(
 			ctx,
 			streamed.audio,
 			{
@@ -269,6 +271,7 @@ const tryDelegatedReplyAudio = async (
 			id: session.interactionId,
 			llmResponse: reply,
 			ttsEngineUsed: streamed.target?.domiaKey,
+			ttsAudioPath,
 		})
 		publishStreamedReplyComplete(domia.id, session, reply)
 		return true
@@ -321,6 +324,11 @@ const tryDelegatedStreamLlm = async (
 
 	let reply = ""
 	for await (const token of streamed.tokens) reply += token
+	await updateInteraction({
+		id: session.interactionId,
+		llmPrompt: session.promptContext,
+		llmResponse: reply,
+	})
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 		reply,
 		interactionId: session.interactionId,

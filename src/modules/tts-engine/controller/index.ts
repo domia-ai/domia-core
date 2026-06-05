@@ -3,8 +3,13 @@ import { type DomiaType } from "@/modules/core"
 import { domiaError, LLM_ERRORS, ttsEngineLogger } from "@/utils"
 
 import { ttsEngines } from "../engines"
+import type { RunTtsOptionsType } from "../types"
 
-export const runTTS = async (domia: DomiaType, text: string) => {
+export const runTTS = async (
+	domia: DomiaType,
+	text: string,
+	options?: RunTtsOptionsType,
+) => {
 	const ttsModelConfig = domia?.ttsConfig
 	const engine = ttsModelConfig?.engine
 
@@ -19,5 +24,5 @@ export const runTTS = async (domia: DomiaType, text: string) => {
 
 	const handler = ttsEngines[engine]
 
-	return await handler(domia, text)
+	return await handler(domia, text, options)
 }

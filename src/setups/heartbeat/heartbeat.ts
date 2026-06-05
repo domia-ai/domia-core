@@ -12,7 +12,7 @@ export const setupHeartbeat = ({
 
 	const interval = setInterval(() => {
 		heartbeatLogger.info(`💓 Sending heartbeat for ${domiaKey}`)
-		sendHeartbeat({
+		void sendHeartbeat({
 			domia,
 			mqttClient,
 		})

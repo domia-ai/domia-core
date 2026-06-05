@@ -62,6 +62,7 @@ export type StreamTtsRequestType = {
 	reply: string
 	originDomiaKey?: string
 	interactionId?: string
+	ttsVoiceJson?: string
 }
 
 export type StreamTtsResult = {

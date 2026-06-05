@@ -46,6 +46,13 @@ export const promptOverridesSchema = z.object({
 	environmentContext: z.string().nullish(),
 })
 
+export const ttsVoiceSchema = z.object({
+	voiceName: z.string().nullish(),
+	speed: z.number().nullish(),
+	silenceScale: z.number().nullish(),
+	pitch: z.number().nullish(),
+})
+
 export const personaContextSchema = z.object({
 	characterProfile: personaCharacterSchema.nullable(),
 	emotionState: personaEmotionSchema.nullable(),
@@ -55,4 +62,5 @@ export const personaContextSchema = z.object({
 	knownFacts: z.array(z.string()).nullish(),
 	userMoodTrend: z.array(z.string()).nullish(),
 	promptOverrides: promptOverridesSchema.nullish(),
+	ttsVoice: ttsVoiceSchema.nullish(),
 })

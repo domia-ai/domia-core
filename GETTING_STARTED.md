@@ -1,165 +1,90 @@
-# 🚀 Getting Started with DOMIA Core
+# 🚀 Getting Started with Domia Core
 
-This guide will help you set up and run the DOMIA Core project from scratch.
+This guide takes you from a clean machine to a running Domia. All speech inference runs **in-process** via `sherpa-onnx-node` and the LLM runs locally via **Ollama**.
 
 ## 📋 Prerequisites
 
-- **Node.js** with nvm (preferably version 24.2.0 - tested)
-- **Python** with pyenv (preferably version 3.11.9 - tested) - [Install pyenv](https://github.com/pyenv/pyenv)
-- **Docker** - [Install Docker](https://www.docker.com/products/docker-desktop/)
+- **Node.js ≥ 24** (nvm recommended)
+- **Docker** — runs Ollama (LLM) and Mosquitto (MQTT) — [install](https://www.docker.com/products/docker-desktop/)
+- **sox** — audio playback (installed for you by `make install-deps`)
 
-## 🛠️ Installation Steps
-
-### 1. Install Node.js Dependencies
+## 🛠️ Installation
 
 ```bash
+# 1. Node dependencies
 npm install
-```
 
-### 2. Install Python Dependencies
-
-```bash
-make venv
-```
-
-### 3. Install Required Binaries
-
-```bash
+# 2. System binaries (sox), then verify
 make install-deps
-```
-
-### 4. Verify Installation
-
-Check that everything is properly configured and installed:
-
-```bash
 make doctor
-```
 
-### 5. Set Up Ollama Container
+# 3. Start Ollama + Mosquitto (Docker), then pull an LLM
+make dev                 # brings up Ollama + Mosquitto
+make install-llama       # pulls llama3.1:8b into the Ollama container
 
-Install the Ollama container in Docker:
+# 4. Download the on-device speech models (STT / TTS / VAD / wake word)
+npm run setup:models     # or: make setup-models
 
-```bash
-make ollama
-```
-
-### 6. Install LLM Model
-
-Install a language model (e.g., Llama):
-
-```bash
-make install-llama
-```
-
-## 🧪 Testing Individual Components
-
-You can test each functionality individually:
-
-### Test Microphone and Record Audio
-
-```bash
-make mic-test
-```
-
-### Run Speech-to-Text (STT) with Vosk
-
-Test STT with the audio generated from the microphone test:
-
-```bash
-make run-vosk
-```
-
-### Test Wake Word Detection
-
-```bash
-make run-wakeword
-```
-
-### Test LLM with Llama
-
-```bash
-make run-llama
-```
-
-## 🖥️ Development CLI
-
-### Run Development CLI
-
-```bash
-npm run dev-cli
-```
-
-### Interactive Shell
-
-For an interactive shell experience:
-
-```bash
-npm run dev-cli interactive
-```
-
-## 🔐 MQTT Mosquitto Setup
-
-Create the password file using the default credentials (username: `domia`, password: `domia`). You can change these if needed:
-
-```bash
+# 5. MQTT password (user: domia / pass: domia)
 make mosquitto-password
+
+# 6. Create the database from schema (no migrations — the DB is regenerated)
+npm run db:reset:smart
+
+# 7. Run your Domia
+npm run dev:smart
 ```
 
-> **Note:** If you don't have `mosquitto_passwd` installed locally, you can use Docker:
->
-> ```bash
-> mkdir -p config/mqtt
-> docker run --rm -v "$PWD/config/mqtt:/data" eclipse-mosquitto mosquitto_passwd -c /data/password.txt domia
-> ```
+When you see `DOMIA is running and waiting for events...`, it's live on `http://localhost:3000`.
 
-## 🧩 Optional Engines
+## 🧪 Testing individual components (no microphone needed)
 
-DOMIA's voice pipeline ships with sensible defaults (Vosk for STT, Piper for TTS). Alternative engines are opt-in:
-
-### Whisper STT (more accurate transcription)
+Use the developer CLI to exercise each engine in isolation:
 
 ```bash
-make download-whisper-model   # ~466 MB, one-time download
+npm run dev-cli -- tts -t "hello, this is my voice"     # text → speech
+npm run dev-cli -- stt --file tmp/your-audio.wav        # speech → text
+npm run dev-cli -- llm -p "say something kind"          # prompt → reply
+npm run dev-cli -- status                               # health / config snapshot
+npm run dev-cli -- mind                                 # inspect persona / emotion
 ```
 
-Then switch the active STT engine to `WHISPER` in your `stt_config` (model name `small.en`).
-
-### Kokoro TTS (more expressive voice)
-
-Kokoro requires `espeak-ng` as a system dependency:
+You can also drive the **full pipeline** without a mic by POSTing a WAV to the HTTP endpoint:
 
 ```bash
-make install-deps-kokoro
+curl -X POST http://localhost:3000/voice \
+  -H 'content-type: application/json' \
+  -d '{"filePath":"'"$PWD"'/tmp/your-audio.wav"}'
 ```
 
-Models are auto-downloaded by the `kokoro` Python package on first use. Switch the active TTS engine to `KOKORO` in your `tts_config` (e.g., voice `af_heart`).
+## 🔀 Run a second Domia (delegation / multi-room)
 
-### Try engines via dev CLI without changing config
+A second instance is preconfigured in `.env.dump`. In another terminal:
 
 ```bash
-npm run dev-cli -- tts --engine KOKORO --voice af_heart --text "Hello from Kokoro"
-npm run dev-cli -- stt --engine WHISPER --model small.en --file tmp/mic_test_output.wav
+npm run db:reset:dump
+npm run dev:dump          # runs on http://localhost:3001
 ```
 
-## 🎯 Next Steps
+Now the two Domias discover each other over MQTT and can delegate STT/LLM/TTS to one another — the basis for the multi-room hub. (`smart`/`dump` are dev-only labels; in production every instance is just a Domia whose role is decided by its DB config.)
 
-After completing the setup, you can:
+## 🧩 Swapping engines & models
 
-1. Start the main application
-2. Configure additional models
-3. Set up custom wake words
-4. Integrate with external services
+Everything is DB config — switch without touching code:
+
+- **STT:** download alternatives with `npm run setup:models:whisper` / `:zipformer` / `:moonshine`, then set `stt_config.engine` + model path.
+- **TTS:** Kokoro is the default (`npm run setup:models:kokoro`); pick a voice via `tts_config.voice_name` (e.g. `am_adam`, `bf_emma`).
+- **LLM:** any Ollama model — `docker exec -it domia-ollama ollama pull <model>`, then set `llm_model_config.model_name`.
+
+After a config change, apply it live with `curl -X POST http://localhost:3000/config/refresh` (no restart needed).
 
 ## 🆘 Troubleshooting
 
-If you encounter issues:
-
-1. Run `make doctor` to verify your setup
-2. Check the logs for specific error messages
-3. Ensure all prerequisites are properly installed
-4. Verify Docker is running (if using containerized components)
+- `make doctor` — verifies `sox` is installed.
+- Ollama not responding → `make dev` (is the container up?) and confirm `OLLAMA_HOST` in `.env`.
+- `SQLITE_ERROR: no such column` after a schema change → re-run `npm run db:reset:smart` (the DB is regenerated, never migrated).
+- Logs stream to `log/smart.log` / `log/dump.log`.
 
 ---
 
-For more detailed information, check the [main README.md](README.md) and individual module documentation.
+See the [README](./README.md) for what Domia does and how it's architected.

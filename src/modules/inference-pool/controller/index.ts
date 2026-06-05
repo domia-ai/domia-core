@@ -1,6 +1,11 @@
 import { inferencePoolLogger } from "@/utils"
 
-import { poolBusyError } from "../constants"
+import { poolBusyError } from "../utils"
+import {
+	RESPAWN_BACKOFF_BASE_MS,
+	RESPAWN_BACKOFF_MAX_MS,
+	RESPAWN_MAX_ATTEMPTS,
+} from "../constants"
 import type {
 	InferencePoolConfigType,
 	InferencePoolType,
@@ -26,6 +31,8 @@ export const createInferencePool = (
 	const queue: PendingJobType[] = []
 	let nextJobId = 1
 	let shuttingDown = false
+	let consecutiveCrashes = 0
+	let warmRefillTimer: ReturnType<typeof setTimeout> | null = null
 
 	const idleWorker = (): WorkerStateType | undefined =>
 		workers.find((w) => w.ready && !w.currentJob && !w.recycling)
@@ -62,6 +69,7 @@ export const createInferencePool = (
 		ws.handle.onMessage((msg) => {
 			if (msg.type === "ready") {
 				ws.ready = true
+				consecutiveCrashes = 0
 				pump()
 				return
 			}
@@ -83,6 +91,12 @@ export const createInferencePool = (
 		if (ws.idleTimer) clearTimeout(ws.idleTimer)
 	}
 
+	const refillWarmFloor = (): void => {
+		if (shuttingDown) return
+		while (workers.length < warmWorkers) spawnWorker()
+		pump()
+	}
+
 	const onWorkerExit = (ws: WorkerStateType, code: number | null): void => {
 		removeWorker(ws)
 		if (ws.currentJob) {
@@ -91,14 +105,38 @@ export const createInferencePool = (
 			pending.reject(new Error(`${label} worker exited (code ${code})`))
 		}
 		if (shuttingDown) return
-		if (!ws.recycling && code !== 0) {
-			inferencePoolLogger.warn(`💥 ${label} worker crashed — respawning`, {
-				code,
-				workers: workers.length,
-			})
+
+		const crashed = !ws.recycling && code !== 0
+		if (!crashed) {
+			consecutiveCrashes = 0
+			refillWarmFloor()
+			return
 		}
-		while (workers.length < warmWorkers) spawnWorker()
-		pump()
+
+		consecutiveCrashes++
+		if (consecutiveCrashes > RESPAWN_MAX_ATTEMPTS) {
+			inferencePoolLogger.error(
+				`💀 ${label} worker crashed ${consecutiveCrashes}× — pausing warm respawn (jobs lazy-spawn on demand)`,
+				{ code },
+			)
+			pump()
+			return
+		}
+		const delay = Math.min(
+			RESPAWN_BACKOFF_MAX_MS,
+			RESPAWN_BACKOFF_BASE_MS * 2 ** (consecutiveCrashes - 1),
+		)
+		inferencePoolLogger.warn(`💥 ${label} worker crashed — respawning`, {
+			code,
+			attempt: consecutiveCrashes,
+			delayMs: delay,
+			workers: workers.length,
+		})
+		if (warmRefillTimer) return
+		warmRefillTimer = setTimeout(() => {
+			warmRefillTimer = null
+			refillWarmFloor()
+		}, delay)
 	}
 
 	const finishJob = (
@@ -188,6 +226,10 @@ export const createInferencePool = (
 
 	const shutdown = async (): Promise<void> => {
 		shuttingDown = true
+		if (warmRefillTimer) {
+			clearTimeout(warmRefillTimer)
+			warmRefillTimer = null
+		}
 		for (const pending of queue.splice(0)) {
 			if (pending.timer) clearTimeout(pending.timer)
 			pending.reject(poolBusyError(`${label} pool shut down`))

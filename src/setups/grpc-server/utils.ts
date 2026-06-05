@@ -3,10 +3,12 @@ import { ServerError, Status } from "nice-grpc"
 import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import type { CoreBusFeaturesType } from "@/modules/core-bus/types"
 import { splitSentences } from "@/modules/core-bus/utils/sentence-buffer"
+import { resolveFallbackMessage } from "@/modules/core-bus/utils/fallback-messages"
 import {
 	buildPromptFromPersona,
 	personaContextFromDomia,
 	personaContextSchema,
+	ttsVoiceSchema,
 	type PersonaContextType,
 } from "@/modules/prompt-context-builder"
 import { applyMoodDelta, getRecentTrajectory } from "@/modules/emotion-engine"
@@ -22,7 +24,7 @@ import { reportReflectionToTarget } from "@/modules/grpc-client"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLM } from "@/modules/llm-engine"
 import { runSTT } from "@/modules/stt-engine"
-import { runTTS } from "@/modules/tts-engine"
+import { runTTS, type RunTtsOptionsType } from "@/modules/tts-engine"
 import {
 	grpcServerLogger,
 	pcmChunksToWavFile,
@@ -71,12 +73,31 @@ export const resolvePersonaContext = (
 			return personaContextSchema.parse(JSON.parse(personaContextJson))
 		} catch (err) {
 			grpcServerLogger.warn(
-				"invalid persona_context_json — using local persona",
+				"⚠️ invalid persona_context_json — responder falling back to its OWN persona (delegation persona leak)",
 				{ err },
 			)
+			return personaContextFromDomia(fallback)
 		}
 	}
+	grpcServerLogger.warn(
+		"⚠️ missing persona_context_json — responder falling back to its OWN persona (delegation persona leak)",
+	)
 	return personaContextFromDomia(fallback)
+}
+
+export const resolveTtsVoiceOptions = (
+	ttsVoiceJson: string | undefined,
+): RunTtsOptionsType | undefined => {
+	if (!ttsVoiceJson) return undefined
+	try {
+		return { voice: ttsVoiceSchema.parse(JSON.parse(ttsVoiceJson)) }
+	} catch (err) {
+		grpcServerLogger.warn(
+			"⚠️ invalid tts_voice_json — responder falling back to its OWN voice",
+			{ err },
+		)
+		return undefined
+	}
 }
 
 export const reflectOnPersonaInteraction = async (
@@ -181,13 +202,14 @@ export const ttsTextToChunks = async function* (
 	domia: DomiaType,
 	text: string,
 	features: CoreBusFeaturesType,
+	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
 	const ttsRunStream = features.tts?.adapter.runStream
 	if (canStreamTts(features) && ttsRunStream) {
-		yield* ttsRunStream(domia, text)
+		yield* ttsRunStream(domia, text, options)
 		return
 	}
-	const result = await runTTS(domia, text)
+	const result = await runTTS(domia, text, options)
 	if (!result?.filePath) return
 	yield* wavFileToPcmChunks(result.filePath)
 }
@@ -197,13 +219,14 @@ export const pipelinedReplyChunks = async function* (
 	promptContext: string,
 	features: CoreBusFeaturesType,
 	onSentence: (sentence: string) => void,
+	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
 	const llmRunStream = features.llm?.adapter.runStream
 	if (!llmRunStream) return
 	const tokens = llmRunStream(domia, promptContext)
 	for await (const sentence of splitSentences(tokens)) {
 		onSentence(sentence)
-		yield* ttsTextToChunks(domia, sentence, features)
+		yield* ttsTextToChunks(domia, sentence, features, options)
 	}
 }
 
@@ -212,10 +235,11 @@ export const fullReplyChunks = async function* (
 	promptContext: string,
 	features: CoreBusFeaturesType,
 	onReply: (reply: string) => void,
+	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
 	const reply = await runLLM(domia, promptContext)
 	onReply(reply)
-	yield* ttsTextToChunks(domia, reply, features)
+	yield* ttsTextToChunks(domia, reply, features, options)
 }
 
 export const transcribeAudioStream = async (
@@ -250,6 +274,9 @@ export const streamReplyAudioMessages = async function* (
 	logCtx: { label: string; interactionId?: string; originDomiaKey?: string },
 ): AsyncIterable<ReplyAudioMessage> {
 	const { sampleRate, channels } = ttsCapsOrDefaults(features)
+	const ttsOptions: RunTtsOptionsType | undefined = persona.ttsVoice
+		? { voice: persona.ttsVoice }
+		: undefined
 	const pipelined = canPipelineReply(features)
 	const startedAt = Date.now()
 	let chunkCount = 0
@@ -263,10 +290,10 @@ export const streamReplyAudioMessages = async function* (
 		originDomiaKey: logCtx.originDomiaKey,
 		pipelined,
 		ttsMode: canStreamTts(features) ? "stream" : "sync",
+		voice: ttsOptions?.voice?.voiceName,
 	})
 
 	try {
-		const promptContext = buildPromptFromPersona(persona, transcript)
 		const onSentence = (sentence: string): void => {
 			sentenceCount++
 			assembled += (assembled.length > 0 ? " " : "") + sentence
@@ -274,9 +301,31 @@ export const streamReplyAudioMessages = async function* (
 		const onReply = (reply: string): void => {
 			assembled = reply
 		}
-		const audio = pipelined
-			? pipelinedReplyChunks(domia, promptContext, features, onSentence)
-			: fullReplyChunks(domia, promptContext, features, onReply)
+
+		const emptyTranscript = !transcript?.trim()
+		let audio: AsyncIterable<Buffer>
+		if (emptyTranscript) {
+			grpcServerLogger.warn(
+				`⚠️ ${logCtx.label}: empty transcript — speaking STT fallback (skipping LLM)`,
+				{
+					interactionId: logCtx.interactionId,
+					originDomiaKey: logCtx.originDomiaKey,
+				},
+			)
+			assembled = resolveFallbackMessage("stt")
+			audio = ttsTextToChunks(domia, assembled, features, ttsOptions)
+		} else {
+			const promptContext = buildPromptFromPersona(persona, transcript)
+			audio = pipelined
+				? pipelinedReplyChunks(
+						domia,
+						promptContext,
+						features,
+						onSentence,
+						ttsOptions,
+					)
+				: fullReplyChunks(domia, promptContext, features, onReply, ttsOptions)
+		}
 
 		for await (const chunk of audio) {
 			chunkCount++
@@ -290,15 +339,44 @@ export const streamReplyAudioMessages = async function* (
 			}
 		}
 
+		if (!emptyTranscript && !assembled.trim()) {
+			grpcServerLogger.warn(
+				`⚠️ ${logCtx.label}: empty LLM reply — speaking LLM fallback`,
+				{
+					interactionId: logCtx.interactionId,
+					originDomiaKey: logCtx.originDomiaKey,
+				},
+			)
+			assembled = resolveFallbackMessage("llm")
+			for await (const chunk of ttsTextToChunks(
+				domia,
+				assembled,
+				features,
+				ttsOptions,
+			)) {
+				chunkCount++
+				totalBytes += chunk.length
+				if (firstChunkAt === null) firstChunkAt = Date.now()
+				yield {
+					payload: {
+						$case: "audio",
+						audio: { pcm: chunk, sampleRate, channels },
+					},
+				}
+			}
+		}
+
 		yield { payload: { $case: "finalReply", finalReply: assembled } }
-		void reflectOnPersonaInteraction(
-			domia,
-			persona,
-			logCtx.originDomiaKey,
-			transcript,
-			assembled,
-			logCtx.interactionId,
-		)
+		if (!emptyTranscript) {
+			void reflectOnPersonaInteraction(
+				domia,
+				persona,
+				logCtx.originDomiaKey,
+				transcript,
+				assembled,
+				logCtx.interactionId,
+			)
+		}
 	} finally {
 		grpcServerLogger.info(`📤 ${logCtx.label} ended`, {
 			interactionId: logCtx.interactionId,

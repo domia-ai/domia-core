@@ -89,6 +89,8 @@ export const requestVoiceReply = async (
 				if (p.interactionId !== interactionId) return
 				ttsFilePath = p.filePath
 				onStage?.("tts", Date.now() - t0)
+				clearTimeout(timeout)
+				resolve()
 			})
 			sub(
 				DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED,

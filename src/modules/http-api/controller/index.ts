@@ -1,5 +1,12 @@
-import { createReadStream } from "fs"
+import { createReadStream, existsSync } from "fs"
 import { type DomiaType } from "@/modules/core"
+import {
+	getInteractionById,
+	getInteractionsSince,
+	getSessionsSince,
+} from "@/modules/session-manager"
+import { getEmotionEventsSince } from "@/modules/emotion-engine"
+import { getFactsSince } from "@/modules/memory"
 import {
 	serializeMind,
 	importMind,
@@ -10,6 +17,8 @@ import type {
 	PostChatBodyType,
 	PostChatResponseType,
 	GetAudioRouteType,
+	GetSyncQueryType,
+	GetSyncResponseType,
 	PostVoiceBodyType,
 	PostVoiceResponseType,
 	PostImportMindBodyType,
@@ -18,6 +27,8 @@ import {
 	postChatBodySchema,
 	postVoiceBodySchema,
 	postImportMindBodySchema,
+	getSyncQuerySchema,
+	getAudioQuerySchema,
 } from "../schemas"
 import {
 	requestTextReply,
@@ -42,9 +53,17 @@ export const handleGetAudio = async (
 	reply: FastifyReply,
 ) => {
 	const { interactionId } = request.params
-	const filePath = getAudioFilePath(interactionId)
+	const { kind } = getAudioQuerySchema.parse(request.query)
+	let filePath = kind === "tts" ? getAudioFilePath(interactionId) : null
 	if (!filePath) {
-		return reply.code(404).send({ error: "Audio not found or expired" })
+		const row = await getInteractionById(interactionId)
+		filePath =
+			kind === "input"
+				? (row?.inputAudioPath ?? null)
+				: (row?.ttsAudioPath ?? null)
+	}
+	if (!filePath || !existsSync(filePath)) {
+		return reply.code(404).send({ error: "Audio not found" })
 	}
 	const stream = createReadStream(filePath)
 	return reply.type("audio/wav").send(stream)
@@ -135,4 +154,31 @@ export const handleActivateTemplate = async (
 		})
 		return reply.code(404).send({ error: "Template not found" })
 	}
+}
+
+export const handleGetSync = async (
+	domia: DomiaType,
+	query: GetSyncQueryType,
+): Promise<GetSyncResponseType> => {
+	const { since, limit } = getSyncQuerySchema.parse(query)
+	const domiaId = domia.id
+
+	const [interactions, sessions, emotionEvents, facts] = await Promise.all([
+		getInteractionsSince(domiaId, since, limit),
+		getSessionsSince(domiaId, since, limit),
+		getEmotionEventsSince(domiaId, since, limit),
+		getFactsSince(domiaId, since, limit),
+	])
+
+	const stamps = [
+		...interactions.map((r) => r.createdAt),
+		...emotionEvents.map((r) => r.createdAt),
+		...facts.map((r) => r.updatedAt),
+		...sessions.map((r) => r.updatedAt),
+	].filter((s): s is string => Boolean(s))
+	const nextCursor = stamps.length
+		? stamps.reduce((a, b) => (a > b ? a : b))
+		: since
+
+	return { interactions, sessions, emotionEvents, facts, nextCursor }
 }

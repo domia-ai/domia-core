@@ -1,6 +1,13 @@
 import { fork } from "child_process"
+import os from "os"
 import path from "path"
 
+import {
+	AUTO_MAX_WORKERS_FLOOR,
+	AUTO_MAX_WORKERS_CEILING,
+	AUTO_CORE_DIVISOR,
+	AUTO_GB_PER_WORKER,
+} from "../constants"
 import type {
 	WorkerBackendType,
 	WorkerHandleType,
@@ -52,4 +59,28 @@ export const createChildProcessBackend = (
 			}
 		},
 	}
+}
+
+let globalReservedWorkers = 0
+
+export const resolveMaxWorkers = (configured: number): number => {
+	const totalGb = os.totalmem() / 1024 ** 3
+	const ramBudget = Math.max(1, Math.floor(totalGb / AUTO_GB_PER_WORKER))
+	if (configured > 0) {
+		globalReservedWorkers += configured
+		return configured
+	}
+	const cores = os.cpus().length || AUTO_MAX_WORKERS_FLOOR
+	const coresBased = Math.floor(cores / AUTO_CORE_DIVISOR)
+	const ramRemaining = Math.max(1, ramBudget - globalReservedWorkers)
+	const derived = Math.min(coresBased, ramRemaining)
+	const resolved = Math.max(1, Math.min(AUTO_MAX_WORKERS_CEILING, derived))
+	globalReservedWorkers += resolved
+	return resolved
+}
+
+export const poolBusyError = (message: string): Error => {
+	const err = new Error(message) as Error & { code?: string }
+	err.code = "INFERENCE_POOL_BUSY"
+	return err
 }

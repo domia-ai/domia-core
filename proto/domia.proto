@@ -115,6 +115,7 @@ message TtsStreamRequest {
   string reply = 2;
   optional string origin_domia_key = 3;
   optional string interaction_id = 4;
+  optional string tts_voice_json = 5;
 }
 
 message ReplyAudioMessage {

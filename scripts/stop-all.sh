@@ -49,5 +49,5 @@ fi
 if [ $killed_any -eq 0 ]; then
   echo "✅ Nothing to stop"
 else
-  echo "✅ All DOMIA processes stopped, ports 3000/3001/5052/5053 free"
+  echo "✅ All DOMIA processes stopped, ports 3100/3101/5052/5053 free"
 fi

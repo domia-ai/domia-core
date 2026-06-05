@@ -1,7 +1,7 @@
 import { createServer, type Server } from "nice-grpc"
 
 import { env } from "@/config"
-import { grpcServerLogger } from "@/utils"
+import { grpcServerLogger, setTraceContext } from "@/utils"
 import { resolveLiveDomia } from "@/setups/live-domia"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
 import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
@@ -34,6 +34,7 @@ import {
 	transcribeAudioStream,
 	streamReplyAudioMessages,
 	resolvePersonaContext,
+	resolveTtsVoiceOptions,
 	reflectOnPersonaInteraction,
 	admitVoiceReplyOrBusy,
 } from "./utils"
@@ -66,39 +67,56 @@ const buildImplementation = ({
 			request: AsyncIterable<AudioChunk>,
 		): Promise<SttDonePayload> {
 			const { domia, features } = await resolveLive()
-			const { transcript, meta } = await transcribeAudioStream(
-				domia,
-				request,
-				features,
-			)
-
-			grpcServerLogger.info(`📥 streamStt → "${transcript}"`, {
-				domiaId: domia.id,
-				interactionId: meta?.interactionId,
-			})
-			return {
-				transcript,
-				interactionId: meta?.interactionId,
-				originDomiaKey: meta?.originDomiaKey,
-				responseType: meta?.responseType,
+			try {
+				const { transcript, meta } = await transcribeAudioStream(
+					domia,
+					request,
+					features,
+				)
+				setTraceContext({
+					interactionId: meta?.interactionId,
+					originDomiaKey: meta?.originDomiaKey,
+				})
+				grpcServerLogger.info(`📥 streamStt → "${transcript}"`, {
+					domiaId: domia.id,
+					interactionId: meta?.interactionId,
+				})
+				return {
+					transcript,
+					interactionId: meta?.interactionId,
+					originDomiaKey: meta?.originDomiaKey,
+					responseType: meta?.responseType,
+				}
+			} catch (err) {
+				grpcServerLogger.error("❌ streamStt failed", { err })
+				throw err
 			}
 		},
 
 		async *streamLlm(request: LlmStreamRequest): AsyncIterable<TokenChunk> {
+			setTraceContext({
+				interactionId: request.interactionId,
+				originDomiaKey: request.originDomiaKey,
+			})
 			const { domia, features } = await resolveLive()
 			const persona = resolvePersonaContext(request.personaContextJson, domia)
 			const promptContext = buildPromptFromPersona(persona, request.transcript)
 			const runStream = features.llm?.adapter.runStream
 			let reply = ""
 
-			if (canStreamLlm(features) && runStream) {
-				for await (const token of runStream(domia, promptContext)) {
-					reply += token
-					yield { token }
+			try {
+				if (canStreamLlm(features) && runStream) {
+					for await (const token of runStream(domia, promptContext)) {
+						reply += token
+						yield { token }
+					}
+				} else {
+					reply = await runLLM(domia, promptContext)
+					yield { token: reply }
 				}
-			} else {
-				reply = await runLLM(domia, promptContext)
-				yield { token: reply }
+			} catch (err) {
+				grpcServerLogger.error("❌ streamLlm failed", { err })
+				throw err
 			}
 
 			void reflectOnPersonaInteraction(
@@ -112,8 +130,13 @@ const buildImplementation = ({
 		},
 
 		async *streamTts(request: TtsStreamRequest): AsyncIterable<AudioChunk> {
+			setTraceContext({
+				interactionId: request.interactionId,
+				originDomiaKey: request.originDomiaKey,
+			})
 			const { domia, features } = await resolveLive()
 			const { sampleRate, channels } = ttsCapsOrDefaults(features)
+			const ttsOptions = resolveTtsVoiceOptions(request.ttsVoiceJson)
 			const streaming = canStreamTts(features)
 			const startedAt = Date.now()
 			let chunkCount = 0
@@ -124,6 +147,7 @@ const buildImplementation = ({
 				originDomiaKey: request.originDomiaKey,
 				replyLen: request.reply.length,
 				streaming,
+				voice: ttsOptions?.voice?.voiceName,
 			})
 
 			try {
@@ -131,11 +155,15 @@ const buildImplementation = ({
 					domia,
 					request.reply,
 					features,
+					ttsOptions,
 				)) {
 					chunkCount++
 					totalBytes += chunk.length
 					yield { pcm: chunk, sampleRate, channels }
 				}
+			} catch (err) {
+				grpcServerLogger.error("❌ streamTts failed", { err })
+				throw err
 			} finally {
 				grpcServerLogger.info(`📤 streamTts ended`, {
 					interactionId: request.interactionId,
@@ -152,6 +180,10 @@ const buildImplementation = ({
 		async *streamReplyAudio(
 			request: LlmStreamRequest,
 		): AsyncIterable<ReplyAudioMessage> {
+			setTraceContext({
+				interactionId: request.interactionId,
+				originDomiaKey: request.originDomiaKey,
+			})
 			const { domia, features } = await resolveLive()
 			const release = await admitVoiceReplyOrBusy(domia, {
 				interactionId: request.interactionId,
@@ -170,6 +202,9 @@ const buildImplementation = ({
 						originDomiaKey: request.originDomiaKey,
 					},
 				)
+			} catch (err) {
+				grpcServerLogger.error("❌ streamReplyAudio failed", { err })
+				throw err
 			} finally {
 				release()
 			}
@@ -186,6 +221,10 @@ const buildImplementation = ({
 					request,
 					features,
 				)
+				setTraceContext({
+					interactionId: meta?.interactionId,
+					originDomiaKey: meta?.originDomiaKey,
+				})
 				grpcServerLogger.info(`📥 streamVoiceReply STT → "${transcript}"`, {
 					domiaId: domia.id,
 					interactionId: meta?.interactionId,
@@ -198,12 +237,16 @@ const buildImplementation = ({
 					interactionId: meta?.interactionId,
 					originDomiaKey: meta?.originDomiaKey,
 				})
+			} catch (err) {
+				grpcServerLogger.error("❌ streamVoiceReply failed", { err })
+				throw err
 			} finally {
 				release()
 			}
 		},
 
 		async reportReflection(request: ReflectionReport): Promise<ReflectionAck> {
+			setTraceContext({ interactionId: request.interactionId })
 			const { domia } = await resolveLive()
 			try {
 				if (request.emotionDeltaJson) {
@@ -223,7 +266,8 @@ const buildImplementation = ({
 					})
 				}
 				return { accepted: true }
-			} catch {
+			} catch (err) {
+				grpcServerLogger.error("❌ reportReflection failed", { err })
 				return { accepted: false }
 			}
 		},

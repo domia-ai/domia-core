@@ -1,6 +1,9 @@
 export { createInferencePool } from "./controller"
-export { createChildProcessBackend } from "./utils"
-export { resolveMaxWorkers, poolBusyError } from "./constants"
+export {
+	createChildProcessBackend,
+	resolveMaxWorkers,
+	poolBusyError,
+} from "./utils"
 export type {
 	InferencePoolType,
 	InferencePoolConfigType,

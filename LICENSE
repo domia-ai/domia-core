@@ -1,16 +1,17 @@
 Business Source License 1.1
 
+Licensed Work: Domia Core
 Licensor: Kevin Castillo Mora / DOMIA
 Initial Date: 2025-06-07
-License: Business Source License 1.1
-Change Date: 2030-01-01
-Change License: Apache 2.0
+Change Date: Four years from the first public release date of each version of the Licensed Work
+Change License: Apache-2.0
+Additional Use Grant: You may use the Licensed Work for personal, non-commercial home use, educational, research, evaluation, development, and other non-production purposes.
 
 Terms
 
-The contents of this repository are made available under the terms of the Business Source License 1.1 (the "License"). The License allows the use of the code for non-production and non-commercial use.
+The contents of this repository are made available under the terms of the Business Source License 1.1 (the "License"). The License allows the use of the code under the Additional Use Grant above.
 
-As of the Change Date specified above, the contents of this repository will be made available under the Change License, which will apply as an open source license as defined by the Open Source Initiative.
+As of the Change Date specified above, each version of the Licensed Work will be made available under the Change License, which will apply as an open source license as defined by the Open Source Initiative.
 
 Permissions
 
@@ -30,7 +31,7 @@ You are allowed to use, copy, modify, and distribute the contents of this reposi
 
 Future Transition
 
-On or after the Change Date (2030-01-01), this software will automatically transition to the Apache 2.0 license and will be governed by the terms of that open source license going forward.
+On or after the Change Date for a given version, that version will automatically transition to the Apache-2.0 license and will be governed by the terms of that open source license going forward.
 
 DISCLAIMER
 

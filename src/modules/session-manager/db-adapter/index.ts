@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, and, gte, asc } from "drizzle-orm"
 
 import {
 	dbClient,
@@ -38,6 +38,15 @@ const dbAdapter = {
 			orderBy: desc(interactionSessionTrace.lastUsedAt),
 			limit: 1,
 		}),
+	getLastInteractionAt: (
+		domiaId: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.interactionTrace.findFirst({
+			where: eq(interactionTrace.domiaId, domiaId),
+			orderBy: desc(interactionTrace.createdAt),
+			columns: { createdAt: true },
+		}),
 	getRecentInteractionsForDomia: (
 		domiaId: string,
 		limit: number,
@@ -46,6 +55,34 @@ const dbAdapter = {
 		client.query.interactionTrace.findMany({
 			where: eq(interactionTrace.domiaId, domiaId),
 			orderBy: desc(interactionTrace.createdAt),
+			limit,
+		}),
+	getInteractionsSince: (
+		domiaId: string,
+		since: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.interactionTrace.findMany({
+			where: and(
+				eq(interactionTrace.domiaId, domiaId),
+				gte(interactionTrace.createdAt, since),
+			),
+			orderBy: asc(interactionTrace.createdAt),
+			limit,
+		}),
+	getSessionsSince: (
+		domiaId: string,
+		since: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.interactionSessionTrace.findMany({
+			where: and(
+				eq(interactionSessionTrace.domiaId, domiaId),
+				gte(interactionSessionTrace.updatedAt, since),
+			),
+			orderBy: asc(interactionSessionTrace.updatedAt),
 			limit,
 		}),
 	insertInteractionSessionTrace: (

@@ -12,8 +12,10 @@ import {
 	handleImportMind,
 	handleGetTemplates,
 	handleActivateTemplate,
+	handleGetSync,
 	type PostChatRouteType,
 	type GetAudioRouteType,
+	type GetSyncRouteType,
 	type PostVoiceRouteType,
 	type PostImportMindRouteType,
 	type TemplateIdRouteType,
@@ -60,6 +62,10 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
 		return { refreshed: true }
 	})
+
+	fastify.get<GetSyncRouteType>("/sync", async (request) =>
+		handleGetSync(await liveDomia(domia), request.query),
+	)
 
 	fastify.get("/mind", async () => handleGetMind(await liveDomia(domia)))
 

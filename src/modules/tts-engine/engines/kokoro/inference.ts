@@ -93,6 +93,15 @@ export const float32ToInt16Buffer = (samples: Float32Array): Buffer => {
 	return out
 }
 
+const resolveValidSid = (sid: number, numSpeakers: number): number => {
+	if (sid >= 0 && sid < numSpeakers) return sid
+	ttsEngineLogger.warn(
+		`⚠️ sid ${sid} out of range for model (${numSpeakers} speakers) — using default voice (sid 0)`,
+		{ sid, numSpeakers },
+	)
+	return 0
+}
+
 export const synthesizeKokoroSamples = (
 	engineConfig: TtsWorkerEngineConfigType,
 	params: { text: string; sid: number; speed: number; silenceScale: number },
@@ -101,7 +110,7 @@ export const synthesizeKokoroSamples = (
 	const audio = engine.generate({
 		text: params.text,
 		generationConfig: {
-			sid: params.sid,
+			sid: resolveValidSid(params.sid, engine.numSpeakers),
 			speed: params.speed,
 			silenceScale: params.silenceScale,
 		},

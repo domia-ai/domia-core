@@ -4,15 +4,43 @@ import type { ReceiveHeartbeatArgsType, SendHeartbeatArgsType } from "../types"
 import { heartbeatLogger } from "@/utils"
 import { env } from "@/config"
 import { getLocalIp, upsertDomiaFromNetwork } from "@/modules/network-sync"
+import { getLastInteractionAt } from "@/modules/session-manager"
+import { getLastEmotionEventAt } from "@/modules/emotion-engine"
+import { getLastFactAt } from "@/modules/memory"
 
-export const sendHeartbeat = ({ domia, mqttClient }: SendHeartbeatArgsType) => {
+export const sendHeartbeat = async ({
+	domia,
+	mqttClient,
+}: SendHeartbeatArgsType) => {
 	try {
 		const domiaKey = domia?.domiaKey
 		const topic = `domia/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.HEARTBEAT}`
 		heartbeatLogger.debug(`💓 Heartbeat sent for ${domiaKey}`)
 		const localIp = getLocalIp()
 		const grpcPort = Number(env.GRPC_PORT)
-		mqttClient?.publish(topic, JSON.stringify({ ...domia, localIp, grpcPort }))
+		const httpPort = Number(env.HTTP_SERVER_PORT)
+		const [interactionAt, emotionAt, factAt] = await Promise.all([
+			getLastInteractionAt(domia.id),
+			getLastEmotionEventAt(domia.id),
+			getLastFactAt(domia.id),
+		])
+		const stamps = [interactionAt, emotionAt, factAt].filter((s): s is string =>
+			Boolean(s),
+		)
+		const lastInteractionAt = stamps.length
+			? stamps.reduce((a, b) => (a > b ? a : b))
+			: null
+
+		mqttClient?.publish(
+			topic,
+			JSON.stringify({
+				...domia,
+				localIp,
+				grpcPort,
+				httpPort,
+				lastInteractionAt,
+			}),
+		)
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })
 	}

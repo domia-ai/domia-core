@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, and, gte, asc } from "drizzle-orm"
 
 import {
 	dbClient,
@@ -34,6 +34,26 @@ const dbAdapter = {
 			where: eq(memoryFact.domiaId, domiaId),
 			orderBy: desc(memoryFact.updatedAt),
 			limit,
+		}),
+	getFactsSince: (
+		domiaId: string,
+		since: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.memoryFact.findMany({
+			where: and(
+				eq(memoryFact.domiaId, domiaId),
+				gte(memoryFact.updatedAt, since),
+			),
+			orderBy: asc(memoryFact.updatedAt),
+			limit,
+		}),
+	getLastFactAt: (domiaId: string, client: DBClientOrTxType = dbClient) =>
+		client.query.memoryFact.findFirst({
+			where: eq(memoryFact.domiaId, domiaId),
+			orderBy: desc(memoryFact.updatedAt),
+			columns: { updatedAt: true },
 		}),
 }
 

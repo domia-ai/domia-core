@@ -28,6 +28,7 @@ import {
 	createAsyncSemaphore,
 	isSemaphoreBusyError,
 	sleep,
+	withTimeout,
 } from "@/utils"
 import { activeVoiceReplies } from "@/modules/voice-admission"
 import {
@@ -80,14 +81,6 @@ const buildReflectionPrompt = (
 }
 
 const inFlight = new Set<string>()
-
-const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
-	Promise.race([
-		promise,
-		new Promise<T>((_, reject) =>
-			setTimeout(() => reject(new Error("reflection timeout")), ms),
-		),
-	])
 
 const reflectionSemaphore = createAsyncSemaphore(
 	DEFAULT_REFLECTION_CONCURRENCY,
@@ -195,6 +188,7 @@ export const runReflection = async (
 						),
 					),
 					REFLECTION_TIMEOUT_MS,
+					"reflection",
 				)
 				const match = raw.match(/\{[\s\S]*\}/)
 				const obj = match

@@ -7,6 +7,23 @@ import dbAdapter from "../db-adapter"
 import { RECENT_TURNS_WINDOW, RECENT_TURNS_MAX_AGE_MS } from "../constants"
 import type { NewInteractionDataType } from "../types"
 
+export const getInteractionsSince = (
+	domiaId: string,
+	since: string,
+	limit: number,
+) => dbAdapter.getInteractionsSince(domiaId, since, limit)
+
+export const getSessionsSince = (
+	domiaId: string,
+	since: string,
+	limit: number,
+) => dbAdapter.getSessionsSince(domiaId, since, limit)
+
+export const getLastInteractionAt = async (domiaId: string) => {
+	const row = await dbAdapter.getLastInteractionAt(domiaId)
+	return row?.createdAt ?? null
+}
+
 export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	const now = Date.now()
 	const domiaId = domia?.id

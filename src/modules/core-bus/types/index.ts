@@ -101,6 +101,7 @@ export type NotifyInteractionFailedArgsType = {
 	responseType?: string
 	error: Error | string
 	step?: string
+	silent?: boolean
 }
 
 export type AudioFallbackReasonType = "tts_failed" | "playback_failed"

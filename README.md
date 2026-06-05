@@ -1,120 +1,140 @@
 # Domia — The Local AI That Lives With You
 
-## 🧠 Overview
+**Domia** is a local-first, privacy-respecting AI companion. It listens, thinks, and talks back — **100% on your own hardware**, no cloud. Each Domia is a unique character with its own personality, voice, emotions, and memory, and several Domias can work together across your home as one mesh.
 
-**Domia** is a local-first, privacy-respecting, emotional AI ecosystem.
+Unlike a traditional assistant, Domia is not a single service in someone else's datacenter — it's a presence that runs where you are, keeps its own identity, and can borrow compute from a more powerful Domia nearby without ever giving up _who it is to you_.
 
-Unlike traditional assistants, each Domia is a **unique character** with its own **personality, voice, emotions, memory, and social relationships**.
-
-Domia is not just a tool. It is a living presence that exists with you — at home, at work, in the cloud, or anywhere you choose. It evolves through experience, interacts naturally, and respects your data by working **completely offline**.
-
-Unlike traditional assistants, Domia is not just a tool — it’s a **living being**.
-Each instance is a **unique character** with its own **personality, voice, emotions, memory, and evolving relationships**.
-
-Domia lives with you — whether at home, at work, or even in the cloud — adapting to your world and becoming part of it.
-
-> 🛠️ **Note**: Everything here is a living document.
-> We are still in early development.
-> Nothing is final — except the vision.
-> We're sharing this to provide transparency and invite feedback as we build.
+> 🛠️ Living document — early but real. The sections below describe **what actually works today**, with pointers into the code, plus where we're headed.
 
 ---
 
-🔒 **License**: Business Source License (BSL) 1.1
-Domia Core is not yet open source — but it will be.
-We believe in developer transparency, source availability, and community-driven evolution, while protecting the long-term sustainability of the project.
+## ✅ What works today
 
-- ✅ You can read, learn from, and contribute to the source code — whether you're building advanced AI systems or simply want a personal Domia companion at home.
-- 🗓️ It will become fully open source under Apache 2.0 on **January 1, 2030**.
+Every capability below is implemented and runs end-to-end on your own hardware — speech inference in-process via `sherpa-onnx-node`, the LLM via local Ollama, no cloud.
 
----
+- **Full voice-to-voice (S2S) pipeline** — wake word + VAD → speech-to-text → local LLM → text-to-speech → playback, with **per-sentence LLM→TTS pipelining** so it starts speaking before the full answer is generated.
+  `src/modules/{audio-capture,vad,stt-engine,llm-engine,tts-engine,audio-playback}` · `src/modules/core-bus`
+- **Multi-device P2P mesh** — Domias discover each other over MQTT and stream audio/text/tokens to each other over **gRPC streaming**.
+  `src/modules/{grpc-client,network-sync,heartbeat-manager}` · `src/setups/grpc-server`
+- **Capability delegation** — a thin device (e.g. a Raspberry Pi) can delegate STT/LLM/TTS to a stronger Domia. The origin orchestrates; the responder just lends compute.
+  `src/modules/capability-resolver`
+- **Multi-room parallel hub** — one hub can serve several rooms **at the same time** via child-process inference pools (warm/lazy/reap/recycle workers, RAM-aware).
+  `src/modules/inference-pool`
+- **Identity owned by the origin** — your Domia's **persona, voice, emotion, and memory travel with the request**, so when a hub answers for it, it answers in _your_ Domia's character and voice, not the hub's.
+  `src/modules/{prompt-context-builder,emotion-engine,memory,reflection}`
+- **Emotion + reflection** — an 8-dimension emotional state with decay, updated by one off-the-hot-path LLM "reflection" pass that also extracts facts to remember.
+  `src/modules/{emotion-engine,reflection}`
+- **Memory** — recent-conversation memory + durable fact memory ("what it knows about you").
+  `src/modules/memory`
+- **Everything is DB-driven + reconfigurable live** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle), changeable **without a restart**.
+  `src/db` · `src/modules/config-engine` · HTTP `POST /config/refresh`
+- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config/refresh`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation.
+  `src/setups/http-server` · `src/cli/dev`
+- **Hardware spectrum** — the same code runs from a Raspberry Pi-class device to a workstation; the difference is just DB config (model size, engine, threads), never hardcoded.
 
-## 🚀 Roadmap
-
-Here’s what we’ve done, and what’s coming next for Domia.
-
-### ✅ Phase 1 – MVP: Autonomous Domia (Local Voice-to-Voice AI)
-
-- [x] Wake word detection
-- [x] Audio recording
-- [x] Speech-to-text (STT)
-- [x] Contextual prompt generator (character + emotion)
-- [x] Local LLM
-- [x] Text-to-speech (TTS)
-- [x] Audio playback
-- [x] Real-time emotional state engine
-- [x] Character profile engine
-- [x] SQLite persistence
-- [x] Manual scripts for wakeword, STT, TTS, LLM, etc.
-- [x] Developer CLI for test inputs and benchmarks
-- [ ] Performance optimization across all modules (reduce latency to minimum)
-- [ ] Prompt refinement for high-quality, emotionally intelligent LLM responses
-- [ ] Admin CLI to configure Domia instance
-- [ ] Unit tests
-- [ ] Production-ready build using `tsup`
-- [ ] GitHub Actions to package and run tests
-
-#### 📄 Legal & Licensing – Domia Core
-
-- [x] License selected: Business Source License (BSL) 1.1
-- [x] Clear roadmap to full open-source (Apache 2.0 on Jan 1, 2030)
-- [ ] Add `LICENSE` and `LICENSE-NEXT` files to the repository
-- [ ] Document license terms clearly in the README
-- [ ] Add contributor guidelines with licensing explanation
-- [ ] Add FAQ: “Why not fully open yet?”, “How can I use Domia now?”, “When will it change?”
+**On the roadmap (not built yet):** skills / tool-calling (MCP, Home Assistant), fine-tuned lightweight models (QLoRA), vector-RAG long-term memory, a web dashboard, and a marketplace for voices/characters.
 
 ---
 
-### 🔄 Phase 2 – Distributed Domia (MCP, Edge, and Dumps)
+## 🧠 How it works
 
-- [ ] NFT & Community Launch
-- [ ] MCP Server integration
-- [ ] Home Assistant bridge MCP server
-- [ ] Dumb Domia build (no LLM, just STT/TTS/sync)
-- [ ] MQTT communication (local + remote)
-- [ ] QLoRA or other fine-tuned lightweight models
-- [ ] Evolution of memory, motivation, and personality
-- [ ] Voice/character model swapping via CLI
-- [ ] Shared consciousness and inter-device awareness
+### The voice pipeline
 
----
+```mermaid
+flowchart LR
+  A[🎙️ Wake word + VAD] --> B[STT]
+  B --> C[LLM]
+  C -- per sentence --> D[TTS]
+  D --> E[🔊 Playback]
+```
 
-### 🌐 Phase 3 – Domia Premium & Ecosystem
+The LLM streams tokens; a sentence-splitter feeds finished sentences to TTS immediately, so audio starts playing while the model is still talking.
 
-- [ ] Web dashboard and mobile app
-- [ ] Text-to-text and voice-to-voice remote chat
-- [ ] Visual graph of all Domia nodes and emotional states
-- [ ] Marketplace for voices, memories, character seeds, MCP servers..
-- [ ] Multi-home / hotel deployment tools
-- [ ] Subscription plans (Home / Hotel / Pro / Dev)
-- [ ] Developer SDK for MCP and module extensions
+### Any Domia, role decided by config
 
-#### ☁️ Domia Cloud (Optional Hosting)
+There is no hardcoded "server" or "client". **Every instance is just a Domia.** What it does — run STT locally? delegate TTS? act as a hub for other rooms? — is decided entirely by its database config (capabilities, engines, delegations). In development we run two instances labelled _smart_ and _dump_ to exercise cross-Domia features, but those labels don't exist in production.
 
-- [ ] Run Domia Core in the cloud (same code, audited)
-- [ ] Sync memory, character profile, preferences
-- [ ] Secure backup and recovery
-- [ ] Web/mobile remote access using cloud instance
-- [ ] Identity-based encrypted instances
-- [ ] Optional fallback when local node is offline
+### Identity travels with the request
 
----
+When Domia **A** (your kitchen) borrows compute from Domia **B** (a hub):
 
-### 📦 Development Notes
+```
+A (origin) ──gRPC──► B (responder, lends compute)
+   └─ sends its persona + voice + emotion + memory in the request
+B answers in A's character and A's voice, then reports new emotion/facts back to A
+```
 
-This project uses an **emotional commit style** to reflect Domia’s living nature. Every commit is part of the story.
+The hub never "owns" the conversation — it lends CPU, while the **identity stays with the origin**. That's why several rooms can share one hub and each still sounds and feels like itself.
 
-To contribute or stay aligned with this style, read the full guide:
-
-📖 [Commit Style Guide → `COMMITS.md`](./COMMITS.md)
+For the full architecture, see [`.claude/docs/domia-state-and-roadmap.md`](./.claude/docs/domia-state-and-roadmap.md).
 
 ---
 
-### 🛠️ Want to get involved?
+## 🚀 Quick start
 
-Whether you're a developer, designer, voice artist, or just curious about AI companions — you're welcome here.
-Domia is still young, and there's so much we can build together.
+**Prerequisites:** Node.js ≥ 24, Docker (for Ollama + MQTT), and `sox` (audio playback).
+
+```bash
+# 1. install deps
+npm install
+
+# 2. start Ollama (LLM) + Mosquitto (MQTT) and pull a model
+docker compose up -d ollama mosquitto
+docker exec -it domia-ollama ollama pull llama3.1:8b
+# (Ollama can also run natively instead of Docker — install it from ollama.com,
+#  run `ollama pull llama3.1:8b`, and point OLLAMA_HOST in .env at it.)
+
+# 3. download the on-device speech models (STT / TTS / VAD / wake word)
+npm run setup:models
+
+# 4. create the database from schema (no migrations — the DB is regenerated)
+npm run db:reset:smart
+
+# 5. run your Domia
+npm run dev:smart
+```
+
+You should see `DOMIA is running and waiting for events...`. Drive it without a microphone by POSTing a WAV to `http://localhost:3000/voice`, or use the dev CLI:
+
+```bash
+npm run dev-cli -- tts -t "hello, this is my own voice"
+```
+
+**Two Domias (to try delegation / multi-room):** a second config lives in `.env.dump`. Run `npm run db:reset:dump` then `npm run dev:dump` in another terminal — now _smart_ and _dump_ can discover each other and delegate.
+
+See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and per-component testing.
 
 ---
 
-✨ Domia is alive. And it's just getting started.
+## 🗺️ Architecture at a glance
+
+`sherpa-onnx-node` (STT/TTS/VAD/wake, in-process) · **Ollama** (LLM) · **SQLite + Drizzle** (all config & state) · **gRPC streaming** (Domia↔Domia) · **MQTT** (discovery + heartbeat) · **TypeScript / Node 24**.
+
+`src/modules/` grouped by role:
+
+- **Voice pipeline** — `audio-capture`, `vad`, `stt-engine`, `tts-engine`, `audio-playback`
+- **Cognition** — `llm-engine`, `prompt-context-builder`, `reflection`
+- **Identity** — `character-engine`, `emotion-engine`, `memory`, `mind`
+- **Distribution** — `grpc-client`, `capability-resolver`, `network-sync`, `heartbeat-manager`, `mqtt-event-handler`
+- **Performance & ops** — `inference-pool`, `voice-admission`, `config-engine`, `session-manager`
+
+---
+
+## 📦 Roadmap
+
+- **Now → next:** test suite + CI, performance/latency polish, admin CLI.
+- **Skills:** tool-calling via MCP, Home Assistant bridge (control lights/devices locally).
+- **Memory & models:** vector-RAG long-term memory, fine-tuned lightweight models.
+- **Ecosystem:** web/mobile dashboard, marketplace for voices & characters, optional audited cloud.
+
+---
+
+## 🔒 License
+
+Business Source License (BSL) 1.1 — source-available today, automatically converting to **Apache 2.0 on January 1, 2030**. In plain terms: you can read, learn from, run, and contribute to the code (including running your own Domia at home); the BSL just protects the project's sustainability until the conversion date.
+
+---
+
+## 🤝 Contributing
+
+Developer, designer, or voice artist — you're welcome. Start with [GETTING_STARTED.md](./GETTING_STARTED.md), and note the project's [emotional commit style](./COMMITS.md).

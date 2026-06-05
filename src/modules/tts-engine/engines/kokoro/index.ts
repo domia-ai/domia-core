@@ -11,10 +11,12 @@ import {
 } from "@/utils"
 import { type SelectTtsConfigType, TTS_ENGINE_ENUM } from "@/db"
 import { splitTextIntoSentences } from "@/modules/core-bus/utils/sentence-buffer"
-import { getTtsPool } from "../../utils"
+import { getTtsPool, resolveTtsVoice } from "../../utils"
 import type {
+	RunTtsOptionsType,
 	RunTtsResultType,
 	TtsEngineAdapterType,
+	TtsVoiceType,
 	TtsWorkerEngineConfigType,
 	TtsWorkerJobType,
 	TtsWorkerResultType,
@@ -23,18 +25,18 @@ import type {
 const KOKORO_SAMPLE_RATE = 24000
 
 const KOKORO_VOICE_TO_SID: Record<string, number> = {
-	af_heart: 0,
 	af: 0,
+	af_heart: 0,
 	af_bella: 1,
-	af_nicole: 4,
-	af_sarah: 5,
-	af_sky: 6,
-	am_adam: 7,
-	am_michael: 8,
-	bf_emma: 9,
-	bf_isabella: 10,
-	bm_george: 11,
-	bm_lewis: 12,
+	af_nicole: 2,
+	af_sarah: 3,
+	af_sky: 4,
+	am_adam: 5,
+	am_michael: 6,
+	bf_emma: 7,
+	bf_isabella: 8,
+	bm_george: 9,
+	bm_lewis: 10,
 }
 
 const resolveSid = (voiceName: string | null | undefined): number => {
@@ -42,6 +44,10 @@ const resolveSid = (voiceName: string | null | undefined): number => {
 	if (voiceName in KOKORO_VOICE_TO_SID) return KOKORO_VOICE_TO_SID[voiceName]
 	const asInt = Number(voiceName)
 	if (Number.isInteger(asInt) && asInt >= 0) return asInt
+	ttsEngineLogger.warn(
+		`⚠️ unknown Kokoro voice "${voiceName}" — falling back to default voice (sid 0)`,
+		{ voiceName },
+	)
 	return 0
 }
 
@@ -71,20 +77,24 @@ const engineConfigOf = (
 const jobOf = (
 	ttsConfig: SelectTtsConfigType,
 	text: string,
+	voice: TtsVoiceType,
+	sid: number,
 ): TtsWorkerJobType => ({
 	engineConfig: engineConfigOf(ttsConfig),
 	text,
-	sid: resolveSid(ttsConfig.voiceName),
-	speed: ttsConfig.speed,
-	silenceScale: ttsConfig.silenceScale,
+	sid,
+	speed: voice.speed,
+	silenceScale: voice.silenceScale,
 })
 
 export const runKokoro = async (
 	domia: DomiaType,
 	text: string,
+	options?: RunTtsOptionsType,
 ): Promise<RunTtsResultType> => {
 	const ttsConfig = requireTtsConfig(domia)
-	const voiceName = ttsConfig.voiceName
+	const voice = resolveTtsVoice(options?.voice, ttsConfig)
+	const voiceName = voice.voiceName
 	const sid = resolveSid(voiceName)
 	const outputDir = path.resolve("tmp/tts-output")
 	await mkdir(outputDir, { recursive: true })
@@ -96,7 +106,7 @@ export const runKokoro = async (
 		let sampleRate = KOKORO_SAMPLE_RATE
 		for (const sentence of splitTextIntoSentences(text)) {
 			const result = await pool.submit<TtsWorkerResultType>(
-				jobOf(ttsConfig, sentence),
+				jobOf(ttsConfig, sentence, voice, sid),
 			)
 			if (result.pcm && result.pcm.length > 0) {
 				parts.push(result.pcm)
@@ -133,12 +143,15 @@ export const runKokoro = async (
 const runKokoroStream = async function* (
 	domia: DomiaType,
 	text: string,
+	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
 	const ttsConfig = requireTtsConfig(domia)
+	const voice = resolveTtsVoice(options?.voice, ttsConfig)
+	const sid = resolveSid(voice.voiceName)
 	const pool = getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
-			jobOf(ttsConfig, sentence),
+			jobOf(ttsConfig, sentence, voice, sid),
 		)
 		if (result.pcm && result.pcm.length > 0) yield result.pcm
 	}

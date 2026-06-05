@@ -5,6 +5,29 @@ import {
 	type InferencePoolType,
 } from "@/modules/inference-pool"
 import type { SelectTtsConfigType } from "@/db"
+import type { DomiaType } from "@/modules/core"
+import type { TtsVoiceType, TtsVoiceInputType } from "../types"
+
+export const resolveTtsVoice = (
+	override: TtsVoiceInputType | null | undefined,
+	ttsConfig: SelectTtsConfigType,
+): TtsVoiceType => ({
+	voiceName: override?.voiceName ?? ttsConfig.voiceName,
+	speed: override?.speed ?? ttsConfig.speed,
+	silenceScale: override?.silenceScale ?? ttsConfig.silenceScale,
+	pitch: override?.pitch ?? ttsConfig.pitch,
+})
+
+export const ttsVoiceFromDomia = (domia: DomiaType): TtsVoiceType | null => {
+	const c = domia.ttsConfig
+	if (!c) return null
+	return {
+		voiceName: c.voiceName,
+		speed: c.speed,
+		silenceScale: c.silenceScale,
+		pitch: c.pitch,
+	}
+}
 
 let ttsPool: InferencePoolType | null = null
 

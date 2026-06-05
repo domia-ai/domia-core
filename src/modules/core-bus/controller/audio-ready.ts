@@ -26,7 +26,10 @@ import {
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
 import { runSTT } from "@/modules/stt-engine"
-import { personaContextFromDomia } from "@/modules/prompt-context-builder"
+import {
+	personaContextFromDomia,
+	buildPromptFromPersona,
+} from "@/modules/prompt-context-builder"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
 	deliverEvent,
@@ -62,13 +65,17 @@ const tryFusedVoiceReply = async (
 		domia.moduleSettings?.emotionEngine !== false
 			? await getRecentUserMoods(domia)
 			: []
+	const persona = personaContextFromDomia(
+		domia,
+		recentTurns,
+		knownFacts,
+		userMoodTrend,
+	)
 	const streamed = await streamVoiceReplyFromTarget(domia.domiaKey, targets, {
 		originDomiaKey,
 		interactionId,
 		responseType: RESPONSE_TYPE_ENUM.VOICE,
-		personaContextJson: JSON.stringify(
-			personaContextFromDomia(domia, recentTurns, knownFacts, userMoodTrend),
-		),
+		personaContextJson: JSON.stringify(persona),
 		audioFactory: () => wavFileToPcmChunks(audioPath),
 	})
 
@@ -131,8 +138,9 @@ const tryFusedVoiceReply = async (
 		}
 	})()
 
+	let ttsAudioPath: string | undefined
 	try {
-		await playStreamedAudio(
+		ttsAudioPath = await playStreamedAudio(
 			ctx,
 			timedAudio,
 			{ interactionId, originDomiaKey },
@@ -150,6 +158,13 @@ const tryFusedVoiceReply = async (
 			`fused voice reply playback failed after audio started — NOT falling back (would double-reply)`,
 			{ domiaId: domia.id, interactionId, err },
 		)
+		notifyInteractionFailed(ctx, {
+			interactionId,
+			originDomiaKey,
+			error: err as Error,
+			step: "playback",
+			silent: true,
+		})
 	}
 
 	const transcript = (await streamed.transcriptPromise) ?? ""
@@ -166,7 +181,13 @@ const tryFusedVoiceReply = async (
 		id: interactionId,
 		sttResult: transcript,
 		llmResponse: reply,
+		llmPrompt: transcript.trim()
+			? buildPromptFromPersona(persona, transcript)
+			: null,
 		ttsEngineUsed: streamed.target?.domiaKey,
+		ttsAudioPath,
+		emotionSnapshot: domia?.emotionState,
+		characterSnapshot: domia?.characterProfile,
 	}).catch((err) =>
 		domiaBusLogger.error("fused voice reply: persistence failed", {
 			domiaId: domia.id,

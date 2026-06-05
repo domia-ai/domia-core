@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, and, gte, asc } from "drizzle-orm"
 
 import {
 	dbClient,
@@ -36,6 +36,29 @@ const dbAdapter = {
 			where: eq(emotionEvent.domiaId, domiaId),
 			orderBy: desc(emotionEvent.createdAt),
 			limit,
+		}),
+	getEmotionEventsSince: (
+		domiaId: string,
+		since: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.emotionEvent.findMany({
+			where: and(
+				eq(emotionEvent.domiaId, domiaId),
+				gte(emotionEvent.createdAt, since),
+			),
+			orderBy: asc(emotionEvent.createdAt),
+			limit,
+		}),
+	getLastEmotionEventAt: (
+		domiaId: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.emotionEvent.findFirst({
+			where: eq(emotionEvent.domiaId, domiaId),
+			orderBy: desc(emotionEvent.createdAt),
+			columns: { createdAt: true },
 		}),
 }
 

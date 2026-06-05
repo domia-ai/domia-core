@@ -1,3 +1,4 @@
+import { env } from "@/config"
 import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
 import { initialize } from "./modules/config-engine"
 import {
@@ -13,6 +14,10 @@ import {
 
 process.on("uncaughtException", (err) => {
 	appLogger.error("Uncaught Exception:", err)
+	if (env.NODE_ENV === "production") {
+		appLogger.error("Exiting on uncaughtException (supervisor will restart)")
+		process.exit(1)
+	}
 })
 
 process.on("unhandledRejection", (reason) => {

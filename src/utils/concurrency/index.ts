@@ -1,6 +1,22 @@
 export const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms))
 
+export const withTimeout = <T>(
+	promise: Promise<T>,
+	ms: number,
+	label = "operation",
+): Promise<T> =>
+	Promise.race([
+		promise,
+		new Promise<T>((_, reject) => {
+			const timer = setTimeout(
+				() => reject(new Error(`${label} timed out after ${ms}ms`)),
+				ms,
+			)
+			timer.unref?.()
+		}),
+	])
+
 const SEMAPHORE_BUSY_CODE = "SEMAPHORE_BUSY"
 
 export const semaphoreBusyError = (

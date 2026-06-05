@@ -73,6 +73,14 @@ export const personaContextFromDomia = (
 			cp?.promptOverrides && typeof cp.promptOverrides === "object"
 				? (cp.promptOverrides as PersonaContextType["promptOverrides"])
 				: null,
+		ttsVoice: domia?.ttsConfig
+			? {
+					voiceName: domia.ttsConfig.voiceName,
+					speed: domia.ttsConfig.speed,
+					silenceScale: domia.ttsConfig.silenceScale,
+					pitch: domia.ttsConfig.pitch,
+				}
+			: null,
 	}
 }
 

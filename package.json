@@ -4,7 +4,7 @@
 	"description": "Domia core",
 	"main": "index.js",
 	"author": "kevin Castillo <kecoco16@gmail.com>",
-	"license": "MIT",
+	"license": "BUSL-1.1",
 	"private": true,
 	"engines": {
 		"node": ">=24"

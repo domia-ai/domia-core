@@ -17,7 +17,7 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
-import { runTTS } from "@/modules/tts-engine"
+import { runTTS, ttsVoiceFromDomia } from "@/modules/tts-engine"
 import {
 	resolveCapabilityDelegations,
 	resolveDomiaStreamingCapabilities,
@@ -100,8 +100,9 @@ const tryLocalStreamingTtsPlayback = async (
 
 	const { domia } = ctx
 	const caps = tts.adapter.capabilities
+	let ttsAudioPath: string | undefined
 	try {
-		await playStreamedAudio(
+		ttsAudioPath = await playStreamedAudio(
 			ctx,
 			tts.adapter.runStream(domia, session.reply),
 			{
@@ -124,6 +125,7 @@ const tryLocalStreamingTtsPlayback = async (
 	await updateInteraction({
 		id: session.interactionId,
 		ttsEngineUsed: tts.adapter.id,
+		ttsAudioPath,
 	})
 	publishTtsPlaybackComplete(domia.id, session)
 	return true
@@ -178,10 +180,12 @@ const tryDelegatedStreamingTtsPlayback = async (
 		`📡 streaming TTS delegation (${streamingTargets.length} targets)`,
 		{ domiaId: domia.id, interactionId: session.interactionId },
 	)
+	const ownVoice = ttsVoiceFromDomia(domia)
 	const streamed = await streamTtsFromTarget(domia.domiaKey, streamingTargets, {
 		reply: session.reply,
 		originDomiaKey: session.originDomiaKey,
 		interactionId: session.interactionId,
+		ttsVoiceJson: ownVoice ? JSON.stringify(ownVoice) : undefined,
 	})
 
 	if (!streamed.delivered || !streamed.audio) {
@@ -194,7 +198,7 @@ const tryDelegatedStreamingTtsPlayback = async (
 
 	try {
 		const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
-		await playStreamedAudio(
+		const ttsAudioPath = await playStreamedAudio(
 			ctx,
 			streamed.audio,
 			{
@@ -206,6 +210,11 @@ const tryDelegatedStreamingTtsPlayback = async (
 				channels,
 			},
 		)
+		await updateInteraction({
+			id: session.interactionId,
+			ttsEngineUsed: streamed.target?.domiaKey,
+			ttsAudioPath,
+		})
 	} catch (err) {
 		notifyAudioFallback(ctx, {
 			interactionId: session.interactionId,

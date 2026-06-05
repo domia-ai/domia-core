@@ -17,3 +17,12 @@ export const postVoiceBodySchema = z.object({
 export const postImportMindBodySchema = z.object({
 	mind: z.unknown(),
 })
+
+export const getSyncQuerySchema = z.object({
+	since: z.string().optional().default(""),
+	limit: z.coerce.number().int().positive().max(1000).optional().default(200),
+})
+
+export const getAudioQuerySchema = z.object({
+	kind: z.enum(["input", "tts"]).default("tts"),
+})

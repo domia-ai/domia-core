@@ -421,6 +421,7 @@ export const streamTtsFromTarget = async (
 				reply: request.reply,
 				originDomiaKey: request.originDomiaKey,
 				interactionId: request.interactionId,
+				ttsVoiceJson: request.ttsVoiceJson,
 			},
 			{ signal },
 		),

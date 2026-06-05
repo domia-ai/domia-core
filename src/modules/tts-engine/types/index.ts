@@ -19,11 +19,37 @@ export type TtsCapabilitiesType = {
 	languages: string[]
 }
 
+export type TtsVoiceType = {
+	voiceName: string
+	speed: number
+	silenceScale: number
+	pitch: number
+}
+
+export type TtsVoiceInputType = {
+	voiceName?: string | null
+	speed?: number | null
+	silenceScale?: number | null
+	pitch?: number | null
+}
+
+export type RunTtsOptionsType = {
+	voice?: TtsVoiceInputType
+}
+
 export type TtsEngineAdapterType = {
 	id: TtsEngineEnumType
 	capabilities: TtsCapabilitiesType
-	run: (domia: DomiaType, text: string) => Promise<RunTtsResultType>
-	runStream?: (domia: DomiaType, text: string) => AsyncIterable<Buffer>
+	run: (
+		domia: DomiaType,
+		text: string,
+		options?: RunTtsOptionsType,
+	) => Promise<RunTtsResultType>
+	runStream?: (
+		domia: DomiaType,
+		text: string,
+		options?: RunTtsOptionsType,
+	) => AsyncIterable<Buffer>
 }
 
 export type KokoroPathsType = {

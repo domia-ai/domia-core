@@ -1,5 +1,5 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, toError } from "@/utils"
+import { domiaBusLogger, toError, withTimeout } from "@/utils"
 import { rejectPending } from "./pending-requests"
 import { MQTT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { playAudio } from "@/modules/audio-playback"
@@ -10,6 +10,8 @@ import type {
 	NotifyAudioFallbackArgsType,
 	NotifyInteractionFailedArgsType,
 } from "../types"
+
+const FALLBACK_TTS_TIMEOUT_MS = 8000
 
 const playFallbackAudio = async (
 	ctx: CoreBusContextType,
@@ -25,7 +27,11 @@ const playFallbackAudio = async (
 	}
 	const message = resolveFallbackMessage(step)
 	try {
-		const tts = await runTTS(ctx.domia, message)
+		const tts = await withTimeout(
+			runTTS(ctx.domia, message),
+			FALLBACK_TTS_TIMEOUT_MS,
+			"fallback TTS",
+		)
 		if (!tts?.filePath) {
 			domiaBusLogger.warn("⚠️ Fallback TTS produced no file", {
 				domiaId: ctx.domia.id,
@@ -48,7 +54,8 @@ export const notifyInteractionFailed = (
 	args: NotifyInteractionFailedArgsType,
 ): void => {
 	const { domia, mqttClient } = ctx
-	const { interactionId, originDomiaKey, responseType, error, step } = args
+	const { interactionId, originDomiaKey, responseType, error, step, silent } =
+		args
 	const err = toError(error)
 	const payload = {
 		interactionId,
@@ -72,6 +79,7 @@ export const notifyInteractionFailed = (
 		rejectPending(interactionId, err)
 		return
 	}
+	if (silent) return
 	void playFallbackAudio(ctx, step)
 }
 

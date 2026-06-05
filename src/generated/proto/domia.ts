@@ -113,6 +113,7 @@ export interface TtsStreamRequest {
   reply: string;
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
+  ttsVoiceJson?: string | undefined;
 }
 
 export interface ReplyAudioMessage {
@@ -1810,7 +1811,13 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
 };
 
 function createBaseTtsStreamRequest(): TtsStreamRequest {
-  return { senderDomiaKey: "", reply: "", originDomiaKey: undefined, interactionId: undefined };
+  return {
+    senderDomiaKey: "",
+    reply: "",
+    originDomiaKey: undefined,
+    interactionId: undefined,
+    ttsVoiceJson: undefined,
+  };
 }
 
 export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
@@ -1826,6 +1833,9 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     }
     if (message.interactionId !== undefined) {
       writer.uint32(34).string(message.interactionId);
+    }
+    if (message.ttsVoiceJson !== undefined) {
+      writer.uint32(42).string(message.ttsVoiceJson);
     }
     return writer;
   },
@@ -1869,6 +1879,14 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
           message.interactionId = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.ttsVoiceJson = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1896,6 +1914,11 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
         : isSet(object.interaction_id)
         ? globalThis.String(object.interaction_id)
         : undefined,
+      ttsVoiceJson: isSet(object.ttsVoiceJson)
+        ? globalThis.String(object.ttsVoiceJson)
+        : isSet(object.tts_voice_json)
+        ? globalThis.String(object.tts_voice_json)
+        : undefined,
     };
   },
 
@@ -1913,6 +1936,9 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     if (message.interactionId !== undefined) {
       obj.interactionId = message.interactionId;
     }
+    if (message.ttsVoiceJson !== undefined) {
+      obj.ttsVoiceJson = message.ttsVoiceJson;
+    }
     return obj;
   },
 
@@ -1925,6 +1951,7 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     message.reply = object.reply ?? "";
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
+    message.ttsVoiceJson = object.ttsVoiceJson ?? undefined;
     return message;
   },
 };

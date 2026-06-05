@@ -11,6 +11,14 @@ import {
 } from "../constants"
 import type { RawFactType } from "../types"
 
+export const getFactsSince = (domiaId: string, since: string, limit: number) =>
+	dbAdapter.getFactsSince(domiaId, since, limit)
+
+export const getLastFactAt = async (domiaId: string) => {
+	const row = await dbAdapter.getLastFactAt(domiaId)
+	return row?.updatedAt ?? null
+}
+
 export const buildFactExtractionLines = (): string[] => [
 	`Also extract durable facts worth remembering about the person long-term (their name, relationships, preferences, important life details). Put them in "facts" as objects {subject, relation, value, confidence}. "subject" is who/what (e.g. "the user", "the user's brother"); "relation" is a short connecting phrase (e.g. "is named", "is allergic to", "works as"); "value" is the detail; "confidence" is 0..1. Only durable facts about the person — never transient chit-chat, questions, or things about you. Use [] if nothing worth remembering.`,
 ]

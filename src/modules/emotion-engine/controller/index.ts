@@ -30,6 +30,17 @@ import {
 } from "../constants"
 import dbAdapter from "../db-adapter"
 
+export const getEmotionEventsSince = (
+	domiaId: string,
+	since: string,
+	limit: number,
+) => dbAdapter.getEmotionEventsSince(domiaId, since, limit)
+
+export const getLastEmotionEventAt = async (domiaId: string) => {
+	const row = await dbAdapter.getLastEmotionEventAt(domiaId)
+	return row?.createdAt ?? null
+}
+
 const EMOTION_KEYS = Object.keys(emotionSchema.shape) as (keyof EmotionType)[]
 
 const baselineFor = (domia: DomiaType): EmotionType => {
