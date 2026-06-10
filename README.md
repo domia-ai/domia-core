@@ -26,9 +26,9 @@ Every capability below is implemented and runs end-to-end on your own hardware �
   `src/modules/{emotion-engine,reflection}`
 - **Memory** — recent-conversation memory + durable fact memory ("what it knows about you").
   `src/modules/memory`
-- **Everything is DB-driven + reconfigurable live** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle), changeable **without a restart**.
-  `src/db` · `src/modules/config-engine` · HTTP `POST /config/refresh`
-- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config/refresh`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation.
+- **Everything is DB-driven + remotely reconfigurable** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle); a Domia boots minimal and gets its role by importing a config bundle (`POST /config`), which persists and restarts it to reload cleanly.
+  `src/db` · `src/modules/config-engine` · HTTP `POST /config`
+- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config`, `/config/health`, `/admin/restart`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation.
   `src/setups/http-server` · `src/cli/dev`
 - **Hardware spectrum** — the same code runs from a Raspberry Pi-class device to a workstation; the difference is just DB config (model size, engine, threads), never hardcoded.
 
@@ -87,20 +87,25 @@ docker exec -it domia-ollama ollama pull llama3.1:8b
 # 3. download the on-device speech models (STT / TTS / VAD / wake word)
 npm run setup:models
 
-# 4. create the database from schema (no migrations — the DB is regenerated)
-npm run db:reset:smart
+# 4. create the database from the schema (no migrations — drizzle-kit push)
+npm run db:reset:hub
 
-# 5. run your Domia
-npm run dev:smart
+# 5. run your Domia (boots minimal — every capability off, no models needed yet)
+npm run dev:hub
+
+# 6. give it a role from a portable config template (CLI or web console)
+npm run dev-cli -- config import templates/full-hub.json
 ```
 
-You should see `DOMIA is running and waiting for events...`. Drive it without a microphone by POSTing a WAV to `http://localhost:3000/voice`, or use the dev CLI:
+You should see `DOMIA is running and waiting for events...`. Drive it without a microphone by POSTing a WAV to `http://localhost:3100/voice`, or use the dev CLI:
 
 ```bash
 npm run dev-cli -- tts -t "hello, this is my own voice"
 ```
 
-**Two Domias (to try delegation / multi-room):** a second config lives in `.env.dump`. Run `npm run db:reset:dump` then `npm run dev:dump` in another terminal — now _smart_ and _dump_ can discover each other and delegate.
+**Born minimal, configured externally.** A Domia has no baked-in role — it boots minimal and you apply a config template (`full-hub`, `thin-client`, or your own) via the CLI or the web console; the change persists and the Domia restarts to apply it.
+
+**Many Domias (delegation / multi-room):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. A second `.env.edge` is provided: `npm run db:reset:edge` then `npm run dev:edge`. Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
 
 See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and per-component testing.
 

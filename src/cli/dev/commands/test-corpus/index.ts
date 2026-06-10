@@ -190,7 +190,7 @@ export const runCorpus = async (corpusPath: string, outPath?: string) => {
 	const corpus = loadCorpus(corpusPath)
 	const domia = await initialize()
 	if (!domia?.runtimeCapabilities) {
-		devCliLogger.error("❌ Could not load DOMIA from DB (run dev:smart once)")
+		devCliLogger.error("❌ Could not load DOMIA from DB (run npm run dev once)")
 		process.exit(1)
 	}
 	const runtimeCapabilities = normalizeRuntimeCapabilities(

@@ -18,7 +18,11 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
-import { runTTS, ttsVoiceFromDomia } from "@/modules/tts-engine"
+import {
+	runTTS,
+	ttsVoiceFromDomia,
+	ttsAdapterToPcmChunks,
+} from "@/modules/tts-engine"
 import {
 	resolveCapabilityDelegations,
 	resolveDomiaStreamingCapabilities,
@@ -96,8 +100,13 @@ const tryLocalStreamingTtsPlayback = async (
 	ctx: CoreBusContextType,
 	session: LlmFlowSessionType,
 ): Promise<boolean> => {
-	const { tts, canStreamTts, canPlayback } = ctx.features
-	if (!canStreamTts || !canPlayback || !tts?.adapter.runStream) return false
+	const { tts, canPlayback } = ctx.features
+	if (
+		!canPlayback ||
+		tts?.adapter.capabilities.streaming !== true ||
+		!tts.adapter.runStream
+	)
+		return false
 
 	const { domia } = ctx
 	const caps = tts.adapter.capabilities
@@ -106,7 +115,7 @@ const tryLocalStreamingTtsPlayback = async (
 	try {
 		ttsAudioPath = await playStreamedAudio(
 			ctx,
-			tts.adapter.runStream(domia, session.reply),
+			ttsAdapterToPcmChunks(domia, tts.adapter, session.reply),
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,

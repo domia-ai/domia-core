@@ -5,7 +5,7 @@ import path from "path"
 import { env } from "@/config"
 import * as schema from "./schema"
 
-const dbPath = path.resolve(__dirname, env.DATABASE_URL)
+const dbPath = path.resolve(process.cwd(), env.DATABASE_URL)
 
 const sqlite = new Database(dbPath)
 

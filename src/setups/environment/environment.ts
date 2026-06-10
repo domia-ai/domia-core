@@ -1,13 +1,13 @@
 import { execSync } from "child_process"
 import { mkdirSync } from "fs"
 import { join } from "path"
-import { appLogger, CORE_ERRORS, domiaError } from "@/utils"
+import { appLogger } from "@/utils"
 import type { CapabilityKeyType, PartialRuntimeCapabilitiesType } from "./types"
 import { RUNTIME_CAPABILITIES, CAPABILITY_RESOURCES } from "./contants"
 
 export const setupEnvironment = (
 	runtimeCapabilities: PartialRuntimeCapabilitiesType = RUNTIME_CAPABILITIES,
-) => {
+): { ok: boolean; missingBinaries: string[] } => {
 	appLogger.info("🌱 Setting up environment...")
 	const binariesToCheck: { name: string; command: string }[] = []
 	const tempDirsToEnsure = new Set<string>()
@@ -32,14 +32,10 @@ export const setupEnvironment = (
 			appLogger.info(`✅ Binary found: ${bin.name}`)
 		} catch {
 			missingBinaries.push(bin.name)
-			appLogger.error(`❌ Missing required binary: ${bin.name}`)
+			appLogger.warn(
+				`⚠️ Missing binary: ${bin.name} — that capability degrades`,
+			)
 		}
-	}
-
-	if (missingBinaries?.length > 0) {
-		throw domiaError(CORE_ERRORS.WRONG_ENVIRONMENT, {
-			meta: { missingBinaries },
-		})
 	}
 
 	for (const dir of tempDirsToEnsure) {
@@ -48,5 +44,6 @@ export const setupEnvironment = (
 		appLogger.info(`📁 Ensured folder: ${dir}`)
 	}
 
-	appLogger.info("✅ Environment ready")
+	if (missingBinaries.length === 0) appLogger.info("✅ Environment ready")
+	return { ok: missingBinaries.length === 0, missingBinaries }
 }

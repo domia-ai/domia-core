@@ -28,25 +28,21 @@ async function main() {
 	appLogger.info("Initialize Domia with default config")
 	const ownDomia = await initialize()
 
-	const domiaRuntimeCapabilities = ownDomia?.runtimeCapabilities
-	if (!domiaRuntimeCapabilities) {
+	if (!ownDomia?.runtimeCapabilities) {
 		appLogger.error(getErrorMessage(CORE_ERRORS.MISSING_CAPABILITIES))
 		process.exit(1)
 	}
 
 	const runtimeCapabilities = normalizeRuntimeCapabilities(
-		domiaRuntimeCapabilities,
+		ownDomia.runtimeCapabilities,
 	)
-	setupEnvironment(runtimeCapabilities)
-
-	const localMqttConfig = ownDomia?.localMqttConfig
-	const remoteMqttConfig = ownDomia?.remoteMqttConfig
+	const { missingBinaries } = setupEnvironment(runtimeCapabilities)
 
 	const localMqttClient = setupMqtt({
 		domia: ownDomia,
-		config: localMqttConfig,
+		config: ownDomia.localMqttConfig,
 	})
-	setupMqtt({ domia: ownDomia, config: remoteMqttConfig })
+	setupMqtt({ domia: ownDomia, config: ownDomia.remoteMqttConfig })
 	setupCoreBus({
 		domia: ownDomia,
 		runtimeCapabilities,
@@ -55,17 +51,14 @@ async function main() {
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
 	setupHttpServer({ domia: ownDomia, mqttClient: localMqttClient })
 
-	await setupGrpcServer({
-		domia: ownDomia,
-		capabilities: runtimeCapabilities,
-	})
+	await setupGrpcServer({ domia: ownDomia, capabilities: runtimeCapabilities })
 
-	if (runtimeCapabilities?.wakeword && runtimeCapabilities?.record) {
-		await setupVoiceListener(ownDomia)
-		appLogger.info(`🤖 Running voice listener: ${ownDomia.name}`)
-	}
+	await setupVoiceListener(ownDomia, missingBinaries)
 
 	appLogger.info(`DOMIA is running and waiting for events...`)
 }
 
-main()
+void main().catch((err) => {
+	appLogger.error("Boot failed", { err })
+	process.exit(1)
+})

@@ -11,6 +11,7 @@ import {
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
+import { prefetchMemoryBundle } from "./prefetch-memory"
 import type {
 	SttDonePayloadType,
 	LlmDonePayloadType,
@@ -44,6 +45,7 @@ export const requestVoiceReply = async (
 	if (!interactionId) {
 		throw new Error("requestVoiceReply: failed to create interaction")
 	}
+	prefetchMemoryBundle(domia, interactionId)
 
 	const domiaId = domia.id
 	const t0 = Date.now()

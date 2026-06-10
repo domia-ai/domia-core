@@ -2,6 +2,7 @@ import { createReadStream, existsSync, writeFileSync } from "fs"
 import { join } from "path"
 import { generateUuid } from "@/utils"
 import { type DomiaType } from "@/modules/core"
+import { requestRestart } from "@/modules/runtime-control"
 import { RECORDINGS_DIR } from "@/modules/audio-capture/constants"
 import {
 	getInteractionById,
@@ -17,6 +18,12 @@ import {
 	listTemplates,
 	activateTemplate,
 } from "@/modules/mind"
+import {
+	serializeConfig,
+	importConfigAndRestart,
+	configHealth,
+} from "@/modules/config"
+import { listModels, startInstall, getModelJob } from "@/modules/model-manager"
 import type {
 	PostChatBodyType,
 	PostChatResponseType,
@@ -179,6 +186,54 @@ export const handlePostVoice = async (
 
 export const handleGetMind = async (domia: DomiaType) => {
 	return { mind: serializeMind(domia) }
+}
+
+export const handleGetConfig = async (domia: DomiaType) => {
+	return { config: serializeConfig(domia) }
+}
+
+export const handlePostConfig = async (
+	domia: DomiaType,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	try {
+		return await importConfigAndRestart(domia, body)
+	} catch (err) {
+		httpServerLogger.error("Import config failed", { domiaId: domia.id, err })
+		return reply.code(400).send({ error: "Invalid config bundle" })
+	}
+}
+
+export const handleGetConfigHealth = async (domia: DomiaType) => {
+	return { health: configHealth(domia) }
+}
+
+export const handleGetModels = async () => {
+	return { models: await listModels() }
+}
+
+export const handlePostModelInstall = async (
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	try {
+		return { job: startInstall(body) }
+	} catch (err) {
+		httpServerLogger.error("Model install request failed", { err })
+		return reply.code(400).send({ error: "Invalid model install spec" })
+	}
+}
+
+export const handleGetModelJob = async (id: string, reply: FastifyReply) => {
+	const job = getModelJob(id)
+	if (!job) return reply.code(404).send({ error: "Job not found" })
+	return { job }
+}
+
+export const handleRestart = async () => {
+	requestRestart()
+	return { restarting: true }
 }
 
 export const handleImportMind = async (

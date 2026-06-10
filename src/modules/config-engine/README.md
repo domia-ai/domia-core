@@ -4,6 +4,29 @@ The `config-engine` module manages the setup, initialization, reconfiguration, a
 
 ---
 
+### 🌱 Provisioning lifecycle (born-minimal → role)
+
+Every Domia boots **neutral / born-minimal**: all runtime capabilities (`wakeword`, `record`, `stt`, `intentDetection`, `intentExecution`, `promptGeneration`, `llm`, `tts`, `playback`) default to `false` (see `DEFAULT_CONFIG_VALUES` in `constants/`). A fresh node runs only heartbeat + HTTP + CLI + gRPC — it needs **no models to boot** and never crashes on a missing model: a structured preflight disables the voice listener and reports the degraded state via `GET /config/health`. "smart"/"dump" are **not** roles in code; behavior is decided entirely by this DB config.
+
+A Domia gets its **role after boot** by importing a config bundle (a portable JSON _template_). One shared persistence path, two transports:
+
+- **CLI** — `DOMIA_ENV=<env> npm run dev-cli -- config import templates/<role>.json`
+- **Web Console** — Templates → _Apply_
+
+Both call `persistConfig` (in `modules/config/controller`), which writes the bundle to the DB and then **always restarts** the Domia so it reloads cleanly — there is no live/partial apply. Only the restart _trigger_ differs by transport (in-process exit/touch for HTTP, `requestServiceRestart` for the out-of-process CLI; see `modules/runtime-control`).
+
+Role templates are the **source of truth** in `domia-core/templates/*.json` and are synced into the web Console:
+
+| Template           | Capabilities on            | Role                                                |
+| ------------------ | -------------------------- | --------------------------------------------------- |
+| `full-hub.json`    | stt, llm, tts, intents     | compute hub — serves other Domias over gRPC, no mic |
+| `thin-client.json` | wakeword, record, playback | captures locally, delegates STT/LLM/TTS over gRPC   |
+| `defaults.json`    | none                       | the born-minimal baseline ("start from scratch")    |
+
+The config block for a stage stays in the bundle **even when its capability is off** — on delegation the origin's config travels to the responder, so it must exist.
+
+---
+
 ### 📚 Public Methods
 
 | Method                                         | Purpose                                                                                               |

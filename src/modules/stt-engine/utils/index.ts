@@ -1,2 +1,2 @@
-export { getSttPool } from "./pool"
+export { getSttPool, recycleSttPool } from "./pool"
 export { runSttPooled, runSttStreamPooled } from "./pooled"

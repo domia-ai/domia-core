@@ -35,7 +35,7 @@ export const setupCoreBus = ({
 		canStreamStt: features.canStreamStt,
 		canStreamLlm: features.canStreamLlm,
 		canStreamTts: features.canStreamTts,
-		canFullStreamVoice: features.canFullStreamVoice,
+		canSentencePipeline: features.canSentencePipeline,
 	})
 
 	const liveCtx = async (): Promise<CoreBusContextType> => ({

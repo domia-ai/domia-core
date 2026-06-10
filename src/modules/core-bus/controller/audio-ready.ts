@@ -11,17 +11,15 @@ import {
 	downloadAudioToTemp,
 	notifyInteractionFailed,
 	playStreamedAudio,
+	takeMemoryBundle,
 	DEFAULT_SAMPLE_RATE,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
-	getRecentTurns,
-	getRecentUserMoods,
 	markPipelineStart,
 	pipelineElapsed,
 } from "@/modules/session-manager"
-import { getFactStrings } from "@/modules/memory"
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
@@ -58,15 +56,10 @@ const tryFusedVoiceReply = async (
 		{ domiaId: domia.id, interactionId },
 	)
 
-	const recentTurns = await getRecentTurns(domia, interactionId)
-	const knownFacts =
-		domia.moduleSettings?.factRecall !== false
-			? await getFactStrings(domia)
-			: []
-	const userMoodTrend =
-		domia.moduleSettings?.emotionEngine !== false
-			? await getRecentUserMoods(domia)
-			: []
+	const { recentTurns, knownFacts, userMoodTrend } = await takeMemoryBundle(
+		domia,
+		interactionId,
+	)
 	const persona = personaContextFromDomia(
 		domia,
 		recentTurns,
@@ -243,11 +236,12 @@ export const handleAudioReady = async (
 		domia,
 		payload.interactionId,
 		{
-			inputAudioPath: filePath,
 			inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
 		},
 	)
 	if (!interactionId) return
+	if (filePath)
+		await updateInteraction({ id: interactionId, inputAudioPath: filePath })
 	markPipelineStart(interactionId)
 	setTraceContext({ interactionId, originDomiaKey })
 	domiaBusLogger.info(`🆕 Interaction ${interactionId}`, { domiaId })

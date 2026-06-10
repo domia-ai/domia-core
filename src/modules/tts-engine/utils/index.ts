@@ -2,11 +2,33 @@ import {
 	createInferencePool,
 	createChildProcessBackend,
 	resolveMaxWorkers,
+	drainAndShutdown,
 	type InferencePoolType,
 } from "@/modules/inference-pool"
 import type { SelectTtsConfigType } from "@/db"
 import type { DomiaType } from "@/modules/core"
-import type { TtsVoiceType, TtsVoiceInputType } from "../types"
+import { wavFileToPcmChunks } from "@/utils"
+import type {
+	TtsVoiceType,
+	TtsVoiceInputType,
+	TtsEngineAdapterType,
+	RunTtsOptionsType,
+} from "../types"
+
+export const ttsAdapterToPcmChunks = async function* (
+	domia: DomiaType,
+	adapter: TtsEngineAdapterType,
+	text: string,
+	options?: RunTtsOptionsType,
+): AsyncIterable<Buffer> {
+	if (adapter.capabilities.streaming === true && adapter.runStream) {
+		yield* adapter.runStream(domia, text, options)
+		return
+	}
+	const result = await adapter.run(domia, text, options)
+	if (!result?.filePath) return
+	yield* wavFileToPcmChunks(result.filePath)
+}
 
 export const resolveTtsVoice = (
 	override: TtsVoiceInputType | null | undefined,
@@ -50,4 +72,12 @@ export const getTtsPool = (
 		})
 	}
 	return ttsPool
+}
+
+const POOL_RECYCLE_DRAIN_TIMEOUT_MS = 15_000
+
+export const recycleTtsPool = async (): Promise<void> => {
+	const pool = ttsPool
+	ttsPool = null
+	if (pool) await drainAndShutdown(pool, POOL_RECYCLE_DRAIN_TIMEOUT_MS)
 }

@@ -125,5 +125,9 @@ export const playAudioStream = async (
 	if (streamingEnabled) {
 		return runSoxStream(domia, chunks, options)
 	}
+	audioPlaybackLogger.warn(
+		"⚠️ audioPlaybackConfig.streamingEnabled=false — buffering full audio before playback (higher time-to-first-audio)",
+		{ domiaId: domia?.id },
+	)
 	return collectAndPlayFile(domia, chunks, options)
 }

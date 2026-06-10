@@ -13,7 +13,19 @@ import type {
 	WorkerHandleType,
 	WorkerRequestMessageType,
 	WorkerResponseMessageType,
+	InferencePoolType,
 } from "../types"
+
+export const drainAndShutdown = async (
+	pool: InferencePoolType,
+	timeoutMs: number,
+): Promise<void> => {
+	const deadline = Date.now() + timeoutMs
+	while (pool.busyWorkers() + pool.queuedJobs() > 0 && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	await pool.shutdown()
+}
 
 const isTsRuntime = __filename.endsWith(".ts")
 

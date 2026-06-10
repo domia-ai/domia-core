@@ -11,6 +11,13 @@ import {
 	handlePostChat,
 	handlePostVoice,
 	handleGetMind,
+	handleGetConfig,
+	handlePostConfig,
+	handleGetConfigHealth,
+	handleRestart,
+	handleGetModels,
+	handlePostModelInstall,
+	handleGetModelJob,
 	handleImportMind,
 	handleGetTemplates,
 	handleActivateTemplate,
@@ -77,6 +84,35 @@ export const setupHttpServer = async ({
 	)
 
 	fastify.get("/mind", async () => handleGetMind(await liveDomia(domia)))
+
+	fastify.get("/config", async () => handleGetConfig(await liveDomia(domia)))
+
+	fastify.post("/config", async (request, reply) => {
+		const live = await liveDomia(domia)
+		const result = await handlePostConfig(live, request.body, reply)
+		void sendHeartbeat({ domia: live, mqttClient })
+		return result
+	})
+
+	fastify.get("/config/health", async () =>
+		handleGetConfigHealth(await liveDomia(domia)),
+	)
+
+	fastify.post("/admin/restart", async () => {
+		void sendHeartbeat({ domia: await liveDomia(domia), mqttClient })
+		return handleRestart()
+	})
+
+	fastify.get("/models", async () => handleGetModels())
+
+	fastify.post("/models/install", async (request, reply) =>
+		handlePostModelInstall(request.body, reply),
+	)
+
+	fastify.get<{ Params: { id: string } }>(
+		"/models/jobs/:id",
+		async (request, reply) => handleGetModelJob(request.params.id, reply),
+	)
 
 	fastify.post<PostImportMindRouteType>(
 		"/mind/import",

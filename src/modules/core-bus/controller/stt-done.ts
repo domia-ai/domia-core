@@ -8,13 +8,12 @@ import {
 	notifyInteractionFailed,
 	playStreamedAudio,
 	splitSentences,
+	takeMemoryBundle,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
 	pipelineElapsed,
-	getRecentTurns,
-	getRecentUserMoods,
 } from "@/modules/session-manager"
 import {
 	CAPABILITY_ENUM,
@@ -27,8 +26,8 @@ import {
 	type RecentTurnType,
 } from "@/modules/prompt-context-builder"
 import { reflectOnInteraction } from "@/modules/reflection"
-import { getFactStrings } from "@/modules/memory"
 import { runLLM } from "@/modules/llm-engine"
+import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
 	deliverEvent,
@@ -83,14 +82,18 @@ const publishStreamedReplyComplete = (
 	})
 }
 
-const tryLocalFullStreamVoice = async (
+const pipelineVoiceFromTokens = async (
 	ctx: CoreBusContextType,
 	session: SttFlowSessionType,
+	tokens: AsyncIterable<string>,
+	executors: {
+		llmExecutorKey: string | undefined
+		llmModelUsed: string | null
+	},
 ): Promise<boolean> => {
 	const { features, domia } = ctx
-	const { llm, tts, canFullStreamVoice } = features
-	if (!session.isVoice || !canFullStreamVoice || !llm || !tts) return false
-	if (!llm.adapter.runStream || !tts.adapter.runStream) return false
+	const tts = features.tts
+	if (!tts) return false
 
 	const startTime = Date.now()
 	const ttsStreamQueue = new AsyncQueue<AsyncIterable<Buffer>>()
@@ -107,41 +110,55 @@ const tryLocalFullStreamVoice = async (
 	)
 
 	let fullReply = ""
-	let audioError: unknown = null
+	let tokenError: unknown = null
+	let playbackError: unknown = null
 	let ttsAudioPath: string | undefined
-	let llmElapsed = 0
 	try {
-		const tokens = llm.adapter.runStream(domia, session.promptContext)
 		for await (const sentence of splitSentences(tokens)) {
 			fullReply += (fullReply.length > 0 ? " " : "") + sentence
-			ttsStreamQueue.push(tts.adapter.runStream(domia, sentence))
+			ttsStreamQueue.push(ttsAdapterToPcmChunks(domia, tts.adapter, sentence))
 		}
-		ttsStreamQueue.close()
-		llmElapsed = Date.now() - startTime
+	} catch (err) {
+		tokenError = err
+	}
+	ttsStreamQueue.close()
+	const llmElapsed = Date.now() - startTime
+	try {
 		ttsAudioPath = await playbackPromise
 	} catch (err) {
-		audioError = err
-		ttsStreamQueue.close()
+		playbackError = err
 	}
 
 	const totalElapsed = Date.now() - startTime
 	domiaBusLogger.info(`⏱️ LLM+TTS streaming pipeline: ${totalElapsed}ms`)
+
+	if (tokenError) {
+		notifyInteractionFailed(ctx, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			responseType: session.responseType,
+			error: toError(tokenError),
+			step: "llm",
+		})
+		return true
+	}
+
 	await updateInteraction({
 		id: session.interactionId,
 		llmPrompt: session.promptContext,
 		llmResponse: fullReply,
 		ttsEngineUsed: tts.adapter.id,
-		llmExecutorKey: domia.domiaKey,
+		llmExecutorKey: executors.llmExecutorKey,
 		ttsExecutorKey: domia.domiaKey,
 		ttsAudioPath,
 		llmMs: llmElapsed,
 		ttsMs: Math.max(0, totalElapsed - llmElapsed),
-		llmModelUsed: domia.llmModelConfig?.modelName ?? null,
+		llmModelUsed: executors.llmModelUsed,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 
-	if (audioError) {
+	if (playbackError) {
 		publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 			reply: fullReply,
 			interactionId: session.interactionId,
@@ -153,7 +170,7 @@ const tryLocalFullStreamVoice = async (
 			interactionId: session.interactionId,
 			originDomiaKey: session.originDomiaKey,
 			reason: "tts_failed",
-			error: toError(audioError),
+			error: toError(playbackError),
 			reply: fullReply,
 		})
 		return true
@@ -167,6 +184,26 @@ const tryLocalFullStreamVoice = async (
 		session.interactionId,
 	)
 	return true
+}
+
+const tryLocalFullStreamVoice = async (
+	ctx: CoreBusContextType,
+	session: SttFlowSessionType,
+): Promise<boolean> => {
+	const { features, domia } = ctx
+	const { llm, tts, canSentencePipeline } = features
+	if (!session.isVoice || !canSentencePipeline || !llm || !tts) return false
+	if (!llm.adapter.runStream) return false
+
+	return pipelineVoiceFromTokens(
+		ctx,
+		session,
+		llm.adapter.runStream(domia, session.promptContext),
+		{
+			llmExecutorKey: domia.domiaKey,
+			llmModelUsed: domia.llmModelConfig?.modelName ?? null,
+		},
+	)
 }
 
 const runLocalSyncLlm = async (
@@ -339,6 +376,13 @@ const tryDelegatedStreamLlm = async (
 		return false
 	}
 
+	if (session.isVoice && ctx.features.canRunTts && ctx.features.canPlayback) {
+		return pipelineVoiceFromTokens(ctx, session, streamed.tokens, {
+			llmExecutorKey: streamed.target?.domiaKey,
+			llmModelUsed: null,
+		})
+	}
+
 	let reply = ""
 	for await (const token of streamed.tokens) reply += token
 	await updateInteraction({
@@ -419,15 +463,10 @@ export const handleSttDone = async (
 		}),
 	)
 
-	const recentTurns = await getRecentTurns(domia, interactionId)
-	const knownFacts =
-		domia.moduleSettings?.factRecall !== false
-			? await getFactStrings(domia)
-			: []
-	const userMoodTrend =
-		domia.moduleSettings?.emotionEngine !== false
-			? await getRecentUserMoods(domia)
-			: []
+	const { recentTurns, knownFacts, userMoodTrend } = await takeMemoryBundle(
+		domia,
+		interactionId,
+	)
 
 	const session = buildSttFlowSession(
 		payload,

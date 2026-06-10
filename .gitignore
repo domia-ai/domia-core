@@ -4,9 +4,9 @@ node_modules/
 # Compiled JavaScript files
 build/
 
-# local env files
-.env
-.env.dump
+# local env files (per-instance); .env.example is tracked
+.env*
+!.env.example
 
 # Personal cursor configuration files
 .cursor/

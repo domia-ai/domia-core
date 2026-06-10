@@ -3,6 +3,7 @@ export {
 	createChildProcessBackend,
 	resolveMaxWorkers,
 	poolBusyError,
+	drainAndShutdown,
 } from "./utils"
 export type {
 	InferencePoolType,

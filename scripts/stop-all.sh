@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-PORTS=(3000 3001 5052 5053)
+PORTS=(3100 3101 5052 5053)
 PATTERNS=(
   "domia-core.*ts-node.*src/index"
   "nodemon.*src/index"

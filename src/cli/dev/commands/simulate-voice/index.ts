@@ -11,7 +11,7 @@ export const simulateVoiceCommand = async (filePath: string) => {
 	const domia = await initialize()
 	if (!domia?.runtimeCapabilities) {
 		devCliLogger.error(
-			"❌ Could not load DOMIA from DB (run dev:smart once to seed)",
+			"❌ Could not load DOMIA from DB (run npm run dev once to seed)",
 		)
 		process.exit(1)
 	}

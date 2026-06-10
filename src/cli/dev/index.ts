@@ -22,6 +22,10 @@ import {
 	mindImportCommand,
 	mindTemplatesCommand,
 	mindUseCommand,
+	configShowCommand,
+	configHealthCommand,
+	configExportCommand,
+	configImportCommand,
 } from "./commands"
 
 const program = new Command()
@@ -206,6 +210,31 @@ mind
 	.command("import <file>")
 	.description("Import a mind bundle from a JSON file into the live mind")
 	.action((file) => mindImportCommand(file))
+
+const config = program
+	.command("config")
+	.description("⚙️  Inspect and apply the domia's full DB configuration")
+
+config
+	.command("show")
+	.description("Print the full live config (all sections) as JSON")
+	.action(configShowCommand)
+
+config
+	.command("health")
+	.description("Report installed-vs-configured models for troubleshooting")
+	.action(configHealthCommand)
+
+config
+	.command("export")
+	.description("Export the current full config to a JSON file")
+	.option("-o, --out <path>", "Output path", "tmp/config.json")
+	.action((options) => configExportCommand(options.out))
+
+config
+	.command("import <file>")
+	.description("Import a config bundle (partial or full) from a JSON file")
+	.action((file) => configImportCommand(file))
 
 program
 	.parseAsync()

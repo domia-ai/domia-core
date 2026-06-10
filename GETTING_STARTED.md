@@ -28,14 +28,49 @@ npm run setup:models     # or: make setup-models
 # 5. MQTT password (user: domia / pass: domia)
 make mosquitto-password
 
-# 6. Create the database from schema (no migrations — the DB is regenerated)
-npm run db:reset:smart
+# 6. Create the database from the schema (no migrations — drizzle-kit push)
+npm run db:reset:hub
 
 # 7. Run your Domia
-npm run dev:smart
+npm run dev:hub
 ```
 
-When you see `DOMIA is running and waiting for events...`, it's live on `http://localhost:3000`.
+When you see `DOMIA is running and waiting for events...`, it's live on `http://localhost:3100`.
+
+A fresh Domia boots **minimal** — heartbeat + HTTP + CLI + gRPC, every capability off, no models required. You then give it a role from a portable config template, by **CLI**:
+
+```bash
+npm run dev-cli -- config import templates/full-hub.json    # full local pipeline (STT/LLM/TTS)
+# or
+npm run dev-cli -- config import templates/thin-client.json # wake word + mic, delegates the rest
+```
+
+…or from the **web console** (apply a "Full hub" / "Thin client" template, or edit any setting). Either path persists the config and restarts the Domia to apply it. Install any missing models with `npm run setup:models` (or the web Models manager), then it reloads on the next restart.
+
+### The provisioning lifecycle
+
+```
+        ┌──────────────────────────────────────────────────────────┐
+        │  BORN-MINIMAL BOOT                                        │
+        │  heartbeat + HTTP + CLI + gRPC · every capability OFF     │
+        │  no models needed · never crashes on a missing model     │
+        └─────────────────────────────┬────────────────────────────┘
+                                      │  import a config template
+                                      │  CLI: `config import`  ·  or  web Console: Apply
+                                      ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │  persistConfig  →  writes the bundle to the DB           │
+        └─────────────────────────────┬────────────────────────────┘
+                                      │  ALWAYS restart (no live/partial apply)
+                                      ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │  REBOOT · reloads cleanly from DB  →  now has its ROLE    │
+        │  full-hub  → STT/LLM/TTS/intents (a compute hub)         │
+        │  thin-client → wake-word + mic, delegates the rest       │
+        └──────────────────────────────────────────────────────────┘
+```
+
+Change the role any time by importing a different template — it just persists + restarts again. A missing model degrades that stage (visible in `GET /config/health`) instead of crashing; install it and the next restart picks it up.
 
 ## 🧪 Testing individual components (no microphone needed)
 
@@ -52,21 +87,27 @@ npm run dev-cli -- mind                                 # inspect persona / emot
 You can also drive the **full pipeline** without a mic by POSTing a WAV to the HTTP endpoint:
 
 ```bash
-curl -X POST http://localhost:3000/voice \
+curl -X POST http://localhost:3100/voice \
   -H 'content-type: application/json' \
   -d '{"filePath":"'"$PWD"'/tmp/your-audio.wav"}'
 ```
 
 ## 🔀 Run a second Domia (delegation / multi-room)
 
-A second instance is preconfigured in `.env.dump`. In another terminal:
+> **Dev-only convenience.** In production each Domia runs on its **own device** (a Raspberry Pi, a Mac mini, a NUC…) — one instance per host, with its own DB and ports. Running two (or more) instances on a single machine — separate env files, ports, DBs — exists **only** so you can exercise cross-Domia features (gRPC delegation, MQTT discovery, P2P symmetry) on one dev box without a second physical device.
+
+Every Domia is just "a Domia" — its role is its DB config, not a label. Launch as many as you want: one **env file** per instance (device identity: `DATABASE_URL`, `DOMIA_KEY`, ports, log) and `DOMIA_ENV=<file> npm run dev`. No new package.json scripts. A second `.env.edge` is provided as a convenience:
 
 ```bash
-npm run db:reset:dump
-npm run dev:dump          # runs on http://localhost:3001
+npm run db:reset:edge
+npm run dev:edge          # runs on http://localhost:3101
+
+# give them complementary roles, then they delegate over the mesh:
+DOMIA_ENV=.env      npm run dev-cli -- config import templates/full-hub.json
+DOMIA_ENV=.env.edge npm run dev-cli -- config import templates/thin-client.json
 ```
 
-Now the two Domias discover each other over MQTT and can delegate STT/LLM/TTS to one another — the basis for the multi-room hub. (`smart`/`dump` are dev-only labels; in production every instance is just a Domia whose role is decided by its DB config.)
+A third instance is just `cp .env.example .env.kitchen`, edit its identity, then `DOMIA_ENV=.env.kitchen npm run db:reset && DOMIA_ENV=.env.kitchen npm run dev`.
 
 ## 🧩 Swapping engines & models
 
@@ -76,14 +117,14 @@ Everything is DB config — switch without touching code:
 - **TTS:** Kokoro is the default (`npm run setup:models:kokoro`); pick a voice via `tts_config.voice_name` (e.g. `am_adam`, `bf_emma`).
 - **LLM:** any Ollama model — `docker exec -it domia-ollama ollama pull <model>`, then set `llm_model_config.model_name`.
 
-After a config change, apply it live with `curl -X POST http://localhost:3000/config/refresh` (no restart needed).
+Any config edit — via the web Console, `config import`, or `POST /config` — persists to the DB and restarts the Domia so it reloads cleanly from config. `POST /config/refresh` only re-reads the cached identity/heartbeat after an out-of-band DB write (e.g. activating a mind template); it does not reconfigure the pipeline.
 
 ## 🆘 Troubleshooting
 
 - `make doctor` — verifies `sox` is installed.
 - Ollama not responding → `make dev` (is the container up?) and confirm `OLLAMA_HOST` in `.env`.
-- `SQLITE_ERROR: no such column` after a schema change → re-run `npm run db:reset:smart` (the DB is regenerated, never migrated).
-- Logs stream to `log/smart.log` / `log/dump.log`.
+- `SQLITE_ERROR: no such column` after a schema change → re-run `npm run db:reset:hub` (the DB is regenerated, never migrated).
+- Logs stream to `log/<instance>.log`, one file per env (`DOMIA_LOG_FILE`) — e.g. `log/hub.log`, `log/edge.log`.
 
 ---
 

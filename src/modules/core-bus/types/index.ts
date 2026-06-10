@@ -33,7 +33,7 @@ export type CoreBusFeaturesType = {
 	canStreamStt: boolean
 	canStreamLlm: boolean
 	canStreamTts: boolean
-	canFullStreamVoice: boolean
+	canSentencePipeline: boolean
 }
 
 export type CoreBusContextType = {
@@ -155,6 +155,12 @@ export type RequestTextToVoiceReplyResult = {
 	interactionId: string
 	reply: string
 	ttsFilePath?: string
+}
+
+export type MemoryBundleType = {
+	recentTurns: RecentTurnType[]
+	knownFacts: string[]
+	userMoodTrend: string[]
 }
 
 export type SttFlowSessionType = {

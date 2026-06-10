@@ -2,7 +2,11 @@ import { ServerError, Status } from "nice-grpc"
 
 import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import type { CoreBusFeaturesType } from "@/modules/core-bus/types"
-import { splitSentences } from "@/modules/core-bus/utils/sentence-buffer"
+import {
+	splitSentences,
+	AsyncQueue,
+	concatStreams,
+} from "@/modules/core-bus/utils/sentence-buffer"
 import { resolveFallbackMessage } from "@/modules/core-bus/utils/fallback-messages"
 import {
 	buildPromptFromPersona,
@@ -28,7 +32,11 @@ import type { StageMetric } from "@/generated/proto/domia"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLM } from "@/modules/llm-engine"
 import { runSTT } from "@/modules/stt-engine"
-import { runTTS, type RunTtsOptionsType } from "@/modules/tts-engine"
+import {
+	runTTS,
+	ttsAdapterToPcmChunks,
+	type RunTtsOptionsType,
+} from "@/modules/tts-engine"
 import {
 	grpcServerLogger,
 	pcmChunksToWavFile,
@@ -239,15 +247,17 @@ export const ttsTextToChunks = async function* (
 	features: CoreBusFeaturesType,
 	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
-	const ttsRunStream = features.tts?.adapter.runStream
-	if (canStreamTts(features) && ttsRunStream) {
-		yield* ttsRunStream(domia, text, options)
+	const adapter = features.tts?.adapter
+	if (adapter) {
+		yield* ttsAdapterToPcmChunks(domia, adapter, text, options)
 		return
 	}
 	const result = await runTTS(domia, text, options)
 	if (!result?.filePath) return
 	yield* wavFileToPcmChunks(result.filePath)
 }
+
+const MAX_PIPELINE_QUEUE_DEPTH = 4
 
 export const pipelinedReplyChunks = async function* (
 	domia: DomiaType,
@@ -259,9 +269,27 @@ export const pipelinedReplyChunks = async function* (
 	const llmRunStream = features.llm?.adapter.runStream
 	if (!llmRunStream) return
 	const tokens = llmRunStream(domia, promptContext)
-	for await (const sentence of splitSentences(tokens)) {
-		onSentence(sentence)
-		yield* ttsTextToChunks(domia, sentence, features, options)
+	const ttsQueue = new AsyncQueue<AsyncIterable<Buffer>>()
+	let consumerClosed = false
+	const producer = (async () => {
+		try {
+			for await (const sentence of splitSentences(tokens)) {
+				if (consumerClosed) break
+				await ttsQueue.waitForSpace(MAX_PIPELINE_QUEUE_DEPTH)
+				if (consumerClosed) break
+				onSentence(sentence)
+				ttsQueue.push(ttsTextToChunks(domia, sentence, features, options))
+			}
+		} finally {
+			ttsQueue.close()
+		}
+	})()
+	try {
+		yield* concatStreams(ttsQueue.iter())
+	} finally {
+		consumerClosed = true
+		ttsQueue.close()
+		await producer.catch(() => undefined)
 	}
 }
 
@@ -324,7 +352,7 @@ export const streamReplyAudioMessages = async function* (
 		interactionId: logCtx.interactionId,
 		originDomiaKey: logCtx.originDomiaKey,
 		pipelined,
-		ttsMode: canStreamTts(features) ? "stream" : "sync",
+		ttsMode: features.tts?.adapter.runStream ? "stream" : "sync",
 		voice: ttsOptions?.voice?.voiceName,
 	})
 

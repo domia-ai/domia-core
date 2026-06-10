@@ -107,6 +107,7 @@ export const splitTextIntoSentences = (text: string): string[] => {
 export class AsyncQueue<T> {
 	private buffer: T[] = []
 	private waiters: ((value: T | null) => void)[] = []
+	private spaceWaiters: (() => void)[] = []
 	private closed = false
 
 	push(item: T): void {
@@ -116,17 +117,27 @@ export class AsyncQueue<T> {
 		else this.buffer.push(item)
 	}
 
+	async waitForSpace(maxDepth: number): Promise<void> {
+		while (!this.closed && this.buffer.length >= maxDepth) {
+			await new Promise<void>((resolve) => this.spaceWaiters.push(resolve))
+		}
+	}
+
 	close(): void {
 		if (this.closed) return
 		this.closed = true
 		for (const waiter of this.waiters) waiter(null)
 		this.waiters = []
+		for (const resolve of this.spaceWaiters) resolve()
+		this.spaceWaiters = []
 	}
 
 	async *iter(): AsyncIterable<T> {
 		while (true) {
 			const next = this.buffer.shift()
 			if (next !== undefined) {
+				const space = this.spaceWaiters.shift()
+				if (space) space()
 				yield next
 				continue
 			}

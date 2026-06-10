@@ -6,6 +6,7 @@ import {
 	updateInteraction,
 } from "@/modules/session-manager"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
+import { prefetchMemoryBundle } from "../utils"
 import type { CoreBusContextType } from "../types"
 
 const recordingInProgress = new Set<string>()
@@ -35,6 +36,7 @@ export const handleWakeDetected = async (
 				responseType: RESPONSE_TYPE_ENUM.VOICE,
 			})
 			if (!interactionId) return
+			prefetchMemoryBundle(domia, interactionId)
 			setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
 
 			domiaBusLogger.info(
@@ -68,9 +70,15 @@ export const handleWakeDetected = async (
 			return
 		}
 
+		const interactionId = await getOrCreateInteractionId(domia, undefined, {
+			inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
+			responseType: RESPONSE_TYPE_ENUM.VOICE,
+		})
+		if (interactionId) prefetchMemoryBundle(domia, interactionId)
 		const filePath = await startAudioRecording(domia)
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath,
+			interactionId: interactionId ?? undefined,
 			originDomiaKey: domia.domiaKey,
 		})
 	} catch (err) {

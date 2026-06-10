@@ -1,0 +1,54 @@
+[
+	{
+		"kind": "sherpa-archive",
+		"label": "Streaming Zipformer (EN)",
+		"stage": "stt",
+		"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2",
+		"target": "streaming-zipformer-en",
+		"sourceDir": "sherpa-onnx-streaming-zipformer-en-2023-06-26"
+	},
+	{
+		"kind": "sherpa-archive",
+		"label": "Whisper tiny (EN)",
+		"stage": "stt",
+		"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.en.tar.bz2",
+		"target": "whisper-tiny.en",
+		"sourceDir": "sherpa-onnx-whisper-tiny.en"
+	},
+	{
+		"kind": "sherpa-archive",
+		"label": "Moonshine tiny (EN, int8)",
+		"stage": "stt",
+		"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-int8.tar.bz2",
+		"target": "moonshine-tiny-en-int8",
+		"sourceDir": "sherpa-onnx-moonshine-tiny-en-int8"
+	},
+	{
+		"kind": "sherpa-archive",
+		"label": "Kokoro TTS (EN v0.19)",
+		"stage": "tts",
+		"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2",
+		"target": "kokoro-en-v0_19"
+	},
+	{
+		"kind": "file",
+		"label": "Silero VAD",
+		"stage": "vad",
+		"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+		"target": "silero_vad.onnx"
+	},
+	{
+		"kind": "sherpa-archive",
+		"label": "KWS Zipformer Gigaspeech",
+		"stage": "wakeWord",
+		"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2",
+		"target": "kws-zipformer-gigaspeech-3.3M-2024-01-01",
+		"sourceDir": "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+	},
+	{
+		"kind": "ollama",
+		"label": "Llama 3.1 8B",
+		"stage": "llm",
+		"model": "llama3.1:8b"
+	}
+]

@@ -30,7 +30,6 @@ import type { GrpcServerArgsType } from "./types"
 import {
 	bytesToAudioMs,
 	canStreamLlm,
-	canStreamTts,
 	ttsCapsOrDefaults,
 	ttsTextToChunks,
 	transcribeAudioStream,
@@ -85,15 +84,20 @@ const buildImplementation = ({
 					domiaId: domia.id,
 					interactionId: meta?.interactionId,
 				})
-				void reportStageExecution(domia, meta?.originDomiaKey, meta?.interactionId, [
-					{
-						stage: "stt",
-						executorDomiaKey: domia.domiaKey,
-						stageMs: Date.now() - sttStart,
-						model: domia.sttConfig?.modelName,
-						engine: domia.sttConfig?.engine,
-					},
-				])
+				void reportStageExecution(
+					domia,
+					meta?.originDomiaKey,
+					meta?.interactionId,
+					[
+						{
+							stage: "stt",
+							executorDomiaKey: domia.domiaKey,
+							stageMs: Date.now() - sttStart,
+							model: domia.sttConfig?.modelName,
+							engine: domia.sttConfig?.engine,
+						},
+					],
+				)
 				return {
 					transcript,
 					interactionId: meta?.interactionId,
@@ -165,7 +169,7 @@ const buildImplementation = ({
 			const { domia, features } = await resolveLive()
 			const { sampleRate, channels } = ttsCapsOrDefaults(features)
 			const ttsOptions = resolveTtsVoiceOptions(request.ttsVoiceJson)
-			const streaming = canStreamTts(features)
+			const streaming = !!features.tts?.adapter.runStream
 			const startedAt = Date.now()
 			let chunkCount = 0
 			let totalBytes = 0

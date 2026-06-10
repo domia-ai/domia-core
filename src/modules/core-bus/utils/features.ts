@@ -64,7 +64,7 @@ export const resolveCoreBusFeatures = (
 	const canStreamLlm = canRunLlm && llm?.canStream === true
 	const canStreamTts = canRunTts && tts?.canStream === true
 
-	const canFullStreamVoice = canStreamLlm && canStreamTts && canPlayback
+	const canSentencePipeline = canStreamLlm && canRunTts && canPlayback
 
 	return {
 		capabilities,
@@ -78,6 +78,6 @@ export const resolveCoreBusFeatures = (
 		canStreamStt,
 		canStreamLlm,
 		canStreamTts,
-		canFullStreamVoice,
+		canSentencePipeline,
 	}
 }

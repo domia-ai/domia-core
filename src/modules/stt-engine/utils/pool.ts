@@ -2,9 +2,12 @@ import {
 	createInferencePool,
 	createChildProcessBackend,
 	resolveMaxWorkers,
+	drainAndShutdown,
 	type InferencePoolType,
 } from "@/modules/inference-pool"
 import type { SelectSttConfigType } from "@/db"
+
+const POOL_RECYCLE_DRAIN_TIMEOUT_MS = 15_000
 
 let sttPool: InferencePoolType | null = null
 
@@ -27,4 +30,10 @@ export const getSttPool = (
 		})
 	}
 	return sttPool
+}
+
+export const recycleSttPool = async (): Promise<void> => {
+	const pool = sttPool
+	sttPool = null
+	if (pool) await drainAndShutdown(pool, POOL_RECYCLE_DRAIN_TIMEOUT_MS)
 }
