@@ -23,6 +23,8 @@ import {
 	type ReplyAudioMessage,
 	type ReflectionReport,
 	type ReflectionAck,
+	type StageExecutionReport,
+	type StageExecutionAck,
 } from "@/generated/proto/domia"
 import type { GrpcServerArgsType } from "./types"
 import {
@@ -36,6 +38,7 @@ import {
 	resolvePersonaContext,
 	resolveTtsVoiceOptions,
 	reflectOnPersonaInteraction,
+	reportStageExecution,
 	admitVoiceReplyOrBusy,
 } from "./utils"
 
@@ -68,6 +71,7 @@ const buildImplementation = ({
 		): Promise<SttDonePayload> {
 			const { domia, features } = await resolveLive()
 			try {
+				const sttStart = Date.now()
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
 					request,
@@ -81,6 +85,15 @@ const buildImplementation = ({
 					domiaId: domia.id,
 					interactionId: meta?.interactionId,
 				})
+				void reportStageExecution(domia, meta?.originDomiaKey, meta?.interactionId, [
+					{
+						stage: "stt",
+						executorDomiaKey: domia.domiaKey,
+						stageMs: Date.now() - sttStart,
+						model: domia.sttConfig?.modelName,
+						engine: domia.sttConfig?.engine,
+					},
+				])
 				return {
 					transcript,
 					interactionId: meta?.interactionId,
@@ -103,6 +116,7 @@ const buildImplementation = ({
 			const promptContext = buildPromptFromPersona(persona, request.transcript)
 			const runStream = features.llm?.adapter.runStream
 			let reply = ""
+			const llmStart = Date.now()
 
 			try {
 				if (canStreamLlm(features) && runStream) {
@@ -119,6 +133,20 @@ const buildImplementation = ({
 				throw err
 			}
 
+			void reportStageExecution(
+				domia,
+				request.originDomiaKey,
+				request.interactionId,
+				[
+					{
+						stage: "llm",
+						executorDomiaKey: domia.domiaKey,
+						stageMs: Date.now() - llmStart,
+						model: domia.llmModelConfig?.modelName,
+						engine: domia.llmModelConfig?.engine,
+					},
+				],
+			)
 			void reflectOnPersonaInteraction(
 				domia,
 				persona,
@@ -174,6 +202,20 @@ const buildImplementation = ({
 					approxAudioMs: bytesToAudioMs(totalBytes, sampleRate, channels),
 					sampleRate,
 				})
+				void reportStageExecution(
+					domia,
+					request.originDomiaKey,
+					request.interactionId,
+					[
+						{
+							stage: "tts",
+							executorDomiaKey: domia.domiaKey,
+							stageMs: Date.now() - startedAt,
+							engine: domia.ttsConfig?.engine,
+							voice: ttsOptions?.voice?.voiceName ?? domia.ttsConfig?.voiceName,
+						},
+					],
+				)
 			}
 		},
 
@@ -216,6 +258,7 @@ const buildImplementation = ({
 			const { domia, features } = await resolveLive()
 			const release = await admitVoiceReplyOrBusy(domia, {})
 			try {
+				const sttStart = Date.now()
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
 					request,
@@ -229,6 +272,20 @@ const buildImplementation = ({
 					domiaId: domia.id,
 					interactionId: meta?.interactionId,
 				})
+				void reportStageExecution(
+					domia,
+					meta?.originDomiaKey,
+					meta?.interactionId,
+					[
+						{
+							stage: "stt",
+							executorDomiaKey: domia.domiaKey,
+							stageMs: Date.now() - sttStart,
+							model: domia.sttConfig?.modelName,
+							engine: domia.sttConfig?.engine,
+						},
+					],
+				)
 
 				const persona = resolvePersonaContext(meta?.personaContextJson, domia)
 				yield { payload: { $case: "transcript", transcript } }
@@ -268,6 +325,45 @@ const buildImplementation = ({
 				return { accepted: true }
 			} catch (err) {
 				grpcServerLogger.error("❌ reportReflection failed", { err })
+				return { accepted: false }
+			}
+		},
+
+		async reportStageExecution(
+			request: StageExecutionReport,
+		): Promise<StageExecutionAck> {
+			setTraceContext({ interactionId: request.interactionId })
+			const id = request.interactionId
+			if (!id) return { accepted: false }
+			try {
+				for (const m of request.stages) {
+					if (m.stage === "stt") {
+						await updateInteraction({
+							id,
+							sttMs: m.stageMs,
+							sttModelUsed: m.model ?? null,
+							sttExecutorKey: m.executorDomiaKey,
+						})
+					} else if (m.stage === "llm") {
+						await updateInteraction({
+							id,
+							llmMs: m.stageMs,
+							llmModelUsed: m.model ?? null,
+							llmExecutorKey: m.executorDomiaKey,
+						})
+					} else if (m.stage === "tts") {
+						await updateInteraction({
+							id,
+							ttsMs: m.stageMs,
+							ttsEngineUsed: m.engine ?? null,
+							ttsVoiceUsed: m.voice ?? null,
+							ttsExecutorKey: m.executorDomiaKey,
+						})
+					}
+				}
+				return { accepted: true }
+			} catch (err) {
+				grpcServerLogger.error("❌ reportStageExecution failed", { err })
 				return { accepted: false }
 			}
 		},

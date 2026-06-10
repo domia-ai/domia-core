@@ -20,7 +20,11 @@ import {
 	activeVoiceReplies,
 	queuedVoiceReplies,
 } from "@/modules/voice-admission"
-import { reportReflectionToTarget } from "@/modules/grpc-client"
+import {
+	reportReflectionToTarget,
+	reportStageExecutionToTarget,
+} from "@/modules/grpc-client"
+import type { StageMetric } from "@/generated/proto/domia"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLM } from "@/modules/llm-engine"
 import { runSTT } from "@/modules/stt-engine"
@@ -167,6 +171,37 @@ export const reflectOnPersonaInteraction = async (
 		)
 	} catch (err) {
 		grpcServerLogger.warn("reflectOnPersonaInteraction failed (skipping)", {
+			responderId: responder?.id,
+			err,
+		})
+	}
+}
+
+export const reportStageExecution = async (
+	responder: DomiaType,
+	originDomiaKey: string | undefined,
+	interactionId: string | undefined,
+	stages: StageMetric[],
+): Promise<void> => {
+	try {
+		if (!originDomiaKey || originDomiaKey === responder.domiaKey) return
+		if (!interactionId || stages.length === 0) return
+		const origin = await getDomiaByDomiaKey(originDomiaKey)
+		if (!origin) return
+		await reportStageExecutionToTarget(
+			responder.domiaKey,
+			{
+				domiaKey: origin.domiaKey,
+				domiaId: origin.id,
+				localIp: origin.localIp,
+				grpcPort: origin.grpcPort,
+				source: "explicit",
+				streamingCapabilities: resolveDomiaStreamingCapabilities(origin),
+			},
+			{ originDomiaKey, interactionId, stages },
+		)
+	} catch (err) {
+		grpcServerLogger.warn("reportStageExecution failed (skipping)", {
 			responderId: responder?.id,
 			err,
 		})
@@ -390,5 +425,29 @@ export const streamReplyAudioMessages = async function* (
 			approxAudioMs: bytesToAudioMs(totalBytes, sampleRate, channels),
 			replyLen: assembled.length,
 		})
+		const ttfa =
+			firstChunkAt !== null ? firstChunkAt - startedAt : Date.now() - startedAt
+		const total = Date.now() - startedAt
+		void reportStageExecution(
+			domia,
+			logCtx.originDomiaKey,
+			logCtx.interactionId,
+			[
+				{
+					stage: "llm",
+					executorDomiaKey: domia.domiaKey,
+					stageMs: ttfa,
+					model: domia.llmModelConfig?.modelName,
+					engine: domia.llmModelConfig?.engine,
+				},
+				{
+					stage: "tts",
+					executorDomiaKey: domia.domiaKey,
+					stageMs: Math.max(0, total - ttfa),
+					engine: domia.ttsConfig?.engine,
+					voice: ttsOptions?.voice?.voiceName ?? domia.ttsConfig?.voiceName,
+				},
+			],
+		)
 	}
 }

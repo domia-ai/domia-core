@@ -7,6 +7,20 @@ import dbAdapter from "../db-adapter"
 import { RECENT_TURNS_WINDOW, RECENT_TURNS_MAX_AGE_MS } from "../constants"
 import type { NewInteractionDataType } from "../types"
 
+const pipelineStarts = new Map<string, number>()
+
+export const markPipelineStart = (interactionId: string): void => {
+	if (pipelineStarts.size > 256) pipelineStarts.clear()
+	if (!pipelineStarts.has(interactionId)) {
+		pipelineStarts.set(interactionId, Date.now())
+	}
+}
+
+export const pipelineElapsed = (interactionId: string): number | undefined => {
+	const start = pipelineStarts.get(interactionId)
+	return start == null ? undefined : Date.now() - start
+}
+
 export const getInteractionsSince = (
 	domiaId: string,
 	since: string,
@@ -59,6 +73,25 @@ export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	}
 }
 
+const buildDomiaSnapshot = (domia: DomiaType) => ({
+	emotion: domia.emotionState ?? null,
+	character: domia.characterProfile ?? null,
+	stt: domia.sttConfig ?? null,
+	llm: domia.llmModelConfig ?? null,
+	tts: domia.ttsConfig ?? null,
+	wakeWord: domia.wakeWordConfig ?? null,
+	modules: domia.moduleSettings ?? null,
+	capabilities: domia.runtimeCapabilities ?? null,
+})
+
+const buildUsedDiscriminators = (domia: DomiaType) => ({
+	sttModelUsed: domia.sttConfig?.modelName ?? null,
+	llmModelUsed: domia.llmModelConfig?.modelName ?? null,
+	ttsEngineUsed: domia.ttsConfig?.engine ?? null,
+	ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+	wakeWordModelUsed: domia.wakeWordConfig?.model ?? null,
+})
+
 export const registerNewInteraction = async (
 	domia: DomiaType,
 	data: NewInteractionDataType,
@@ -71,6 +104,8 @@ export const registerNewInteraction = async (
 
 	await dbAdapter.insertInteractionTrace(
 		{
+			domiaSnapshot: buildDomiaSnapshot(domia),
+			...buildUsedDiscriminators(domia),
 			...data,
 			id: interactionId,
 			domiaId: domia.id,

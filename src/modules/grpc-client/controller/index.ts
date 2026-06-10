@@ -9,6 +9,7 @@ import {
 	type AudioChunk,
 	type TokenChunk,
 	type ReplyAudioMessage,
+	type StageMetric,
 } from "@/generated/proto/domia"
 import type {
 	DeliverEventTarget,
@@ -627,6 +628,42 @@ export const reportReflectionToTarget = async (
 		if (isUnavailableError(err)) closeChannel(addr)
 		grpcClientLogger.warn(
 			`✗ reportReflection to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
+		)
+		return false
+	} finally {
+		clearTimeout(timer)
+	}
+}
+
+export const reportStageExecutionToTarget = async (
+	senderDomiaKey: string,
+	target: DeliverEventTarget,
+	payload: {
+		originDomiaKey?: string
+		interactionId?: string
+		stages: StageMetric[]
+	},
+): Promise<boolean> => {
+	const client = getClient(target)
+	if (!client) return false
+	const addr = addrOf(target)
+	const ac = new AbortController()
+	const timer = setTimeout(() => ac.abort(), DEFAULT_DEADLINE_MS)
+	try {
+		const ack = await client.reportStageExecution(
+			{
+				senderDomiaKey,
+				originDomiaKey: payload.originDomiaKey,
+				interactionId: payload.interactionId,
+				stages: payload.stages,
+			},
+			{ signal: ac.signal },
+		)
+		return ack.accepted
+	} catch (err) {
+		if (isUnavailableError(err)) closeChannel(addr)
+		grpcClientLogger.warn(
+			`✗ reportStageExecution to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
 		)
 		return false
 	} finally {

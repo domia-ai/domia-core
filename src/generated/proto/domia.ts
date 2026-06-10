@@ -88,6 +88,26 @@ export interface ReflectionAck {
   accepted: boolean;
 }
 
+export interface StageMetric {
+  stage: string;
+  executorDomiaKey: string;
+  stageMs: number;
+  model?: string | undefined;
+  engine?: string | undefined;
+  voice?: string | undefined;
+}
+
+export interface StageExecutionReport {
+  senderDomiaKey: string;
+  originDomiaKey?: string | undefined;
+  interactionId?: string | undefined;
+  stages: StageMetric[];
+}
+
+export interface StageExecutionAck {
+  accepted: boolean;
+}
+
 export interface AudioChunk {
   pcm: Uint8Array;
   sampleRate?: number | undefined;
@@ -1471,6 +1491,332 @@ export const ReflectionAck: MessageFns<ReflectionAck> = {
   },
 };
 
+function createBaseStageMetric(): StageMetric {
+  return { stage: "", executorDomiaKey: "", stageMs: 0, model: undefined, engine: undefined, voice: undefined };
+}
+
+export const StageMetric: MessageFns<StageMetric> = {
+  encode(message: StageMetric, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.stage !== "") {
+      writer.uint32(10).string(message.stage);
+    }
+    if (message.executorDomiaKey !== "") {
+      writer.uint32(18).string(message.executorDomiaKey);
+    }
+    if (message.stageMs !== 0) {
+      writer.uint32(24).uint32(message.stageMs);
+    }
+    if (message.model !== undefined) {
+      writer.uint32(34).string(message.model);
+    }
+    if (message.engine !== undefined) {
+      writer.uint32(42).string(message.engine);
+    }
+    if (message.voice !== undefined) {
+      writer.uint32(50).string(message.voice);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StageMetric {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStageMetric();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.stage = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.executorDomiaKey = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.stageMs = reader.uint32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.model = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.engine = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.voice = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StageMetric {
+    return {
+      stage: isSet(object.stage) ? globalThis.String(object.stage) : "",
+      executorDomiaKey: isSet(object.executorDomiaKey)
+        ? globalThis.String(object.executorDomiaKey)
+        : isSet(object.executor_domia_key)
+        ? globalThis.String(object.executor_domia_key)
+        : "",
+      stageMs: isSet(object.stageMs)
+        ? globalThis.Number(object.stageMs)
+        : isSet(object.stage_ms)
+        ? globalThis.Number(object.stage_ms)
+        : 0,
+      model: isSet(object.model) ? globalThis.String(object.model) : undefined,
+      engine: isSet(object.engine) ? globalThis.String(object.engine) : undefined,
+      voice: isSet(object.voice) ? globalThis.String(object.voice) : undefined,
+    };
+  },
+
+  toJSON(message: StageMetric): unknown {
+    const obj: any = {};
+    if (message.stage !== "") {
+      obj.stage = message.stage;
+    }
+    if (message.executorDomiaKey !== "") {
+      obj.executorDomiaKey = message.executorDomiaKey;
+    }
+    if (message.stageMs !== 0) {
+      obj.stageMs = Math.round(message.stageMs);
+    }
+    if (message.model !== undefined) {
+      obj.model = message.model;
+    }
+    if (message.engine !== undefined) {
+      obj.engine = message.engine;
+    }
+    if (message.voice !== undefined) {
+      obj.voice = message.voice;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<StageMetric>): StageMetric {
+    return StageMetric.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<StageMetric>): StageMetric {
+    const message = createBaseStageMetric();
+    message.stage = object.stage ?? "";
+    message.executorDomiaKey = object.executorDomiaKey ?? "";
+    message.stageMs = object.stageMs ?? 0;
+    message.model = object.model ?? undefined;
+    message.engine = object.engine ?? undefined;
+    message.voice = object.voice ?? undefined;
+    return message;
+  },
+};
+
+function createBaseStageExecutionReport(): StageExecutionReport {
+  return { senderDomiaKey: "", originDomiaKey: undefined, interactionId: undefined, stages: [] };
+}
+
+export const StageExecutionReport: MessageFns<StageExecutionReport> = {
+  encode(message: StageExecutionReport, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.senderDomiaKey !== "") {
+      writer.uint32(10).string(message.senderDomiaKey);
+    }
+    if (message.originDomiaKey !== undefined) {
+      writer.uint32(18).string(message.originDomiaKey);
+    }
+    if (message.interactionId !== undefined) {
+      writer.uint32(26).string(message.interactionId);
+    }
+    for (const v of message.stages) {
+      StageMetric.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StageExecutionReport {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStageExecutionReport();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.senderDomiaKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.originDomiaKey = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.interactionId = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.stages.push(StageMetric.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StageExecutionReport {
+    return {
+      senderDomiaKey: isSet(object.senderDomiaKey)
+        ? globalThis.String(object.senderDomiaKey)
+        : isSet(object.sender_domia_key)
+        ? globalThis.String(object.sender_domia_key)
+        : "",
+      originDomiaKey: isSet(object.originDomiaKey)
+        ? globalThis.String(object.originDomiaKey)
+        : isSet(object.origin_domia_key)
+        ? globalThis.String(object.origin_domia_key)
+        : undefined,
+      interactionId: isSet(object.interactionId)
+        ? globalThis.String(object.interactionId)
+        : isSet(object.interaction_id)
+        ? globalThis.String(object.interaction_id)
+        : undefined,
+      stages: globalThis.Array.isArray(object?.stages) ? object.stages.map((e: any) => StageMetric.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: StageExecutionReport): unknown {
+    const obj: any = {};
+    if (message.senderDomiaKey !== "") {
+      obj.senderDomiaKey = message.senderDomiaKey;
+    }
+    if (message.originDomiaKey !== undefined) {
+      obj.originDomiaKey = message.originDomiaKey;
+    }
+    if (message.interactionId !== undefined) {
+      obj.interactionId = message.interactionId;
+    }
+    if (message.stages?.length) {
+      obj.stages = message.stages.map((e) => StageMetric.toJSON(e));
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<StageExecutionReport>): StageExecutionReport {
+    return StageExecutionReport.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<StageExecutionReport>): StageExecutionReport {
+    const message = createBaseStageExecutionReport();
+    message.senderDomiaKey = object.senderDomiaKey ?? "";
+    message.originDomiaKey = object.originDomiaKey ?? undefined;
+    message.interactionId = object.interactionId ?? undefined;
+    message.stages = object.stages?.map((e) => StageMetric.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseStageExecutionAck(): StageExecutionAck {
+  return { accepted: false };
+}
+
+export const StageExecutionAck: MessageFns<StageExecutionAck> = {
+  encode(message: StageExecutionAck, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.accepted !== false) {
+      writer.uint32(8).bool(message.accepted);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StageExecutionAck {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStageExecutionAck();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.accepted = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StageExecutionAck {
+    return { accepted: isSet(object.accepted) ? globalThis.Boolean(object.accepted) : false };
+  },
+
+  toJSON(message: StageExecutionAck): unknown {
+    const obj: any = {};
+    if (message.accepted !== false) {
+      obj.accepted = message.accepted;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<StageExecutionAck>): StageExecutionAck {
+    return StageExecutionAck.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<StageExecutionAck>): StageExecutionAck {
+    const message = createBaseStageExecutionAck();
+    message.accepted = object.accepted ?? false;
+    return message;
+  },
+};
+
 function createBaseAudioChunk(): AudioChunk {
   return { pcm: new Uint8Array(0), sampleRate: undefined, channels: undefined, meta: undefined };
 }
@@ -2140,6 +2486,14 @@ export const DomiaNodeDefinition = {
       responseStream: false,
       options: {},
     },
+    reportStageExecution: {
+      name: "ReportStageExecution",
+      requestType: StageExecutionReport as typeof StageExecutionReport,
+      requestStream: false,
+      responseType: StageExecutionAck as typeof StageExecutionAck,
+      responseStream: false,
+      options: {},
+    },
   },
 } as const;
 
@@ -2170,6 +2524,10 @@ export interface DomiaNodeServiceImplementation<CallContextExt = {}> {
     request: ReflectionReport,
     context: CallContext & CallContextExt,
   ): Promise<DeepPartial<ReflectionAck>>;
+  reportStageExecution(
+    request: StageExecutionReport,
+    context: CallContext & CallContextExt,
+  ): Promise<DeepPartial<StageExecutionAck>>;
 }
 
 export interface DomiaNodeClient<CallOptionsExt = {}> {
@@ -2193,6 +2551,10 @@ export interface DomiaNodeClient<CallOptionsExt = {}> {
     request: DeepPartial<ReflectionReport>,
     options?: CallOptions & CallOptionsExt,
   ): Promise<ReflectionAck>;
+  reportStageExecution(
+    request: DeepPartial<StageExecutionReport>,
+    options?: CallOptions & CallOptionsExt,
+  ): Promise<StageExecutionAck>;
 }
 
 function bytesFromBase64(b64: string): Uint8Array {

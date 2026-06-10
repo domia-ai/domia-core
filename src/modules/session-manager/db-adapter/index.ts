@@ -66,9 +66,9 @@ const dbAdapter = {
 		client.query.interactionTrace.findMany({
 			where: and(
 				eq(interactionTrace.domiaId, domiaId),
-				gte(interactionTrace.createdAt, since),
+				gte(interactionTrace.updatedAt, since),
 			),
-			orderBy: asc(interactionTrace.createdAt),
+			orderBy: asc(interactionTrace.updatedAt),
 			limit,
 		}),
 	getSessionsSince: (

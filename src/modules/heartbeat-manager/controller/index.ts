@@ -1,5 +1,5 @@
 import { MQTT_TYPE_ENUM } from "@/db"
-import { MQTT_EVENT_ENUM } from "@/setups"
+import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
 import type { ReceiveHeartbeatArgsType, SendHeartbeatArgsType } from "../types"
 import { heartbeatLogger } from "@/utils"
 import { env } from "@/config"

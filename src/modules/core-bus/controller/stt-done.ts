@@ -12,6 +12,7 @@ import {
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
+	pipelineElapsed,
 	getRecentTurns,
 	getRecentUserMoods,
 } from "@/modules/session-manager"
@@ -108,6 +109,7 @@ const tryLocalFullStreamVoice = async (
 	let fullReply = ""
 	let audioError: unknown = null
 	let ttsAudioPath: string | undefined
+	let llmElapsed = 0
 	try {
 		const tokens = llm.adapter.runStream(domia, session.promptContext)
 		for await (const sentence of splitSentences(tokens)) {
@@ -115,21 +117,28 @@ const tryLocalFullStreamVoice = async (
 			ttsStreamQueue.push(tts.adapter.runStream(domia, sentence))
 		}
 		ttsStreamQueue.close()
+		llmElapsed = Date.now() - startTime
 		ttsAudioPath = await playbackPromise
 	} catch (err) {
 		audioError = err
 		ttsStreamQueue.close()
 	}
 
-	domiaBusLogger.info(
-		`⏱️ LLM+TTS streaming pipeline: ${Date.now() - startTime}ms`,
-	)
+	const totalElapsed = Date.now() - startTime
+	domiaBusLogger.info(`⏱️ LLM+TTS streaming pipeline: ${totalElapsed}ms`)
 	await updateInteraction({
 		id: session.interactionId,
 		llmPrompt: session.promptContext,
 		llmResponse: fullReply,
 		ttsEngineUsed: tts.adapter.id,
+		llmExecutorKey: domia.domiaKey,
+		ttsExecutorKey: domia.domiaKey,
 		ttsAudioPath,
+		llmMs: llmElapsed,
+		ttsMs: Math.max(0, totalElapsed - llmElapsed),
+		llmModelUsed: domia.llmModelConfig?.modelName ?? null,
+		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		totalMs: pipelineElapsed(session.interactionId),
 	})
 
 	if (audioError) {
@@ -166,12 +175,17 @@ const runLocalSyncLlm = async (
 ): Promise<void> => {
 	const startTime = Date.now()
 	const reply = await runLLM(ctx.domia, session.promptContext)
-	domiaBusLogger.info(`⏱️ LLM execution time: ${Date.now() - startTime}ms`)
+	const llmElapsed = Date.now() - startTime
+	domiaBusLogger.info(`⏱️ LLM execution time: ${llmElapsed}ms`)
 
 	await updateInteraction({
 		id: session.interactionId,
 		llmPrompt: session.promptContext,
 		llmResponse: reply,
+		llmExecutorKey: ctx.domia.domiaKey,
+		llmMs: llmElapsed,
+		llmModelUsed: ctx.domia.llmModelConfig?.modelName ?? null,
+		totalMs: pipelineElapsed(session.interactionId),
 	})
 
 	publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
@@ -269,9 +283,12 @@ const tryDelegatedReplyAudio = async (
 		)
 		await updateInteraction({
 			id: session.interactionId,
+			llmPrompt: session.promptContext,
 			llmResponse: reply,
-			ttsEngineUsed: streamed.target?.domiaKey,
+			llmExecutorKey: streamed.target?.domiaKey,
+			ttsExecutorKey: streamed.target?.domiaKey,
 			ttsAudioPath,
+			totalMs: pipelineElapsed(session.interactionId),
 		})
 		publishStreamedReplyComplete(domia.id, session, reply)
 		return true
@@ -328,6 +345,7 @@ const tryDelegatedStreamLlm = async (
 		id: session.interactionId,
 		llmPrompt: session.promptContext,
 		llmResponse: reply,
+		llmExecutorKey: streamed.target?.domiaKey,
 	})
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 		reply,
@@ -393,8 +411,6 @@ export const handleSttDone = async (
 		id: interactionId,
 		inputRaw: transcript,
 		sttResult: transcript,
-		emotionSnapshot: domia?.emotionState,
-		characterSnapshot: domia?.characterProfile,
 	}).catch((err) =>
 		domiaBusLogger.error("STT_DONE: snapshot persistence failed", {
 			domiaId,

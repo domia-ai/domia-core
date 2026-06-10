@@ -11,6 +11,7 @@ service DomiaNode {
   rpc StreamReplyAudio(LlmStreamRequest) returns (stream ReplyAudioMessage);
   rpc StreamVoiceReply(stream AudioChunk) returns (stream ReplyAudioMessage);
   rpc ReportReflection(ReflectionReport) returns (ReflectionAck);
+  rpc ReportStageExecution(StageExecutionReport) returns (StageExecutionAck);
 }
 
 message HealthRequest {}
@@ -87,6 +88,26 @@ message ReflectionReport {
 }
 
 message ReflectionAck {
+  bool accepted = 1;
+}
+
+message StageMetric {
+  string stage = 1;
+  string executor_domia_key = 2;
+  uint32 stage_ms = 3;
+  optional string model = 4;
+  optional string engine = 5;
+  optional string voice = 6;
+}
+
+message StageExecutionReport {
+  string sender_domia_key = 1;
+  optional string origin_domia_key = 2;
+  optional string interaction_id = 3;
+  repeated StageMetric stages = 4;
+}
+
+message StageExecutionAck {
   bool accepted = 1;
 }
 

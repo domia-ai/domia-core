@@ -9,7 +9,7 @@ export const DEFAULT_MAX_CONCURRENT_VOICE_REPLIES = 3
 export const DEFAULT_MAX_QUEUED_VOICE_REPLIES = 4
 export const DEFAULT_VOICE_QUEUE_TIMEOUT_MS = 15_000
 export const DEFAULT_OWN_CONFIG_TTL_MS = 30_000
-export const DEFAULT_WAKE_WORD = "alexa"
+export const DEFAULT_WAKE_WORD = "computer"
 export const DEFAULT_WAKE_WORD_MODEL = "kws-zipformer-gigaspeech"
 export const DEFAULT_WAKE_WORD_MODEL_PATH =
 	"data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01"

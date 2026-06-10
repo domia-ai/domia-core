@@ -135,12 +135,24 @@ export type PlaybackFinishedPayloadType = {
 
 export type RequestVoiceReplyOptions = {
 	timeoutMs?: number
+	speak?: boolean
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
 }
 
 export type RequestVoiceReplyResult = {
 	interactionId: string
 	transcript: string
+	reply: string
+	ttsFilePath?: string
+}
+
+export type RequestTextReplyResult = {
+	interactionId: string
+	reply: string
+}
+
+export type RequestTextToVoiceReplyResult = {
+	interactionId: string
 	reply: string
 	ttsFilePath?: string
 }

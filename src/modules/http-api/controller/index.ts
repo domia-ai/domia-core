@@ -1,9 +1,13 @@
-import { createReadStream, existsSync } from "fs"
+import { createReadStream, existsSync, writeFileSync } from "fs"
+import { join } from "path"
+import { generateUuid } from "@/utils"
 import { type DomiaType } from "@/modules/core"
+import { RECORDINGS_DIR } from "@/modules/audio-capture/constants"
 import {
 	getInteractionById,
 	getInteractionsSince,
 	getSessionsSince,
+	updateInteraction,
 } from "@/modules/session-manager"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
 import { getFactsSince } from "@/modules/memory"
@@ -21,6 +25,7 @@ import type {
 	GetSyncResponseType,
 	PostVoiceBodyType,
 	PostVoiceResponseType,
+	PostVoiceTimingsType,
 	PostImportMindBodyType,
 } from "../types"
 import {
@@ -32,6 +37,7 @@ import {
 } from "../schemas"
 import {
 	requestTextReply,
+	requestTextToVoiceReply,
 	getAudioFilePath,
 	registerAudioForServing,
 	requestVoiceReply,
@@ -69,14 +75,59 @@ export const handleGetAudio = async (
 	return reply.type("audio/wav").send(stream)
 }
 
+const computeTimings = (
+	stages: Partial<Record<RequestVoiceReplyStage, number>>,
+): PostVoiceTimingsType => {
+	const end = stages.tts ?? stages.llm ?? stages.stt ?? 0
+	return {
+		sttMs: stages.stt ?? 0,
+		llmMs: (stages.llm ?? 0) - (stages.stt ?? 0),
+		ttsMs: stages.tts != null ? stages.tts - (stages.llm ?? 0) : 0,
+		ttfaMs: stages.firstAudioChunk ?? 0,
+		totalMs: end,
+	}
+}
+
 export const handlePostChat = async (
 	domia: DomiaType,
 	body: PostChatBodyType,
 ): Promise<PostChatResponseType> => {
-	const { text } = postChatBodySchema.parse(body)
+	const { text, speak } = postChatBodySchema.parse(body)
 	try {
-		const reply = await requestTextReply(domia, text)
-		return { reply }
+		if (speak) {
+			const stages: Partial<Record<RequestVoiceReplyStage, number>> = {}
+			const result = await requestTextToVoiceReply(domia, text, {
+				onStage: (stage, elapsedMs) => {
+					stages[stage] = elapsedMs
+				},
+			})
+			const timings = computeTimings(stages)
+			await updateInteraction({
+				id: result.interactionId,
+				ttfaMs: timings.ttfaMs,
+				totalMs: timings.totalMs,
+			})
+			const audioUrl = result.ttsFilePath
+				? (registerAudioForServing(result.interactionId, result.ttsFilePath),
+					`/audio/${result.interactionId}`)
+				: null
+			return {
+				interactionId: result.interactionId,
+				reply: result.reply,
+				audioUrl,
+				timings,
+			}
+		}
+
+		const startedAt = Date.now()
+		const { reply, interactionId } = await requestTextReply(domia, text)
+		const totalMs = Date.now() - startedAt
+		await updateInteraction({ id: interactionId, totalMs })
+		return {
+			interactionId,
+			reply,
+			timings: { sttMs: 0, llmMs: totalMs, ttsMs: 0, ttfaMs: 0, totalMs },
+		}
 	} catch (err) {
 		httpServerLogger.error("Chat request failed", { domiaId: domia.id, err })
 		throw err
@@ -87,14 +138,28 @@ export const handlePostVoice = async (
 	domia: DomiaType,
 	body: PostVoiceBodyType,
 ): Promise<PostVoiceResponseType> => {
-	const { filePath } = postVoiceBodySchema.parse(body)
+	const { filePath, audioBase64, speak } = postVoiceBodySchema.parse(body)
+	let archivedInputPath: string | null = null
+	if (audioBase64) {
+		archivedInputPath = join(RECORDINGS_DIR, `voice-${generateUuid()}.wav`)
+		writeFileSync(archivedInputPath, Buffer.from(audioBase64, "base64"))
+	}
+	const audioPath = archivedInputPath ?? (filePath as string)
 	try {
 		const stages: Partial<Record<RequestVoiceReplyStage, number>> = {}
-		const result = await requestVoiceReply(domia, filePath, {
+		const result = await requestVoiceReply(domia, audioPath, {
+			speak,
 			onStage: (stage, elapsedMs) => {
 				stages[stage] = elapsedMs
 			},
 		})
+		const timings = computeTimings(stages)
+		await updateInteraction({
+			id: result.interactionId,
+			ttfaMs: timings.ttfaMs,
+			totalMs: timings.totalMs,
+		})
+
 		const audioUrl = result.ttsFilePath
 			? (registerAudioForServing(result.interactionId, result.ttsFilePath),
 				`/audio/${result.interactionId}`)
@@ -104,13 +169,7 @@ export const handlePostVoice = async (
 			transcript: result.transcript,
 			reply: result.reply,
 			audioUrl,
-			timings: {
-				sttMs: stages.stt ?? 0,
-				llmMs: (stages.llm ?? 0) - (stages.stt ?? 0),
-				ttsMs: (stages.tts ?? 0) - (stages.llm ?? 0),
-				ttfaMs: stages.firstAudioChunk ?? 0,
-				totalMs: stages.tts ?? 0,
-			},
+			timings,
 		}
 	} catch (err) {
 		httpServerLogger.error("Voice request failed", { domiaId: domia.id, err })
@@ -171,7 +230,7 @@ export const handleGetSync = async (
 	])
 
 	const stamps = [
-		...interactions.map((r) => r.createdAt),
+		...interactions.map((r) => r.updatedAt),
 		...emotionEvents.map((r) => r.createdAt),
 		...facts.map((r) => r.updatedAt),
 		...sessions.map((r) => r.updatedAt),

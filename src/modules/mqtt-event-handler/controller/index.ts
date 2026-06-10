@@ -1,5 +1,5 @@
 import type { handleMqttMessageArgsType } from "../types"
-import { MQTT_EVENT_ENUM } from "@/setups"
+import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
 import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
 

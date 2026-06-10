@@ -1,6 +1,3 @@
-import { existsSync } from "fs"
-import path from "path"
-
 import {
 	publishToDomiaBus,
 	subscribeToDomiaBus,
@@ -12,42 +9,34 @@ import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
 import type {
-	SttDonePayloadType,
 	LlmDonePayloadType,
 	TtsDonePayloadType,
 	InteractionFailedPayloadType,
 	PlaybackStartedPayloadType,
 	PlaybackFinishedPayloadType,
 	RequestVoiceReplyOptions,
-	RequestVoiceReplyResult,
+	RequestTextToVoiceReplyResult,
 } from "../types"
 
 const DEFAULT_TIMEOUT_MS = 60_000
 
-export const requestVoiceReply = async (
+export const requestTextToVoiceReply = async (
 	domia: DomiaType,
-	audioPath: string,
+	text: string,
 	options: RequestVoiceReplyOptions = {},
-): Promise<RequestVoiceReplyResult> => {
-	const { timeoutMs = DEFAULT_TIMEOUT_MS, speak = true, onStage } = options
-
-	const absPath = path.resolve(audioPath)
-	if (!existsSync(absPath)) {
-		throw new Error(`requestVoiceReply: audio file not found: ${absPath}`)
-	}
+): Promise<RequestTextToVoiceReplyResult> => {
+	const { timeoutMs = DEFAULT_TIMEOUT_MS, onStage } = options
 
 	const interactionId = await getOrCreateInteractionId(domia, undefined, {
-		inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
-		responseType: speak ? RESPONSE_TYPE_ENUM.VOICE : RESPONSE_TYPE_ENUM.TEXT,
-		inputAudioPath: absPath,
+		inputType: INTERACTION_INPUT_TYPE_ENUM.TEXT,
+		responseType: RESPONSE_TYPE_ENUM.VOICE,
 	})
 	if (!interactionId) {
-		throw new Error("requestVoiceReply: failed to create interaction")
+		throw new Error("requestTextToVoiceReply: failed to create interaction")
 	}
 
 	const domiaId = domia.id
 	const t0 = Date.now()
-	let transcript = ""
 	let reply = ""
 	let ttsFilePath: string | undefined
 	const subs: {
@@ -72,22 +61,15 @@ export const requestVoiceReply = async (
 	try {
 		await new Promise<void>((resolve, reject) => {
 			const timeout = setTimeout(() => {
-				reject(new Error(`requestVoiceReply: timeout after ${timeoutMs}ms`))
+				reject(
+					new Error(`requestTextToVoiceReply: timeout after ${timeoutMs}ms`),
+				)
 			}, timeoutMs)
 
-			sub(DOMIA_EVENT_BUS_ENUM.STT_DONE, (p: SttDonePayloadType) => {
-				if (p.interactionId !== interactionId) return
-				transcript = p.transcript
-				onStage?.("stt", Date.now() - t0)
-			})
 			sub(DOMIA_EVENT_BUS_ENUM.LLM_DONE, (p: LlmDonePayloadType) => {
 				if (p.interactionId !== interactionId) return
 				reply = p.reply
 				onStage?.("llm", Date.now() - t0)
-				if (!speak) {
-					clearTimeout(timeout)
-					resolve()
-				}
 			})
 			sub(DOMIA_EVENT_BUS_ENUM.TTS_DONE, (p: TtsDonePayloadType) => {
 				if (p.interactionId !== interactionId) return
@@ -118,21 +100,22 @@ export const requestVoiceReply = async (
 					clearTimeout(timeout)
 					reject(
 						new Error(
-							`requestVoiceReply: failed at ${p.step ?? "unknown"}: ${p.error}`,
+							`requestTextToVoiceReply: failed at ${p.step ?? "unknown"}: ${p.error}`,
 						),
 					)
 				},
 			)
 
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
-				filePath: absPath,
+			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+				transcript: text,
 				interactionId,
 				originDomiaKey: domia.domiaKey,
+				responseType: RESPONSE_TYPE_ENUM.VOICE,
 			})
 		})
 	} finally {
 		cleanup()
 	}
 
-	return { interactionId, transcript, reply, ttsFilePath }
+	return { interactionId, reply, ttsFilePath }
 }

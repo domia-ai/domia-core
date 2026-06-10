@@ -16,7 +16,10 @@ import {
 export type PostChatBodyType = z.infer<typeof postChatBodySchema>
 
 export type PostChatResponseType = {
+	interactionId: string
 	reply: string
+	audioUrl?: string | null
+	timings?: PostVoiceTimingsType
 }
 
 export type PostChatRouteType = {

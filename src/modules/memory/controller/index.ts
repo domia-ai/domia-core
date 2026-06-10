@@ -20,7 +20,8 @@ export const getLastFactAt = async (domiaId: string) => {
 }
 
 export const buildFactExtractionLines = (): string[] => [
-	`Also extract durable facts worth remembering about the person long-term (their name, relationships, preferences, important life details). Put them in "facts" as objects {subject, relation, value, confidence}. "subject" is who/what (e.g. "the user", "the user's brother"); "relation" is a short connecting phrase (e.g. "is named", "is allergic to", "works as"); "value" is the detail; "confidence" is 0..1. Only durable facts about the person — never transient chit-chat, questions, or things about you. Use [] if nothing worth remembering.`,
+	`Also look for a durable fact the person EXPLICITLY stated about themselves. Most turns have NONE — when unsure, use []. Format as objects {subject, relation, value, confidence}: "subject" is the person (e.g. "the user"); "relation" is short (e.g. "is named", "is allergic to", "prefers"); "value" is the detail; "confidence" is 0..1.`,
+	`Record a fact ONLY if the person literally declared personal information in "The person said" (a name they gave, a preference/allergy/relationship/plan they stated). NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas, "why's your name?" is NOT their name; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia — facts are only about the person. If they only asked a question or made small talk, return [].`,
 ]
 
 export const parseFacts = (input: unknown): RawFactType[] => {

@@ -1,7 +1,9 @@
 import Fastify from "fastify"
 import { httpServerLogger } from "@/utils"
 import { env } from "@/config"
+import type { MqttClient } from "mqtt"
 import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
+import { sendHeartbeat } from "@/modules/heartbeat-manager"
 import {
 	handleGetRoot,
 	handleGetHealth,
@@ -33,7 +35,13 @@ const liveDomia = async (fallback: DomiaType): Promise<DomiaType> => {
 	}
 }
 
-export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
+export const setupHttpServer = async ({
+	domia,
+	mqttClient,
+}: {
+	domia: DomiaType
+	mqttClient: MqttClient | null
+}) => {
 	httpServerLogger.info("🚀 Starting HTTP server...")
 
 	const fastify = Fastify({
@@ -59,6 +67,7 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.post("/config/refresh", async () => {
 		invalidateOwnDomia()
+		void sendHeartbeat({ domia: await liveDomia(domia), mqttClient })
 		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
 		return { refreshed: true }
 	})
@@ -71,16 +80,28 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.post<PostImportMindRouteType>(
 		"/mind/import",
-		async (request, reply) =>
-			handleImportMind(await liveDomia(domia), request.body, reply),
+		async (request, reply) => {
+			const live = await liveDomia(domia)
+			const result = await handleImportMind(live, request.body, reply)
+			void sendHeartbeat({ domia: live, mqttClient })
+			return result
+		},
 	)
 
 	fastify.get("/templates", async () => handleGetTemplates())
 
 	fastify.post<TemplateIdRouteType>(
 		"/templates/:id/activate",
-		async (request, reply) =>
-			handleActivateTemplate(await liveDomia(domia), request.params.id, reply),
+		async (request, reply) => {
+			const live = await liveDomia(domia)
+			const result = await handleActivateTemplate(
+				live,
+				request.params.id,
+				reply,
+			)
+			void sendHeartbeat({ domia: live, mqttClient })
+			return result
+		},
 	)
 
 	try {

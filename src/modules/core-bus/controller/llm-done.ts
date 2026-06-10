@@ -11,6 +11,7 @@ import {
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
+	pipelineElapsed,
 } from "@/modules/session-manager"
 import {
 	CAPABILITY_ENUM,
@@ -101,6 +102,7 @@ const tryLocalStreamingTtsPlayback = async (
 	const { domia } = ctx
 	const caps = tts.adapter.capabilities
 	let ttsAudioPath: string | undefined
+	const ttsStart = Date.now()
 	try {
 		ttsAudioPath = await playStreamedAudio(
 			ctx,
@@ -125,7 +127,11 @@ const tryLocalStreamingTtsPlayback = async (
 	await updateInteraction({
 		id: session.interactionId,
 		ttsEngineUsed: tts.adapter.id,
+		ttsExecutorKey: domia.domiaKey,
 		ttsAudioPath,
+		ttsMs: Date.now() - ttsStart,
+		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		totalMs: pipelineElapsed(session.interactionId),
 	})
 	publishTtsPlaybackComplete(domia.id, session)
 	return true
@@ -137,6 +143,7 @@ const runLocalSyncTts = async (
 ): Promise<void> => {
 	const { domia } = ctx
 	let response: Awaited<ReturnType<typeof runTTS>>
+	const ttsStart = Date.now()
 	try {
 		response = await runTTS(domia, session.reply)
 	} catch (err) {
@@ -154,7 +161,11 @@ const runLocalSyncTts = async (
 	await updateInteraction({
 		id: session.interactionId,
 		ttsEngineUsed: response.engineUsed,
+		ttsExecutorKey: domia.domiaKey,
 		ttsAudioPath: filePath,
+		ttsMs: Date.now() - ttsStart,
+		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		totalMs: pipelineElapsed(session.interactionId),
 	})
 	registerAudioForServing(session.interactionId, filePath)
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
@@ -212,8 +223,9 @@ const tryDelegatedStreamingTtsPlayback = async (
 		)
 		await updateInteraction({
 			id: session.interactionId,
-			ttsEngineUsed: streamed.target?.domiaKey,
+			ttsExecutorKey: streamed.target?.domiaKey,
 			ttsAudioPath,
+			totalMs: pipelineElapsed(session.interactionId),
 		})
 	} catch (err) {
 		notifyAudioFallback(ctx, {

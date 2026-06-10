@@ -53,7 +53,7 @@ async function main() {
 		mqttClient: localMqttClient,
 	})
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
-	setupHttpServer({ domia: ownDomia })
+	setupHttpServer({ domia: ownDomia, mqttClient: localMqttClient })
 
 	await setupGrpcServer({
 		domia: ownDomia,

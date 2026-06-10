@@ -80,6 +80,47 @@ const buildReflectionPrompt = (
 	return lines.join("\n")
 }
 
+const SIG_WORD = /[a-z]{4,}/g
+const FIRST_PERSON = /\b(i|i'm|i am|i've|i have|my|mine)\b/i
+const QUESTION_START =
+	/^(what|why|how|when|where|who|which|whose|do|does|did|can|could|would|will|shall|should|is|are|am|was|were|may|might|have|has)\b/i
+
+const isPureQuestion = (text: string): boolean => {
+	const t = text.trim()
+	const interrogative = t.endsWith("?") || QUESTION_START.test(t)
+	return interrogative && !FIRST_PERSON.test(t)
+}
+
+const filterReflectionFacts = (
+	facts: RawFactType[],
+	userText: string,
+	replyText: string,
+	persona: PersonaContextType,
+): RawFactType[] => {
+	if (isPureQuestion(userText)) return []
+	const user = userText.toLowerCase()
+	const reply = replyText.toLowerCase()
+	const personaName = (persona.characterProfile?.name ?? "domia").toLowerCase()
+	return facts.filter((fact) => {
+		const subject = fact.subject.toLowerCase()
+		if (
+			subject.includes(personaName) ||
+			subject.includes("domia") ||
+			subject.includes("assistant") ||
+			subject === "you"
+		) {
+			return false
+		}
+		const words = fact.value.toLowerCase().match(SIG_WORD) ?? []
+		if (words.length > 0) {
+			const fromReply = words.some((w) => reply.includes(w))
+			const fromUser = words.some((w) => user.includes(w))
+			if (fromReply && !fromUser) return false
+		}
+		return true
+	})
+}
+
 const inFlight = new Set<string>()
 
 const reflectionSemaphore = createAsyncSemaphore(
@@ -200,7 +241,14 @@ export const runReflection = async (
 				const userEmotion: UserEmotionType | null = flags.emotion
 					? parseUserEmotionFromObject(obj.userEmotion)
 					: null
-				const facts: RawFactType[] = flags.facts ? parseFacts(obj.facts) : []
+				const facts: RawFactType[] = flags.facts
+					? filterReflectionFacts(
+							parseFacts(obj.facts),
+							userText,
+							replyText,
+							persona,
+						)
+					: []
 				return { emotion, userEmotion, facts }
 			},
 			empty,

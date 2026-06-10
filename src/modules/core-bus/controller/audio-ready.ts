@@ -18,6 +18,8 @@ import {
 	updateInteraction,
 	getRecentTurns,
 	getRecentUserMoods,
+	markPipelineStart,
+	pipelineElapsed,
 } from "@/modules/session-manager"
 import { getFactStrings } from "@/modules/memory"
 import {
@@ -184,10 +186,12 @@ const tryFusedVoiceReply = async (
 		llmPrompt: transcript.trim()
 			? buildPromptFromPersona(persona, transcript)
 			: null,
-		ttsEngineUsed: streamed.target?.domiaKey,
+		sttExecutorKey: streamed.target?.domiaKey,
+		llmExecutorKey: streamed.target?.domiaKey,
+		ttsExecutorKey: streamed.target?.domiaKey,
 		ttsAudioPath,
-		emotionSnapshot: domia?.emotionState,
-		characterSnapshot: domia?.characterProfile,
+		ttfaMs: ttfaMs != null && ttfaMs > 0 ? ttfaMs : null,
+		totalMs: Date.now() - startTime,
 	}).catch((err) =>
 		domiaBusLogger.error("fused voice reply: persistence failed", {
 			domiaId: domia.id,
@@ -244,6 +248,7 @@ export const handleAudioReady = async (
 		},
 	)
 	if (!interactionId) return
+	markPipelineStart(interactionId)
 	setTraceContext({ interactionId, originDomiaKey })
 	domiaBusLogger.info(`🆕 Interaction ${interactionId}`, { domiaId })
 
@@ -260,7 +265,15 @@ export const handleAudioReady = async (
 			if (!pathForStt) {
 				throw new Error("AUDIO_READY: missing filePath and audioUrl")
 			}
+			const sttStart = Date.now()
 			const transcript = await runSTT(domia, pathForStt)
+			await updateInteraction({
+				id: interactionId,
+				sttExecutorKey: domia.domiaKey,
+				sttMs: Date.now() - sttStart,
+				sttModelUsed: domia.sttConfig?.modelName ?? null,
+				totalMs: pipelineElapsed(interactionId),
+			})
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,
@@ -332,6 +345,10 @@ export const handleAudioReady = async (
 				() => wavFileToPcmChunks(audioPath),
 			)
 			if (streamed.delivered && streamed.transcript !== undefined) {
+				await updateInteraction({
+					id: interactionId,
+					sttExecutorKey: streamed.target?.domiaKey,
+				})
 				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 					transcript: streamed.transcript,
 					interactionId,
