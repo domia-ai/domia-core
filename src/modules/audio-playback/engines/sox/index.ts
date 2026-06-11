@@ -135,6 +135,7 @@ export const runSoxStream = async (
 			pumpDone: false,
 			exited: false,
 			exitCode: null as number | null,
+			pumpError: null as Error | null,
 			firstChunkWritten: false,
 			totalBytes: 0,
 			chunkCount: 0,
@@ -163,6 +164,10 @@ export const runSoxStream = async (
 					options.bitsPerSample,
 				),
 			})
+			if (state.pumpError) {
+				settle({ engine: "SOX", success: false }, state.pumpError)
+				return
+			}
 			settle({ engine: "SOX", success: state.exitCode === 0 })
 		}
 
@@ -236,6 +241,7 @@ export const runSoxStream = async (
 					if (!okWrite) await waitDrainOrExit(proc)
 				}
 			} catch (err) {
+				state.pumpError = err instanceof Error ? err : new Error(String(err))
 				audioPlaybackLogger.error("🔇 Sox stream pump error", {
 					err,
 					domiaId: domia.id,

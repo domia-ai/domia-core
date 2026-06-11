@@ -9,6 +9,7 @@ import {
 	AUDIO_PLAYBACK_ERRORS,
 	audioPlaybackLogger,
 	generateUuid,
+	wrapPcmToWav,
 } from "@/utils"
 
 import { audioPlaybackEngines } from "../engines"
@@ -36,33 +37,6 @@ export const playAudio = async (
 	return await handler(domia, filePath)
 }
 
-const wrapPcmToWav = (
-	pcm: Buffer,
-	sampleRate: number,
-	channels: number,
-	bitsPerSample: number,
-): Buffer => {
-	const byteRate = (sampleRate * channels * bitsPerSample) / 8
-	const blockAlign = (channels * bitsPerSample) / 8
-	const dataSize = pcm.length
-	const buf = Buffer.alloc(44 + dataSize)
-	buf.write("RIFF", 0)
-	buf.writeUInt32LE(36 + dataSize, 4)
-	buf.write("WAVE", 8)
-	buf.write("fmt ", 12)
-	buf.writeUInt32LE(16, 16)
-	buf.writeUInt16LE(1, 20)
-	buf.writeUInt16LE(channels, 22)
-	buf.writeUInt32LE(sampleRate, 24)
-	buf.writeUInt32LE(byteRate, 28)
-	buf.writeUInt16LE(blockAlign, 32)
-	buf.writeUInt16LE(bitsPerSample, 34)
-	buf.write("data", 36)
-	buf.writeUInt32LE(dataSize, 40)
-	pcm.copy(buf, 44)
-	return buf
-}
-
 const collectAndPlayFile = async (
 	domia: DomiaType,
 	chunks: AsyncIterable<Buffer>,
@@ -75,14 +49,9 @@ const collectAndPlayFile = async (
 	})
 
 	const collected: Buffer[] = []
-	let firstChunkSignaled = false
 	let totalBytes = 0
 
 	for await (const chunk of chunks) {
-		if (!firstChunkSignaled) {
-			firstChunkSignaled = true
-			options.onFirstChunkWritten?.()
-		}
 		collected.push(chunk)
 		totalBytes += chunk.length
 	}
@@ -110,6 +79,7 @@ const collectAndPlayFile = async (
 	})
 
 	try {
+		options.onFirstChunkWritten?.()
 		return await runSox(domia, tmpFile)
 	} finally {
 		fs.unlink(tmpFile).catch(() => undefined)

@@ -1,4 +1,3 @@
-import type { MqttClient } from "mqtt"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
 import type { SttEngineAdapterType } from "@/modules/stt-engine"
@@ -39,7 +38,6 @@ export type CoreBusFeaturesType = {
 export type CoreBusContextType = {
 	domia: DomiaType
 	features: CoreBusFeaturesType
-	mqttClient: MqttClient | null
 }
 
 export type AudioReadyPayloadType = {
@@ -180,4 +178,10 @@ export type LlmFlowSessionType = {
 	reply: string
 	originDomiaKey: string | undefined
 	responseType: string | undefined
+}
+
+export type PendingEntryType = {
+	resolve: (reply: string) => void
+	reject: (err: Error) => void
+	timeoutId: ReturnType<typeof setTimeout>
 }

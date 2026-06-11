@@ -31,16 +31,17 @@ export const sendHeartbeat = async ({
 			? stamps.reduce((a, b) => (a > b ? a : b))
 			: null
 
-		mqttClient?.publish(
-			topic,
-			JSON.stringify({
-				...domia,
-				localIp,
-				grpcPort,
-				httpPort,
-				lastInteractionAt,
-			}),
-		)
+		const payload: Record<string, unknown> = {
+			...domia,
+			localIp,
+			grpcPort,
+			httpPort,
+			lastInteractionAt,
+		}
+		delete payload.mqttConfigs
+		delete payload.localMqttConfig
+		delete payload.remoteMqttConfig
+		mqttClient?.publish(topic, JSON.stringify(payload))
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })
 	}

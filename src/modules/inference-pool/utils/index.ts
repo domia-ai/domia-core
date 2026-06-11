@@ -54,7 +54,9 @@ export const createChildProcessBackend = (
 				send: (msg: WorkerRequestMessageType): boolean => {
 					if (!child.connected) return false
 					try {
-						return child.send(msg, undefined, undefined, () => undefined)
+						// send() === false is IPC backpressure, not a closed channel — the message still queues
+						child.send(msg, undefined, undefined, () => undefined)
+						return true
 					} catch {
 						return false
 					}
@@ -73,21 +75,27 @@ export const createChildProcessBackend = (
 	}
 }
 
-let globalReservedWorkers = 0
+const reservedByLabel = new Map<string, number>()
 
-export const resolveMaxWorkers = (configured: number): number => {
+export const resolveMaxWorkers = (
+	configured: number,
+	label = "default",
+): number => {
 	const totalGb = os.totalmem() / 1024 ** 3
 	const ramBudget = Math.max(1, Math.floor(totalGb / AUTO_GB_PER_WORKER))
 	if (configured > 0) {
-		globalReservedWorkers += configured
+		reservedByLabel.set(label, configured)
 		return configured
 	}
 	const cores = os.cpus().length || AUTO_MAX_WORKERS_FLOOR
 	const coresBased = Math.floor(cores / AUTO_CORE_DIVISOR)
-	const ramRemaining = Math.max(1, ramBudget - globalReservedWorkers)
+	const reservedElsewhere = [...reservedByLabel.entries()]
+		.filter(([key]) => key !== label)
+		.reduce((sum, [, value]) => sum + value, 0)
+	const ramRemaining = Math.max(1, ramBudget - reservedElsewhere)
 	const derived = Math.min(coresBased, ramRemaining)
 	const resolved = Math.max(1, Math.min(AUTO_MAX_WORKERS_CEILING, derived))
-	globalReservedWorkers += resolved
+	reservedByLabel.set(label, resolved)
 	return resolved
 }
 

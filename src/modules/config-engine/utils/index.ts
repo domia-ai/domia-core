@@ -1,9 +1,7 @@
 import {
 	type EmotionType,
-	getEmotionVectorFromEmotionState,
 	normalizeEmotionVector,
 } from "@/modules/emotion-engine"
-import { type DomiaType } from "@/modules/core"
 import {
 	type InsertCharacterProfileType,
 	type InsertDomiaType,
@@ -22,7 +20,6 @@ import { generateUuid } from "@/utils"
 import { getLocalIp } from "@/modules/network-sync"
 
 import { type ConfigType } from "../types"
-import { configSchema } from "../schemas"
 
 export const getDomiaCreateInputFromConfig = (
 	config: ConfigType,
@@ -174,12 +171,6 @@ export const getMqttConfigCreateInputFromConfig = (
 		isActive: true,
 		domiaId,
 		type: MQTT_TYPE_ENUM.LOCAL,
-		host: "localhost",
-		username: "domia",
-		password: "domia",
-		topicRoot: "domia",
-		protocol: "mqtt",
-		port: 1883,
 	}
 }
 
@@ -189,36 +180,3 @@ export const getEmotionVectorFromConfig = (config: ConfigType): EmotionType => {
 
 export const getModuleValue = (moduleValue?: boolean) =>
 	typeof moduleValue === "boolean" ? moduleValue : true
-
-export const getDomiaConfig = (domia: DomiaType) => {
-	const moduleSettings = domia?.moduleSettings
-	const currentEmotion = getEmotionVectorFromEmotionState(domia?.emotionState)
-	const characterProfile = domia?.characterProfile
-
-	return configSchema.parse({
-		domiaKey: domia?.domiaKey,
-		name: domia?.name,
-		emotionEngine: getModuleValue(moduleSettings?.emotionEngine),
-		memoryEngine: getModuleValue(moduleSettings?.memoryEngine),
-		collectiveMind: getModuleValue(moduleSettings?.collectiveMind),
-		remoteAccessEngine: getModuleValue(moduleSettings?.remoteAccessEngine),
-		narrativeEngine: getModuleValue(moduleSettings?.narrativeEngine),
-		identityEngine: getModuleValue(moduleSettings?.identityEngine),
-		emotion: currentEmotion,
-		personality: characterProfile?.personality,
-		language: characterProfile?.language as "en" | "es",
-		languagesSpoken: (characterProfile?.languagesSpoken || []) as string[],
-		profession: characterProfile?.profession,
-		communicationStyle: characterProfile?.communicationStyle,
-		perceivedAge: characterProfile?.perceivedAge,
-		culturalBackground: characterProfile?.culturalBackground || "",
-		knowledgeDepth: characterProfile?.knowledgeDepth,
-		interests: (characterProfile?.interests || []) as string[],
-		hobbies: (characterProfile?.hobbies || []) as string[],
-		skills: (characterProfile?.skills || []) as string[],
-		relationshipType: characterProfile?.relationshipType,
-		roleMode: characterProfile?.roleMode,
-		wifiSsid: "",
-		wifiPassword: "",
-	})
-}

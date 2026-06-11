@@ -4,11 +4,16 @@ import {
 	AsyncQueue,
 	concatStreams,
 	DEFAULT_SAMPLE_RATE,
+	eagerTtsSlotsFromDomia,
+	ensureReplyOrFallback,
 	notifyAudioFallback,
 	notifyInteractionFailed,
+	pipelineDepthFromDomia,
 	playStreamedAudio,
+	primeStream,
 	splitSentences,
 	takeMemoryBundle,
+	sentenceTuningFromDomia,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -30,7 +35,6 @@ import { runLLM } from "@/modules/llm-engine"
 import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
-	deliverEvent,
 	streamLlmFromTarget,
 	streamReplyAudioFromTarget,
 	type DeliverEventTarget,
@@ -98,13 +102,20 @@ const pipelineVoiceFromTokens = async (
 	const startTime = Date.now()
 	const ttsStreamQueue = new AsyncQueue<AsyncIterable<Buffer>>()
 	const caps = tts.adapter.capabilities
+	const queueDepth = pipelineDepthFromDomia(domia)
+	const eagerSlots = eagerTtsSlotsFromDomia(domia)
 
+	let ttfaMs: number | undefined
 	const playbackPromise = playStreamedAudio(
 		ctx,
 		concatStreams(ttsStreamQueue.iter()),
 		{
 			interactionId: session.interactionId,
 			originDomiaKey: session.originDomiaKey,
+			onFirstChunk: () => {
+				ttfaMs =
+					pipelineElapsed(session.interactionId) ?? Date.now() - startTime
+			},
 		},
 		{ sampleRate: caps.sampleRate, channels: caps.channels },
 	)
@@ -114,12 +125,32 @@ const pipelineVoiceFromTokens = async (
 	let playbackError: unknown = null
 	let ttsAudioPath: string | undefined
 	try {
-		for await (const sentence of splitSentences(tokens)) {
+		for await (const sentence of splitSentences(
+			tokens,
+			sentenceTuningFromDomia(domia),
+		)) {
 			fullReply += (fullReply.length > 0 ? " " : "") + sentence
-			ttsStreamQueue.push(ttsAdapterToPcmChunks(domia, tts.adapter, sentence))
+			await ttsStreamQueue.waitForSpace(queueDepth)
+			ttsStreamQueue.push(
+				primeStream(
+					ttsAdapterToPcmChunks(domia, tts.adapter, sentence),
+					eagerSlots,
+				),
+			)
 		}
 	} catch (err) {
 		tokenError = err
+	}
+	if (!tokenError) {
+		const ensured = ensureReplyOrFallback(fullReply)
+		if (ensured.usedFallback) {
+			domiaBusLogger.warn("LLM returned empty reply — speaking fallback", {
+				domiaId: domia.id,
+				interactionId: session.interactionId,
+			})
+			fullReply = ensured.reply
+			ttsStreamQueue.push(ttsAdapterToPcmChunks(domia, tts.adapter, fullReply))
+		}
 	}
 	ttsStreamQueue.close()
 	const llmElapsed = Date.now() - startTime
@@ -155,6 +186,7 @@ const pipelineVoiceFromTokens = async (
 		ttsMs: Math.max(0, totalElapsed - llmElapsed),
 		llmModelUsed: executors.llmModelUsed,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		ttfaMs,
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 
@@ -182,6 +214,7 @@ const pipelineVoiceFromTokens = async (
 		session.transcript,
 		fullReply,
 		session.interactionId,
+		session.originDomiaKey,
 	)
 	return true
 }
@@ -211,7 +244,9 @@ const runLocalSyncLlm = async (
 	session: SttFlowSessionType,
 ): Promise<void> => {
 	const startTime = Date.now()
-	const reply = await runLLM(ctx.domia, session.promptContext)
+	const { reply } = ensureReplyOrFallback(
+		await runLLM(ctx.domia, session.promptContext),
+	)
 	const llmElapsed = Date.now() - startTime
 	domiaBusLogger.info(`⏱️ LLM execution time: ${llmElapsed}ms`)
 
@@ -236,6 +271,7 @@ const runLocalSyncLlm = async (
 		session.transcript,
 		reply,
 		session.interactionId,
+		session.originDomiaKey,
 	)
 }
 
@@ -300,11 +336,26 @@ const tryDelegatedReplyAudio = async (
 		return false
 	}
 
+	const audioIter = streamed.audio[Symbol.asyncIterator]()
+	let audioEmitted = false
+	const trackedAudio = (async function* (): AsyncIterable<Buffer> {
+		try {
+			while (true) {
+				const next = await audioIter.next()
+				if (next.done) break
+				audioEmitted = true
+				yield next.value
+			}
+		} finally {
+			await audioIter.return?.().catch(() => undefined)
+		}
+	})()
+
 	try {
 		const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
 		const ttsAudioPath = await playStreamedAudio(
 			ctx,
-			streamed.audio,
+			trackedAudio,
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
@@ -330,30 +381,45 @@ const tryDelegatedReplyAudio = async (
 		publishStreamedReplyComplete(domia.id, session, reply)
 		return true
 	} catch (err) {
+		await audioIter.return?.().catch(() => undefined)
+		if (!audioEmitted) {
+			domiaBusLogger.warn(
+				`replyAudio delegation playback failed (${(err as Error)?.message ?? "unknown"}) — falling back`,
+				{ domiaId: domia.id, interactionId: session.interactionId },
+			)
+			return false
+		}
 		domiaBusLogger.warn(
-			`replyAudio delegation playback failed (${(err as Error)?.message ?? "unknown"}) — falling back`,
-			{ domiaId: domia.id, interactionId: session.interactionId },
+			`replyAudio delegation playback failed after audio started — NOT falling back (would double-reply)`,
+			{ domiaId: domia.id, interactionId: session.interactionId, err },
 		)
-		return false
+		notifyInteractionFailed(ctx, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			error: err as Error,
+			step: "playback",
+			silent: true,
+		})
+		return true
 	}
 }
 
-const tryDelegatedStreamLlm = async (
+const runDelegatedStreamLlm = async (
 	ctx: CoreBusContextType,
 	session: SttFlowSessionType,
 	targets: DeliverEventTarget[],
-): Promise<boolean> => {
-	const streamingTargets = targets.filter(
-		(target) => target.streamingCapabilities.llm,
+): Promise<void> => {
+	const orderedTargets = [...targets].sort(
+		(a, b) =>
+			Number(b.streamingCapabilities.llm) - Number(a.streamingCapabilities.llm),
 	)
-	if (streamingTargets.length === 0) return false
 
 	const { domia } = ctx
 	domiaBusLogger.info(
-		`📡 streaming LLM delegation (${streamingTargets.length} targets)`,
+		`📡 streaming LLM delegation (${orderedTargets.length} targets)`,
 		{ domiaId: domia.id, interactionId: session.interactionId },
 	)
-	const streamed = await streamLlmFromTarget(domia.domiaKey, streamingTargets, {
+	const streamed = await streamLlmFromTarget(domia.domiaKey, orderedTargets, {
 		transcript: session.transcript,
 		originDomiaKey: session.originDomiaKey,
 		interactionId: session.interactionId,
@@ -369,22 +435,22 @@ const tryDelegatedStreamLlm = async (
 	})
 
 	if (!streamed.delivered || !streamed.tokens) {
-		domiaBusLogger.warn(
-			`streaming LLM delegation failed (${streamed.error ?? "unknown"}) — falling back to unary`,
-			{ domiaId: domia.id, interactionId: session.interactionId },
+		throw new Error(
+			`STT_DONE delegation failed: ${streamed.error ?? "unknown"} (tried ${streamed.attemptedTargets})`,
 		)
-		return false
 	}
 
 	if (session.isVoice && ctx.features.canRunTts && ctx.features.canPlayback) {
-		return pipelineVoiceFromTokens(ctx, session, streamed.tokens, {
+		const piped = await pipelineVoiceFromTokens(ctx, session, streamed.tokens, {
 			llmExecutorKey: streamed.target?.domiaKey,
 			llmModelUsed: null,
 		})
+		if (piped) return
 	}
 
-	let reply = ""
-	for await (const token of streamed.tokens) reply += token
+	let collected = ""
+	for await (const token of streamed.tokens) collected += token
+	const { reply } = ensureReplyOrFallback(collected)
 	await updateInteraction({
 		id: session.interactionId,
 		llmPrompt: session.promptContext,
@@ -397,23 +463,6 @@ const tryDelegatedStreamLlm = async (
 		originDomiaKey: session.originDomiaKey,
 		responseType: session.responseType,
 	})
-	return true
-}
-
-const runDelegatedUnary = async (
-	ctx: CoreBusContextType,
-	session: SttFlowSessionType,
-	targets: DeliverEventTarget[],
-): Promise<void> => {
-	const result = await deliverEvent(ctx.domia.domiaKey, targets, "sttDone", {
-		transcript: session.transcript,
-		interactionId: session.interactionId,
-		originDomiaKey: session.originDomiaKey,
-		responseType: session.responseType,
-	})
-	if (!result.delivered) {
-		throw new Error(`STT_DONE delegation failed: ${result.error ?? "unknown"}`)
-	}
 }
 
 export const handleSttDone = async (
@@ -507,8 +556,7 @@ export const handleSttDone = async (
 		}
 
 		if (await tryDelegatedReplyAudio(ctx, session, targets)) return
-		if (await tryDelegatedStreamLlm(ctx, session, targets)) return
-		await runDelegatedUnary(ctx, session, targets)
+		await runDelegatedStreamLlm(ctx, session, targets)
 	} catch (err) {
 		domiaBusLogger.error("STT_DONE: LLM or delegate failed", {
 			domiaId,

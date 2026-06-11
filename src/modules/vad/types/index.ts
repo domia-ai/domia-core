@@ -9,5 +9,11 @@ export type VadEngineAdapterType = {
 	id: string
 	sampleRate: number
 	windowSize: number
-	createSession: (modelPath: string) => VadSessionType
+	createSession: (modelPath: string, tuning: VadTuningType) => VadSessionType
+}
+
+export type VadTuningType = {
+	threshold: number
+	minSilenceS: number
+	endOfSpeechMs: number
 }

@@ -71,14 +71,16 @@ export const wavFileToPcmChunks = async function* (
 
 export const pcmChunksToWavFile = async (
 	chunks: AsyncIterable<Buffer>,
-	interactionId: string,
+	interactionId: string | (() => string),
 	sampleRate = 16000,
 	channels = 1,
 ): Promise<string> => {
 	const parts: Buffer[] = []
 	for await (const chunk of chunks) parts.push(chunk)
 	const wav = wrapPcmToWav(Buffer.concat(parts), sampleRate, channels, 16)
-	const path = tempPath(interactionId, "stt-upload")
+	const resolvedId =
+		typeof interactionId === "function" ? interactionId() : interactionId
+	const path = tempPath(resolvedId, "stt-upload")
 	await writeFile(path, wav)
 	return path
 }

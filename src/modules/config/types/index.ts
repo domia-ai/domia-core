@@ -1,3 +1,4 @@
+import { mqttConfig } from "@/db"
 import type {
 	SelectDomiaType,
 	SelectCharacterProfileType,
@@ -35,7 +36,6 @@ export type ConfigHealthType = {
 export type ConfigDomiaSectionType = Pick<
 	SelectDomiaType,
 	| "name"
-	| "isActive"
 	| "sessionIdTimeoutMs"
 	| "memoryWindowTurns"
 	| "memoryMaxAgeMs"
@@ -45,19 +45,37 @@ export type ConfigDomiaSectionType = Pick<
 	| "ownConfigTtlMs"
 >
 
+export type SectionMetaKeyType =
+	| "id"
+	| "domiaId"
+	| "isActive"
+	| "createdAt"
+	| "updatedAt"
+
+export type BundleSectionType<T> = Omit<T, Extract<keyof T, SectionMetaKeyType>>
+
 export type ConfigSnapshotType = {
+	version: number
 	domia: ConfigDomiaSectionType
-	character: SelectCharacterProfileType | null
+	character: BundleSectionType<SelectCharacterProfileType> | null
 	emotion: EmotionType | null
-	modules: SelectModuleSettingsType | null
-	capabilities: SelectRuntimeCapabilitiesType | null
-	stt: SelectSttConfigType | null
-	tts: SelectTtsConfigType | null
-	llm: SelectLlmModelConfigType | null
-	wakeWord: SelectWakeWordConfigType | null
-	playback: SelectAudioPlaybackConfigType | null
-	mqttLocal: SelectMqttConfigType | null
-	mqttRemote: SelectMqttConfigType | null
-	mcpServers: SelectMcpServerConfigType[]
-	delegations: SelectCapabilityDelegationType[]
+	modules: BundleSectionType<SelectModuleSettingsType> | null
+	capabilities: BundleSectionType<SelectRuntimeCapabilitiesType> | null
+	stt: BundleSectionType<SelectSttConfigType> | null
+	tts: BundleSectionType<SelectTtsConfigType> | null
+	llm: BundleSectionType<SelectLlmModelConfigType> | null
+	wakeWord: BundleSectionType<SelectWakeWordConfigType> | null
+	playback: BundleSectionType<SelectAudioPlaybackConfigType> | null
+	mqttLocal: Omit<
+		BundleSectionType<SelectMqttConfigType>,
+		"type" | "password"
+	> | null
+	mqttRemote: Omit<
+		BundleSectionType<SelectMqttConfigType>,
+		"type" | "password"
+	> | null
+	mcpServers: BundleSectionType<SelectMcpServerConfigType>[]
+	delegations: BundleSectionType<SelectCapabilityDelegationType>[]
 }
+
+export type MqttSectionType = (typeof mqttConfig.$inferSelect)["type"]

@@ -196,7 +196,7 @@ export const runCorpus = async (corpusPath: string, outPath?: string) => {
 	const runtimeCapabilities = normalizeRuntimeCapabilities(
 		domia.runtimeCapabilities,
 	)
-	setupCoreBus({ domia, runtimeCapabilities, mqttClient: null })
+	setupCoreBus({ domia, runtimeCapabilities })
 
 	devCliLogger.info(
 		`🧪 Running corpus "${corpusPath}": ${corpus.entries.length} entries via DOMIA "${domia.name}"`,

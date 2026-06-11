@@ -18,7 +18,7 @@ export const simulateVoiceCommand = async (filePath: string) => {
 	const runtimeCapabilities = normalizeRuntimeCapabilities(
 		domia.runtimeCapabilities,
 	)
-	setupCoreBus({ domia, runtimeCapabilities, mqttClient: null })
+	setupCoreBus({ domia, runtimeCapabilities })
 
 	devCliLogger.info(`🎙️ Simulating wake → AUDIO_READY with ${filePath}`)
 

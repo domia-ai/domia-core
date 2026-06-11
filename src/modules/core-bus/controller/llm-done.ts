@@ -1,7 +1,14 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, setTraceContext, toError } from "@/utils"
+import {
+	domiaBusLogger,
+	setTraceContext,
+	toError,
+	wrapPcmToWav,
+	writeWavToTemp,
+} from "@/utils"
 import {
 	DEFAULT_SAMPLE_RATE,
+	ensureReplyOrFallback,
 	notifyAudioFallback,
 	notifyInteractionFailed,
 	playStreamedAudio,
@@ -184,24 +191,23 @@ const runLocalSyncTts = async (
 	})
 }
 
-const tryDelegatedStreamingTtsPlayback = async (
+const runDelegatedStreamingTts = async (
 	ctx: CoreBusContextType,
 	session: LlmFlowSessionType,
 	targets: DeliverEventTarget[],
-): Promise<boolean> => {
-	if (!ctx.features.canPlayback) return false
-	const streamingTargets = targets.filter(
-		(target) => target.streamingCapabilities.tts,
+): Promise<void> => {
+	const orderedTargets = [...targets].sort(
+		(a, b) =>
+			Number(b.streamingCapabilities.tts) - Number(a.streamingCapabilities.tts),
 	)
-	if (streamingTargets.length === 0) return false
 
 	const { domia } = ctx
 	domiaBusLogger.info(
-		`📡 streaming TTS delegation (${streamingTargets.length} targets)`,
+		`📡 streaming TTS delegation (${orderedTargets.length} targets)`,
 		{ domiaId: domia.id, interactionId: session.interactionId },
 	)
 	const ownVoice = ttsVoiceFromDomia(domia)
-	const streamed = await streamTtsFromTarget(domia.domiaKey, streamingTargets, {
+	const streamed = await streamTtsFromTarget(domia.domiaKey, orderedTargets, {
 		reply: session.reply,
 		originDomiaKey: session.originDomiaKey,
 		interactionId: session.interactionId,
@@ -209,15 +215,34 @@ const tryDelegatedStreamingTtsPlayback = async (
 	})
 
 	if (!streamed.delivered || !streamed.audio) {
-		domiaBusLogger.warn(
-			`streaming TTS delegation failed (${streamed.error ?? "unknown"}) — falling back to unary`,
-			{ domiaId: domia.id, interactionId: session.interactionId },
+		throw new Error(
+			`LLM_DONE→TTS delegation failed: ${streamed.error ?? "unknown"} (tried ${streamed.attemptedTargets})`,
 		)
-		return false
+	}
+
+	const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
+	const sampleRate = streamed.sampleRate ?? DEFAULT_SAMPLE_RATE
+
+	if (!ctx.features.canPlayback) {
+		const chunks: Buffer[] = []
+		for await (const chunk of streamed.audio) chunks.push(chunk)
+		const wav = wrapPcmToWav(Buffer.concat(chunks), sampleRate, channels, 16)
+		const ttsAudioPath = await writeWavToTemp(wav, session.interactionId, "tts")
+		registerAudioForServing(session.interactionId, ttsAudioPath)
+		await updateInteraction({
+			id: session.interactionId,
+			ttsExecutorKey: streamed.target?.domiaKey,
+			ttsAudioPath,
+		})
+		publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			filePath: ttsAudioPath,
+		})
+		return
 	}
 
 	try {
-		const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
 		const ttsAudioPath = await playStreamedAudio(
 			ctx,
 			streamed.audio,
@@ -225,10 +250,7 @@ const tryDelegatedStreamingTtsPlayback = async (
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
 			},
-			{
-				sampleRate: streamed.sampleRate ?? DEFAULT_SAMPLE_RATE,
-				channels,
-			},
+			{ sampleRate, channels },
 		)
 		await updateInteraction({
 			id: session.interactionId,
@@ -244,28 +266,9 @@ const tryDelegatedStreamingTtsPlayback = async (
 			error: toError(err),
 			reply: session.reply,
 		})
-		return true
+		return
 	}
 	publishTtsPlaybackComplete(domia.id, session)
-	return true
-}
-
-const runDelegatedTtsUnary = async (
-	ctx: CoreBusContextType,
-	session: LlmFlowSessionType,
-	targets: DeliverEventTarget[],
-): Promise<void> => {
-	const result = await deliverEvent(ctx.domia.domiaKey, targets, "llmDone", {
-		reply: session.reply,
-		interactionId: session.interactionId,
-		originDomiaKey: session.originDomiaKey,
-		responseType: session.responseType,
-	})
-	if (!result.delivered) {
-		throw new Error(
-			`LLM_DONE→TTS delegation failed: ${result.error ?? "unknown"}`,
-		)
-	}
 }
 
 export const handleLlmDone = async (
@@ -301,10 +304,20 @@ export const handleLlmDone = async (
 	if (!interactionId) return
 	setTraceContext({ interactionId, originDomiaKey })
 
-	const session = buildLlmFlowSession(payload, interactionId)
+	const ensured = ensureReplyOrFallback(reply)
+	if (ensured.usedFallback) {
+		domiaBusLogger.warn("LLM_DONE: empty reply — using fallback message", {
+			domiaId,
+			interactionId,
+		})
+	}
+	const session = buildLlmFlowSession(
+		{ ...payload, reply: ensured.reply },
+		interactionId,
+	)
 
 	if (responseType === RESPONSE_TYPE_ENUM.TEXT) {
-		resolvePending(interactionId, reply)
+		resolvePending(interactionId, ensured.reply)
 		await forwardLlmDoneToOrigin(ctx, session)
 		return
 	}
@@ -330,8 +343,7 @@ export const handleLlmDone = async (
 			return
 		}
 
-		if (await tryDelegatedStreamingTtsPlayback(ctx, session, targets)) return
-		await runDelegatedTtsUnary(ctx, session, targets)
+		await runDelegatedStreamingTts(ctx, session, targets)
 	} catch (err) {
 		domiaBusLogger.error("LLM_DONE: TTS or delegate failed", {
 			domiaId,

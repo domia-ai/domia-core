@@ -2,7 +2,6 @@ import {
 	createInferencePool,
 	createChildProcessBackend,
 	resolveMaxWorkers,
-	drainAndShutdown,
 	type InferencePoolType,
 } from "@/modules/inference-pool"
 import type { SelectTtsConfigType } from "@/db"
@@ -58,7 +57,7 @@ export const getTtsPool = (
 ): InferencePoolType => {
 	if (!ttsPool) {
 		const maxWorkers = ttsConfig.poolAutoScaleEnabled
-			? resolveMaxWorkers(ttsConfig.poolMaxWorkers)
+			? resolveMaxWorkers(ttsConfig.poolMaxWorkers, "tts")
 			: Math.max(1, ttsConfig.poolWarmWorkers)
 		ttsPool = createInferencePool({
 			label: "tts",
@@ -68,16 +67,9 @@ export const getTtsPool = (
 			idleTimeoutMs: ttsConfig.poolIdleTimeoutMs,
 			queueMaxDepth: ttsConfig.poolQueueMaxDepth,
 			queueTimeoutMs: ttsConfig.poolQueueTimeoutMs,
+			executionTimeoutMs: ttsConfig.poolExecutionTimeoutMs,
 			recycleAfterJobs: ttsConfig.workerRecycleAfterJobs,
 		})
 	}
 	return ttsPool
-}
-
-const POOL_RECYCLE_DRAIN_TIMEOUT_MS = 15_000
-
-export const recycleTtsPool = async (): Promise<void> => {
-	const pool = ttsPool
-	ttsPool = null
-	if (pool) await drainAndShutdown(pool, POOL_RECYCLE_DRAIN_TIMEOUT_MS)
 }

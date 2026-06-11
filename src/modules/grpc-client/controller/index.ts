@@ -1,6 +1,5 @@
 import { createChannel, createClient, type Channel } from "nice-grpc"
 
-import { env } from "@/config"
 import { grpcClientLogger } from "@/utils"
 import {
 	DomiaNodeDefinition,
@@ -28,15 +27,33 @@ import type {
 	OpenedServerStream,
 } from "../types"
 import {
-	DEFAULT_DEADLINE_MS,
 	GRPC_UNAVAILABLE_CODE,
 	GRPC_UNIMPLEMENTED_CODE,
 	GRPC_RESOURCE_EXHAUSTED_CODE,
 	RETRYABLE_GRPC_CODES,
 	UNHEALTHY_GRPC_STATES,
-	STREAM_IDLE_TIMEOUT_MS,
-	STREAM_DEADLINE_MS,
 } from "../constants"
+import {
+	DEFAULT_GRPC_UNARY_DEADLINE_MS,
+	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
+	DEFAULT_GRPC_STREAM_DEADLINE_MS,
+} from "@/db"
+
+const tunables = {
+	unaryDeadlineMs: DEFAULT_GRPC_UNARY_DEADLINE_MS,
+	streamIdleTimeoutMs: DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
+	streamDeadlineMs: DEFAULT_GRPC_STREAM_DEADLINE_MS,
+}
+
+export const setGrpcClientTunables = (domia: {
+	grpcUnaryDeadlineMs: number
+	grpcStreamIdleTimeoutMs: number
+	grpcStreamDeadlineMs: number
+}): void => {
+	tunables.unaryDeadlineMs = domia.grpcUnaryDeadlineMs
+	tunables.streamIdleTimeoutMs = domia.grpcStreamIdleTimeoutMs
+	tunables.streamDeadlineMs = domia.grpcStreamDeadlineMs
+}
 
 const channels = new Map<string, Channel>()
 const clients = new Map<string, DomiaNodeClient>()
@@ -70,9 +87,14 @@ const isUnavailableError = (err: unknown): boolean => {
 	return code === GRPC_UNAVAILABLE_CODE
 }
 
+const lastAddrByKey = new Map<string, string>()
+
 const getClient = (target: DeliverEventTarget): DomiaNodeClient | null => {
 	if (!target.localIp || !target.grpcPort) return null
 	const addr = `${target.localIp}:${target.grpcPort}`
+	const previous = lastAddrByKey.get(target.domiaKey)
+	if (previous && previous !== addr) closeChannel(previous)
+	lastAddrByKey.set(target.domiaKey, addr)
 	const existing = channels.get(addr)
 	if (existing) {
 		const state = existing.getConnectivityState(false)
@@ -126,6 +148,15 @@ const buildEnvelope = <K extends keyof DeliverEventPayloadMap>(
 					ttsDone: payload as DeliverEventPayloadMap["ttsDone"],
 				},
 			}
+		case "interactionFailed":
+			return {
+				senderDomiaKey,
+				payload: {
+					$case: "interactionFailed",
+					interactionFailed:
+						payload as DeliverEventPayloadMap["interactionFailed"],
+				},
+			}
 		default:
 			throw new Error(`buildEnvelope: unknown kind ${String(kind)}`)
 	}
@@ -143,8 +174,9 @@ export const deliverEvent = async <K extends keyof DeliverEventPayloadMap>(
 	targets: DeliverEventTarget[],
 	kind: K,
 	payload: DeliverEventPayloadMap[K],
-	deadlineMs: number = Number(env.GRPC_DEADLINE_MS) || DEFAULT_DEADLINE_MS,
+	deadlineMs?: number,
 ): Promise<DeliverEventResult> => {
+	const effectiveDeadlineMs = deadlineMs ?? tunables.unaryDeadlineMs
 	if (targets.length === 0) {
 		return {
 			delivered: false,
@@ -169,7 +201,7 @@ export const deliverEvent = async <K extends keyof DeliverEventPayloadMap>(
 		const addr = `${target.localIp}:${target.grpcPort}`
 		try {
 			const ac = new AbortController()
-			const timer = setTimeout(() => ac.abort(), deadlineMs)
+			const timer = setTimeout(() => ac.abort(), effectiveDeadlineMs)
 			let ack
 			try {
 				ack = await client.deliverEvent(envelope, { signal: ac.signal })
@@ -253,7 +285,7 @@ export const streamSttToTarget = async (
 		}
 		const addr = addrOf(target)
 		const ac = new AbortController()
-		const timer = setTimeout(() => ac.abort(), STREAM_DEADLINE_MS)
+		const timer = setTimeout(() => ac.abort(), tunables.streamDeadlineMs)
 		try {
 			const request = (async function* (): AsyncIterable<AudioChunk> {
 				yield {
@@ -322,7 +354,7 @@ const openServerStream = async <T>(
 		let timer: ReturnType<typeof setTimeout> | undefined
 		const resetIdle = () => {
 			clearTimeout(timer)
-			timer = setTimeout(() => ac.abort(), STREAM_IDLE_TIMEOUT_MS)
+			timer = setTimeout(() => ac.abort(), tunables.streamIdleTimeoutMs)
 		}
 		resetIdle()
 		const iterator = invoke(client, ac.signal)[Symbol.asyncIterator]()
@@ -353,6 +385,8 @@ const openServerStream = async <T>(
 				}
 			} finally {
 				clearTimeout(timer)
+				ac.abort()
+				await iterator.return?.().catch(() => undefined)
 			}
 		})()
 		return {
@@ -609,7 +643,7 @@ export const reportReflectionToTarget = async (
 	if (!client) return false
 	const addr = addrOf(target)
 	const ac = new AbortController()
-	const timer = setTimeout(() => ac.abort(), DEFAULT_DEADLINE_MS)
+	const timer = setTimeout(() => ac.abort(), tunables.unaryDeadlineMs)
 	try {
 		const ack = await client.reportReflection(
 			{
@@ -648,7 +682,7 @@ export const reportStageExecutionToTarget = async (
 	if (!client) return false
 	const addr = addrOf(target)
 	const ac = new AbortController()
-	const timer = setTimeout(() => ac.abort(), DEFAULT_DEADLINE_MS)
+	const timer = setTimeout(() => ac.abort(), tunables.unaryDeadlineMs)
 	try {
 		const ack = await client.reportStageExecution(
 			{

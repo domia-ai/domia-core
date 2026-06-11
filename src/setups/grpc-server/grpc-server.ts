@@ -4,6 +4,7 @@ import { env } from "@/config"
 import { grpcServerLogger, setTraceContext } from "@/utils"
 import { resolveLiveDomia } from "@/setups/live-domia"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
+import { closeAllChannels } from "@/modules/grpc-client"
 import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
 import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
@@ -69,6 +70,9 @@ const buildImplementation = ({
 			request: AsyncIterable<AudioChunk>,
 		): Promise<SttDonePayload> {
 			const { domia, features } = await resolveLive()
+			if (!features.canRunStt) {
+				throw new Error("stt capability disabled on this domia")
+			}
 			try {
 				const sttStart = Date.now()
 				const { transcript, meta } = await transcribeAudioStream(
@@ -116,6 +120,9 @@ const buildImplementation = ({
 				originDomiaKey: request.originDomiaKey,
 			})
 			const { domia, features } = await resolveLive()
+			if (!features.canRunLlm) {
+				throw new Error("llm capability disabled on this domia")
+			}
 			const persona = resolvePersonaContext(request.personaContextJson, domia)
 			const promptContext = buildPromptFromPersona(persona, request.transcript)
 			const runStream = features.llm?.adapter.runStream
@@ -167,6 +174,9 @@ const buildImplementation = ({
 				originDomiaKey: request.originDomiaKey,
 			})
 			const { domia, features } = await resolveLive()
+			if (!features.canRunTts) {
+				throw new Error("tts capability disabled on this domia")
+			}
 			const { sampleRate, channels } = ttsCapsOrDefaults(features)
 			const ttsOptions = resolveTtsVoiceOptions(request.ttsVoiceJson)
 			const streaming = !!features.tts?.adapter.runStream
@@ -231,6 +241,9 @@ const buildImplementation = ({
 				originDomiaKey: request.originDomiaKey,
 			})
 			const { domia, features } = await resolveLive()
+			if (!features.canRunLlm || !features.canRunTts) {
+				throw new Error("llm+tts capabilities required for streamReplyAudio")
+			}
 			const release = await admitVoiceReplyOrBusy(domia, {
 				interactionId: request.interactionId,
 				originDomiaKey: request.originDomiaKey,
@@ -260,6 +273,11 @@ const buildImplementation = ({
 			request: AsyncIterable<AudioChunk>,
 		): AsyncIterable<ReplyAudioMessage> {
 			const { domia, features } = await resolveLive()
+			if (!features.canRunStt || !features.canRunLlm || !features.canRunTts) {
+				throw new Error(
+					"stt+llm+tts capabilities required for streamVoiceReply",
+				)
+			}
 			const release = await admitVoiceReplyOrBusy(domia, {})
 			try {
 				const sttStart = Date.now()
@@ -309,22 +327,48 @@ const buildImplementation = ({
 		async reportReflection(request: ReflectionReport): Promise<ReflectionAck> {
 			setTraceContext({ interactionId: request.interactionId })
 			const { domia } = await resolveLive()
+			if (request.originDomiaKey && request.originDomiaKey !== domia.domiaKey) {
+				grpcServerLogger.warn(
+					"⚠️ reflection report misrouted — origin mismatch, rejecting",
+					{ origin: request.originDomiaKey, self: domia.domiaKey },
+				)
+				return { accepted: false }
+			}
 			try {
 				if (request.emotionDeltaJson) {
-					const parsed = emotionPartialSchema.safeParse(
-						JSON.parse(request.emotionDeltaJson),
-					)
-					if (parsed.success) applyMoodDelta(domia, parsed.data, request.cause)
+					try {
+						const parsed = emotionPartialSchema.safeParse(
+							JSON.parse(request.emotionDeltaJson),
+						)
+						if (parsed.success)
+							applyMoodDelta(domia, parsed.data, request.cause)
+						else
+							grpcServerLogger.warn("⚠️ reflection emotion delta invalid", {
+								issues: parsed.error.issues,
+							})
+					} catch (err) {
+						grpcServerLogger.warn("⚠️ reflection emotion delta unparseable", {
+							err,
+						})
+					}
 				}
 				if (request.factsJson) {
-					const facts = parseFacts(JSON.parse(request.factsJson))
-					await upsertFacts(domia, facts, request.interactionId)
+					try {
+						const facts = parseFacts(JSON.parse(request.factsJson))
+						await upsertFacts(domia, facts, request.interactionId)
+					} catch (err) {
+						grpcServerLogger.warn("⚠️ reflection facts failed", { err })
+					}
 				}
 				if (request.userEmotionJson && request.interactionId) {
-					await updateInteraction({
-						id: request.interactionId,
-						userEmotionSnapshot: JSON.parse(request.userEmotionJson),
-					})
+					try {
+						await updateInteraction({
+							id: request.interactionId,
+							userEmotionSnapshot: JSON.parse(request.userEmotionJson),
+						})
+					} catch (err) {
+						grpcServerLogger.warn("⚠️ reflection user emotion failed", { err })
+					}
 				}
 				return { accepted: true }
 			} catch (err) {
@@ -339,6 +383,14 @@ const buildImplementation = ({
 			setTraceContext({ interactionId: request.interactionId })
 			const id = request.interactionId
 			if (!id) return { accepted: false }
+			const { domia } = await resolveLive()
+			if (request.originDomiaKey && request.originDomiaKey !== domia.domiaKey) {
+				grpcServerLogger.warn(
+					"⚠️ stage report misrouted — origin mismatch, rejecting",
+					{ origin: request.originDomiaKey, self: domia.domiaKey },
+				)
+				return { accepted: false }
+			}
 			try {
 				for (const m of request.stages) {
 					if (m.stage === "stt") {
@@ -404,6 +456,7 @@ export const setupGrpcServer = async ({
 		} catch (err) {
 			grpcServerLogger.warn(`gRPC server shutdown error: ${err}`)
 		}
+		closeAllChannels()
 		server = null
 	}
 	process.once("SIGINT", cleanup)

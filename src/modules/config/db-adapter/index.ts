@@ -1,3 +1,4 @@
+import type { MqttSectionType } from "../types"
 import { and, eq } from "drizzle-orm"
 import {
 	domia,
@@ -17,8 +18,6 @@ import {
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 import { generateUuid } from "@/utils"
-
-type MqttType = (typeof mqttConfig.$inferSelect)["type"]
 
 const stamp = <T extends object>(fields: T) => ({
 	...fields,
@@ -149,14 +148,26 @@ const dbAdapter = {
 
 	materializeMqtt: (
 		domiaId: string,
-		type: MqttType,
+		type: MqttSectionType,
 		fields: Partial<typeof mqttConfig.$inferInsert>,
 		tx: DBClientOrTxType,
-	) =>
-		tx
+	): void => {
+		const updated = tx
 			.update(mqttConfig)
 			.set(stamp(fields))
-			.where(and(eq(mqttConfig.domiaId, domiaId), eq(mqttConfig.type, type))),
+			.where(and(eq(mqttConfig.domiaId, domiaId), eq(mqttConfig.type, type)))
+			.run()
+		if (updated.changes === 0)
+			tx.insert(mqttConfig)
+				.values({
+					...fields,
+					id: generateUuid(),
+					domiaId,
+					type,
+					name: fields.name ?? `${type.toLowerCase()}-broker`,
+				} as typeof mqttConfig.$inferInsert)
+				.run()
+	},
 
 	replaceMcpServers: (
 		domiaId: string,
@@ -166,7 +177,14 @@ const dbAdapter = {
 		tx.delete(mcpServerConfig).where(eq(mcpServerConfig.domiaId, domiaId)).run()
 		if (items.length)
 			tx.insert(mcpServerConfig)
-				.values(items.map((i) => ({ ...i, id: generateUuid(), domiaId })))
+				.values(
+					items.map((i) => ({
+						...i,
+						id: generateUuid(),
+						domiaId,
+						isActive: true,
+					})),
+				)
 				.run()
 	},
 

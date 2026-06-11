@@ -12,3 +12,10 @@ export const resolveFallbackMessage = (step?: string): string => {
 	if (step && FALLBACK_MESSAGES[step]) return FALLBACK_MESSAGES[step]
 	return FALLBACK_MESSAGES[FALLBACK_GENERIC_KEY]
 }
+
+export const ensureReplyOrFallback = (
+	reply: string,
+): { reply: string; usedFallback: boolean } =>
+	reply.trim().length > 0
+		? { reply, usedFallback: false }
+		: { reply: resolveFallbackMessage("llm"), usedFallback: true }

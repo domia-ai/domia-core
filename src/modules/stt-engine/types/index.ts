@@ -1,3 +1,7 @@
+import type {
+	OnlineRecognizerInstance,
+	OfflineRecognizerInstance,
+} from "@/utils/ml-runtime/types"
 import type { SttEngineEnumType } from "@/db"
 import type { DomiaType } from "@/modules/core"
 
@@ -73,3 +77,7 @@ export type SttWorkerJobType =
 export type SttWorkerResultType = {
 	text: string
 }
+
+export type RecognizerEntryType =
+	| { online: true; rec: OnlineRecognizerInstance }
+	| { online: false; rec: OfflineRecognizerInstance }

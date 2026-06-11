@@ -10,6 +10,10 @@ import {
 	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
 	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
 	DEFAULT_OWN_CONFIG_TTL_MS,
+	DEFAULT_GRPC_UNARY_DEADLINE_MS,
+	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
+	DEFAULT_GRPC_STREAM_DEADLINE_MS,
+	DEFAULT_PEER_STALE_AFTER_MS,
 } from "@/db"
 import type { DomiaWithRawRelationsType, DomiaType } from "../types"
 
@@ -51,6 +55,14 @@ export const transformDomia = (
 		ownConfigTtlMs: domia?.ownConfigTtlMs ?? DEFAULT_OWN_CONFIG_TTL_MS,
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
+		lastSeenAt: domia?.lastSeenAt ?? null,
+		grpcUnaryDeadlineMs:
+			domia?.grpcUnaryDeadlineMs ?? DEFAULT_GRPC_UNARY_DEADLINE_MS,
+		grpcStreamIdleTimeoutMs:
+			domia?.grpcStreamIdleTimeoutMs ?? DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
+		grpcStreamDeadlineMs:
+			domia?.grpcStreamDeadlineMs ?? DEFAULT_GRPC_STREAM_DEADLINE_MS,
+		peerStaleAfterMs: domia?.peerStaleAfterMs ?? DEFAULT_PEER_STALE_AFTER_MS,
 		createdAt: domia?.createdAt,
 		updatedAt: domia?.updatedAt,
 		runtimeCapabilities,

@@ -53,6 +53,14 @@ message TtsDonePayload {
   optional bytes audio = 5;
 }
 
+message InteractionFailedPayload {
+  string error = 1;
+  optional string step = 2;
+  optional string interaction_id = 3;
+  optional string origin_domia_key = 4;
+  optional string response_type = 5;
+}
+
 message EventEnvelope {
   string sender_domia_key = 1;
   oneof payload {
@@ -60,6 +68,7 @@ message EventEnvelope {
     SttDonePayload stt_done = 11;
     LlmDonePayload llm_done = 12;
     TtsDonePayload tts_done = 13;
+    InteractionFailedPayload interaction_failed = 14;
   }
 }
 

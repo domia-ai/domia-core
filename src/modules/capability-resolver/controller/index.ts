@@ -6,6 +6,13 @@ import { resolveDomiaStreamingCapabilities } from "../utils"
 import type { ResolvedDelegateType } from "../types"
 
 const CACHE_TTL_MS = 4000
+
+const isStalePeer = (
+	target: { lastSeenAt: number | null },
+	staleAfterMs: number,
+): boolean =>
+	typeof target.lastSeenAt === "number" &&
+	Date.now() - target.lastSeenAt > staleAfterMs
 const cache = new Map<string, { at: number; value: ResolvedDelegateType[] }>()
 
 export const invalidateCapabilityCache = (): void => cache.clear()
@@ -33,6 +40,7 @@ const resolveCapabilityDelegationsUncached = async (
 		if (!targetId || seen.has(targetId)) continue
 		const target = await getDomiaById(targetId)
 		if (!target || !target.isActive) continue
+		if (isStalePeer(target, domia.peerStaleAfterMs)) continue
 		seen.add(target.id)
 		result.push({
 			domiaKey: target.domiaKey,
@@ -53,6 +61,7 @@ const resolveCapabilityDelegationsUncached = async (
 		if (seen.has(cd.id)) continue
 		const target = await getDomiaById(cd.id)
 		if (!target || !target.isActive) continue
+		if (isStalePeer(target, domia.peerStaleAfterMs)) continue
 		seen.add(target.id)
 		result.push({
 			domiaKey: target.domiaKey,

@@ -40,9 +40,27 @@ export const handleDeliverEvent = async (
 	let interactionId: string | undefined
 	let busPayload: Record<string, unknown>
 
+	const rejectForeignOrigin = (
+		eventName: string,
+		originDomiaKey: string | undefined,
+	): DeliveryAck | null => {
+		if (!originDomiaKey || originDomiaKey === domia.domiaKey) return null
+		grpcServerLogger.warn(
+			`🚫 rejected ${eventName} from ${senderKey} — responder pipeline disabled for foreign origins (use streaming RPCs)`,
+			{ domiaId: domia.id, originDomiaKey },
+		)
+		return {
+			accepted: false,
+			reason: "responder pipeline disabled — use streaming RPCs",
+			deduplicated: false,
+		}
+	}
+
 	switch (envelope.payload.$case) {
 		case "audioReady": {
 			const p = envelope.payload.audioReady
+			const rejected = rejectForeignOrigin("audioReady", p.originDomiaKey)
+			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.AUDIO_READY
 			interactionId = p.interactionId
 			const filePath =
@@ -59,6 +77,8 @@ export const handleDeliverEvent = async (
 		}
 		case "sttDone": {
 			const p = envelope.payload.sttDone
+			const rejected = rejectForeignOrigin("sttDone", p.originDomiaKey)
+			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.STT_DONE
 			interactionId = p.interactionId
 			busPayload = {
@@ -71,6 +91,8 @@ export const handleDeliverEvent = async (
 		}
 		case "llmDone": {
 			const p = envelope.payload.llmDone
+			const rejected = rejectForeignOrigin("llmDone", p.originDomiaKey)
+			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.LLM_DONE
 			interactionId = p.interactionId
 			busPayload = {
@@ -94,6 +116,19 @@ export const handleDeliverEvent = async (
 				audioUrl: p.audioUrl,
 				interactionId: p.interactionId,
 				originDomiaKey: p.originDomiaKey,
+			}
+			break
+		}
+		case "interactionFailed": {
+			const p = envelope.payload.interactionFailed
+			event = DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED
+			interactionId = p.interactionId
+			busPayload = {
+				error: p.error,
+				step: p.step,
+				interactionId: p.interactionId,
+				originDomiaKey: p.originDomiaKey,
+				responseType: p.responseType,
 			}
 			break
 		}

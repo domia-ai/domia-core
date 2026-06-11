@@ -4,6 +4,7 @@ import type {
 	SttDonePayload,
 	LlmDonePayload,
 	TtsDonePayload,
+	InteractionFailedPayload,
 } from "@/generated/proto/domia"
 
 export type DeliverEventTarget = ResolvedDelegateType
@@ -13,6 +14,7 @@ export type DeliverEventPayloadMap = {
 	sttDone: SttDonePayload
 	llmDone: LlmDonePayload
 	ttsDone: TtsDonePayload
+	interactionFailed: InteractionFailedPayload
 }
 
 export type DeliverEventResult = {

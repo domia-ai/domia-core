@@ -1,3 +1,4 @@
+import type { RecognizerEntryType } from "../types"
 import fs from "fs"
 import path from "path"
 
@@ -13,8 +14,6 @@ import {
 	createOnlineRecognizer,
 	createOfflineRecognizer,
 	readWave,
-	type OnlineRecognizerInstance,
-	type OfflineRecognizerInstance,
 } from "@/utils/ml-runtime"
 import type {
 	SttWorkerEngineConfigType,
@@ -25,11 +24,7 @@ import type {
 const SAMPLE_RATE = 16000
 const FEAT = { sampleRate: SAMPLE_RATE, featureDim: 80 }
 
-type RecognizerEntry =
-	| { online: true; rec: OnlineRecognizerInstance }
-	| { online: false; rec: OfflineRecognizerInstance }
-
-let cached: RecognizerEntry | null = null
+let cached: RecognizerEntryType | null = null
 let cachedKey: string | null = null
 
 const missing = (dir: string): never => {
@@ -148,7 +143,9 @@ const configKey = (config: SttWorkerEngineConfigType): string =>
 		config.rule3MinUtteranceLength,
 	].join("|")
 
-const getRecognizer = (config: SttWorkerEngineConfigType): RecognizerEntry => {
+const getRecognizer = (
+	config: SttWorkerEngineConfigType,
+): RecognizerEntryType => {
 	const key = configKey(config)
 	if (cached && cachedKey === key) return cached
 	sttEngineLogger.info("🚀 Loading STT recognizer", {
@@ -175,7 +172,7 @@ const int16BufferToFloat32 = (chunk: Buffer): Float32Array => {
 }
 
 const transcribe = (
-	entry: RecognizerEntry,
+	entry: RecognizerEntryType,
 	samples: Float32Array,
 	sampleRate: number,
 	decodePaddingMs: number,

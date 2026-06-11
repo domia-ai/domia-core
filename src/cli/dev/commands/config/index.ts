@@ -12,26 +12,6 @@ const loadDomia = async () => {
 	return domia
 }
 
-const META_KEYS = new Set([
-	"id",
-	"domiaId",
-	"createdAt",
-	"updatedAt",
-	"type",
-	"isActive",
-])
-
-const stripMeta = (value: unknown): unknown => {
-	if (Array.isArray(value)) return value.map(stripMeta)
-	if (value && typeof value === "object") {
-		const out: Record<string, unknown> = {}
-		for (const [k, v] of Object.entries(value))
-			if (!META_KEYS.has(k)) out[k] = stripMeta(v)
-		return out
-	}
-	return value
-}
-
 export const configShowCommand = async () => {
 	try {
 		const domia = await loadDomia()
@@ -39,6 +19,7 @@ export const configShowCommand = async () => {
 		devCliLogger.debug(JSON.stringify(serializeConfig(domia), null, 2))
 	} catch (error) {
 		devCliLogger.error("❌ Error reading config", error)
+		process.exitCode = 1
 	}
 }
 
@@ -51,6 +32,7 @@ export const configHealthCommand = async () => {
 		devCliLogger.debug(JSON.stringify(configHealth(domia), null, 2))
 	} catch (error) {
 		devCliLogger.error("❌ Error reading config health", error)
+		process.exitCode = 1
 	}
 }
 
@@ -61,6 +43,7 @@ export const configExportCommand = async (out: string) => {
 		devCliLogger.info(`📤 Exported config → ${out}`)
 	} catch (error) {
 		devCliLogger.error("❌ Error exporting config", error)
+		process.exitCode = 1
 	}
 }
 
@@ -68,11 +51,11 @@ export const configImportCommand = async (file: string) => {
 	try {
 		const domia = await loadDomia()
 		const parsed = JSON.parse(readFileSync(file, "utf-8"))
-		const bundle = stripMeta(parsed.config ?? parsed)
-		await persistConfig(domia, bundle)
+		await persistConfig(domia, parsed.config ?? parsed)
 		await requestServiceRestart()
 		devCliLogger.info(`📥 Imported config from ${file} — restarting`)
 	} catch (error) {
 		devCliLogger.error("❌ Error importing config", error)
+		process.exitCode = 1
 	}
 }

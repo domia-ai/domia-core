@@ -5,6 +5,7 @@ import { DomiaEventBusPayloadMapType } from "./types"
 import { domiaBusLogger } from "@/utils"
 
 export const domiaBus = new EventEmitter()
+domiaBus.setMaxListeners(100)
 
 export const publishToDomiaBus = <E extends DOMIA_EVENT_BUS_ENUM>(
 	domiaId: string,

@@ -1,4 +1,6 @@
-import { type DomiaType } from "@/modules/core"
+import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
+import { reportReflectionToTarget } from "@/modules/grpc-client"
+import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLMJson } from "@/modules/llm-engine"
 import {
 	personaContextFromDomia,
@@ -276,16 +278,79 @@ export const flagsForPersona = (
 	facts: persona?.moduleSettings?.factCapture !== false,
 })
 
+export const routeReflectionResult = async (
+	executor: DomiaType,
+	originDomiaKey: string | undefined,
+	result: ReflectionResultType,
+	interactionId?: string,
+): Promise<void> => {
+	const { emotion, userEmotion, facts } = result
+	const hasEmotion = !!emotion && Object.keys(emotion.delta).length > 0
+	const hasFacts = facts.length > 0
+	const hasUserEmotion = !!userEmotion
+	if (!hasEmotion && !hasFacts && !hasUserEmotion) return
+
+	const isRemote = !!originDomiaKey && originDomiaKey !== executor.domiaKey
+
+	if (!isRemote) {
+		if (hasEmotion) applyMoodDelta(executor, emotion.delta, emotion.cause)
+		if (hasUserEmotion && interactionId)
+			void updateInteraction({
+				id: interactionId,
+				userEmotionSnapshot: userEmotion,
+			})
+		if (hasFacts) await upsertFacts(executor, facts, interactionId)
+		return
+	}
+
+	const origin = await getDomiaByDomiaKey(originDomiaKey)
+	if (!origin) {
+		reflectionLogger.warn(
+			"reflection result dropped — origin domia unknown locally",
+			{ originDomiaKey, interactionId },
+		)
+		return
+	}
+	const accepted = await reportReflectionToTarget(
+		executor.domiaKey,
+		{
+			domiaKey: origin.domiaKey,
+			domiaId: origin.id,
+			localIp: origin.localIp,
+			grpcPort: origin.grpcPort,
+			source: "explicit",
+			streamingCapabilities: resolveDomiaStreamingCapabilities(origin),
+		},
+		{
+			originDomiaKey,
+			interactionId,
+			emotionDeltaJson: hasEmotion ? JSON.stringify(emotion.delta) : undefined,
+			cause: hasEmotion ? emotion.cause : undefined,
+			factsJson: hasFacts ? JSON.stringify(facts) : undefined,
+			userEmotionJson: hasUserEmotion ? JSON.stringify(userEmotion) : undefined,
+		},
+	)
+	if (!accepted) {
+		reflectionLogger.warn("reflection report not accepted by origin", {
+			originDomiaKey,
+			interactionId,
+		})
+	}
+}
+
 export const reflectOnInteraction = async (
 	domia: DomiaType,
 	userText: string,
 	replyText: string,
 	interactionId?: string,
+	originDomiaKey?: string,
 ): Promise<void> => {
 	const flags = flagsForDomia(domia)
 	if (!flags.emotion && !flags.facts) return
-	const trajectory = flags.emotion ? await getRecentTrajectory(domia.id) : []
-	const { emotion, userEmotion, facts } = await runReflection(
+	const isRemote = !!originDomiaKey && originDomiaKey !== domia.domiaKey
+	const trajectory =
+		flags.emotion && !isRemote ? await getRecentTrajectory(domia.id) : []
+	const result = await runReflection(
 		domia,
 		personaContextFromDomia(domia),
 		userText,
@@ -293,13 +358,5 @@ export const reflectOnInteraction = async (
 		trajectory,
 		flags,
 	)
-	if (flags.emotion && emotion)
-		applyMoodDelta(domia, emotion.delta, emotion.cause)
-	if (flags.emotion && userEmotion && interactionId)
-		void updateInteraction({
-			id: interactionId,
-			userEmotionSnapshot: userEmotion,
-		})
-	if (flags.facts && facts.length)
-		await upsertFacts(domia, facts, interactionId)
+	await routeReflectionResult(domia, originDomiaKey, result, interactionId)
 }

@@ -18,7 +18,6 @@ import type { CoreBusArgsType } from "./types"
 export const setupCoreBus = ({
 	domia,
 	runtimeCapabilities,
-	mqttClient,
 }: CoreBusArgsType) => {
 	const domiaId = domia.id
 
@@ -38,10 +37,8 @@ export const setupCoreBus = ({
 		canSentencePipeline: features.canSentencePipeline,
 	})
 
-	const liveCtx = async (): Promise<CoreBusContextType> => ({
-		...(await resolveLiveDomia(domia, runtimeCapabilities)),
-		mqttClient,
-	})
+	const liveCtx = async (): Promise<CoreBusContextType> =>
+		resolveLiveDomia(domia, runtimeCapabilities)
 
 	const onEvent =
 		<P>(handler: (ctx: CoreBusContextType, payload: P) => unknown) =>

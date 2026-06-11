@@ -1,6 +1,7 @@
 import { domiaBusLogger, toError } from "@/utils"
 import { notifyInteractionFailed, rejectPending } from "../utils"
-import { RESPONSE_TYPE_ENUM } from "@/db"
+import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
+import { updateInteraction } from "@/modules/session-manager"
 import type {
 	AudioErrorPayloadType,
 	CapabilityMissingPayloadType,
@@ -45,6 +46,19 @@ export const handleInteractionFailed = (
 		step: payload.step,
 		error: payload.error,
 	})
+	if (payload.interactionId) {
+		void updateInteraction({
+			id: payload.interactionId,
+			status: INTERACTION_STATUS_ENUM.FAILED,
+			errorStep: payload.step ?? null,
+			errorMessage: payload.error,
+		}).catch((err) =>
+			domiaBusLogger.warn("⚠️ failed to persist interaction failure", {
+				interactionId: payload.interactionId,
+				err,
+			}),
+		)
+	}
 	if (payload.responseType === RESPONSE_TYPE_ENUM.TEXT) {
 		rejectPending(payload.interactionId, toError(payload.error))
 	}

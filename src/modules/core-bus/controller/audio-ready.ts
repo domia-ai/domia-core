@@ -1,5 +1,3 @@
-import { readFile } from "fs/promises"
-
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import {
 	domiaBusLogger,
@@ -32,7 +30,6 @@ import {
 } from "@/modules/prompt-context-builder"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
-	deliverEvent,
 	streamSttToTarget,
 	streamVoiceReplyFromTarget,
 	type DeliverEventTarget,
@@ -123,13 +120,17 @@ const tryFusedVoiceReply = async (
 	const channels = (streamed.audioMeta?.channels === 2 ? 2 : 1) as 1 | 2
 
 	const timedAudio = (async function* (): AsyncIterable<Buffer> {
-		ttfaMs = Date.now() - startTime
-		audioEmitted = true
-		yield firstRes.value
-		while (true) {
-			const next = await audioIter.next()
-			if (next.done) break
-			yield next.value
+		try {
+			ttfaMs = Date.now() - startTime
+			audioEmitted = true
+			yield firstRes.value
+			while (true) {
+				const next = await audioIter.next()
+				if (next.done) break
+				yield next.value
+			}
+		} finally {
+			await audioIter.return?.().catch(() => undefined)
 		}
 	})()
 
@@ -162,6 +163,7 @@ const tryFusedVoiceReply = async (
 		})
 	}
 
+	await audioIter.return?.().catch(() => undefined)
 	const transcript = (await streamed.transcriptPromise) ?? ""
 	const reply = (await streamed.finalReplyPromise) ?? ""
 	domiaBusLogger.info(`⏱️ fused voice reply timings`, {
@@ -320,53 +322,39 @@ export const handleAudioReady = async (
 			}
 		}
 
-		const streamingTargets = targets.filter(
-			(target) => target.streamingCapabilities.stt,
+		const orderedTargets = [...targets].sort(
+			(a, b) =>
+				Number(b.streamingCapabilities.stt) -
+				Number(a.streamingCapabilities.stt),
 		)
-		if (streamingTargets.length > 0) {
-			domiaBusLogger.info(
-				`📡 streaming STT delegation (${streamingTargets.length} targets)`,
-				{ domiaId, interactionId },
-			)
-			const streamed = await streamSttToTarget(
-				domia.domiaKey,
-				streamingTargets,
-				{
-					originDomiaKey,
-					interactionId,
-					responseType: RESPONSE_TYPE_ENUM.VOICE,
-				},
-				() => wavFileToPcmChunks(audioPath),
-			)
-			if (streamed.delivered && streamed.transcript !== undefined) {
-				await updateInteraction({
-					id: interactionId,
-					sttExecutorKey: streamed.target?.domiaKey,
-				})
-				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
-					transcript: streamed.transcript,
-					interactionId,
-					originDomiaKey,
-				})
-				return
-			}
-			domiaBusLogger.warn(
-				`streaming STT delegation failed (${streamed.error ?? "unknown"}) — falling back to unary`,
-				{ domiaId, interactionId },
-			)
-		}
-
-		const audio = await readFile(audioPath)
-		const result = await deliverEvent(domia.domiaKey, targets, "audioReady", {
-			audio,
-			originDomiaKey,
-			interactionId,
-		})
-		if (!result.delivered) {
+		domiaBusLogger.info(
+			`📡 streaming STT delegation (${orderedTargets.length} targets)`,
+			{ domiaId, interactionId },
+		)
+		const streamed = await streamSttToTarget(
+			domia.domiaKey,
+			orderedTargets,
+			{
+				originDomiaKey,
+				interactionId,
+				responseType: RESPONSE_TYPE_ENUM.VOICE,
+			},
+			() => wavFileToPcmChunks(audioPath),
+		)
+		if (!streamed.delivered || streamed.transcript === undefined) {
 			throw new Error(
-				`AUDIO_READY delegation failed: ${result.error ?? "unknown"} (tried ${result.attemptedTargets})`,
+				`AUDIO_READY delegation failed: ${streamed.error ?? "unknown"} (tried ${streamed.attemptedTargets})`,
 			)
 		}
+		await updateInteraction({
+			id: interactionId,
+			sttExecutorKey: streamed.target?.domiaKey,
+		})
+		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+			transcript: streamed.transcript,
+			interactionId,
+			originDomiaKey,
+		})
 	} catch (err) {
 		domiaBusLogger.error("AUDIO_READY: STT or delegate failed", {
 			domiaId,

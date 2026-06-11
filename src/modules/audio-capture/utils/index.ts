@@ -1,3 +1,4 @@
+import type { SelectWakeWordConfigType } from "@/db"
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process"
 import { mkdirSync } from "fs"
 import { writeFile } from "fs/promises"
@@ -55,8 +56,14 @@ export const attachSoxStderrFilter = (
 	})
 }
 
-export const createVadWindow = (vadModelPath: string): VadWindowType => {
-	const session = sileroVadEngine.createSession(vadModelPath)
+export const createVadWindow = (
+	config: SelectWakeWordConfigType,
+): VadWindowType => {
+	const session = sileroVadEngine.createSession(config.vadModelPath, {
+		threshold: config.vadThreshold,
+		minSilenceS: config.vadMinSilenceS,
+		endOfSpeechMs: config.vadEndOfSpeechMs,
+	})
 	const windowBytes = sileroVadEngine.windowSize * 2
 	let leftover = Buffer.alloc(0)
 

@@ -1,10 +1,6 @@
-type PendingEntry = {
-	resolve: (reply: string) => void
-	reject: (err: Error) => void
-	timeoutId: ReturnType<typeof setTimeout>
-}
+import type { PendingEntryType } from "../types"
 
-const pending = new Map<string, PendingEntry>()
+const pending = new Map<string, PendingEntryType>()
 
 export const registerPending = (
 	interactionId: string,

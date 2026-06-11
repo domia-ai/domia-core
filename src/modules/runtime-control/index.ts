@@ -1,3 +1,4 @@
+import path from "path"
 import { utimesSync } from "fs"
 import { env } from "@/config"
 import { appLogger } from "@/utils"
@@ -17,6 +18,8 @@ export const setBootStatus = (status: BootStatusType): void => {
 
 export const getBootStatus = (): BootStatusType => bootStatus
 
+const DEV_ENTRY_PATH = path.resolve(__dirname, "../../index.ts")
+
 const RESTART_DELAY_MS = 250
 
 export const requestRestart = (): void => {
@@ -27,7 +30,7 @@ export const requestRestart = (): void => {
 		} else {
 			try {
 				const now = new Date()
-				utimesSync("src/index.ts", now, now)
+				utimesSync(DEV_ENTRY_PATH, now, now)
 			} catch (err) {
 				appLogger.error("Dev restart (touch) failed", { err })
 			}
@@ -39,7 +42,7 @@ export const requestServiceRestart = async (): Promise<void> => {
 	if (env.NODE_ENV !== "production") {
 		try {
 			const now = new Date()
-			utimesSync("src/index.ts", now, now)
+			utimesSync(DEV_ENTRY_PATH, now, now)
 			appLogger.warn("🔁 Restart requested (dev file touch)")
 		} catch (err) {
 			appLogger.error("Dev restart (touch) failed", { err })

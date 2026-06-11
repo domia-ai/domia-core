@@ -50,6 +50,7 @@ export const baseSttConfig = (domiaId?: string): SelectSttConfigType => {
 		poolIdleTimeoutMs: DEFAULT_STT_POOL_IDLE_TIMEOUT_MS,
 		poolQueueMaxDepth: DEFAULT_STT_POOL_QUEUE_MAX_DEPTH,
 		poolQueueTimeoutMs: DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS,
+		poolExecutionTimeoutMs: 30_000,
 		workerRecycleAfterJobs: DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS,
 		createdAt: now(),
 		updatedAt: now(),

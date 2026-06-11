@@ -3,7 +3,7 @@ import { mkdirSync } from "fs"
 import { join } from "path"
 import { appLogger } from "@/utils"
 import type { CapabilityKeyType, PartialRuntimeCapabilitiesType } from "./types"
-import { RUNTIME_CAPABILITIES, CAPABILITY_RESOURCES } from "./contants"
+import { RUNTIME_CAPABILITIES, CAPABILITY_RESOURCES } from "./constants"
 
 export const setupEnvironment = (
 	runtimeCapabilities: PartialRuntimeCapabilitiesType = RUNTIME_CAPABILITIES,

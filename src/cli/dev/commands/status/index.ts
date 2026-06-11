@@ -1,9 +1,15 @@
-import { getDomia } from "@/test-utils"
+import { env } from "@/config"
+import { getDomia } from "@/modules/core"
 import { devCliLogger } from "@/utils"
 
 export const statusCommand = async () => {
 	try {
-		const domia = getDomia({})
+		const domia = await getDomia(env.DOMIA_KEY)
+		if (!domia) {
+			devCliLogger.error(`❌ No domia found for key ${env.DOMIA_KEY}`)
+			process.exitCode = 1
+			return
+		}
 
 		devCliLogger.info("📋 Domia Status Overview")
 		devCliLogger.info("───────────────────────────────")

@@ -32,7 +32,38 @@ import {
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 
+const PEER_CHILD_TABLES = [
+	runtimeCapabilities,
+	moduleSettings,
+	characterProfile,
+	emotionState,
+	wakeWordConfig,
+	sttConfig,
+	llmModelConfig,
+	ttsConfig,
+	mcpServerConfig,
+	audioPlaybackConfig,
+	mqttConfig,
+	capabilityDelegation,
+] as const
+
 const dbAdapter = {
+	deleteStalePeerByKey: (
+		domiaKey: string,
+		newId: string,
+		client: DBClientOrTxType = dbClient,
+	): void => {
+		const existing = client
+			.select({ id: domia.id })
+			.from(domia)
+			.where(eq(domia.domiaKey, domiaKey))
+			.get()
+		if (!existing || existing.id === newId) return
+		for (const table of PEER_CHILD_TABLES) {
+			client.delete(table).where(eq(table.domiaId, existing.id)).run()
+		}
+		client.delete(domia).where(eq(domia.id, existing.id)).run()
+	},
 	upsertDomia: (data: InsertDomiaType, client: DBClientOrTxType = dbClient) =>
 		client
 			.insert(domia)

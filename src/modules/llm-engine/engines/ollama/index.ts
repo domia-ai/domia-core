@@ -4,7 +4,7 @@ import { env } from "@/config"
 import { DomiaType } from "@/modules/core"
 import { llmEngineLogger, createAsyncSemaphore } from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
-import { LLM_ENGINE_ENUM } from "@/db"
+import { LLM_ENGINE_ENUM, DEFAULT_LLM_CONCURRENCY } from "@/db"
 import type { LlmEngineAdapterType } from "../../types"
 
 const client = new Ollama({ host: env.OLLAMA_HOST })
@@ -15,7 +15,9 @@ const JSON_NUM_PREDICT = 512
 const llmSemaphore = createAsyncSemaphore(1)
 
 const acquireSlot = (domia: DomiaType): Promise<() => void> => {
-	llmSemaphore.setLimit(domia?.llmModelConfig?.llmConcurrency ?? 2)
+	llmSemaphore.setLimit(
+		domia?.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
+	)
 	return llmSemaphore.acquire()
 }
 

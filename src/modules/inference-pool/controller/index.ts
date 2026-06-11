@@ -23,6 +23,7 @@ export const createInferencePool = (
 		idleTimeoutMs,
 		queueMaxDepth,
 		queueTimeoutMs,
+		executionTimeoutMs,
 		recycleAfterJobs,
 	} = config
 	const warmWorkers = Math.max(0, Math.min(config.warmWorkers, maxWorkers))
@@ -100,7 +101,8 @@ export const createInferencePool = (
 	const onWorkerExit = (ws: WorkerStateType, code: number | null): void => {
 		removeWorker(ws)
 		if (ws.currentJob) {
-			const { pending } = ws.currentJob
+			const { pending, execTimer } = ws.currentJob
+			if (execTimer) clearTimeout(execTimer)
 			ws.currentJob = null
 			pending.reject(new Error(`${label} worker exited (code ${code})`))
 		}
@@ -148,6 +150,7 @@ export const createInferencePool = (
 		const job = ws.currentJob
 		ws.currentJob = null
 		ws.jobs++
+		if (job?.execTimer) clearTimeout(job.execTimer)
 		if (job && job.id === id) {
 			if (err) job.pending.reject(err)
 			else job.pending.resolve(result)
@@ -171,9 +174,21 @@ export const createInferencePool = (
 			pending.timer = null
 		}
 		const id = nextJobId++
-		ws.currentJob = { id, pending }
+		const execTimer =
+			executionTimeoutMs > 0
+				? setTimeout(() => {
+						if (ws.currentJob?.id !== id) return
+						inferencePoolLogger.error(
+							`⏱️ ${label} job exceeded ${executionTimeoutMs}ms — killing hung worker`,
+							{ jobId: id },
+						)
+						ws.handle.kill()
+					}, executionTimeoutMs)
+				: null
+		ws.currentJob = { id, pending, execTimer }
 		const sent = ws.handle.send({ type: "job", id, payload: pending.payload })
 		if (!sent) {
+			if (execTimer) clearTimeout(execTimer)
 			ws.currentJob = null
 			pending.reject(poolBusyError(`${label} worker channel closed`))
 			inferencePoolLogger.warn(`💥 ${label} send failed — killing worker`)

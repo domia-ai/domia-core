@@ -1,6 +1,8 @@
 import { env } from "@/config"
 import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
 import { initialize } from "./modules/config-engine"
+import { setGrpcClientTunables } from "./modules/grpc-client"
+import { setupTempSweeper } from "./setups/temp-sweeper"
 import {
 	setupVoiceListener,
 	setupCoreBus,
@@ -27,6 +29,8 @@ process.on("unhandledRejection", (reason) => {
 async function main() {
 	appLogger.info("Initialize Domia with default config")
 	const ownDomia = await initialize()
+	setGrpcClientTunables(ownDomia)
+	setupTempSweeper()
 
 	if (!ownDomia?.runtimeCapabilities) {
 		appLogger.error(getErrorMessage(CORE_ERRORS.MISSING_CAPABILITIES))
@@ -46,7 +50,6 @@ async function main() {
 	setupCoreBus({
 		domia: ownDomia,
 		runtimeCapabilities,
-		mqttClient: localMqttClient,
 	})
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
 	setupHttpServer({ domia: ownDomia, mqttClient: localMqttClient })

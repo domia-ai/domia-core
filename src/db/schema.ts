@@ -39,6 +39,31 @@ import {
 	DEFAULT_WAKE_WORD_MODEL_PATH,
 	DEFAULT_VAD_ENGINE,
 	DEFAULT_VAD_MODEL_PATH,
+	DEFAULT_WAKE_WORD_SENSITIVITY,
+	DEFAULT_WAKE_WORD_THRESHOLD,
+	DEFAULT_WAKE_WORD_COOLDOWN_S,
+	DEFAULT_WAKE_WORD_NUM_THREADS,
+	DEFAULT_WAKE_WORD_PROVIDER,
+	DEFAULT_VAD_THRESHOLD,
+	DEFAULT_VAD_MIN_SILENCE_S,
+	DEFAULT_VAD_END_OF_SPEECH_MS,
+	DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS,
+	DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS,
+	DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS,
+	DEFAULT_SENTENCE_HARD_FLUSH_CHARS,
+	DEFAULT_SENTENCE_FIRST_FLUSH_MAX_MS,
+	DEFAULT_PIPELINE_MAX_QUEUE_DEPTH,
+	DEFAULT_PIPELINE_EAGER_TTS_SENTENCES,
+	DEFAULT_GRPC_UNARY_DEADLINE_MS,
+	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
+	DEFAULT_GRPC_STREAM_DEADLINE_MS,
+	DEFAULT_PEER_STALE_AFTER_MS,
+	DEFAULT_STT_POOL_EXECUTION_TIMEOUT_MS,
+	DEFAULT_TTS_POOL_EXECUTION_TIMEOUT_MS,
+	DEFAULT_MQTT_HOST,
+	DEFAULT_MQTT_USERNAME,
+	DEFAULT_MQTT_PASSWORD,
+	DEFAULT_MQTT_TOPIC_ROOT,
 	DEFAULT_AUDIO_CAPTURE_SAMPLE_RATE,
 	DEFAULT_AUDIO_CAPTURE_BITS_PER_SAMPLE,
 	DEFAULT_AUDIO_CAPTURE_CHANNELS,
@@ -75,6 +100,8 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM_VALUES,
 	RESPONSE_TYPE_ENUM,
+	INTERACTION_STATUS_ENUM_VALUES,
+	INTERACTION_STATUS_ENUM,
 	DEFAULT_LLM_MODEL_NAME,
 	DEFAULT_TTS_VOICE_NAME,
 	DEFAULT_TTS_MODEL_PATH,
@@ -133,6 +160,19 @@ export const domia = sqliteTable("domia", {
 		.default(DEFAULT_OWN_CONFIG_TTL_MS),
 	localIp: text("local_ip"),
 	grpcPort: integer("grpc_port"),
+	lastSeenAt: integer("last_seen_at"),
+	grpcUnaryDeadlineMs: integer("grpc_unary_deadline_ms")
+		.notNull()
+		.default(DEFAULT_GRPC_UNARY_DEADLINE_MS),
+	grpcStreamIdleTimeoutMs: integer("grpc_stream_idle_timeout_ms")
+		.notNull()
+		.default(DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS),
+	grpcStreamDeadlineMs: integer("grpc_stream_deadline_ms")
+		.notNull()
+		.default(DEFAULT_GRPC_STREAM_DEADLINE_MS),
+	peerStaleAfterMs: integer("peer_stale_after_ms")
+		.notNull()
+		.default(DEFAULT_PEER_STALE_AFTER_MS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -314,9 +354,15 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 		.notNull()
 		.default(WAKE_WORD_ENGINE_ENUM.KWS),
 	wakeWord: text("wake_word").notNull().default(DEFAULT_WAKE_WORD),
-	sensitivity: real("sensitivity").notNull().default(0.5),
-	threshold: real("threshold").notNull().default(0.5),
-	cooldown: real("cooldown").notNull().default(2.0),
+	sensitivity: real("sensitivity")
+		.notNull()
+		.default(DEFAULT_WAKE_WORD_SENSITIVITY),
+	threshold: real("threshold").notNull().default(DEFAULT_WAKE_WORD_THRESHOLD),
+	cooldown: real("cooldown").notNull().default(DEFAULT_WAKE_WORD_COOLDOWN_S),
+	numThreads: integer("ww_num_threads")
+		.notNull()
+		.default(DEFAULT_WAKE_WORD_NUM_THREADS),
+	provider: text("ww_provider").notNull().default(DEFAULT_WAKE_WORD_PROVIDER),
 	framework: text("framework", {
 		enum: WAKE_WORD_FRAMEWORK_ENUM_VALUES,
 	})
@@ -331,6 +377,13 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	vadModelPath: text("vad_model_path")
 		.notNull()
 		.default(DEFAULT_VAD_MODEL_PATH),
+	vadThreshold: real("vad_threshold").notNull().default(DEFAULT_VAD_THRESHOLD),
+	vadMinSilenceS: real("vad_min_silence_s")
+		.notNull()
+		.default(DEFAULT_VAD_MIN_SILENCE_S),
+	vadEndOfSpeechMs: integer("vad_end_of_speech_ms")
+		.notNull()
+		.default(DEFAULT_VAD_END_OF_SPEECH_MS),
 	inputDeviceIndex: integer("device").notNull().default(0),
 	sampleRate: integer("sample_rate")
 		.notNull()
@@ -404,6 +457,9 @@ export const sttConfig = sqliteTable("stt_config", {
 	poolQueueTimeoutMs: integer("stt_pool_queue_timeout_ms")
 		.notNull()
 		.default(DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS),
+	poolExecutionTimeoutMs: integer("stt_pool_execution_timeout_ms")
+		.notNull()
+		.default(DEFAULT_STT_POOL_EXECUTION_TIMEOUT_MS),
 	workerRecycleAfterJobs: integer("stt_worker_recycle_after_jobs")
 		.notNull()
 		.default(DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS),
@@ -490,6 +546,30 @@ export const ttsConfig = sqliteTable("tts_config", {
 	poolQueueTimeoutMs: integer("tts_pool_queue_timeout_ms")
 		.notNull()
 		.default(DEFAULT_TTS_POOL_QUEUE_TIMEOUT_MS),
+	poolExecutionTimeoutMs: integer("tts_pool_execution_timeout_ms")
+		.notNull()
+		.default(DEFAULT_TTS_POOL_EXECUTION_TIMEOUT_MS),
+	sentenceSoftFlushMinChars: integer("sentence_soft_flush_min_chars")
+		.notNull()
+		.default(DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS),
+	sentenceFirstUnitMaxWords: integer("sentence_first_unit_max_words")
+		.notNull()
+		.default(DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS),
+	sentenceMediumFlushChars: integer("sentence_medium_flush_chars")
+		.notNull()
+		.default(DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS),
+	sentenceHardFlushChars: integer("sentence_hard_flush_chars")
+		.notNull()
+		.default(DEFAULT_SENTENCE_HARD_FLUSH_CHARS),
+	sentenceFirstFlushMaxMs: integer("sentence_first_flush_max_ms")
+		.notNull()
+		.default(DEFAULT_SENTENCE_FIRST_FLUSH_MAX_MS),
+	pipelineMaxQueueDepth: integer("pipeline_max_queue_depth")
+		.notNull()
+		.default(DEFAULT_PIPELINE_MAX_QUEUE_DEPTH),
+	pipelineEagerTtsSentences: integer("pipeline_eager_tts_sentences")
+		.notNull()
+		.default(DEFAULT_PIPELINE_EAGER_TTS_SENTENCES),
 	workerRecycleAfterJobs: integer("tts_worker_recycle_after_jobs")
 		.notNull()
 		.default(DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS),
@@ -543,11 +623,11 @@ export const mqttConfig = sqliteTable("mqtt_config", {
 	type: text("type", { enum: MQTT_TYPE_ENUM_VALUES })
 		.notNull()
 		.default(MQTT_TYPE_ENUM.LOCAL),
-	host: text("host").notNull(),
-	username: text("username"),
-	password: text("password"),
+	host: text("host").notNull().default(DEFAULT_MQTT_HOST),
+	username: text("username").default(DEFAULT_MQTT_USERNAME),
+	password: text("password").default(DEFAULT_MQTT_PASSWORD),
 	qos: integer("qos").notNull().default(1),
-	topicRoot: text("topic_root").notNull(),
+	topicRoot: text("topic_root").notNull().default(DEFAULT_MQTT_TOPIC_ROOT),
 	protocol: text("protocol", {
 		enum: MQTT_PROTOCOL_ENUM_VALUES,
 	})
@@ -617,6 +697,11 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	llmModelUsed: text("llm_model_used"),
 	ttsVoiceUsed: text("tts_voice_used"),
 	wakeWordModelUsed: text("wake_word_model_used"),
+	status: text("status", { enum: INTERACTION_STATUS_ENUM_VALUES })
+		.notNull()
+		.default(INTERACTION_STATUS_ENUM.OK),
+	errorStep: text("error_step"),
+	errorMessage: text("error_message"),
 	domiaSnapshot: text("domia_snapshot", { mode: "json" }),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),

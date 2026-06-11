@@ -17,7 +17,6 @@ import { type CaptureCallbacksType, type KwsPathsType } from "../../types"
 
 const SAMPLE_RATE = 16000
 const CHUNK_SAMPLES = 1600
-const COOLDOWN_MS = 1500
 
 const resolveKwsPaths = (
 	modelDir: string,
@@ -88,6 +87,7 @@ export const runKws = async (
 		throw err
 	}
 
+	const cooldownMs = Math.round(wakeWordConfig.cooldown * 1000)
 	const config = {
 		featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
 		modelConfig: {
@@ -97,11 +97,13 @@ export const runKws = async (
 				joiner: paths.joiner,
 			},
 			tokens: paths.tokens,
-			numThreads: 1,
-			provider: "cpu",
+			numThreads: wakeWordConfig.numThreads,
+			provider: wakeWordConfig.provider,
 			debug: 0,
 		},
 		keywordsFile: paths.keywords,
+		keywordsThreshold: wakeWordConfig.threshold,
+		keywordsScore: wakeWordConfig.sensitivity,
 	}
 
 	audioCaptureLogger.info("🎤 Starting KWS wake-word engine", {
@@ -146,7 +148,7 @@ export const runKws = async (
 				const result = kws.getResult(stream)
 				if (result.keyword && result.keyword.length > 0) {
 					const now = Date.now()
-					if (now - lastDetectionAt > COOLDOWN_MS) {
+					if (now - lastDetectionAt > cooldownMs) {
 						lastDetectionAt = now
 						audioCaptureLogger.info("✨ wake detected", {
 							keyword: result.keyword,

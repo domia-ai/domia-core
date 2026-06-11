@@ -6,6 +6,10 @@ import {
 	splitSentences,
 	AsyncQueue,
 	concatStreams,
+	eagerTtsSlotsFromDomia,
+	pipelineDepthFromDomia,
+	primeStream,
+	sentenceTuningFromDomia,
 } from "@/modules/core-bus/utils/sentence-buffer"
 import { resolveFallbackMessage } from "@/modules/core-bus/utils/fallback-messages"
 import {
@@ -15,19 +19,18 @@ import {
 	ttsVoiceSchema,
 	type PersonaContextType,
 } from "@/modules/prompt-context-builder"
-import { applyMoodDelta, getRecentTrajectory } from "@/modules/emotion-engine"
-import { upsertFacts } from "@/modules/memory"
-import { updateInteraction } from "@/modules/session-manager"
-import { runReflection, flagsForPersona } from "@/modules/reflection"
+import { getRecentTrajectory } from "@/modules/emotion-engine"
+import {
+	runReflection,
+	flagsForPersona,
+	routeReflectionResult,
+} from "@/modules/reflection"
 import {
 	admitVoiceReply,
 	activeVoiceReplies,
 	queuedVoiceReplies,
 } from "@/modules/voice-admission"
-import {
-	reportReflectionToTarget,
-	reportStageExecutionToTarget,
-} from "@/modules/grpc-client"
+import { reportStageExecutionToTarget } from "@/modules/grpc-client"
 import type { StageMetric } from "@/generated/proto/domia"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLM } from "@/modules/llm-engine"
@@ -48,11 +51,11 @@ import type {
 	ReplyAudioMessage,
 	StreamSttMeta,
 } from "@/generated/proto/domia"
+import { HUB_AT_CAPACITY_DETAIL } from "./constants"
 import {
 	DEFAULT_CHANNELS,
 	DEFAULT_SAMPLE_RATE,
-	HUB_AT_CAPACITY_DETAIL,
-} from "./constants"
+} from "@/modules/core-bus/utils/playback"
 
 export const admitVoiceReplyOrBusy = async (
 	domia: DomiaType,
@@ -128,7 +131,7 @@ export const reflectOnPersonaInteraction = async (
 		const trajectory =
 			flags.emotion && !isRemote ? await getRecentTrajectory(responder.id) : []
 
-		const { emotion, userEmotion, facts } = await runReflection(
+		const result = await runReflection(
 			responder,
 			persona,
 			transcript,
@@ -136,46 +139,11 @@ export const reflectOnPersonaInteraction = async (
 			trajectory,
 			flags,
 		)
-		const hasEmotion = !!emotion && Object.keys(emotion.delta).length > 0
-		const hasFacts = facts.length > 0
-		const hasUserEmotion = !!userEmotion
-		if (!hasEmotion && !hasFacts && !hasUserEmotion) return
-
-		if (!isRemote) {
-			if (hasEmotion) applyMoodDelta(responder, emotion.delta, emotion.cause)
-			if (hasFacts) await upsertFacts(responder, facts, interactionId)
-			if (hasUserEmotion && interactionId)
-				await updateInteraction({
-					id: interactionId,
-					userEmotionSnapshot: userEmotion,
-				})
-			return
-		}
-
-		const origin = await getDomiaByDomiaKey(originDomiaKey)
-		if (!origin) return
-		await reportReflectionToTarget(
-			responder.domiaKey,
-			{
-				domiaKey: origin.domiaKey,
-				domiaId: origin.id,
-				localIp: origin.localIp,
-				grpcPort: origin.grpcPort,
-				source: "explicit",
-				streamingCapabilities: resolveDomiaStreamingCapabilities(origin),
-			},
-			{
-				originDomiaKey,
-				interactionId,
-				emotionDeltaJson: hasEmotion
-					? JSON.stringify(emotion.delta)
-					: undefined,
-				cause: hasEmotion ? emotion.cause : undefined,
-				factsJson: hasFacts ? JSON.stringify(facts) : undefined,
-				userEmotionJson: hasUserEmotion
-					? JSON.stringify(userEmotion)
-					: undefined,
-			},
+		await routeReflectionResult(
+			responder,
+			originDomiaKey,
+			result,
+			interactionId,
 		)
 	} catch (err) {
 		grpcServerLogger.warn("reflectOnPersonaInteraction failed (skipping)", {
@@ -257,8 +225,6 @@ export const ttsTextToChunks = async function* (
 	yield* wavFileToPcmChunks(result.filePath)
 }
 
-const MAX_PIPELINE_QUEUE_DEPTH = 4
-
 export const pipelinedReplyChunks = async function* (
 	domia: DomiaType,
 	promptContext: string,
@@ -270,15 +236,25 @@ export const pipelinedReplyChunks = async function* (
 	if (!llmRunStream) return
 	const tokens = llmRunStream(domia, promptContext)
 	const ttsQueue = new AsyncQueue<AsyncIterable<Buffer>>()
+	const queueDepth = pipelineDepthFromDomia(domia)
+	const eagerSlots = eagerTtsSlotsFromDomia(domia)
 	let consumerClosed = false
 	const producer = (async () => {
 		try {
-			for await (const sentence of splitSentences(tokens)) {
+			for await (const sentence of splitSentences(
+				tokens,
+				sentenceTuningFromDomia(domia),
+			)) {
 				if (consumerClosed) break
-				await ttsQueue.waitForSpace(MAX_PIPELINE_QUEUE_DEPTH)
+				await ttsQueue.waitForSpace(queueDepth)
 				if (consumerClosed) break
 				onSentence(sentence)
-				ttsQueue.push(ttsTextToChunks(domia, sentence, features, options))
+				ttsQueue.push(
+					primeStream(
+						ttsTextToChunks(domia, sentence, features, options),
+						eagerSlots,
+					),
+				)
 			}
 		} finally {
 			ttsQueue.close()
@@ -323,7 +299,10 @@ export const transcribeAudioStream = async (
 			? await features.stt.adapter.runStream(domia, pcm)
 			: await runSTT(
 					domia,
-					await pcmChunksToWavFile(pcm, captured.meta?.interactionId ?? ""),
+					await pcmChunksToWavFile(
+						pcm,
+						() => captured.meta?.interactionId ?? "",
+					),
 				)
 
 	return { transcript, meta: captured.meta }

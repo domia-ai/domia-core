@@ -1,6 +1,7 @@
 import type { handleMqttMessageArgsType } from "../types"
 import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
-import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
+import { type DomiaType, invalidateOwnDomia, getOwnDomia } from "@/modules/core"
+import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
 
 export const isMqttEvent = (value: string): value is MQTT_EVENT_ENUM => {
@@ -22,12 +23,29 @@ export const handleMqttMessage = ({
 		const payload = JSON.parse(message?.toString())
 		switch (eventName) {
 			case MQTT_EVENT_ENUM.HEARTBEAT: {
+				if (
+					typeof payload !== "object" ||
+					payload === null ||
+					typeof payload.domiaKey !== "string" ||
+					payload.domiaKey.length === 0
+				) {
+					logger.warn(
+						`⚠️ malformed heartbeat payload from ${domiaKey} — ignored`,
+					)
+					break
+				}
 				logger.info(`💓 heartbeat from ${domiaKey} [${type}]`)
-				receiveHeartbeat({ domia: payload as DomiaType })
+				void receiveHeartbeat({ domia: payload as DomiaType }).catch(
+					(err: unknown) =>
+						logger.error(`❌ heartbeat upsert failed for ${domiaKey}`, { err }),
+				)
 				break
 			}
 			case MQTT_EVENT_ENUM.CONFIG_CHANGED: {
 				invalidateOwnDomia()
+				void getOwnDomia()
+					.then((fresh) => fresh && setGrpcClientTunables(fresh))
+					.catch(() => undefined)
 				logger.info(`🔄 config cache invalidated via MQTT [${domiaKey}]`)
 				break
 			}

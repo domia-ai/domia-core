@@ -43,7 +43,7 @@ export const startAudioRecording = async (
 	}
 	const outputPath = ensureRecordingPath(domia.id)
 	const sox = spawnSoxCapture(config)
-	const vad = createVadWindow(config.vadModelPath)
+	const vad = createVadWindow(config)
 	const stopSox = createStopSox(sox, "recording")
 	const captured: Buffer[] = []
 	const startedAt = Date.now()
@@ -81,7 +81,7 @@ export const startAudioStream = (
 	}
 	const outputPath = ensureRecordingPath(domia.id)
 	const sox = spawnSoxCapture(config)
-	const vad = createVadWindow(config.vadModelPath)
+	const vad = createVadWindow(config)
 	const stopSox = createStopSox(sox, "streaming capture")
 	const captured: Buffer[] = []
 	const startedAt = Date.now()

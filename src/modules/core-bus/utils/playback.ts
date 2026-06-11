@@ -5,11 +5,16 @@ import { registerAudioForServing } from "./audio"
 import type { CoreBusContextType } from "../types"
 
 export const DEFAULT_SAMPLE_RATE = 24000
+export const DEFAULT_CHANNELS = 1
 
 export const playStreamedAudio = async (
 	ctx: CoreBusContextType,
 	audio: AsyncIterable<Buffer>,
-	meta: { interactionId: string; originDomiaKey: string | undefined },
+	meta: {
+		interactionId: string
+		originDomiaKey: string | undefined
+		onFirstChunk?: () => void
+	},
 	format: { sampleRate: number; channels: 1 | 2 },
 ): Promise<string | undefined> => {
 	let firstChunkEmitted = false
@@ -21,19 +26,23 @@ export const playStreamedAudio = async (
 		}
 	})()
 
-	await playAudioStream(ctx.domia, captured, {
+	const result = await playAudioStream(ctx.domia, captured, {
 		sampleRate: format.sampleRate,
 		channels: format.channels,
 		bitsPerSample: 16,
 		onFirstChunkWritten: () => {
 			if (firstChunkEmitted) return
 			firstChunkEmitted = true
+			meta.onFirstChunk?.()
 			publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
 				interactionId: meta.interactionId,
 				originDomiaKey: meta.originDomiaKey,
 			})
 		},
 	})
+	if (result && result.success === false) {
+		throw new Error(`audio playback failed (engine ${result.engine})`)
+	}
 
 	if (chunks.length === 0) return undefined
 	const wav = wrapPcmToWav(

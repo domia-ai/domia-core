@@ -26,6 +26,7 @@ export type InferencePoolConfigType = {
 	idleTimeoutMs: number
 	queueMaxDepth: number
 	queueTimeoutMs: number
+	executionTimeoutMs: number
 	recycleAfterJobs: number
 }
 
@@ -50,5 +51,9 @@ export type WorkerStateType = {
 	jobs: number
 	recycling: boolean
 	idleTimer: ReturnType<typeof setTimeout> | null
-	currentJob: { id: number; pending: PendingJobType } | null
+	currentJob: {
+		id: number
+		pending: PendingJobType
+		execTimer: ReturnType<typeof setTimeout> | null
+	} | null
 }

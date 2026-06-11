@@ -1,3 +1,4 @@
+import { setGrpcClientTunables } from "@/modules/grpc-client"
 import Fastify from "fastify"
 import { httpServerLogger } from "@/utils"
 import { env } from "@/config"
@@ -74,7 +75,9 @@ export const setupHttpServer = async ({
 
 	fastify.post("/config/refresh", async () => {
 		invalidateOwnDomia()
-		void sendHeartbeat({ domia: await liveDomia(domia), mqttClient })
+		const fresh = await liveDomia(domia)
+		setGrpcClientTunables(fresh)
+		void sendHeartbeat({ domia: fresh, mqttClient })
 		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
 		return { refreshed: true }
 	})
@@ -90,7 +93,8 @@ export const setupHttpServer = async ({
 	fastify.post("/config", async (request, reply) => {
 		const live = await liveDomia(domia)
 		const result = await handlePostConfig(live, request.body, reply)
-		void sendHeartbeat({ domia: live, mqttClient })
+		const fresh = await liveDomia(domia)
+		void sendHeartbeat({ domia: fresh, mqttClient })
 		return result
 	})
 

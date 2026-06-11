@@ -50,6 +50,14 @@ export interface TtsDonePayload {
   audio?: Uint8Array | undefined;
 }
 
+export interface InteractionFailedPayload {
+  error: string;
+  step?: string | undefined;
+  interactionId?: string | undefined;
+  originDomiaKey?: string | undefined;
+  responseType?: string | undefined;
+}
+
 export interface EventEnvelope {
   senderDomiaKey: string;
   payload:
@@ -57,6 +65,7 @@ export interface EventEnvelope {
     | { $case: "sttDone"; sttDone: SttDonePayload }
     | { $case: "llmDone"; llmDone: LlmDonePayload }
     | { $case: "ttsDone"; ttsDone: TtsDonePayload }
+    | { $case: "interactionFailed"; interactionFailed: InteractionFailedPayload }
     | undefined;
 }
 
@@ -838,6 +847,142 @@ export const TtsDonePayload: MessageFns<TtsDonePayload> = {
   },
 };
 
+function createBaseInteractionFailedPayload(): InteractionFailedPayload {
+  return { error: "", step: undefined, interactionId: undefined, originDomiaKey: undefined, responseType: undefined };
+}
+
+export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
+  encode(message: InteractionFailedPayload, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.error !== "") {
+      writer.uint32(10).string(message.error);
+    }
+    if (message.step !== undefined) {
+      writer.uint32(18).string(message.step);
+    }
+    if (message.interactionId !== undefined) {
+      writer.uint32(26).string(message.interactionId);
+    }
+    if (message.originDomiaKey !== undefined) {
+      writer.uint32(34).string(message.originDomiaKey);
+    }
+    if (message.responseType !== undefined) {
+      writer.uint32(42).string(message.responseType);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InteractionFailedPayload {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInteractionFailedPayload();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.step = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.interactionId = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.originDomiaKey = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.responseType = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InteractionFailedPayload {
+    return {
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      step: isSet(object.step) ? globalThis.String(object.step) : undefined,
+      interactionId: isSet(object.interactionId)
+        ? globalThis.String(object.interactionId)
+        : isSet(object.interaction_id)
+        ? globalThis.String(object.interaction_id)
+        : undefined,
+      originDomiaKey: isSet(object.originDomiaKey)
+        ? globalThis.String(object.originDomiaKey)
+        : isSet(object.origin_domia_key)
+        ? globalThis.String(object.origin_domia_key)
+        : undefined,
+      responseType: isSet(object.responseType)
+        ? globalThis.String(object.responseType)
+        : isSet(object.response_type)
+        ? globalThis.String(object.response_type)
+        : undefined,
+    };
+  },
+
+  toJSON(message: InteractionFailedPayload): unknown {
+    const obj: any = {};
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.step !== undefined) {
+      obj.step = message.step;
+    }
+    if (message.interactionId !== undefined) {
+      obj.interactionId = message.interactionId;
+    }
+    if (message.originDomiaKey !== undefined) {
+      obj.originDomiaKey = message.originDomiaKey;
+    }
+    if (message.responseType !== undefined) {
+      obj.responseType = message.responseType;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<InteractionFailedPayload>): InteractionFailedPayload {
+    return InteractionFailedPayload.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<InteractionFailedPayload>): InteractionFailedPayload {
+    const message = createBaseInteractionFailedPayload();
+    message.error = object.error ?? "";
+    message.step = object.step ?? undefined;
+    message.interactionId = object.interactionId ?? undefined;
+    message.originDomiaKey = object.originDomiaKey ?? undefined;
+    message.responseType = object.responseType ?? undefined;
+    return message;
+  },
+};
+
 function createBaseEventEnvelope(): EventEnvelope {
   return { senderDomiaKey: "", payload: undefined };
 }
@@ -859,6 +1004,9 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
         break;
       case "ttsDone":
         TtsDonePayload.encode(message.payload.ttsDone, writer.uint32(106).fork()).join();
+        break;
+      case "interactionFailed":
+        InteractionFailedPayload.encode(message.payload.interactionFailed, writer.uint32(114).fork()).join();
         break;
     }
     return writer;
@@ -911,6 +1059,17 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
           message.payload = { $case: "ttsDone", ttsDone: TtsDonePayload.decode(reader, reader.uint32()) };
           continue;
         }
+        case 14: {
+          if (tag !== 114) {
+            break;
+          }
+
+          message.payload = {
+            $case: "interactionFailed",
+            interactionFailed: InteractionFailedPayload.decode(reader, reader.uint32()),
+          };
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -943,6 +1102,13 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
         ? { $case: "ttsDone", ttsDone: TtsDonePayload.fromJSON(object.ttsDone) }
         : isSet(object.tts_done)
         ? { $case: "ttsDone", ttsDone: TtsDonePayload.fromJSON(object.tts_done) }
+        : isSet(object.interactionFailed)
+        ? { $case: "interactionFailed", interactionFailed: InteractionFailedPayload.fromJSON(object.interactionFailed) }
+        : isSet(object.interaction_failed)
+        ? {
+          $case: "interactionFailed",
+          interactionFailed: InteractionFailedPayload.fromJSON(object.interaction_failed),
+        }
         : undefined,
     };
   },
@@ -960,6 +1126,8 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
       obj.llmDone = LlmDonePayload.toJSON(message.payload.llmDone);
     } else if (message.payload?.$case === "ttsDone") {
       obj.ttsDone = TtsDonePayload.toJSON(message.payload.ttsDone);
+    } else if (message.payload?.$case === "interactionFailed") {
+      obj.interactionFailed = InteractionFailedPayload.toJSON(message.payload.interactionFailed);
     }
     return obj;
   },
@@ -995,6 +1163,15 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
       case "ttsDone": {
         if (object.payload?.ttsDone !== undefined && object.payload?.ttsDone !== null) {
           message.payload = { $case: "ttsDone", ttsDone: TtsDonePayload.fromPartial(object.payload.ttsDone) };
+        }
+        break;
+      }
+      case "interactionFailed": {
+        if (object.payload?.interactionFailed !== undefined && object.payload?.interactionFailed !== null) {
+          message.payload = {
+            $case: "interactionFailed",
+            interactionFailed: InteractionFailedPayload.fromPartial(object.payload.interactionFailed),
+          };
         }
         break;
       }

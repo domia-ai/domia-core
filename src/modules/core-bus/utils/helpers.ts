@@ -1,9 +1,12 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, toError, withTimeout } from "@/utils"
 import { rejectPending } from "./pending-requests"
-import { MQTT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
+import { RESPONSE_TYPE_ENUM } from "@/db"
 import { playAudio } from "@/modules/audio-playback"
 import { runTTS } from "@/modules/tts-engine"
+import { deliverEvent } from "@/modules/grpc-client"
+import { getDomiaByDomiaKey } from "@/modules/core"
+import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { resolveFallbackMessage } from "./fallback-messages"
 import type {
 	CoreBusContextType,
@@ -49,11 +52,47 @@ const playFallbackAudio = async (
 	}
 }
 
+const forwardFailureToOrigin = async (
+	ctx: CoreBusContextType,
+	originDomiaKey: string,
+	payload: {
+		interactionId: string | undefined
+		originDomiaKey: string | undefined
+		responseType: string | undefined
+		error: string
+		step: string | undefined
+	},
+): Promise<void> => {
+	const originDomia = await getDomiaByDomiaKey(originDomiaKey)
+	if (!originDomia) {
+		domiaBusLogger.warn(
+			"⚠️ interaction failure not forwarded — origin domia unknown locally",
+			{ originDomiaKey, interactionId: payload.interactionId },
+		)
+		return
+	}
+	await deliverEvent(
+		ctx.domia.domiaKey,
+		[
+			{
+				domiaKey: originDomia.domiaKey,
+				domiaId: originDomia.id,
+				localIp: originDomia.localIp,
+				grpcPort: originDomia.grpcPort,
+				source: "explicit",
+				streamingCapabilities: resolveDomiaStreamingCapabilities(originDomia),
+			},
+		],
+		"interactionFailed",
+		payload,
+	)
+}
+
 export const notifyInteractionFailed = (
 	ctx: CoreBusContextType,
 	args: NotifyInteractionFailedArgsType,
 ): void => {
-	const { domia, mqttClient } = ctx
+	const { domia } = ctx
 	const { interactionId, originDomiaKey, responseType, error, step, silent } =
 		args
 	const err = toError(error)
@@ -70,9 +109,12 @@ export const notifyInteractionFailed = (
 		payload,
 	)
 	if (originDomiaKey && originDomiaKey !== domia.domiaKey) {
-		mqttClient?.publish(
-			`domia/${originDomiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED}`,
-			JSON.stringify(payload),
+		void forwardFailureToOrigin(ctx, originDomiaKey, payload).catch((e) =>
+			domiaBusLogger.warn("⚠️ interaction failure forward to origin failed", {
+				originDomiaKey,
+				interactionId,
+				err: e,
+			}),
 		)
 	}
 	if (responseType === RESPONSE_TYPE_ENUM.TEXT) {

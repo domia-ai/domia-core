@@ -3,12 +3,16 @@ import path from "path"
 
 import { audioCaptureLogger, domiaError, AUDIO_ERRORS } from "@/utils"
 import { createVad } from "@/utils/ml-runtime"
-import type { VadEngineAdapterType, VadSessionType } from "../../types"
+import type {
+	VadEngineAdapterType,
+	VadSessionType,
+	VadTuningType,
+} from "../../types"
 
 const SAMPLE_RATE = 16000
 const WINDOW_SIZE = 512
 
-const buildConfig = (modelPath: string) => {
+const buildConfig = (modelPath: string, tuning: VadTuningType) => {
 	const resolved = path.resolve(modelPath)
 	if (!fs.existsSync(resolved)) {
 		throw domiaError(AUDIO_ERRORS.WAKE_WORD_CONFIG_NOT_FOUND, {
@@ -22,9 +26,9 @@ const buildConfig = (modelPath: string) => {
 	return {
 		sileroVad: {
 			model: resolved,
-			threshold: 0.5,
+			threshold: tuning.threshold,
 			minSpeechDuration: 0.25,
-			minSilenceDuration: 0.5,
+			minSilenceDuration: tuning.minSilenceS,
 			windowSize: WINDOW_SIZE,
 		},
 		sampleRate: SAMPLE_RATE,
@@ -33,8 +37,11 @@ const buildConfig = (modelPath: string) => {
 	}
 }
 
-const createSession = (modelPath: string): VadSessionType => {
-	const vad = createVad(buildConfig(modelPath), 30)
+const createSession = (
+	modelPath: string,
+	tuning: VadTuningType,
+): VadSessionType => {
+	const vad = createVad(buildConfig(modelPath, tuning), 30)
 	let everDetected = false
 	let lastDetectedAt = Date.now()
 
@@ -50,7 +57,7 @@ const createSession = (modelPath: string): VadSessionType => {
 		hasCompletedSegment: () => {
 			if (!everDetected) return false
 			const silenceMs = Date.now() - lastDetectedAt
-			return silenceMs >= 700
+			return silenceMs >= tuning.endOfSpeechMs
 		},
 		reset: () => {
 			vad.reset()

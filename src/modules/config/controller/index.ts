@@ -4,6 +4,7 @@ import { dbClient } from "@/db"
 import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
 import { getBootStatus, requestRestart } from "@/modules/runtime-control"
+import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { configEngineLogger } from "@/utils"
 import dbAdapter from "../db-adapter"
 import { CONFIG_BUNDLE_VERSION, configBundleSchema } from "../schemas"
@@ -34,8 +35,9 @@ const fileInstalled = (path: string | null | undefined): boolean => {
 
 export const configHealth = (domia: DomiaType): ConfigHealthType => {
 	const entries: ConfigHealthEntryType[] = []
+	const caps = domia.runtimeCapabilities
 	const stt = domia.sttConfig
-	if (stt)
+	if (stt && caps?.stt)
 		entries.push({
 			stage: "stt",
 			engine: stt.engine,
@@ -44,7 +46,7 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			status: dirInstalled(stt.modelPath) ? "ok" : "missing",
 		})
 	const tts = domia.ttsConfig
-	if (tts)
+	if (tts && caps?.tts)
 		entries.push({
 			stage: "tts",
 			engine: tts.engine,
@@ -53,7 +55,7 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			status: dirInstalled(tts.modelPath) ? "ok" : "missing",
 		})
 	const ww = domia.wakeWordConfig
-	if (ww) {
+	if (ww && caps?.wakeword) {
 		entries.push({
 			stage: "wakeWord",
 			engine: ww.engine,
@@ -64,13 +66,13 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 		entries.push({
 			stage: "vad",
 			engine: ww.vadEngine,
-			configured: "silero",
+			configured: ww.vadEngine,
 			path: ww.vadModelPath,
 			status: fileInstalled(ww.vadModelPath) ? "ok" : "missing",
 		})
 	}
 	const llm = domia.llmModelConfig
-	if (llm)
+	if (llm && caps?.llm)
 		entries.push({
 			stage: "llm",
 			engine: llm.engine,
@@ -109,44 +111,73 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 	return { ok: entries.every((e) => e.status !== "missing"), entries }
 }
 
-export const serializeConfig = (domia: DomiaType): ConfigSnapshotType => ({
-	domia: {
-		name: domia.name,
-		isActive: domia.isActive,
-		sessionIdTimeoutMs: domia.sessionIdTimeoutMs,
-		memoryWindowTurns: domia.memoryWindowTurns,
-		memoryMaxAgeMs: domia.memoryMaxAgeMs,
-		maxConcurrentVoiceReplies: domia.maxConcurrentVoiceReplies,
-		maxQueuedVoiceReplies: domia.maxQueuedVoiceReplies,
-		voiceQueueTimeoutMs: domia.voiceQueueTimeoutMs,
-		ownConfigTtlMs: domia.ownConfigTtlMs,
-	},
-	character: domia.characterProfile,
-	emotion: domia.emotionState
-		? getEmotionVectorFromEmotionState(domia.emotionState)
-		: null,
-	modules: domia.moduleSettings,
-	capabilities: domia.runtimeCapabilities,
-	stt: domia.sttConfig,
-	tts: domia.ttsConfig,
-	llm: domia.llmModelConfig,
-	wakeWord: domia.wakeWordConfig,
-	playback: domia.audioPlaybackConfig,
-	mqttLocal: domia.localMqttConfig,
-	mqttRemote: domia.remoteMqttConfig,
-	mcpServers: domia.mcpServerConfigs ?? [],
-	delegations: domia.capabilityDelegations ?? [],
-})
+const SECTION_META_KEYS = new Set([
+	"id",
+	"domiaId",
+	"isActive",
+	"createdAt",
+	"updatedAt",
+])
+
+const toBundleSection = <T extends object>(
+	row: T | null | undefined,
+	extraOmit: string[] = [],
+): Record<string, unknown> | null => {
+	if (!row) return null
+	return Object.fromEntries(
+		Object.entries(row).filter(
+			([key]) => !SECTION_META_KEYS.has(key) && !extraOmit.includes(key),
+		),
+	)
+}
+
+export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
+	({
+		version: CONFIG_BUNDLE_VERSION,
+		domia: {
+			name: domia.name,
+			sessionIdTimeoutMs: domia.sessionIdTimeoutMs,
+			memoryWindowTurns: domia.memoryWindowTurns,
+			memoryMaxAgeMs: domia.memoryMaxAgeMs,
+			maxConcurrentVoiceReplies: domia.maxConcurrentVoiceReplies,
+			maxQueuedVoiceReplies: domia.maxQueuedVoiceReplies,
+			voiceQueueTimeoutMs: domia.voiceQueueTimeoutMs,
+			ownConfigTtlMs: domia.ownConfigTtlMs,
+		},
+		character: toBundleSection(domia.characterProfile),
+		emotion: domia.emotionState
+			? getEmotionVectorFromEmotionState(domia.emotionState)
+			: null,
+		modules: toBundleSection(domia.moduleSettings),
+		capabilities: toBundleSection(domia.runtimeCapabilities),
+		stt: toBundleSection(domia.sttConfig),
+		tts: toBundleSection(domia.ttsConfig),
+		llm: toBundleSection(domia.llmModelConfig),
+		wakeWord: toBundleSection(domia.wakeWordConfig),
+		playback: toBundleSection(domia.audioPlaybackConfig),
+		mqttLocal: toBundleSection(domia.localMqttConfig, ["type", "password"]),
+		mqttRemote: toBundleSection(domia.remoteMqttConfig, ["type", "password"]),
+		mcpServers: (domia.mcpServerConfigs ?? []).map(
+			(s) => toBundleSection(s) as Record<string, unknown>,
+		),
+		delegations: (domia.capabilityDelegations ?? []).map(
+			(d) => toBundleSection(d) as Record<string, unknown>,
+		),
+	}) as ConfigSnapshotType
 
 export const persistConfig = async (
 	domia: DomiaType,
 	input: unknown,
 ): Promise<{ config: ConfigSnapshotType }> => {
-	const bundle = configBundleSchema.parse(input)
-	if (bundle.version && bundle.version > CONFIG_BUNDLE_VERSION)
+	const rawVersion =
+		typeof input === "object" && input !== null
+			? (input as { version?: unknown }).version
+			: undefined
+	if (typeof rawVersion === "number" && rawVersion > CONFIG_BUNDLE_VERSION)
 		throw new Error(
-			`Unsupported config bundle version ${bundle.version} (this node supports up to ${CONFIG_BUNDLE_VERSION})`,
+			`Unsupported config bundle version ${rawVersion} (this node supports up to ${CONFIG_BUNDLE_VERSION})`,
 		)
+	const bundle = configBundleSchema.parse(input)
 	dbClient.transaction((tx) => {
 		if (bundle.domia)
 			dbAdapter.materializeDomia(domia.id, bundle.domia, tx).run()
@@ -166,9 +197,9 @@ export const persistConfig = async (
 		if (bundle.playback)
 			dbAdapter.materializePlayback(domia.id, bundle.playback, tx).run()
 		if (bundle.mqttLocal)
-			dbAdapter.materializeMqtt(domia.id, "LOCAL", bundle.mqttLocal, tx).run()
+			dbAdapter.materializeMqtt(domia.id, "LOCAL", bundle.mqttLocal, tx)
 		if (bundle.mqttRemote)
-			dbAdapter.materializeMqtt(domia.id, "REMOTE", bundle.mqttRemote, tx).run()
+			dbAdapter.materializeMqtt(domia.id, "REMOTE", bundle.mqttRemote, tx)
 		if (bundle.mcpServers)
 			dbAdapter.replaceMcpServers(domia.id, bundle.mcpServers, tx)
 		if (bundle.delegations)
@@ -176,6 +207,7 @@ export const persistConfig = async (
 	})
 	invalidateOwnDomia()
 	const fresh = (await getOwnDomia()) ?? domia
+	setGrpcClientTunables(fresh)
 	configEngineLogger.info("📥 config persisted", { domiaId: domia.id })
 	return { config: serializeConfig(fresh) }
 }

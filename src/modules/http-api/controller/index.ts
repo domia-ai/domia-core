@@ -1,5 +1,7 @@
-import { createReadStream, existsSync, writeFileSync } from "fs"
-import { join } from "path"
+import { createReadStream, existsSync } from "fs"
+import { ZodError } from "zod"
+import { writeFile } from "fs/promises"
+import { join, resolve, sep } from "path"
 import { generateUuid } from "@/utils"
 import { type DomiaType } from "@/modules/core"
 import { requestRestart } from "@/modules/runtime-control"
@@ -141,6 +143,13 @@ export const handlePostChat = async (
 	}
 }
 
+const ALLOWED_VOICE_DIRS = [resolve(RECORDINGS_DIR), resolve("tmp")]
+
+const isAllowedVoiceFilePath = (filePath: string): boolean => {
+	const resolved = resolve(filePath)
+	return ALLOWED_VOICE_DIRS.some((dir) => resolved.startsWith(dir + sep))
+}
+
 export const handlePostVoice = async (
 	domia: DomiaType,
 	body: PostVoiceBodyType,
@@ -149,7 +158,12 @@ export const handlePostVoice = async (
 	let archivedInputPath: string | null = null
 	if (audioBase64) {
 		archivedInputPath = join(RECORDINGS_DIR, `voice-${generateUuid()}.wav`)
-		writeFileSync(archivedInputPath, Buffer.from(audioBase64, "base64"))
+		await writeFile(archivedInputPath, Buffer.from(audioBase64, "base64"))
+	}
+	if (filePath && !isAllowedVoiceFilePath(filePath)) {
+		throw new Error(
+			"filePath must live under the node's recordings or tmp directory",
+		)
 	}
 	const audioPath = archivedInputPath ?? (filePath as string)
 	try {
@@ -201,7 +215,11 @@ export const handlePostConfig = async (
 		return await importConfigAndRestart(domia, body)
 	} catch (err) {
 		httpServerLogger.error("Import config failed", { domiaId: domia.id, err })
-		return reply.code(400).send({ error: "Invalid config bundle" })
+		if (err instanceof ZodError)
+			return reply
+				.code(400)
+				.send({ error: "Invalid config bundle", issues: err.issues })
+		return reply.code(500).send({ error: "Config import failed" })
 	}
 }
 

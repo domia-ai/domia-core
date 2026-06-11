@@ -73,7 +73,18 @@ export const handleTtsDone = async (
 				originDomiaKey,
 			})
 			try {
-				await playAudio(domia, pathToPlay)
+				const playResult = await playAudio(domia, pathToPlay)
+				if (playResult && playResult.success === false) {
+					notifyAudioFallback(ctx, {
+						interactionId,
+						originDomiaKey,
+						reason: "playback_failed",
+						error: toError(
+							`audio playback failed (engine ${playResult.engine})`,
+						),
+					})
+					return
+				}
 			} catch (err) {
 				notifyAudioFallback(ctx, {
 					interactionId,

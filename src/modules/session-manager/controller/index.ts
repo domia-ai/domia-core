@@ -10,7 +10,10 @@ import type { NewInteractionDataType } from "../types"
 const pipelineStarts = new Map<string, number>()
 
 export const markPipelineStart = (interactionId: string): void => {
-	if (pipelineStarts.size > 256) pipelineStarts.clear()
+	if (pipelineStarts.size > 256) {
+		const oldest = pipelineStarts.keys().next().value
+		if (oldest) pipelineStarts.delete(oldest)
+	}
 	if (!pipelineStarts.has(interactionId)) {
 		pipelineStarts.set(interactionId, Date.now())
 	}
