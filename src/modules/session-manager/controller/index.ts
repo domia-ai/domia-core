@@ -38,7 +38,7 @@ export const getSessionsSince = (
 
 export const getLastInteractionAt = async (domiaId: string) => {
 	const row = await dbAdapter.getLastInteractionAt(domiaId)
-	return row?.createdAt ?? null
+	return row?.updatedAt ?? null
 }
 
 export const getOrCreateSessionForDomia = async (domia: DomiaType) => {

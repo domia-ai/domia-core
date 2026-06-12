@@ -76,6 +76,7 @@ import {
 	DEFAULT_REFLECTION_ONLY_WHEN_IDLE,
 	DEFAULT_REFLECTION_CONCURRENCY,
 	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
+	DEFAULT_REFLECTION_YIELD_TO_VOICE,
 	DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
 	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
 	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
@@ -278,6 +279,11 @@ export const moduleSettings = sqliteTable("module_settings", {
 	reflectionQueueMaxDepth: integer("reflection_queue_max_depth")
 		.notNull()
 		.default(DEFAULT_REFLECTION_QUEUE_MAX_DEPTH),
+	reflectionYieldToVoice: integer("reflection_yield_to_voice", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_REFLECTION_YIELD_TO_VOICE),
 	collectiveMind: integer("collective_mind", { mode: "boolean" }).notNull(),
 	remoteAccessEngine: integer("remote_access_engine", {
 		mode: "boolean",

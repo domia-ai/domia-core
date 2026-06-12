@@ -18,6 +18,7 @@ export const baseModuleSettings = (
 	reflectionOnlyWhenIdle: true,
 	reflectionConcurrency: 1,
 	reflectionQueueMaxDepth: 4,
+	reflectionYieldToVoice: true,
 	collectiveMind: faker.datatype.boolean(),
 	remoteAccessEngine: faker.datatype.boolean(),
 	narrativeEngine: faker.datatype.boolean(),

@@ -127,6 +127,9 @@ const tryFirstFlushTimeCap = (buffer: string): FlushResultType => {
 	}
 }
 
+const isSpeakable = (sentence: string): boolean =>
+	/[\p{L}\p{N}]/u.test(sentence)
+
 export const splitSentences = async function* (
 	tokens: AsyncIterable<string>,
 	tuning: SentenceFlushTuningType = DEFAULT_SENTENCE_TUNING,
@@ -142,7 +145,7 @@ export const splitSentences = async function* (
 			const result = nextFlush(buffer, emittedAny, tuning)
 			if (!result) break
 			buffer = result.remaining
-			if (result.sentence.length === 0) continue
+			if (!isSpeakable(result.sentence)) continue
 			yield result.sentence
 			emittedAny = true
 		}
@@ -152,7 +155,7 @@ export const splitSentences = async function* (
 			Date.now() - firstTokenAt >= tuning.firstFlushMaxMs
 		) {
 			const capped = tryFirstFlushTimeCap(buffer)
-			if (capped && capped.sentence.length > 0) {
+			if (capped && isSpeakable(capped.sentence)) {
 				buffer = capped.remaining
 				yield capped.sentence
 				emittedAny = true
@@ -161,7 +164,7 @@ export const splitSentences = async function* (
 	}
 
 	const tail = buffer.trim()
-	if (tail.length > 0) yield tail
+	if (isSpeakable(tail)) yield tail
 }
 
 export const splitTextIntoSentences = (text: string): string[] => {
@@ -176,11 +179,11 @@ export const splitTextIntoSentences = (text: string): string[] => {
 	) {
 		const cut = match.index + match[0].length
 		const sentence = rest.slice(0, cut).trim()
-		if (sentence.length > 0) out.push(sentence)
+		if (isSpeakable(sentence)) out.push(sentence)
 		rest = rest.slice(cut)
 	}
 	const tail = rest.trim()
-	if (tail.length > 0) out.push(tail)
+	if (isSpeakable(tail)) out.push(tail)
 	return out.length > 0 ? out : [trimmed]
 }
 

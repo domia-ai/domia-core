@@ -10,7 +10,7 @@ import type { LlmEngineAdapterType } from "../../types"
 const client = new Ollama({ host: env.OLLAMA_HOST })
 
 const KEEP_ALIVE = -1
-const JSON_NUM_PREDICT = 512
+const JSON_NUM_PREDICT = 192
 
 const llmSemaphore = createAsyncSemaphore(1)
 
@@ -96,19 +96,29 @@ const runOllamaStream = async function* (
 const runOllamaJson = async (
 	domia: DomiaType,
 	promptContext: string,
+	shouldAbort?: () => boolean,
 ): Promise<string> => {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
 	try {
-		const response = await client.generate({
+		if (shouldAbort?.()) return ""
+		const stream = await client.generate({
 			model: modelName,
 			prompt: promptContext,
-			stream: false,
+			stream: true,
 			keep_alive: KEEP_ALIVE,
 			format: "json",
 			options: { ...resolveOptions(domia), num_predict: JSON_NUM_PREDICT },
 		})
-		return response.response?.trim() || ""
+		let out = ""
+		for await (const chunk of stream) {
+			if (shouldAbort?.()) {
+				stream.abort()
+				return ""
+			}
+			out += chunk.response ?? ""
+		}
+		return out.trim()
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,

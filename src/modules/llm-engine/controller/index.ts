@@ -22,7 +22,11 @@ export const runLLM = async (domia: DomiaType, promptContext: string) => {
 	return await handler(domia, promptContext)
 }
 
-export const runLLMJson = async (domia: DomiaType, promptContext: string) => {
+export const runLLMJson = async (
+	domia: DomiaType,
+	promptContext: string,
+	shouldAbort?: () => boolean,
+) => {
 	const engine = domia?.llmModelConfig?.engine
 
 	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) {
@@ -33,13 +37,14 @@ export const runLLMJson = async (domia: DomiaType, promptContext: string) => {
 	}
 
 	const adapter = getLlmEngine(engine)
-	const handler = adapter?.runJson ?? adapter?.run
-	if (!handler) {
-		throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
-			logger: llmEngineLogger,
-			meta: { engine, reason: "no json/run handler" },
-		})
+	if (adapter?.runJson) {
+		return await adapter.runJson(domia, promptContext, shouldAbort)
 	}
-
-	return await handler(domia, promptContext)
+	if (adapter?.run) {
+		return await adapter.run(domia, promptContext)
+	}
+	throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
+		logger: llmEngineLogger,
+		meta: { engine, reason: "no json/run handler" },
+	})
 }

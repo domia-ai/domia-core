@@ -37,12 +37,14 @@ import {
 	DEFAULT_REFLECTION_ONLY_WHEN_IDLE,
 	DEFAULT_REFLECTION_CONCURRENCY,
 	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
+	DEFAULT_REFLECTION_YIELD_TO_VOICE,
 } from "@/db"
 import {
 	REFLECTION_TIMEOUT_MS,
 	REFLECTION_IDLE_POLL_MS,
 	REFLECTION_MAX_IDLE_WAIT_MS,
 	REFLECTION_SLOT_TIMEOUT_MS,
+	REFLECTION_YIELD_MAX_ATTEMPTS,
 } from "../constants"
 import type {
 	ReflectionFlagsType,
@@ -123,8 +125,6 @@ const filterReflectionFacts = (
 	})
 }
 
-const inFlight = new Set<string>()
-
 const reflectionSemaphore = createAsyncSemaphore(
 	DEFAULT_REFLECTION_CONCURRENCY,
 	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
@@ -140,6 +140,9 @@ const gateSettings = (domia: DomiaType): ReflectionGateSettingsType => ({
 	queueMaxDepth:
 		domia?.moduleSettings?.reflectionQueueMaxDepth ??
 		DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
+	yieldToVoice:
+		domia?.moduleSettings?.reflectionYieldToVoice ??
+		DEFAULT_REFLECTION_YIELD_TO_VOICE,
 })
 
 const waitForIdle = async (onlyWhenIdle: boolean): Promise<boolean> => {
@@ -203,66 +206,78 @@ export const runReflection = async (
 		return { emotion: null, userEmotion: null, facts: [] }
 
 	const key = responder?.id ?? ""
-	if (inFlight.has(key)) {
-		reflectionLogger.info("Reflection already running for domia — skipping", {
-			responderId: key,
-		})
-		return { emotion: null, userEmotion: null, facts: [] }
-	}
-	inFlight.add(key)
 	try {
 		const empty: ReflectionResultType = {
 			emotion: null,
 			userEmotion: null,
 			facts: [],
 		}
-		return await runGated(
-			gateSettings(responder),
-			async () => {
-				const raw = await withTimeout(
-					runLLMJson(
-						responder,
-						buildReflectionPrompt(
-							persona,
-							userText,
-							replyText,
-							trajectory,
-							flags,
-						),
-					),
-					REFLECTION_TIMEOUT_MS,
-					"reflection",
-				)
-				const match = raw.match(/\{[\s\S]*\}/)
-				const obj = match
-					? (JSON.parse(match[0]) as Record<string, unknown>)
-					: {}
-				const emotion: EmotionAppraisalType | null = flags.emotion
-					? parseEmotionFromObject(obj.emotion)
-					: null
-				const userEmotion: UserEmotionType | null = flags.emotion
-					? parseUserEmotionFromObject(obj.userEmotion)
-					: null
-				const facts: RawFactType[] = flags.facts
-					? filterReflectionFacts(
-							parseFacts(obj.facts),
-							userText,
-							replyText,
-							persona,
-						)
-					: []
-				return { emotion, userEmotion, facts }
-			},
-			empty,
+		const settings = gateSettings(responder)
+		const prompt = buildReflectionPrompt(
+			persona,
+			userText,
+			replyText,
+			trajectory,
+			flags,
 		)
+		for (let attempt = 1; attempt <= REFLECTION_YIELD_MAX_ATTEMPTS; attempt++) {
+			let yielded = false
+			const shouldAbort = settings.yieldToVoice
+				? (): boolean => {
+						const busy = activeVoiceReplies() > 0
+						if (busy) yielded = true
+						return busy
+					}
+				: undefined
+			const result = await runGated(
+				settings,
+				async () => {
+					const raw = await withTimeout(
+						runLLMJson(responder, prompt, shouldAbort),
+						REFLECTION_TIMEOUT_MS,
+						"reflection",
+					)
+					if (yielded) return empty
+					const match = raw.match(/\{[\s\S]*\}/)
+					const obj = match
+						? (JSON.parse(match[0]) as Record<string, unknown>)
+						: {}
+					const emotion: EmotionAppraisalType | null = flags.emotion
+						? parseEmotionFromObject(obj.emotion)
+						: null
+					const userEmotion: UserEmotionType | null = flags.emotion
+						? parseUserEmotionFromObject(obj.userEmotion)
+						: null
+					const facts: RawFactType[] = flags.facts
+						? filterReflectionFacts(
+								parseFacts(obj.facts),
+								userText,
+								replyText,
+								persona,
+							)
+						: []
+					return { emotion, userEmotion, facts }
+				},
+				empty,
+			)
+			if (!yielded) return result
+			reflectionLogger.info(
+				`⏳ reflection yielded LLM to live voice — requeued (${attempt}/${REFLECTION_YIELD_MAX_ATTEMPTS})`,
+				{ responderId: key },
+			)
+			await sleep(REFLECTION_IDLE_POLL_MS * 4)
+		}
+		reflectionLogger.warn(
+			"reflection skipped after repeated yields to live voice (best-effort)",
+			{ responderId: key },
+		)
+		return empty
 	} catch (err) {
 		reflectionLogger.warn("Reflection failed (skipping)", {
 			responderId: responder?.id,
 			err,
 		})
 		return { emotion: null, userEmotion: null, facts: [] }
-	} finally {
-		inFlight.delete(key)
 	}
 }
 

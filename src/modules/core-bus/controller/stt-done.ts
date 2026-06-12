@@ -1,5 +1,10 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, setTraceContext, toError } from "@/utils"
+import {
+	domiaBusLogger,
+	isSemaphoreBusyError,
+	setTraceContext,
+	toError,
+} from "@/utils"
 import {
 	AsyncQueue,
 	concatStreams,
@@ -31,6 +36,7 @@ import {
 	type RecentTurnType,
 } from "@/modules/prompt-context-builder"
 import { reflectOnInteraction } from "@/modules/reflection"
+import { admitVoiceReply } from "@/modules/voice-admission"
 import { runLLM } from "@/modules/llm-engine"
 import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
@@ -536,9 +542,27 @@ export const handleSttDone = async (
 				interactionId,
 				originDomiaKey,
 			})
-			if (await tryLocalFullStreamVoice(ctx, session)) return
-			await runLocalSyncLlm(ctx, session)
-			return
+			const release = await admitVoiceReply(domia).catch((err: unknown) => {
+				if (isSemaphoreBusyError(err)) return null
+				throw err
+			})
+			if (!release) {
+				notifyInteractionFailed(ctx, {
+					interactionId,
+					originDomiaKey,
+					responseType,
+					error: "at capacity — too many concurrent turns",
+					step: "capacity",
+				})
+				return
+			}
+			try {
+				if (await tryLocalFullStreamVoice(ctx, session)) return
+				await runLocalSyncLlm(ctx, session)
+				return
+			} finally {
+				release()
+			}
 		}
 
 		const targets = await resolveCapabilityDelegations(

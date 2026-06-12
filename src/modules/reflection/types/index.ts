@@ -19,4 +19,5 @@ export type ReflectionGateSettingsType = {
 	onlyWhenIdle: boolean
 	concurrency: number
 	queueMaxDepth: number
+	yieldToVoice: boolean
 }

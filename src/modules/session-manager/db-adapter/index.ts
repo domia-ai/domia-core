@@ -44,8 +44,8 @@ const dbAdapter = {
 	) =>
 		client.query.interactionTrace.findFirst({
 			where: eq(interactionTrace.domiaId, domiaId),
-			orderBy: desc(interactionTrace.createdAt),
-			columns: { createdAt: true },
+			orderBy: desc(interactionTrace.updatedAt),
+			columns: { updatedAt: true },
 		}),
 	getRecentInteractionsForDomia: (
 		domiaId: string,
