@@ -19,6 +19,8 @@ import type {
 	SttWorkerEngineConfigType,
 	SttWorkerJobType,
 	SttWorkerResultType,
+	SttSessionJobType,
+	SttSessionResultType,
 } from "../types"
 
 const SAMPLE_RATE = 16000
@@ -197,6 +199,58 @@ const transcribe = (
 	stream.acceptWaveform({ sampleRate, samples })
 	rec.decode(stream)
 	return rec.getResult(stream).text.trim()
+}
+
+type OnlineEntryType = Extract<RecognizerEntryType, { online: true }>
+
+let activeSession: {
+	stream: ReturnType<OnlineEntryType["rec"]["createStream"]>
+	entry: OnlineEntryType
+} | null = null
+
+const decodePending = (): void => {
+	if (!activeSession) return
+	const rec = activeSession.entry.rec
+	while (rec.isReady(activeSession.stream)) rec.decode(activeSession.stream)
+}
+
+export const handleSttSessionJob = (
+	job: SttSessionJobType,
+): SttSessionResultType => {
+	if (job.kind === "session-start") {
+		const entry = getRecognizer(job.engineConfig)
+		if (!entry.online) {
+			throw new Error("STT sessions require a streaming (online) engine")
+		}
+		activeSession = { stream: entry.rec.createStream(), entry }
+		return { ok: true }
+	}
+	if (!activeSession) throw new Error("no active STT session")
+	const { stream, entry } = activeSession
+	if (job.kind === "session-chunk") {
+		stream.acceptWaveform({
+			sampleRate: job.sampleRate,
+			samples: int16BufferToFloat32(Buffer.from(job.pcm)),
+		})
+		decodePending()
+		return { partial: entry.rec.getResult(stream).text.trim() }
+	}
+	if (job.kind === "session-end") {
+		const padSamples = Math.round((job.sampleRate * job.decodePaddingMs) / 1000)
+		if (padSamples > 0) {
+			stream.acceptWaveform({
+				sampleRate: job.sampleRate,
+				samples: new Float32Array(padSamples),
+			})
+		}
+		stream.inputFinished()
+		decodePending()
+		const text = entry.rec.getResult(stream).text.trim()
+		activeSession = null
+		return { text }
+	}
+	activeSession = null
+	return { ok: true }
 }
 
 export const transcribeSttJob = (

@@ -139,7 +139,6 @@
 		"outputDevice": null
 	},
 	"mqttLocal": null,
-	"mqttRemote": null,
 	"mcpServers": [],
 	"delegations": []
 }

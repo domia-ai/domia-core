@@ -1,5 +1,5 @@
 import { STT_ENGINE_ENUM } from "@/db"
-import { runSttPooled } from "../../utils"
+import { runSttPooled, runSttPcmPooled } from "../../utils"
 import type { SttEngineAdapterType } from "../../types"
 
 export const moonshineEngine: SttEngineAdapterType = {
@@ -9,4 +9,5 @@ export const moonshineEngine: SttEngineAdapterType = {
 		expectedSampleRate: 16000,
 	},
 	run: runSttPooled,
+	runPcm: runSttPcmPooled,
 }

@@ -43,6 +43,7 @@ export type ConfigDomiaSectionType = Pick<
 	| "maxQueuedVoiceReplies"
 	| "voiceQueueTimeoutMs"
 	| "ownConfigTtlMs"
+	| "warmupOnBoot"
 >
 
 export type SectionMetaKeyType =
@@ -67,10 +68,6 @@ export type ConfigSnapshotType = {
 	wakeWord: BundleSectionType<SelectWakeWordConfigType> | null
 	playback: BundleSectionType<SelectAudioPlaybackConfigType> | null
 	mqttLocal: Omit<
-		BundleSectionType<SelectMqttConfigType>,
-		"type" | "password"
-	> | null
-	mqttRemote: Omit<
 		BundleSectionType<SelectMqttConfigType>,
 		"type" | "password"
 	> | null

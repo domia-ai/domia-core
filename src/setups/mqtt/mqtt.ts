@@ -1,6 +1,6 @@
 import mqtt from "mqtt"
 
-import { mqttLogger, localMqttLogger, remoteMqttLogger } from "@/utils"
+import { mqttLogger, localMqttLogger } from "@/utils"
 import type { SetupMqttArgsType } from "./types"
 import { MQTT_EVENT_ENUM } from "./constants"
 import { handleMqttMessage } from "@/modules/mqtt-event-handler"
@@ -10,11 +10,7 @@ export const setupMqtt = ({
 	config,
 }: SetupMqttArgsType): mqtt.MqttClient | null => {
 	const type = config?.type
-	const logger = !config
-		? mqttLogger
-		: type === "REMOTE"
-			? remoteMqttLogger
-			: localMqttLogger
+	const logger = config ? localMqttLogger : mqttLogger
 	const domiaKey = domia?.domiaKey
 
 	logger.info("🚀 Starting MQTT setup process")

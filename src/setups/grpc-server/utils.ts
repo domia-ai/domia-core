@@ -19,12 +19,6 @@ import {
 	ttsVoiceSchema,
 	type PersonaContextType,
 } from "@/modules/prompt-context-builder"
-import { getRecentTrajectory } from "@/modules/emotion-engine"
-import {
-	runReflection,
-	flagsForPersona,
-	routeReflectionResult,
-} from "@/modules/reflection"
 import {
 	admitVoiceReply,
 	activeVoiceReplies,
@@ -112,44 +106,6 @@ export const resolveTtsVoiceOptions = (
 			{ err },
 		)
 		return undefined
-	}
-}
-
-export const reflectOnPersonaInteraction = async (
-	responder: DomiaType,
-	persona: PersonaContextType,
-	originDomiaKey: string | undefined,
-	transcript: string,
-	reply: string,
-	interactionId?: string,
-): Promise<void> => {
-	try {
-		const flags = flagsForPersona(persona)
-		if (!flags.emotion && !flags.facts) return
-
-		const isRemote = !!originDomiaKey && originDomiaKey !== responder.domiaKey
-		const trajectory =
-			flags.emotion && !isRemote ? await getRecentTrajectory(responder.id) : []
-
-		const result = await runReflection(
-			responder,
-			persona,
-			transcript,
-			reply,
-			trajectory,
-			flags,
-		)
-		await routeReflectionResult(
-			responder,
-			originDomiaKey,
-			result,
-			interactionId,
-		)
-	} catch (err) {
-		grpcServerLogger.warn("reflectOnPersonaInteraction failed (skipping)", {
-			responderId: responder?.id,
-			err,
-		})
 	}
 }
 
@@ -409,16 +365,6 @@ export const streamReplyAudioMessages = async function* (
 		}
 
 		yield { payload: { $case: "finalReply", finalReply: assembled } }
-		if (!emptyTranscript) {
-			void reflectOnPersonaInteraction(
-				domia,
-				persona,
-				logCtx.originDomiaKey,
-				transcript,
-				assembled,
-				logCtx.interactionId,
-			)
-		}
 	} finally {
 		grpcServerLogger.info(`📤 ${logCtx.label} ended`, {
 			interactionId: logCtx.interactionId,

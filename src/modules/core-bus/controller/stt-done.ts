@@ -11,6 +11,7 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	eagerTtsSlotsFromDomia,
 	ensureReplyOrFallback,
+	heardReplyOf,
 	notifyAudioFallback,
 	notifyInteractionFailed,
 	pipelineDepthFromDomia,
@@ -36,6 +37,7 @@ import {
 	type RecentTurnType,
 } from "@/modules/prompt-context-builder"
 import { reflectOnInteraction } from "@/modules/reflection"
+import { playFeedbackSound } from "@/modules/feedback-sounds"
 import { admitVoiceReply } from "@/modules/voice-admission"
 import { runLLM } from "@/modules/llm-engine"
 import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
@@ -49,6 +51,7 @@ import type {
 	CoreBusContextType,
 	SttDonePayloadType,
 	SttFlowSessionType,
+	PlaybackOutcomeType,
 } from "../types"
 
 const buildSttFlowSession = (
@@ -61,6 +64,8 @@ const buildSttFlowSession = (
 ): SttFlowSessionType => ({
 	interactionId,
 	promptContext,
+	speechEndAt: payload.speechEndAt,
+	liveVoice: payload.liveVoice,
 	transcript: payload.transcript,
 	originDomiaKey: payload.originDomiaKey,
 	responseType: payload.responseType,
@@ -74,6 +79,7 @@ const publishStreamedReplyComplete = (
 	domiaId: string,
 	session: SttFlowSessionType,
 	reply: string,
+	playback: PlaybackOutcomeType,
 ): void => {
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 		reply,
@@ -81,6 +87,7 @@ const publishStreamedReplyComplete = (
 		originDomiaKey: session.originDomiaKey,
 		responseType: session.responseType,
 		alreadyStreamed: true,
+		liveVoice: session.liveVoice,
 	})
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
 		interactionId: session.interactionId,
@@ -89,6 +96,9 @@ const publishStreamedReplyComplete = (
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
 		interactionId: session.interactionId,
 		originDomiaKey: session.originDomiaKey,
+		status: playback.interrupted ? "interrupted" : "completed",
+		playedLocally: playback.audioStarted,
+		liveVoice: session.liveVoice,
 	})
 }
 
@@ -112,6 +122,8 @@ const pipelineVoiceFromTokens = async (
 	const eagerSlots = eagerTtsSlotsFromDomia(domia)
 
 	let ttfaMs: number | undefined
+	let perceivedTtfaMs: number | undefined
+	let playbackGone = false
 	const playbackPromise = playStreamedAudio(
 		ctx,
 		concatStreams(ttsStreamQueue.iter()),
@@ -121,20 +133,41 @@ const pipelineVoiceFromTokens = async (
 			onFirstChunk: () => {
 				ttfaMs =
 					pipelineElapsed(session.interactionId) ?? Date.now() - startTime
+				if (session.speechEndAt) {
+					perceivedTtfaMs = Date.now() - session.speechEndAt
+				}
 			},
 		},
 		{ sampleRate: caps.sampleRate, channels: caps.channels },
+	).then(
+		(outcome) => {
+			if (outcome.interrupted) {
+				playbackGone = true
+				ttsStreamQueue.close()
+			}
+			return outcome
+		},
+		(err: unknown) => {
+			playbackGone = true
+			ttsStreamQueue.close()
+			throw err
+		},
 	)
 
 	let fullReply = ""
 	let tokenError: unknown = null
 	let playbackError: unknown = null
-	let ttsAudioPath: string | undefined
+	let playback: PlaybackOutcomeType = {
+		filePath: undefined,
+		interrupted: false,
+		audioStarted: false,
+	}
 	try {
 		for await (const sentence of splitSentences(
 			tokens,
 			sentenceTuningFromDomia(domia),
 		)) {
+			if (playbackGone) break
 			fullReply += (fullReply.length > 0 ? " " : "") + sentence
 			await ttsStreamQueue.waitForSpace(queueDepth)
 			ttsStreamQueue.push(
@@ -161,7 +194,7 @@ const pipelineVoiceFromTokens = async (
 	ttsStreamQueue.close()
 	const llmElapsed = Date.now() - startTime
 	try {
-		ttsAudioPath = await playbackPromise
+		playback = await playbackPromise
 	} catch (err) {
 		playbackError = err
 	}
@@ -176,23 +209,27 @@ const pipelineVoiceFromTokens = async (
 			responseType: session.responseType,
 			error: toError(tokenError),
 			step: "llm",
+			liveVoice: session.liveVoice,
 		})
 		return true
 	}
 
+	const heardReply = heardReplyOf(fullReply, playback)
 	await updateInteraction({
 		id: session.interactionId,
 		llmPrompt: session.promptContext,
 		llmResponse: fullReply,
+		heardReply,
 		ttsEngineUsed: tts.adapter.id,
 		llmExecutorKey: executors.llmExecutorKey,
 		ttsExecutorKey: domia.domiaKey,
-		ttsAudioPath,
+		ttsAudioPath: playback.filePath,
 		llmMs: llmElapsed,
 		ttsMs: Math.max(0, totalElapsed - llmElapsed),
 		llmModelUsed: executors.llmModelUsed,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
 		ttfaMs,
+		perceivedTtfaMs,
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 
@@ -214,20 +251,28 @@ const pipelineVoiceFromTokens = async (
 		return true
 	}
 
-	publishStreamedReplyComplete(domia.id, session, fullReply)
-	void reflectOnInteraction(
-		domia,
-		session.transcript,
-		fullReply,
-		session.interactionId,
-		session.originDomiaKey,
-	)
+	publishStreamedReplyComplete(domia.id, session, fullReply, playback)
+	if (heardReply) {
+		void reflectOnInteraction(
+			domia,
+			session.transcript,
+			heardReply,
+			session.interactionId,
+			session.originDomiaKey,
+		)
+	} else {
+		domiaBusLogger.info(
+			`🪞 reflection skipped — reply not heard (interrupted/no audio)`,
+			{ domiaId: domia.id, interactionId: session.interactionId },
+		)
+	}
 	return true
 }
 
 const tryLocalFullStreamVoice = async (
 	ctx: CoreBusContextType,
 	session: SttFlowSessionType,
+	prestartedTokens?: AsyncIterable<string>,
 ): Promise<boolean> => {
 	const { features, domia } = ctx
 	const { llm, tts, canSentencePipeline } = features
@@ -237,7 +282,7 @@ const tryLocalFullStreamVoice = async (
 	return pipelineVoiceFromTokens(
 		ctx,
 		session,
-		llm.adapter.runStream(domia, session.promptContext),
+		prestartedTokens ?? llm.adapter.runStream(domia, session.promptContext),
 		{
 			llmExecutorKey: domia.domiaKey,
 			llmModelUsed: domia.llmModelConfig?.modelName ?? null,
@@ -268,17 +313,23 @@ const runLocalSyncLlm = async (
 
 	publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 		reply,
+		transcript: session.transcript,
 		interactionId: session.interactionId,
 		originDomiaKey: session.originDomiaKey,
 		responseType: session.responseType,
+		speechEndAt: session.speechEndAt,
+		liveVoice: session.liveVoice,
 	})
-	void reflectOnInteraction(
-		ctx.domia,
-		session.transcript,
-		reply,
-		session.interactionId,
-		session.originDomiaKey,
-	)
+	if (!session.isVoice) {
+		await updateInteraction({ id: session.interactionId, heardReply: reply })
+		void reflectOnInteraction(
+			ctx.domia,
+			session.transcript,
+			reply,
+			session.interactionId,
+			session.originDomiaKey,
+		)
+	}
 }
 
 const tryDelegatedReplyAudio = async (
@@ -330,6 +381,7 @@ const tryDelegatedReplyAudio = async (
 			responseType: session.responseType,
 			error: "hub at capacity",
 			step: "capacity",
+			liveVoice: session.liveVoice,
 		})
 		return true
 	}
@@ -359,12 +411,20 @@ const tryDelegatedReplyAudio = async (
 
 	try {
 		const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
-		const ttsAudioPath = await playStreamedAudio(
+		let ttfaMs: number | undefined
+		let perceivedTtfaMs: number | undefined
+		const playback = await playStreamedAudio(
 			ctx,
 			trackedAudio,
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				onFirstChunk: () => {
+					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
+					if (session.speechEndAt) {
+						perceivedTtfaMs = Date.now() - session.speechEndAt
+					}
+				},
 			},
 			{
 				sampleRate: streamed.sampleRate ?? DEFAULT_SAMPLE_RATE,
@@ -375,16 +435,29 @@ const tryDelegatedReplyAudio = async (
 		domiaBusLogger.info(
 			`⏱️ replyAudio delegation pipeline: ${Date.now() - startTime}ms`,
 		)
+		const heardReply = heardReplyOf(reply, playback)
 		await updateInteraction({
 			id: session.interactionId,
 			llmPrompt: session.promptContext,
 			llmResponse: reply,
+			heardReply,
 			llmExecutorKey: streamed.target?.domiaKey,
 			ttsExecutorKey: streamed.target?.domiaKey,
-			ttsAudioPath,
+			ttsAudioPath: playback.filePath,
+			ttfaMs,
+			perceivedTtfaMs,
 			totalMs: pipelineElapsed(session.interactionId),
 		})
-		publishStreamedReplyComplete(domia.id, session, reply)
+		publishStreamedReplyComplete(domia.id, session, reply, playback)
+		if (heardReply) {
+			void reflectOnInteraction(
+				domia,
+				session.transcript,
+				heardReply,
+				session.interactionId,
+				session.originDomiaKey,
+			)
+		}
 		return true
 	} catch (err) {
 		await audioIter.return?.().catch(() => undefined)
@@ -405,6 +478,7 @@ const tryDelegatedReplyAudio = async (
 			error: err as Error,
 			step: "playback",
 			silent: true,
+			liveVoice: session.liveVoice,
 		})
 		return true
 	}
@@ -465,9 +539,12 @@ const runDelegatedStreamLlm = async (
 	})
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 		reply,
+		transcript: session.transcript,
 		interactionId: session.interactionId,
 		originDomiaKey: session.originDomiaKey,
 		responseType: session.responseType,
+		speechEndAt: session.speechEndAt,
+		liveVoice: session.liveVoice,
 	})
 }
 
@@ -475,9 +552,9 @@ export const handleSttDone = async (
 	ctx: CoreBusContextType,
 	payload: SttDonePayloadType,
 ): Promise<void> => {
-	const { domia, features } = ctx
+	const { domia } = ctx
 	const domiaId = domia.id
-	const { transcript, originDomiaKey, responseType } = payload
+	const { transcript, originDomiaKey } = payload
 
 	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`📝 STT_DONE: ${transcript}`, { domiaId })
@@ -489,6 +566,21 @@ export const handleSttDone = async (
 		)
 		return
 	}
+
+	try {
+		await handleSttDoneFlow(ctx, payload)
+	} finally {
+		payload.prestartedRelease?.()
+	}
+}
+
+const handleSttDoneFlow = async (
+	ctx: CoreBusContextType,
+	payload: SttDonePayloadType,
+): Promise<void> => {
+	const { domia, features } = ctx
+	const domiaId = domia.id
+	const { transcript, originDomiaKey, responseType } = payload
 
 	const interactionId = await getOrCreateInteractionId(
 		domia,
@@ -526,11 +618,12 @@ export const handleSttDone = async (
 	const session = buildSttFlowSession(
 		payload,
 		interactionId,
-		buildPromptContext(domia, transcript, {
-			recentTurns,
-			knownFacts,
-			userMoodTrend,
-		}),
+		payload.prestartedPrompt ??
+			buildPromptContext(domia, transcript, {
+				recentTurns,
+				knownFacts,
+				userMoodTrend,
+			}),
 		recentTurns,
 		knownFacts,
 		userMoodTrend,
@@ -541,11 +634,15 @@ export const handleSttDone = async (
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PROCESSING_STARTED, {
 				interactionId,
 				originDomiaKey,
+				liveVoice: payload.liveVoice,
 			})
-			const release = await admitVoiceReply(domia).catch((err: unknown) => {
-				if (isSemaphoreBusyError(err)) return null
-				throw err
-			})
+			if (payload.liveVoice) playFeedbackSound(domia, "thinking")
+			const release =
+				payload.prestartedRelease ??
+				(await admitVoiceReply(domia).catch((err: unknown) => {
+					if (isSemaphoreBusyError(err)) return null
+					throw err
+				}))
 			if (!release) {
 				notifyInteractionFailed(ctx, {
 					interactionId,
@@ -553,16 +650,53 @@ export const handleSttDone = async (
 					responseType,
 					error: "at capacity — too many concurrent turns",
 					step: "capacity",
+					liveVoice: session.liveVoice,
 				})
 				return
 			}
 			try {
-				if (await tryLocalFullStreamVoice(ctx, session)) return
+				if (
+					await tryLocalFullStreamVoice(ctx, session, payload.prestartedTokens)
+				)
+					return
 				await runLocalSyncLlm(ctx, session)
 				return
 			} finally {
 				release()
 			}
+		}
+
+		if (payload.prestartedTokens) {
+			if (
+				session.isVoice &&
+				features.canRunTts &&
+				features.canPlayback &&
+				(await pipelineVoiceFromTokens(ctx, session, payload.prestartedTokens, {
+					llmExecutorKey: payload.prestartedExecutorKey,
+					llmModelUsed: null,
+				}))
+			) {
+				return
+			}
+			let collected = ""
+			for await (const token of payload.prestartedTokens) collected += token
+			const { reply } = ensureReplyOrFallback(collected)
+			await updateInteraction({
+				id: interactionId,
+				llmPrompt: session.promptContext,
+				llmResponse: reply,
+				llmExecutorKey: payload.prestartedExecutorKey,
+			})
+			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+				reply,
+				transcript: session.transcript,
+				interactionId,
+				originDomiaKey,
+				responseType,
+				speechEndAt: payload.speechEndAt,
+				liveVoice: payload.liveVoice,
+			})
+			return
 		}
 
 		const targets = await resolveCapabilityDelegations(
@@ -593,6 +727,7 @@ export const handleSttDone = async (
 			responseType,
 			error: toError(err),
 			step: "llm",
+			liveVoice: session.liveVoice,
 		})
 	}
 }

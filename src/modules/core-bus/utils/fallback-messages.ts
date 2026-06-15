@@ -19,3 +19,8 @@ export const ensureReplyOrFallback = (
 	reply.trim().length > 0
 		? { reply, usedFallback: false }
 		: { reply: resolveFallbackMessage("llm"), usedFallback: true }
+
+export const heardReplyOf = (
+	reply: string,
+	playback: { audioStarted: boolean; interrupted: boolean },
+): string => (playback.audioStarted && !playback.interrupted ? reply : "")

@@ -206,6 +206,17 @@ export const runReflection = async (
 		return { emotion: null, userEmotion: null, facts: [] }
 
 	const key = responder?.id ?? ""
+	const reflectionModel = responder?.llmModelConfig?.reflectionModelName?.trim()
+	const reflector =
+		reflectionModel && responder?.llmModelConfig
+			? {
+					...responder,
+					llmModelConfig: {
+						...responder.llmModelConfig,
+						modelName: reflectionModel,
+					},
+				}
+			: responder
 	try {
 		const empty: ReflectionResultType = {
 			emotion: null,
@@ -222,18 +233,19 @@ export const runReflection = async (
 		)
 		for (let attempt = 1; attempt <= REFLECTION_YIELD_MAX_ATTEMPTS; attempt++) {
 			let yielded = false
-			const shouldAbort = settings.yieldToVoice
-				? (): boolean => {
+			const result = await runGated(
+				settings,
+				async () => {
+					const deadline = Date.now() + REFLECTION_TIMEOUT_MS
+					const shouldAbort = (): boolean => {
+						if (Date.now() > deadline) return true
+						if (!settings.yieldToVoice) return false
 						const busy = activeVoiceReplies() > 0
 						if (busy) yielded = true
 						return busy
 					}
-				: undefined
-			const result = await runGated(
-				settings,
-				async () => {
 					const raw = await withTimeout(
-						runLLMJson(responder, prompt, shouldAbort),
+						runLLMJson(reflector, prompt, shouldAbort),
 						REFLECTION_TIMEOUT_MS,
 						"reflection",
 					)

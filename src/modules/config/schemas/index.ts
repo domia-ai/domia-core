@@ -73,10 +73,6 @@ export const configBundleSchema = z
 			.omit({ ...META_ACTIVE, type: true })
 			.strict()
 			.nullish(),
-		mqttRemote: createUpdateSchema(mqttConfig)
-			.omit({ ...META_ACTIVE, type: true })
-			.strict()
-			.nullish(),
 		mcpServers: z
 			.array(createInsertSchema(mcpServerConfig).omit(META_ACTIVE).strict())
 			.nullish(),

@@ -37,7 +37,6 @@ import {
 	streamReplyAudioMessages,
 	resolvePersonaContext,
 	resolveTtsVoiceOptions,
-	reflectOnPersonaInteraction,
 	reportStageExecution,
 	admitVoiceReplyOrBusy,
 } from "./utils"
@@ -157,14 +156,6 @@ const buildImplementation = ({
 						engine: domia.llmModelConfig?.engine,
 					},
 				],
-			)
-			void reflectOnPersonaInteraction(
-				domia,
-				persona,
-				request.originDomiaKey,
-				request.transcript,
-				reply,
-				request.interactionId,
 			)
 		},
 

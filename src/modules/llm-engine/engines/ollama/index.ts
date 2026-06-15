@@ -69,26 +69,40 @@ export const runOllama = async (
 const runOllamaStream = async function* (
 	domia: DomiaType,
 	promptContext: string,
+	shouldAbort?: () => boolean,
 ): AsyncIterable<string> {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
+	let abortStream: (() => void) | null = null
 	try {
-		const response = await client.generate({
+		if (shouldAbort?.()) return
+		const stream = await client.generate({
 			model: modelName,
 			prompt: promptContext,
 			stream: true,
 			keep_alive: KEEP_ALIVE,
 			options: resolveOptions(domia),
 		})
-		for await (const chunk of response) {
+		abortStream = () => stream.abort()
+		for await (const chunk of stream) {
+			if (shouldAbort?.()) {
+				stream.abort()
+				return
+			}
 			if (chunk.response) yield chunk.response
 		}
+		abortStream = null
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },
 		})
 	} finally {
+		try {
+			abortStream?.()
+		} catch {
+			/* already finished */
+		}
 		release()
 	}
 }
@@ -129,10 +143,33 @@ const runOllamaJson = async (
 	}
 }
 
+const warmupModel = async (modelName: string): Promise<void> => {
+	await client.generate({
+		model: modelName,
+		prompt: "Hi",
+		stream: false,
+		keep_alive: KEEP_ALIVE,
+		options: { num_predict: 1 },
+	})
+}
+
+const warmupOllama = async (domia: DomiaType): Promise<void> => {
+	const main = domia.llmModelConfig?.modelName
+	const reflection = domia.llmModelConfig?.reflectionModelName?.trim()
+	const models = [
+		main,
+		reflection && reflection !== main ? reflection : null,
+	].filter((m): m is string => Boolean(m))
+	for (const model of models) {
+		await warmupModel(model)
+	}
+}
+
 export const ollamaEngine: LlmEngineAdapterType = {
 	id: LLM_ENGINE_ENUM.OLLAMA,
 	capabilities: { streaming: true },
 	run: runOllama,
 	runStream: runOllamaStream,
 	runJson: runOllamaJson,
+	warmup: warmupOllama,
 }

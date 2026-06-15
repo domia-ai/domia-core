@@ -2,6 +2,8 @@ export type VadSessionType = {
 	acceptSamples: (samples: Float32Array) => void
 	isSpeechActive: () => boolean
 	hasCompletedSegment: () => boolean
+	silenceMs: () => number
+	everDetected: () => boolean
 	reset: () => void
 }
 

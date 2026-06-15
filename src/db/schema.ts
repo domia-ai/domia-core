@@ -47,6 +47,10 @@ import {
 	DEFAULT_VAD_THRESHOLD,
 	DEFAULT_VAD_MIN_SILENCE_S,
 	DEFAULT_VAD_END_OF_SPEECH_MS,
+	DEFAULT_FOLLOW_UP_WINDOW_MS,
+	DEFAULT_BARGE_IN_ENABLED,
+	DEFAULT_SPECULATIVE_SILENCE_MS,
+	DEFAULT_FOLLOW_UP_LEAD_PAD_MS,
 	DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS,
 	DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS,
 	DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS,
@@ -81,6 +85,7 @@ import {
 	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
 	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
 	DEFAULT_OWN_CONFIG_TTL_MS,
+	DEFAULT_WARMUP_ON_BOOT,
 	DEFAULT_STT_MODEL_NAME,
 	DEFAULT_STT_MODEL_PATH,
 	DEFAULT_STT_ENABLE_ENDPOINT,
@@ -121,6 +126,15 @@ import {
 	DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS,
 	DEFAULT_AUDIO_PLAYBACK_VOLUME,
 	DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED,
+	DEFAULT_FEEDBACK_SOUNDS_ENABLED,
+	DEFAULT_ACK_SOUND_ENABLED,
+	DEFAULT_ERROR_SOUND_ENABLED,
+	DEFAULT_DONE_SOUND_ENABLED,
+	DEFAULT_THINKING_SOUND_ENABLED,
+	DEFAULT_ACK_SOUND_PATH,
+	DEFAULT_ERROR_SOUND_PATH,
+	DEFAULT_DONE_SOUND_PATH,
+	DEFAULT_THINKING_SOUND_PATH,
 	DEFAULT_QUANTIZATION,
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
 	AUDIO_PLAYBACK_ENGINE_ENUM,
@@ -159,6 +173,9 @@ export const domia = sqliteTable("domia", {
 	ownConfigTtlMs: integer("own_config_ttl_ms")
 		.notNull()
 		.default(DEFAULT_OWN_CONFIG_TTL_MS),
+	warmupOnBoot: integer("warmup_on_boot", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_WARMUP_ON_BOOT),
 	localIp: text("local_ip"),
 	grpcPort: integer("grpc_port"),
 	lastSeenAt: integer("last_seen_at"),
@@ -403,6 +420,18 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	maxRecordingMs: integer("max_recording_ms")
 		.notNull()
 		.default(DEFAULT_AUDIO_CAPTURE_MAX_RECORDING_MS),
+	followUpWindowMs: integer("follow_up_window_ms")
+		.notNull()
+		.default(DEFAULT_FOLLOW_UP_WINDOW_MS),
+	bargeInEnabled: integer("barge_in_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_BARGE_IN_ENABLED),
+	speculativeSilenceMs: integer("speculative_silence_ms")
+		.notNull()
+		.default(DEFAULT_SPECULATIVE_SILENCE_MS),
+	followUpLeadPadMs: integer("follow_up_lead_pad_ms")
+		.notNull()
+		.default(DEFAULT_FOLLOW_UP_LEAD_PAD_MS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -484,6 +513,7 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 		.notNull()
 		.default(LLM_ENGINE_ENUM.OLLAMA),
 	modelName: text("model_name").notNull().default(DEFAULT_LLM_MODEL_NAME),
+	reflectionModelName: text("reflection_model_name"),
 	temperature: real("temperature")
 		.notNull()
 		.default(DEFAULT_LLM_MODEL_TEMPERATURE),
@@ -615,6 +645,33 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 		.notNull()
 		.default(DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED),
 	outputDevice: text("output_device"),
+	feedbackSoundsEnabled: integer("feedback_sounds_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_FEEDBACK_SOUNDS_ENABLED),
+	ackSoundEnabled: integer("ack_sound_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_ACK_SOUND_ENABLED),
+	errorSoundEnabled: integer("error_sound_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_ERROR_SOUND_ENABLED),
+	doneSoundEnabled: integer("done_sound_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_DONE_SOUND_ENABLED),
+	thinkingSoundEnabled: integer("thinking_sound_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_THINKING_SOUND_ENABLED),
+	ackSoundPath: text("ack_sound_path")
+		.notNull()
+		.default(DEFAULT_ACK_SOUND_PATH),
+	errorSoundPath: text("error_sound_path")
+		.notNull()
+		.default(DEFAULT_ERROR_SOUND_PATH),
+	doneSoundPath: text("done_sound_path")
+		.notNull()
+		.default(DEFAULT_DONE_SOUND_PATH),
+	thinkingSoundPath: text("thinking_sound_path")
+		.notNull()
+		.default(DEFAULT_THINKING_SOUND_PATH),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -685,6 +742,7 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	mcpResponse: text("mcp_response", { mode: "json" }),
 	llmPrompt: text("llm_prompt"),
 	llmResponse: text("llm_response"),
+	heardReply: text("heard_reply"),
 	ttsEngineUsed: text("tts_engine_used"),
 	ttsAudioPath: text("tts_audio_path"),
 	finalOutput: text("final_output"),
@@ -695,6 +753,7 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	llmMs: integer("llm_ms"),
 	ttsMs: integer("tts_ms"),
 	ttfaMs: integer("ttfa_ms"),
+	perceivedTtfaMs: integer("perceived_ttfa_ms"),
 	totalMs: integer("total_ms"),
 	sttExecutorKey: text("stt_executor_key"),
 	llmExecutorKey: text("llm_executor_key"),

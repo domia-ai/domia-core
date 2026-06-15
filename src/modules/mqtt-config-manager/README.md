@@ -8,7 +8,7 @@ To retrieve, validate, and prepare the active MQTT configuration for each DOMIA 
 
 ## ✅ Responsibilities
 
-- Retrieve the active MQTT config for a given DOMIA ID and type (`LOCAL` or `REMOTE`)
+- Retrieve the active `LOCAL` MQTT config for a given DOMIA ID
 - Validate that the broker configuration is complete and correct (broker URL, topicRoot, credentials)
 - Provide helpers to build topic roots and final topics
 - Initialize and return a ready-to-use `mqtt` client with the correct settings
@@ -16,14 +16,14 @@ To retrieve, validate, and prepare the active MQTT configuration for each DOMIA 
 
 ## 🚫 What it doesn't do
 
-- Does not publish or subscribe directly to topics (that’s handled by `setupLocalMqtt` or `setupRemoteMqtt`)
+- Does not publish or subscribe directly to topics (that’s handled by `setupMqtt`)
 - Does not manage runtime messaging logic (that’s handled by the `DomiaBus` and event handlers)
 - Does not store or persist MQTT messages (that’s handled by the broker itself)
 
 ## 🛠 Expected Methods
 
 ```ts
-getActiveMqttConfig(domiaId: string, type: "LOCAL" | "REMOTE"): Promise<MqttConfig>
+getActiveMqttConfig(domiaId: string, type: "LOCAL"): Promise<MqttConfig>
 validateMqttConfig(config: MqttConfig): boolean
 buildTopic(topicRoot: string, subpath: string): string
 setupMqttClient(config: MqttConfig): MqttClient

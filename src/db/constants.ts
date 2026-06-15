@@ -10,6 +10,7 @@ export const DEFAULT_MAX_CONCURRENT_VOICE_REPLIES = 3
 export const DEFAULT_MAX_QUEUED_VOICE_REPLIES = 4
 export const DEFAULT_VOICE_QUEUE_TIMEOUT_MS = 15_000
 export const DEFAULT_OWN_CONFIG_TTL_MS = 30_000
+export const DEFAULT_WARMUP_ON_BOOT = true
 export const DEFAULT_WAKE_WORD = "computer"
 export const DEFAULT_WAKE_WORD_MODEL = "kws-zipformer-gigaspeech"
 export const DEFAULT_WAKE_WORD_MODEL_PATH =
@@ -24,6 +25,10 @@ export const DEFAULT_WAKE_WORD_PROVIDER = "cpu"
 export const DEFAULT_VAD_THRESHOLD = 0.5
 export const DEFAULT_VAD_MIN_SILENCE_S = 0.5
 export const DEFAULT_VAD_END_OF_SPEECH_MS = 200
+export const DEFAULT_FOLLOW_UP_WINDOW_MS = 8000
+export const DEFAULT_BARGE_IN_ENABLED = true
+export const DEFAULT_SPECULATIVE_SILENCE_MS = 300
+export const DEFAULT_FOLLOW_UP_LEAD_PAD_MS = 300
 export const DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS = 20
 export const DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS = 8
 export const DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS = 60
@@ -78,6 +83,15 @@ export const DEFAULT_TTS_POOL_EXECUTION_TIMEOUT_MS = 30_000
 export const DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS = 0
 export const DEFAULT_AUDIO_PLAYBACK_VOLUME = 100
 export const DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED = true
+export const DEFAULT_FEEDBACK_SOUNDS_ENABLED = true
+export const DEFAULT_ACK_SOUND_ENABLED = true
+export const DEFAULT_ERROR_SOUND_ENABLED = true
+export const DEFAULT_DONE_SOUND_ENABLED = true
+export const DEFAULT_THINKING_SOUND_ENABLED = false
+export const DEFAULT_ACK_SOUND_PATH = "data/sounds/ack.wav"
+export const DEFAULT_ERROR_SOUND_PATH = "data/sounds/error.wav"
+export const DEFAULT_DONE_SOUND_PATH = "data/sounds/done.wav"
+export const DEFAULT_THINKING_SOUND_PATH = "data/sounds/thinking.wav"
 export const DEFAULT_QUANTIZATION = "int8"
 
 export const PERSONALITY_ENUM = {
@@ -278,12 +292,8 @@ export const INTERACTION_STATUS_ENUM_VALUES = [
 
 export const MQTT_TYPE_ENUM = {
 	LOCAL: "LOCAL",
-	REMOTE: "REMOTE",
 } as const
-export const MQTT_TYPE_ENUM_VALUES = [
-	MQTT_TYPE_ENUM.LOCAL,
-	MQTT_TYPE_ENUM.REMOTE,
-] as const
+export const MQTT_TYPE_ENUM_VALUES = [MQTT_TYPE_ENUM.LOCAL] as const
 
 export const MQTT_PROTOCOL_ENUM = {
 	MQTT: "mqtt",

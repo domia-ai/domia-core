@@ -184,7 +184,8 @@ export const splitTextIntoSentences = (text: string): string[] => {
 	}
 	const tail = rest.trim()
 	if (isSpeakable(tail)) out.push(tail)
-	return out.length > 0 ? out : [trimmed]
+	if (out.length > 0) return out
+	return isSpeakable(trimmed) ? [trimmed] : []
 }
 
 export class AsyncQueue<T> {

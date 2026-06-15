@@ -28,11 +28,12 @@ Every capability below is implemented and runs end-to-end on your own hardware �
   `src/modules/memory`
 - **Everything is DB-driven + remotely reconfigurable** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle); a Domia boots minimal and gets its role by importing a config bundle (`POST /config`), which persists and restarts it to reload cleanly.
   `src/db` · `src/modules/config-engine` · HTTP `POST /config`
-- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config`, `/config/health`, `/admin/restart`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation.
+- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config`, `/config/health`, `/admin/restart`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation. A separate **web console** (fleet observability + remote config) drives this API across every Domia.
   `src/setups/http-server` · `src/cli/dev`
+- **Voice UX** — wake word, barge-in (interrupt a reply), follow-up conversation mode (keep talking without re-waking), model warm-up on boot, and non-verbal feedback sounds — all DB-configurable.
 - **Hardware spectrum** — the same code runs from a Raspberry Pi-class device to a workstation; the difference is just DB config (model size, engine, threads), never hardcoded.
 
-**On the roadmap (not built yet):** skills / tool-calling (MCP, Home Assistant), fine-tuned lightweight models (QLoRA), vector-RAG long-term memory, a web dashboard, and a marketplace for voices/characters.
+**On the roadmap (not built yet):** skills / tool-calling (MCP, Home Assistant), fine-tuned lightweight models (QLoRA), vector-RAG long-term memory, and a marketplace for voices/characters.
 
 ---
 
@@ -134,9 +135,9 @@ See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and 
 
 ---
 
-## 🔒 License
+## 🔓 License
 
-Business Source License (BSL) 1.1 — source-available today, automatically converting to **Apache 2.0 on January 1, 2030**. In plain terms: you can read, learn from, run, and contribute to the code (including running your own Domia at home); the BSL just protects the project's sustainability until the conversion date.
+**Apache License 2.0** — fully open source. Read it, run it, fork it, build on it, ship it commercially. Domia runs entirely on your own hardware; the code that does it is yours too.
 
 ---
 

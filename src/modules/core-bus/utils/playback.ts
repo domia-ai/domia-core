@@ -2,7 +2,7 @@ import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { playAudioStream } from "@/modules/audio-playback"
 import { wrapPcmToWav, writeWavToTemp } from "@/utils"
 import { registerAudioForServing } from "./audio"
-import type { CoreBusContextType } from "../types"
+import type { CoreBusContextType, PlaybackOutcomeType } from "../types"
 
 export const DEFAULT_SAMPLE_RATE = 24000
 export const DEFAULT_CHANNELS = 1
@@ -16,7 +16,7 @@ export const playStreamedAudio = async (
 		onFirstChunk?: () => void
 	},
 	format: { sampleRate: number; channels: 1 | 2 },
-): Promise<string | undefined> => {
+): Promise<PlaybackOutcomeType> => {
 	let firstChunkEmitted = false
 	const chunks: Buffer[] = []
 	const captured = (async function* (): AsyncIterable<Buffer> {
@@ -43,8 +43,11 @@ export const playStreamedAudio = async (
 	if (result && result.success === false) {
 		throw new Error(`audio playback failed (engine ${result.engine})`)
 	}
+	const interrupted = result?.interrupted === true
+	const audioStarted = firstChunkEmitted
 
-	if (chunks.length === 0) return undefined
+	if (chunks.length === 0)
+		return { filePath: undefined, interrupted, audioStarted }
 	const wav = wrapPcmToWav(
 		Buffer.concat(chunks),
 		format.sampleRate,
@@ -53,5 +56,5 @@ export const playStreamedAudio = async (
 	)
 	const filePath = await writeWavToTemp(wav, meta.interactionId, "tts")
 	registerAudioForServing(meta.interactionId, filePath)
-	return filePath
+	return { filePath, interrupted, audioStarted }
 }

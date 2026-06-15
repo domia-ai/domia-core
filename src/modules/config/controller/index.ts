@@ -143,6 +143,7 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 			maxQueuedVoiceReplies: domia.maxQueuedVoiceReplies,
 			voiceQueueTimeoutMs: domia.voiceQueueTimeoutMs,
 			ownConfigTtlMs: domia.ownConfigTtlMs,
+			warmupOnBoot: domia.warmupOnBoot,
 		},
 		character: toBundleSection(domia.characterProfile),
 		emotion: domia.emotionState
@@ -156,7 +157,6 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 		wakeWord: toBundleSection(domia.wakeWordConfig),
 		playback: toBundleSection(domia.audioPlaybackConfig),
 		mqttLocal: toBundleSection(domia.localMqttConfig, ["type", "password"]),
-		mqttRemote: toBundleSection(domia.remoteMqttConfig, ["type", "password"]),
 		mcpServers: (domia.mcpServerConfigs ?? []).map(
 			(s) => toBundleSection(s) as Record<string, unknown>,
 		),
@@ -198,8 +198,6 @@ export const persistConfig = async (
 			dbAdapter.materializePlayback(domia.id, bundle.playback, tx).run()
 		if (bundle.mqttLocal)
 			dbAdapter.materializeMqtt(domia.id, "LOCAL", bundle.mqttLocal, tx)
-		if (bundle.mqttRemote)
-			dbAdapter.materializeMqtt(domia.id, "REMOTE", bundle.mqttRemote, tx)
 		if (bundle.mcpServers)
 			dbAdapter.replaceMcpServers(domia.id, bundle.mcpServers, tx)
 		if (bundle.delegations)

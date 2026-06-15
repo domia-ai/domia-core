@@ -82,11 +82,6 @@ export const getDomia = ({
 		...mqttConfigOverrides,
 		domiaId: baseDomia?.id,
 	})
-	const remoteMqttConfig = getMqttConfig({
-		...mqttConfigOverrides,
-		type: "REMOTE",
-		domiaId: baseDomia?.id,
-	})
 	const capabilityDelegation = getCapabilityDelegation({
 		...capabilityDelegationOverrides,
 		domiaId: baseDomia?.id,
@@ -105,7 +100,6 @@ export const getDomia = ({
 		audioPlaybackConfig,
 		mcpServerConfigs: [mcpServerConfig],
 		localMqttConfig,
-		remoteMqttConfig,
 		capabilityDelegations: [capabilityDelegation],
 	}
 }

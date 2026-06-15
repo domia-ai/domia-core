@@ -10,6 +10,7 @@ import type {
 	InferencePoolConfigType,
 	InferencePoolType,
 	PendingJobType,
+	PoolSessionType,
 	WorkerStateType,
 } from "../types"
 
@@ -36,10 +37,12 @@ export const createInferencePool = (
 	let warmRefillTimer: ReturnType<typeof setTimeout> | null = null
 
 	const idleWorker = (): WorkerStateType | undefined =>
-		workers.find((w) => w.ready && !w.currentJob && !w.recycling)
+		workers.find(
+			(w) => w.ready && !w.currentJob && !w.recycling && !w.sessionHeld,
+		)
 
 	const busyCount = (): number =>
-		workers.filter((w) => w.currentJob !== null).length
+		workers.filter((w) => w.currentJob !== null || w.sessionHeld).length
 
 	const scheduleIdleReap = (ws: WorkerStateType): void => {
 		if (ws.idleTimer) clearTimeout(ws.idleTimer)
@@ -63,6 +66,7 @@ export const createInferencePool = (
 			ready: false,
 			jobs: 0,
 			recycling: false,
+			sessionHeld: false,
 			idleTimer: null,
 			currentJob: null,
 		}
@@ -155,6 +159,10 @@ export const createInferencePool = (
 			if (err) job.pending.reject(err)
 			else job.pending.resolve(result)
 		}
+		if (ws.sessionHeld) {
+			pump()
+			return
+		}
 		if (recycleAfterJobs > 0 && ws.jobs >= recycleAfterJobs) {
 			ws.recycling = true
 			ws.handle.send({ type: "shutdown" })
@@ -239,6 +247,77 @@ export const createInferencePool = (
 		})
 	}
 
+	const acquireSession = (): PoolSessionType => {
+		if (shuttingDown) throw poolBusyError(`${label} pool is shutting down`)
+		let ws = idleWorker()
+		if (!ws && workers.length < maxWorkers) ws = spawnWorker()
+		if (!ws) throw poolBusyError(`${label} pool has no worker for a session`)
+		ws.sessionHeld = true
+		if (ws.idleTimer) {
+			clearTimeout(ws.idleTimer)
+			ws.idleTimer = null
+		}
+		const held = ws
+		let released = false
+		let chain: Promise<unknown> = Promise.resolve()
+
+		const exchangeOne = <T>(payload: unknown): Promise<T> => {
+			if (released || shuttingDown || !workers.includes(held)) {
+				return Promise.reject(poolBusyError(`${label} session worker is gone`))
+			}
+			if (!held.ready) {
+				return new Promise<T>((resolve, reject) => {
+					const poll = setInterval(() => {
+						if (!workers.includes(held)) {
+							clearInterval(poll)
+							reject(poolBusyError(`${label} session worker died`))
+							return
+						}
+						if (held.ready) {
+							clearInterval(poll)
+							exchangeOne<T>(payload).then(resolve, reject)
+						}
+					}, 20)
+				})
+			}
+			return new Promise<T>((resolve, reject) => {
+				assign(held, {
+					payload,
+					resolve: resolve as (result: unknown) => void,
+					reject,
+					timer: null,
+				})
+			})
+		}
+
+		const exchange = <T>(payload: unknown): Promise<T> => {
+			const next = chain.then(
+				() => exchangeOne<T>(payload),
+				() => exchangeOne<T>(payload),
+			)
+			chain = next.catch(() => undefined)
+			return next
+		}
+
+		return {
+			exchange,
+			release: () => {
+				if (released) return
+				released = true
+				held.sessionHeld = false
+				if (workers.includes(held)) {
+					if (recycleAfterJobs > 0 && held.jobs >= recycleAfterJobs) {
+						held.recycling = true
+						held.handle.send({ type: "shutdown" })
+					} else {
+						scheduleIdleReap(held)
+					}
+				}
+				pump()
+			},
+		}
+	}
+
 	const shutdown = async (): Promise<void> => {
 		shuttingDown = true
 		if (warmRefillTimer) {
@@ -259,6 +338,7 @@ export const createInferencePool = (
 
 	return {
 		submit,
+		acquireSession,
 		activeWorkers: () => workers.length,
 		busyWorkers: busyCount,
 		queuedJobs: () => queue.length,

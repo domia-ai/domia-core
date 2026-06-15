@@ -3,6 +3,7 @@ import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
 import { initialize } from "./modules/config-engine"
 import { setGrpcClientTunables } from "./modules/grpc-client"
 import { setupTempSweeper } from "./setups/temp-sweeper"
+import { warmupOnBoot } from "@/modules/warmup"
 import {
 	setupVoiceListener,
 	setupCoreBus,
@@ -46,7 +47,6 @@ async function main() {
 		domia: ownDomia,
 		config: ownDomia.localMqttConfig,
 	})
-	setupMqtt({ domia: ownDomia, config: ownDomia.remoteMqttConfig })
 	setupCoreBus({
 		domia: ownDomia,
 		runtimeCapabilities,
@@ -57,6 +57,8 @@ async function main() {
 	await setupGrpcServer({ domia: ownDomia, capabilities: runtimeCapabilities })
 
 	await setupVoiceListener(ownDomia, missingBinaries)
+
+	warmupOnBoot(ownDomia, runtimeCapabilities)
 
 	appLogger.info(`DOMIA is running and waiting for events...`)
 }

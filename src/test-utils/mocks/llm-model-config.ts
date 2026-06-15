@@ -20,6 +20,7 @@ export const baseLlmModelConfig = (
 		isActive: true,
 		domiaId: domiaId ?? generateUuid(),
 		engine: LLM_ENGINE_ENUM.OLLAMA,
+		reflectionModelName: null,
 		modelName: DEFAULT_LLM_MODEL_NAME,
 		temperature: DEFAULT_LLM_MODEL_TEMPERATURE,
 		contextWindow: DEFAULT_LLM_MODEL_CONTEXT_WINDOW,

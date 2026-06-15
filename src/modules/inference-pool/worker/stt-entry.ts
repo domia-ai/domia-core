@@ -1,5 +1,11 @@
-import { transcribeSttJob } from "@/modules/stt-engine/utils/inference"
-import type { SttWorkerJobType } from "@/modules/stt-engine/types"
+import {
+	transcribeSttJob,
+	handleSttSessionJob,
+} from "@/modules/stt-engine/utils/inference"
+import type {
+	SttWorkerJobType,
+	SttSessionJobType,
+} from "@/modules/stt-engine/types"
 import type {
 	WorkerRequestMessageType,
 	WorkerResponseMessageType,
@@ -19,7 +25,10 @@ process.on("message", (msg: WorkerRequestMessageType) => {
 	}
 	if (msg.type === "job") {
 		try {
-			const result = transcribeSttJob(msg.payload as SttWorkerJobType)
+			const payload = msg.payload as { kind?: string }
+			const result = payload?.kind?.startsWith("session-")
+				? handleSttSessionJob(msg.payload as SttSessionJobType)
+				: transcribeSttJob(msg.payload as SttWorkerJobType)
 			send({ type: "result", id: msg.id, result })
 		} catch (err) {
 			send({

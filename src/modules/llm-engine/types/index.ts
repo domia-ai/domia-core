@@ -9,7 +9,12 @@ export type LlmEngineAdapterType = {
 	id: LlmEngineEnumType
 	capabilities: LlmCapabilitiesType
 	run: (domia: DomiaType, promptContext: string) => Promise<string>
-	runStream?: (domia: DomiaType, promptContext: string) => AsyncIterable<string>
+	runStream?: (
+		domia: DomiaType,
+		promptContext: string,
+		shouldAbort?: () => boolean,
+	) => AsyncIterable<string>
+	warmup?: (domia: DomiaType) => Promise<void>
 	runJson?: (
 		domia: DomiaType,
 		promptContext: string,

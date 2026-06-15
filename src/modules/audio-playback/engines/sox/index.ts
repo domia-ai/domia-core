@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process"
 
 import { type DomiaType } from "@/modules/core"
 import { audioPlaybackLogger } from "@/utils"
+import { registerActivePlayback } from "../../utils"
 import type { AudioPlaybackResult, SoxStreamOptionsType } from "../../types"
 
 const STREAM_BUFFER_BYTES = 65536
@@ -90,13 +91,27 @@ export const runSox = async (
 
 	return new Promise((resolve, reject) => {
 		const proc = spawn("play", args, { stdio: "ignore" })
+		let interrupted = false
+		const unregister = registerActivePlayback(domia.id, () => {
+			interrupted = true
+			audioPlaybackLogger.info("🛑 Sox playback interrupted", {
+				domiaId: domia.id,
+			})
+			proc.kill("SIGTERM")
+		})
 
 		proc.on("error", (err) => {
+			unregister()
 			audioPlaybackLogger.error("🔇 Sox error", { err, domiaId: domia.id })
 			reject(err)
 		})
 
 		proc.on("exit", (code) => {
+			unregister()
+			if (interrupted) {
+				resolve({ engine: "SOX", success: true, interrupted: true })
+				return
+			}
 			if (code === 0) {
 				resolve({ engine: "SOX", success: true })
 				return
@@ -128,7 +143,9 @@ export const runSoxStream = async (
 	return new Promise<AudioPlaybackResult>((resolve, reject) => {
 		const proc = spawn("bash", ["-c", shellCommand], {
 			stdio: ["pipe", "ignore", "pipe"],
+			detached: true,
 		})
+		const iterator = chunks[Symbol.asyncIterator]()
 
 		const state = {
 			settled: false,
@@ -137,14 +154,35 @@ export const runSoxStream = async (
 			exitCode: null as number | null,
 			pumpError: null as Error | null,
 			firstChunkWritten: false,
+			interrupted: false,
 			totalBytes: 0,
 			chunkCount: 0,
 			startedAt: Date.now(),
 		}
 
+		const killProcessGroup = (): void => {
+			try {
+				if (proc.pid) process.kill(-proc.pid, "SIGTERM")
+				else proc.kill("SIGTERM")
+			} catch {
+				proc.kill("SIGTERM")
+			}
+		}
+
+		const unregister = registerActivePlayback(domia.id, () => {
+			state.interrupted = true
+			audioPlaybackLogger.info("🛑 Sox stream playback interrupted", {
+				domiaId: domia.id,
+			})
+			killProcessGroup()
+			proc.stdin?.destroy()
+			void iterator.return?.(undefined)
+		})
+
 		const settle = (result: AudioPlaybackResult, err?: Error): void => {
 			if (state.settled) return
 			state.settled = true
+			unregister()
 			if (err) reject(err)
 			else resolve(result)
 		}
@@ -164,6 +202,10 @@ export const runSoxStream = async (
 					options.bitsPerSample,
 				),
 			})
+			if (state.interrupted) {
+				settle({ engine: "SOX", success: true, interrupted: true })
+				return
+			}
 			if (state.pumpError) {
 				settle({ engine: "SOX", success: false }, state.pumpError)
 				return
@@ -199,7 +241,7 @@ export const runSoxStream = async (
 		proc.on("exit", (code) => {
 			state.exited = true
 			state.exitCode = code ?? null
-			if (code !== 0) {
+			if (code !== 0 && !state.interrupted) {
 				audioPlaybackLogger.error("🔇 Sox stream failed", {
 					code,
 					domiaId: domia.id,
@@ -211,7 +253,12 @@ export const runSoxStream = async (
 
 		const pump = async (): Promise<void> => {
 			try {
-				for await (const chunk of chunks) {
+				for (
+					let next = await iterator.next();
+					!next.done;
+					next = await iterator.next()
+				) {
+					const chunk = next.value
 					if (state.exited) {
 						audioPlaybackLogger.warn(
 							"🔇 Sox exited while pump still has chunks",
@@ -248,6 +295,7 @@ export const runSoxStream = async (
 				})
 			} finally {
 				state.pumpDone = true
+				void iterator.return?.(undefined)
 				try {
 					if (proc.stdin && !proc.stdin.destroyed) proc.stdin.end()
 				} catch {

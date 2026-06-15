@@ -1,6 +1,15 @@
 export const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms))
 
+export const onceFn = (fn: () => void): (() => void) => {
+	let called = false
+	return () => {
+		if (called) return
+		called = true
+		fn()
+	}
+}
+
 export const withTimeout = <T>(
 	promise: Promise<T>,
 	ms: number,

@@ -30,8 +30,14 @@ export type InferencePoolConfigType = {
 	recycleAfterJobs: number
 }
 
+export type PoolSessionType = {
+	exchange: <T>(payload: unknown) => Promise<T>
+	release: () => void
+}
+
 export type InferencePoolType = {
 	submit: <T>(payload: unknown) => Promise<T>
+	acquireSession: () => PoolSessionType
 	activeWorkers: () => number
 	busyWorkers: () => number
 	queuedJobs: () => number
@@ -50,6 +56,7 @@ export type WorkerStateType = {
 	ready: boolean
 	jobs: number
 	recycling: boolean
+	sessionHeld: boolean
 	idleTimer: ReturnType<typeof setTimeout> | null
 	currentJob: {
 		id: number

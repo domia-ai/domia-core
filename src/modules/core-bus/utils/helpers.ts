@@ -19,14 +19,14 @@ const FALLBACK_TTS_TIMEOUT_MS = 8000
 const playFallbackAudio = async (
 	ctx: CoreBusContextType,
 	step: string | undefined,
-): Promise<void> => {
-	if (!ctx.domia.runtimeCapabilities?.playback) return
+): Promise<boolean> => {
+	if (!ctx.domia.runtimeCapabilities?.playback) return false
 	if (step === "tts") {
 		domiaBusLogger.warn(
 			"⚠️ TTS failed — cannot speak the fallback (would recurse)",
 			{ domiaId: ctx.domia.id },
 		)
-		return
+		return false
 	}
 	const message = resolveFallbackMessage(step)
 	try {
@@ -40,15 +40,17 @@ const playFallbackAudio = async (
 				domiaId: ctx.domia.id,
 				step,
 			})
-			return
+			return false
 		}
-		await playAudio(ctx.domia, tts.filePath)
+		const result = await playAudio(ctx.domia, tts.filePath)
+		return result?.success === true && result?.interrupted !== true
 	} catch (err) {
 		domiaBusLogger.warn("⚠️ Fallback audio failed", {
 			err,
 			domiaId: ctx.domia.id,
 			step,
 		})
+		return false
 	}
 }
 
@@ -93,8 +95,15 @@ export const notifyInteractionFailed = (
 	args: NotifyInteractionFailedArgsType,
 ): void => {
 	const { domia } = ctx
-	const { interactionId, originDomiaKey, responseType, error, step, silent } =
-		args
+	const {
+		interactionId,
+		originDomiaKey,
+		responseType,
+		error,
+		step,
+		silent,
+		liveVoice,
+	} = args
 	const err = toError(error)
 	const payload = {
 		interactionId,
@@ -102,6 +111,7 @@ export const notifyInteractionFailed = (
 		responseType,
 		error: err.message,
 		step,
+		liveVoice,
 	}
 	publishToDomiaBus(
 		ctx.domia.id,
@@ -141,9 +151,13 @@ export const notifyAudioFallback = (
 			...(reply ? { replyPreview: reply.slice(0, 200) } : {}),
 		},
 	)
-	void playFallbackAudio(ctx, reason === "tts_failed" ? "tts" : reason)
-	publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
-		interactionId,
-		originDomiaKey,
-	})
+	void playFallbackAudio(ctx, reason === "tts_failed" ? "tts" : reason).then(
+		(played) =>
+			publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+				interactionId,
+				originDomiaKey,
+				status: played ? "completed" : "failed",
+				playedLocally: played,
+			}),
+	)
 }

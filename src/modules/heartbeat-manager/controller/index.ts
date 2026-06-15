@@ -40,7 +40,6 @@ export const sendHeartbeat = async ({
 		}
 		delete payload.mqttConfigs
 		delete payload.localMqttConfig
-		delete payload.remoteMqttConfig
 		mqttClient?.publish(topic, JSON.stringify(payload))
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })

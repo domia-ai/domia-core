@@ -7,6 +7,7 @@ import {
 } from "@/utils"
 import {
 	downloadAudioToTemp,
+	heardReplyOf,
 	notifyInteractionFailed,
 	playStreamedAudio,
 	takeMemoryBundle,
@@ -34,7 +35,11 @@ import {
 	streamVoiceReplyFromTarget,
 	type DeliverEventTarget,
 } from "@/modules/grpc-client"
-import type { AudioReadyPayloadType, CoreBusContextType } from "../types"
+import type {
+	AudioReadyPayloadType,
+	CoreBusContextType,
+	PlaybackOutcomeType,
+} from "../types"
 
 const tryFusedVoiceReply = async (
 	ctx: CoreBusContextType,
@@ -42,6 +47,8 @@ const tryFusedVoiceReply = async (
 		interactionId: string
 		originDomiaKey: string | undefined
 		audioPath: string
+		speechEndAt?: number
+		liveVoice?: boolean
 	},
 	targets: DeliverEventTarget[],
 ): Promise<boolean> => {
@@ -82,6 +89,7 @@ const tryFusedVoiceReply = async (
 			responseType: RESPONSE_TYPE_ENUM.VOICE,
 			error: "hub at capacity",
 			step: "capacity",
+			liveVoice: args.liveVoice,
 		})
 		return true
 	}
@@ -96,6 +104,7 @@ const tryFusedVoiceReply = async (
 
 	const audioIter = streamed.audio[Symbol.asyncIterator]()
 	let ttfaMs: number | null = null
+	let perceivedTtfaMs: number | null = null
 	let audioEmitted = false
 
 	let firstRes: IteratorResult<Buffer>
@@ -122,6 +131,7 @@ const tryFusedVoiceReply = async (
 	const timedAudio = (async function* (): AsyncIterable<Buffer> {
 		try {
 			ttfaMs = Date.now() - startTime
+			if (args.speechEndAt) perceivedTtfaMs = Date.now() - args.speechEndAt
 			audioEmitted = true
 			yield firstRes.value
 			while (true) {
@@ -134,9 +144,13 @@ const tryFusedVoiceReply = async (
 		}
 	})()
 
-	let ttsAudioPath: string | undefined
+	let playback: PlaybackOutcomeType = {
+		filePath: undefined,
+		interrupted: false,
+		audioStarted: false,
+	}
 	try {
-		ttsAudioPath = await playStreamedAudio(
+		playback = await playStreamedAudio(
 			ctx,
 			timedAudio,
 			{ interactionId, originDomiaKey },
@@ -160,6 +174,7 @@ const tryFusedVoiceReply = async (
 			error: err as Error,
 			step: "playback",
 			silent: true,
+			liveVoice: args.liveVoice,
 		})
 	}
 
@@ -178,14 +193,16 @@ const tryFusedVoiceReply = async (
 		id: interactionId,
 		sttResult: transcript,
 		llmResponse: reply,
+		heardReply: heardReplyOf(reply, playback),
 		llmPrompt: transcript.trim()
 			? buildPromptFromPersona(persona, transcript)
 			: null,
 		sttExecutorKey: streamed.target?.domiaKey,
 		llmExecutorKey: streamed.target?.domiaKey,
 		ttsExecutorKey: streamed.target?.domiaKey,
-		ttsAudioPath,
+		ttsAudioPath: playback.filePath,
 		ttfaMs: ttfaMs != null && ttfaMs > 0 ? ttfaMs : null,
+		perceivedTtfaMs,
 		totalMs: Date.now() - startTime,
 	}).catch((err) =>
 		domiaBusLogger.error("fused voice reply: persistence failed", {
@@ -215,6 +232,9 @@ const tryFusedVoiceReply = async (
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
 		interactionId,
 		originDomiaKey,
+		status: playback.interrupted ? "interrupted" : "completed",
+		playedLocally: playback.audioStarted,
+		liveVoice: args.liveVoice,
 	})
 	return true
 }
@@ -274,6 +294,8 @@ export const handleAudioReady = async (
 				transcript,
 				interactionId,
 				originDomiaKey,
+				speechEndAt: payload.speechEndAt,
+				liveVoice: payload.liveVoice,
 			})
 			return
 		}
@@ -314,7 +336,13 @@ export const handleAudioReady = async (
 				fusedTargets.length > 0 &&
 				(await tryFusedVoiceReply(
 					ctx,
-					{ interactionId, originDomiaKey, audioPath },
+					{
+						interactionId,
+						originDomiaKey,
+						audioPath,
+						speechEndAt: payload.speechEndAt,
+						liveVoice: payload.liveVoice,
+					},
 					fusedTargets,
 				))
 			) {
@@ -354,6 +382,8 @@ export const handleAudioReady = async (
 			transcript: streamed.transcript,
 			interactionId,
 			originDomiaKey,
+			speechEndAt: payload.speechEndAt,
+			liveVoice: payload.liveVoice,
 		})
 	} catch (err) {
 		domiaBusLogger.error("AUDIO_READY: STT or delegate failed", {
@@ -367,6 +397,7 @@ export const handleAudioReady = async (
 			responseType: RESPONSE_TYPE_ENUM.VOICE,
 			error: toError(err),
 			step: "stt",
+			liveVoice: payload.liveVoice,
 		})
 	}
 }

@@ -8,6 +8,25 @@ export type CaptureCallbacksType = {
 export type StartAudioStreamResultType = {
 	chunks: AsyncIterable<Buffer>
 	filePathPromise: Promise<string>
+	speechEndAt: () => number | null
+	stop: () => void
+}
+
+export type FollowUpRecordingResultType = {
+	filePath: string
+	speechEndAt: number | null
+}
+
+export type SpeculativeCaptureHooksType = {
+	onSpeculate: (pcm: Buffer) => void
+	onResume: (pcm: Buffer) => void
+	onChunk?: (pcm: Buffer) => void
+}
+
+export type SpeculativeCaptureResultType = {
+	finalPcmPromise: Promise<Buffer>
+	filePathPromise: Promise<string>
+	speechEndAt: () => number | null
 	stop: () => void
 }
 
@@ -23,6 +42,9 @@ export type KwsPathsType = {
 export type VadWindowType = {
 	feed: (data: Buffer) => void
 	completed: () => boolean
+	speechActive: () => boolean
+	silenceMs: () => number
+	everDetected: () => boolean
 }
 
 export type StopSoxType = (reason: string) => void

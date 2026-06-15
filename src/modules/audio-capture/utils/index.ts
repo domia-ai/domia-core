@@ -4,7 +4,7 @@ import { mkdirSync } from "fs"
 import { writeFile } from "fs/promises"
 import { join } from "path"
 
-import { sileroVadEngine } from "@/modules/vad"
+import { sileroVadEngine, type VadTuningType } from "@/modules/vad"
 import { audioCaptureLogger, generateUuid, wrapPcmToWav } from "@/utils"
 import { RECORDINGS_DIR } from "../constants"
 import type { CaptureFormatType, StopSoxType, VadWindowType } from "../types"
@@ -58,11 +58,13 @@ export const attachSoxStderrFilter = (
 
 export const createVadWindow = (
 	config: SelectWakeWordConfigType,
+	tuningOverrides?: Partial<VadTuningType>,
 ): VadWindowType => {
 	const session = sileroVadEngine.createSession(config.vadModelPath, {
 		threshold: config.vadThreshold,
 		minSilenceS: config.vadMinSilenceS,
 		endOfSpeechMs: config.vadEndOfSpeechMs,
+		...tuningOverrides,
 	})
 	const windowBytes = sileroVadEngine.windowSize * 2
 	let leftover = Buffer.alloc(0)
@@ -77,6 +79,9 @@ export const createVadWindow = (
 			}
 		},
 		completed: () => session.hasCompletedSegment(),
+		speechActive: () => session.isSpeechActive(),
+		silenceMs: () => session.silenceMs(),
+		everDetected: () => session.everDetected(),
 	}
 }
 

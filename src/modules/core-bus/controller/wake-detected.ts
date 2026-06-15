@@ -1,15 +1,18 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, setTraceContext, toError } from "@/utils"
 import { startAudioRecording, startAudioStream } from "@/modules/audio-capture"
+import { hasActivePlayback, stopActivePlayback } from "@/modules/audio-playback"
+import { playFeedbackSound } from "@/modules/feedback-sounds"
+import { admitVoiceReply } from "@/modules/voice-admission"
+import { isSemaphoreBusyError, onceFn } from "@/utils"
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
 } from "@/modules/session-manager"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
-import { prefetchMemoryBundle } from "../utils"
+import { prefetchMemoryBundle, tryBeginRecording, endRecording } from "../utils"
+import { runSpeculativeTurn } from "./speculative-turn"
 import type { CoreBusContextType } from "../types"
-
-const recordingInProgress = new Set<string>()
 
 export const handleWakeDetected = async (
 	ctx: CoreBusContextType,
@@ -21,15 +24,77 @@ export const handleWakeDetected = async (
 	domiaBusLogger.info(`🎧 WAKE_DETECTED received`, { domiaId })
 	if (!capabilities.record) return
 
-	if (recordingInProgress.has(domiaId)) {
+	if (
+		hasActivePlayback(domiaId) &&
+		!(domia.wakeWordConfig?.bargeInEnabled ?? true)
+	) {
+		domiaBusLogger.info(
+			`🚫 wake_detected ignored — playback active and barge-in disabled`,
+			{ domiaId },
+		)
+		return
+	}
+
+	if (!tryBeginRecording(domiaId)) {
 		domiaBusLogger.warn(
 			`🚫 wake_detected ignored — recording already in progress for ${domiaId}`,
 		)
 		return
 	}
-	recordingInProgress.add(domiaId)
+
+	if (stopActivePlayback(domiaId)) {
+		domiaBusLogger.info(`🛑 barge-in: playback interrupted by wake word`, {
+			domiaId,
+		})
+	}
+
+	playFeedbackSound(domia, "ack")
 
 	try {
+		const speculativeMs = domia.wakeWordConfig?.speculativeSilenceMs ?? 0
+		const localSpeculation =
+			features.canRunLlm &&
+			features.canSentencePipeline &&
+			Boolean(features.llm?.adapter.runStream)
+		if (
+			speculativeMs > 0 &&
+			stt?.adapter.runPcm &&
+			(localSpeculation || !features.canRunLlm)
+		) {
+			const admitted = await admitVoiceReply(domia).catch((err: unknown) => {
+				if (isSemaphoreBusyError(err)) return null
+				throw err
+			})
+			if (admitted) {
+				const release = onceFn(admitted)
+				try {
+					const interactionId = await getOrCreateInteractionId(
+						domia,
+						undefined,
+						{
+							inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
+							responseType: RESPONSE_TYPE_ENUM.VOICE,
+						},
+					)
+					if (!interactionId) {
+						release()
+						return
+					}
+					prefetchMemoryBundle(domia, interactionId)
+					setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
+					await runSpeculativeTurn(ctx, { interactionId, release })
+				} catch (err) {
+					release()
+					throw err
+				}
+				return
+			}
+			domiaBusLogger.warn(
+				`🔮 speculation skipped — at voice capacity, falling back`,
+				{ domiaId },
+			)
+		}
+
 		if (canStreamStt && stt?.adapter.runStream) {
 			const interactionId = await getOrCreateInteractionId(domia, undefined, {
 				inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
@@ -43,13 +108,15 @@ export const handleWakeDetected = async (
 				`🎙️ streaming STT path: capturing live audio chunks`,
 				{ domiaId, interactionId },
 			)
-			const { chunks, filePathPromise } = startAudioStream(domia)
+			const { chunks, filePathPromise, speechEndAt } = startAudioStream(domia)
 			const transcript = await stt.adapter.runStream(domia, chunks)
 
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,
 				originDomiaKey: domia.domiaKey,
+				speechEndAt: speechEndAt() ?? undefined,
+				liveVoice: true,
 			})
 
 			void filePathPromise
@@ -80,6 +147,7 @@ export const handleWakeDetected = async (
 			filePath,
 			interactionId: interactionId ?? undefined,
 			originDomiaKey: domia.domiaKey,
+			liveVoice: true,
 		})
 	} catch (err) {
 		domiaBusLogger.error("WAKE_DETECTED / recording failed", { domiaId, err })
@@ -87,6 +155,6 @@ export const handleWakeDetected = async (
 			error: toError(err),
 		})
 	} finally {
-		recordingInProgress.delete(domiaId)
+		endRecording(domiaId)
 	}
 }

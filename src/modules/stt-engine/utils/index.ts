@@ -1,2 +1,7 @@
 export { getSttPool } from "./pool"
-export { runSttPooled, runSttStreamPooled } from "./pooled"
+export {
+	runSttPooled,
+	runSttStreamPooled,
+	runSttPcmPooled,
+	createSttSessionPooled,
+} from "./pooled"

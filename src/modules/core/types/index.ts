@@ -26,7 +26,6 @@ export type DomiaType = SelectDomiaType & {
 	audioPlaybackConfig: SelectAudioPlaybackConfigType | null
 	mcpServerConfigs: SelectMcpServerConfigType[] | null
 	localMqttConfig: SelectMqttConfigType | null
-	remoteMqttConfig: SelectMqttConfigType | null
 	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }
 

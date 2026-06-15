@@ -22,6 +22,12 @@ export const runLLM = async (domia: DomiaType, promptContext: string) => {
 	return await handler(domia, promptContext)
 }
 
+export const warmupLLM = async (domia: DomiaType): Promise<void> => {
+	const engine = domia?.llmModelConfig?.engine
+	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) return
+	await getLlmEngine(engine)?.warmup?.(domia)
+}
+
 export const runLLMJson = async (
 	domia: DomiaType,
 	promptContext: string,

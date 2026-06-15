@@ -1,3 +1,4 @@
+import { type PlaybackStatusType } from "@/buses"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
 import type { SttEngineAdapterType } from "@/modules/stt-engine"
@@ -41,6 +42,8 @@ export type CoreBusContextType = {
 }
 
 export type AudioReadyPayloadType = {
+	speechEndAt?: number
+	liveVoice?: boolean
 	filePath?: string
 	audioUrl?: string
 	originDomiaKey?: string
@@ -54,23 +57,35 @@ export type SttDonePayloadType = {
 	originDomiaKey?: string
 	responseType?: string
 	alreadyHandled?: boolean
+	prestartedTokens?: AsyncIterable<string>
+	prestartedPrompt?: string
+	prestartedExecutorKey?: string
+	prestartedRelease?: () => void
+	speechEndAt?: number
+	liveVoice?: boolean
 	traceId?: string
 }
 
 export type LlmDonePayloadType = {
 	reply: string
+	transcript?: string
 	interactionId?: string
 	originDomiaKey?: string
 	responseType?: string
 	alreadyStreamed?: boolean
+	speechEndAt?: number
+	liveVoice?: boolean
 	traceId?: string
 }
 
 export type TtsDonePayloadType = {
 	filePath?: string
+	reply?: string
+	transcript?: string
 	interactionId?: string
 	originDomiaKey?: string
 	audioUrl?: string
+	liveVoice?: boolean
 	traceId?: string
 }
 
@@ -91,6 +106,7 @@ export type InteractionFailedPayloadType = {
 	responseType?: string
 	error: string
 	step?: string
+	liveVoice?: boolean
 }
 
 export type NotifyInteractionFailedArgsType = {
@@ -100,6 +116,7 @@ export type NotifyInteractionFailedArgsType = {
 	error: Error | string
 	step?: string
 	silent?: boolean
+	liveVoice?: boolean
 }
 
 export type AudioFallbackReasonType = "tts_failed" | "playback_failed"
@@ -128,6 +145,9 @@ export type PlaybackStartedPayloadType = {
 export type PlaybackFinishedPayloadType = {
 	interactionId?: string
 	originDomiaKey?: string
+	status?: PlaybackStatusType
+	playedLocally?: boolean
+	liveVoice?: boolean
 	traceId?: string
 }
 
@@ -155,6 +175,33 @@ export type RequestTextToVoiceReplyResult = {
 	ttsFilePath?: string
 }
 
+export type TokenQueueType = {
+	push: (token: string) => void
+	close: () => void
+	iter: () => AsyncIterable<string>
+}
+
+export type SpeculationType = {
+	generation: number
+	cancelled: boolean
+	started: boolean
+	queue: TokenQueueType
+	prompt: string | null
+	executorKey: string | null
+	ready: Promise<string | null>
+}
+
+export type SpeculativeTurnArgsType = {
+	interactionId: string
+	release: () => void
+}
+
+export type PlaybackOutcomeType = {
+	filePath: string | undefined
+	interrupted: boolean
+	audioStarted: boolean
+}
+
 export type MemoryBundleType = {
 	recentTurns: RecentTurnType[]
 	knownFacts: string[]
@@ -162,6 +209,8 @@ export type MemoryBundleType = {
 }
 
 export type SttFlowSessionType = {
+	speechEndAt?: number
+	liveVoice?: boolean
 	interactionId: string
 	promptContext: string
 	transcript: string
@@ -174,8 +223,11 @@ export type SttFlowSessionType = {
 }
 
 export type LlmFlowSessionType = {
+	speechEndAt?: number
+	liveVoice?: boolean
 	interactionId: string
 	reply: string
+	transcript: string | undefined
 	originDomiaKey: string | undefined
 	responseType: string | undefined
 }

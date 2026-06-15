@@ -2,6 +2,7 @@ import { domiaBusLogger, toError } from "@/utils"
 import { notifyInteractionFailed, rejectPending } from "../utils"
 import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { updateInteraction } from "@/modules/session-manager"
+import { playFeedbackSound } from "@/modules/feedback-sounds"
 import type {
 	AudioErrorPayloadType,
 	CapabilityMissingPayloadType,
@@ -62,4 +63,5 @@ export const handleInteractionFailed = (
 	if (payload.responseType === RESPONSE_TYPE_ENUM.TEXT) {
 		rejectPending(payload.interactionId, toError(payload.error))
 	}
+	if (payload.liveVoice) playFeedbackSound(ctx.domia, "error")
 }

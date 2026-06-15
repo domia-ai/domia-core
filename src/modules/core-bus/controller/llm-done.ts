@@ -9,6 +9,7 @@ import {
 import {
 	DEFAULT_SAMPLE_RATE,
 	ensureReplyOrFallback,
+	heardReplyOf,
 	notifyAudioFallback,
 	notifyInteractionFailed,
 	playStreamedAudio,
@@ -40,10 +41,12 @@ import {
 	type DeliverEventTarget,
 } from "@/modules/grpc-client"
 import { getDomiaByDomiaKey } from "@/modules/core"
+import { reflectOnInteraction } from "@/modules/reflection"
 import type {
 	CoreBusContextType,
 	LlmDonePayloadType,
 	LlmFlowSessionType,
+	PlaybackOutcomeType,
 } from "../types"
 
 const buildLlmFlowSession = (
@@ -51,14 +54,33 @@ const buildLlmFlowSession = (
 	interactionId: string,
 ): LlmFlowSessionType => ({
 	interactionId,
+	speechEndAt: payload.speechEndAt,
+	liveVoice: payload.liveVoice,
 	reply: payload.reply,
+	transcript: payload.transcript,
 	originDomiaKey: payload.originDomiaKey,
 	responseType: payload.responseType,
 })
 
+const reflectIfHeard = (
+	ctx: CoreBusContextType,
+	session: LlmFlowSessionType,
+	heardReply: string,
+): void => {
+	if (!heardReply || !session.transcript) return
+	void reflectOnInteraction(
+		ctx.domia,
+		session.transcript,
+		heardReply,
+		session.interactionId,
+		session.originDomiaKey,
+	)
+}
+
 const publishTtsPlaybackComplete = (
 	domiaId: string,
 	session: LlmFlowSessionType,
+	playback: PlaybackOutcomeType,
 ): void => {
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
 		interactionId: session.interactionId,
@@ -67,6 +89,9 @@ const publishTtsPlaybackComplete = (
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
 		interactionId: session.interactionId,
 		originDomiaKey: session.originDomiaKey,
+		status: playback.interrupted ? "interrupted" : "completed",
+		playedLocally: playback.audioStarted,
+		liveVoice: session.liveVoice,
 	})
 }
 
@@ -117,15 +142,23 @@ const tryLocalStreamingTtsPlayback = async (
 
 	const { domia } = ctx
 	const caps = tts.adapter.capabilities
-	let ttsAudioPath: string | undefined
+	let playback: PlaybackOutcomeType
+	let ttfaMs: number | undefined
+	let perceivedTtfaMs: number | undefined
 	const ttsStart = Date.now()
 	try {
-		ttsAudioPath = await playStreamedAudio(
+		playback = await playStreamedAudio(
 			ctx,
 			ttsAdapterToPcmChunks(domia, tts.adapter, session.reply),
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				onFirstChunk: () => {
+					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
+					if (session.speechEndAt) {
+						perceivedTtfaMs = Date.now() - session.speechEndAt
+					}
+				},
 			},
 			{ sampleRate: caps.sampleRate, channels: caps.channels },
 		)
@@ -140,16 +173,21 @@ const tryLocalStreamingTtsPlayback = async (
 		return true
 	}
 
+	const heardReply = heardReplyOf(session.reply, playback)
 	await updateInteraction({
 		id: session.interactionId,
+		heardReply,
 		ttsEngineUsed: tts.adapter.id,
 		ttsExecutorKey: domia.domiaKey,
-		ttsAudioPath,
+		ttsAudioPath: playback.filePath,
 		ttsMs: Date.now() - ttsStart,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		ttfaMs,
+		perceivedTtfaMs,
 		totalMs: pipelineElapsed(session.interactionId),
 	})
-	publishTtsPlaybackComplete(domia.id, session)
+	publishTtsPlaybackComplete(domia.id, session, playback)
+	reflectIfHeard(ctx, session, heardReply)
 	return true
 }
 
@@ -186,8 +224,11 @@ const runLocalSyncTts = async (
 	registerAudioForServing(session.interactionId, filePath)
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
 		filePath,
+		reply: session.reply,
+		transcript: session.transcript,
 		interactionId: session.interactionId,
 		originDomiaKey: session.originDomiaKey,
+		liveVoice: session.liveVoice,
 	})
 }
 
@@ -242,22 +283,36 @@ const runDelegatedStreamingTts = async (
 		return
 	}
 
+	let ttfaMs: number | undefined
+	let perceivedTtfaMs: number | undefined
 	try {
-		const ttsAudioPath = await playStreamedAudio(
+		const playback = await playStreamedAudio(
 			ctx,
 			streamed.audio,
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				onFirstChunk: () => {
+					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
+					if (session.speechEndAt) {
+						perceivedTtfaMs = Date.now() - session.speechEndAt
+					}
+				},
 			},
 			{ sampleRate, channels },
 		)
+		const heardReply = heardReplyOf(session.reply, playback)
 		await updateInteraction({
 			id: session.interactionId,
+			heardReply,
 			ttsExecutorKey: streamed.target?.domiaKey,
-			ttsAudioPath,
+			ttsAudioPath: playback.filePath,
+			ttfaMs,
+			perceivedTtfaMs,
 			totalMs: pipelineElapsed(session.interactionId),
 		})
+		publishTtsPlaybackComplete(domia.id, session, playback)
+		reflectIfHeard(ctx, session, heardReply)
 	} catch (err) {
 		notifyAudioFallback(ctx, {
 			interactionId: session.interactionId,
@@ -268,7 +323,6 @@ const runDelegatedStreamingTts = async (
 		})
 		return
 	}
-	publishTtsPlaybackComplete(domia.id, session)
 }
 
 export const handleLlmDone = async (
@@ -356,6 +410,7 @@ export const handleLlmDone = async (
 			responseType,
 			error: toError(err),
 			step: "tts",
+			liveVoice: session.liveVoice,
 		})
 	}
 }

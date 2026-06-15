@@ -10,6 +10,7 @@ import {
 	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
 	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
 	DEFAULT_OWN_CONFIG_TTL_MS,
+	DEFAULT_WARMUP_ON_BOOT,
 	DEFAULT_GRPC_UNARY_DEADLINE_MS,
 	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
 	DEFAULT_GRPC_STREAM_DEADLINE_MS,
@@ -34,8 +35,6 @@ export const transformDomia = (
 	const mcpServerConfigs = domia?.mcpServerConfigs || null
 	const localMqttConfig =
 		domia?.mqttConfigs?.find((config) => config?.type === "LOCAL") || null
-	const remoteMqttConfig =
-		domia?.mqttConfigs?.find((config) => config?.type === "REMOTE") || null
 	const capabilityDelegations = domia?.capabilityDelegations || null
 
 	return {
@@ -53,6 +52,7 @@ export const transformDomia = (
 		voiceQueueTimeoutMs:
 			domia?.voiceQueueTimeoutMs ?? DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
 		ownConfigTtlMs: domia?.ownConfigTtlMs ?? DEFAULT_OWN_CONFIG_TTL_MS,
+		warmupOnBoot: domia?.warmupOnBoot ?? DEFAULT_WARMUP_ON_BOOT,
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
 		lastSeenAt: domia?.lastSeenAt ?? null,
@@ -76,7 +76,6 @@ export const transformDomia = (
 		mcpServerConfigs,
 		audioPlaybackConfig,
 		localMqttConfig,
-		remoteMqttConfig,
 		capabilityDelegations,
 	}
 }

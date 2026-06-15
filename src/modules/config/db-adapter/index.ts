@@ -1,5 +1,5 @@
 import type { MqttSectionType } from "../types"
-import { and, eq } from "drizzle-orm"
+import { and, eq, getTableColumns, type Table } from "drizzle-orm"
 import {
 	domia,
 	runtimeCapabilities,
@@ -19,17 +19,28 @@ import {
 } from "@/db"
 import { generateUuid } from "@/utils"
 
-const stamp = <T extends object>(fields: T) => ({
-	...fields,
-	updatedAt: DEFAULT_TIMESTAMP,
-})
+const stamp = <T extends Record<string, unknown>>(table: Table, fields: T) => {
+	const columns = getTableColumns(table) as Record<
+		string,
+		{ notNull?: boolean }
+	>
+	const cleaned: Partial<T> = {}
+	for (const key of Object.keys(fields) as (keyof T)[]) {
+		const value = fields[key]
+		if (value === undefined) continue
+		const isEmpty = value === null || value === ""
+		if (isEmpty && columns[key as string]?.notNull === true) continue
+		cleaned[key] = value
+	}
+	return { ...cleaned, updatedAt: DEFAULT_TIMESTAMP }
+}
 
 const dbAdapter = {
 	materializeDomia: (
 		id: string,
 		fields: Partial<typeof domia.$inferInsert>,
 		tx: DBClientOrTxType,
-	) => tx.update(domia).set(stamp(fields)).where(eq(domia.id, id)),
+	) => tx.update(domia).set(stamp(domia, fields)).where(eq(domia.id, id)),
 
 	materializeCapabilities: (
 		domiaId: string,
@@ -38,7 +49,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(runtimeCapabilities)
-			.set(stamp(fields))
+			.set(stamp(runtimeCapabilities, fields))
 			.where(eq(runtimeCapabilities.domiaId, domiaId)),
 
 	materializeEmotion: (
@@ -48,7 +59,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(emotionState)
-			.set(stamp(fields))
+			.set(stamp(emotionState, fields))
 			.where(eq(emotionState.domiaId, domiaId)),
 
 	materializeCharacter: (
@@ -58,7 +69,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(characterProfile)
-			.set(stamp(fields))
+			.set(stamp(characterProfile, fields))
 			.where(
 				and(
 					eq(characterProfile.domiaId, domiaId),
@@ -73,7 +84,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(moduleSettings)
-			.set(stamp(fields))
+			.set(stamp(moduleSettings, fields))
 			.where(
 				and(
 					eq(moduleSettings.domiaId, domiaId),
@@ -88,7 +99,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(sttConfig)
-			.set(stamp(fields))
+			.set(stamp(sttConfig, fields))
 			.where(and(eq(sttConfig.domiaId, domiaId), eq(sttConfig.isActive, true))),
 
 	materializeTts: (
@@ -98,7 +109,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(ttsConfig)
-			.set(stamp(fields))
+			.set(stamp(ttsConfig, fields))
 			.where(and(eq(ttsConfig.domiaId, domiaId), eq(ttsConfig.isActive, true))),
 
 	materializeLlm: (
@@ -108,7 +119,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(llmModelConfig)
-			.set(stamp(fields))
+			.set(stamp(llmModelConfig, fields))
 			.where(
 				and(
 					eq(llmModelConfig.domiaId, domiaId),
@@ -123,7 +134,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(wakeWordConfig)
-			.set(stamp(fields))
+			.set(stamp(wakeWordConfig, fields))
 			.where(
 				and(
 					eq(wakeWordConfig.domiaId, domiaId),
@@ -138,7 +149,7 @@ const dbAdapter = {
 	) =>
 		tx
 			.update(audioPlaybackConfig)
-			.set(stamp(fields))
+			.set(stamp(audioPlaybackConfig, fields))
 			.where(
 				and(
 					eq(audioPlaybackConfig.domiaId, domiaId),
@@ -154,7 +165,7 @@ const dbAdapter = {
 	): void => {
 		const updated = tx
 			.update(mqttConfig)
-			.set(stamp(fields))
+			.set(stamp(mqttConfig, fields))
 			.where(and(eq(mqttConfig.domiaId, domiaId), eq(mqttConfig.type, type)))
 			.run()
 		if (updated.changes === 0)

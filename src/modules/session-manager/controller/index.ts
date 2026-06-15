@@ -213,7 +213,10 @@ export const getRecentTurns = async (
 			})
 			.map((row) => ({
 				userText: row.inputRaw ?? row.sttResult ?? null,
-				domiaText: row.llmResponse ?? row.finalOutput ?? null,
+				domiaText:
+					row.heardReply === ""
+						? null
+						: (row.heardReply ?? row.llmResponse ?? row.finalOutput ?? null),
 				createdAt: row.createdAt,
 			}))
 			.filter((turn) => turn.userText && turn.domiaText)

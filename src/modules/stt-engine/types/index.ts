@@ -18,6 +18,8 @@ export type SttEngineAdapterType = {
 		domia: DomiaType,
 		audioStream: AsyncIterable<Buffer>,
 	) => Promise<string>
+	runPcm?: (domia: DomiaType, pcm: Buffer) => Promise<string>
+	createSession?: (domia: DomiaType) => SttStreamSessionType
 }
 
 export type WhisperPathsType = {
@@ -76,6 +78,26 @@ export type SttWorkerJobType =
 
 export type SttWorkerResultType = {
 	text: string
+}
+
+export type SttSessionJobType =
+	| { kind: "session-start"; engineConfig: SttWorkerEngineConfigType }
+	| { kind: "session-chunk"; pcm: Buffer; sampleRate: number }
+	| { kind: "session-end"; sampleRate: number; decodePaddingMs: number }
+	| { kind: "session-abort" }
+
+export type SttSessionResultType =
+	| { ok: true }
+	| { partial: string }
+	| { text: string }
+
+export type SttStreamSessionType = {
+	pushChunk: (pcm: Buffer) => void
+	partial: () => string
+	flushPartial: (padMs: number) => Promise<string>
+	finish: () => Promise<string>
+	reset: (pcm?: Buffer) => void
+	abort: () => void
 }
 
 export type RecognizerEntryType =

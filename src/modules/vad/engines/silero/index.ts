@@ -59,6 +59,8 @@ const createSession = (
 			const silenceMs = Date.now() - lastDetectedAt
 			return silenceMs >= tuning.endOfSpeechMs
 		},
+		silenceMs: () => (everDetected ? Date.now() - lastDetectedAt : 0),
+		everDetected: () => everDetected,
 		reset: () => {
 			vad.reset()
 			everDetected = false

@@ -4,10 +4,15 @@ import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, setTraceContext, toError } from "@/utils"
 import {
 	downloadAudioToTemp,
+	heardReplyOf,
 	notifyAudioFallback,
 	notifyInteractionFailed,
 } from "../utils"
-import { getOrCreateInteractionId } from "@/modules/session-manager"
+import {
+	getOrCreateInteractionId,
+	updateInteraction,
+} from "@/modules/session-manager"
+import { reflectOnInteraction } from "@/modules/reflection"
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
@@ -25,7 +30,8 @@ export const handleTtsDone = async (
 	const { domia, features } = ctx
 	const { canPlayback } = features
 	const domiaId = domia.id
-	const { filePath, originDomiaKey, audioUrl } = payload
+	const { filePath, reply, transcript, originDomiaKey, audioUrl, liveVoice } =
+		payload
 
 	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	if (!filePath && !audioUrl) {
@@ -65,6 +71,7 @@ export const handleTtsDone = async (
 					responseType: RESPONSE_TYPE_ENUM.VOICE,
 					error: toError("TTS_DONE: missing filePath and audioUrl"),
 					step: "playback",
+					liveVoice,
 				})
 				return
 			}
@@ -72,8 +79,10 @@ export const handleTtsDone = async (
 				interactionId,
 				originDomiaKey,
 			})
+			let interrupted = false
 			try {
 				const playResult = await playAudio(domia, pathToPlay)
+				interrupted = playResult?.interrupted === true
 				if (playResult && playResult.success === false) {
 					notifyAudioFallback(ctx, {
 						interactionId,
@@ -94,9 +103,28 @@ export const handleTtsDone = async (
 				})
 				return
 			}
+			if (reply !== undefined) {
+				const heardReply = heardReplyOf(reply, {
+					audioStarted: true,
+					interrupted,
+				})
+				await updateInteraction({ id: interactionId, heardReply })
+				if (heardReply && transcript) {
+					void reflectOnInteraction(
+						domia,
+						transcript,
+						heardReply,
+						interactionId,
+						originDomiaKey,
+					)
+				}
+			}
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
 				interactionId,
 				originDomiaKey,
+				status: interrupted ? "interrupted" : "completed",
+				playedLocally: true,
+				liveVoice,
 			})
 			return
 		}
@@ -147,6 +175,7 @@ export const handleTtsDone = async (
 			responseType: RESPONSE_TYPE_ENUM.VOICE,
 			error: toError(err),
 			step: "playback",
+			liveVoice,
 		})
 	}
 }
