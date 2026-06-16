@@ -7,6 +7,11 @@ import {
 } from "drizzle-orm/sqlite-core"
 import { relations, sql } from "drizzle-orm"
 
+import type {
+	SkillAuthType,
+	SkillToolType,
+	SkillProviderConfigType,
+} from "./json-types"
 import {
 	PERSONALITY_ENUM,
 	PERSONALITY_ENUM_VALUES,
@@ -143,6 +148,18 @@ import {
 	MQTT_PROTOCOL_ENUM,
 	MQTT_PROTOCOL_ENUM_VALUES,
 	CAPABILITY_ENUM_VALUES,
+	SKILL_PROTOCOL_ENUM_VALUES,
+	MCP_TRANSPORT_ENUM_VALUES,
+	AGENT_PROMPT_MODE_ENUM_VALUES,
+	DEFAULT_AGENT_PROMPT_MODE,
+	SKILLS_ROUTING_ENUM_VALUES,
+	DEFAULT_SKILLS_ROUTING,
+	DEFAULT_AGENT_MAX_STEPS,
+	DEFAULT_SKILL_PROTOCOL,
+	DEFAULT_MCP_TRANSPORT_TYPE,
+	DEFAULT_SKILL_MAX_RESULT_CHARS,
+	DEFAULT_SKILL_TIMEOUT_MS,
+	DEFAULT_SKILLS_ENGINE,
 } from "./constants"
 
 export const DEFAULT_TIMESTAMP = sql`CURRENT_TIMESTAMP`
@@ -307,6 +324,9 @@ export const moduleSettings = sqliteTable("module_settings", {
 	}).notNull(),
 	narrativeEngine: integer("narrative_engine", { mode: "boolean" }).notNull(),
 	identityEngine: integer("identity_engine", { mode: "boolean" }).notNull(),
+	skillsEngine: integer("skills_engine", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_SKILLS_ENGINE),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -529,6 +549,21 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	useCompactPrompt: integer("use_compact_prompt", { mode: "boolean" })
 		.notNull()
 		.default(false),
+	agentPromptMode: text("agent_prompt_mode", {
+		enum: AGENT_PROMPT_MODE_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_AGENT_PROMPT_MODE),
+	skillsRouting: text("skills_routing", {
+		enum: SKILLS_ROUTING_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_SKILLS_ROUTING),
+	intentModelName: text("intent_model_name"),
+	toolModelName: text("tool_model_name"),
+	agentMaxSteps: integer("agent_max_steps")
+		.notNull()
+		.default(DEFAULT_AGENT_MAX_STEPS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -613,16 +648,30 @@ export const ttsConfig = sqliteTable("tts_config", {
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
-export const mcpServerConfig = sqliteTable("mcp_server_config", {
+export const skillProvider = sqliteTable("skill_provider", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
 	isActive: integer("is_active", { mode: "boolean" }).notNull().default(false),
 	domiaId: text("domia_id")
 		.notNull()
 		.references(() => domia.id),
+	protocol: text("protocol", { enum: SKILL_PROTOCOL_ENUM_VALUES })
+		.notNull()
+		.default(DEFAULT_SKILL_PROTOCOL),
+	type: text("type", { enum: MCP_TRANSPORT_ENUM_VALUES })
+		.notNull()
+		.default(DEFAULT_MCP_TRANSPORT_TYPE),
 	url: text("url").notNull(),
 	description: text("description"),
-	timeout: integer("timeout_ms").notNull().default(2000),
+	config: text("config", { mode: "json" }).$type<SkillProviderConfigType>(),
+	auth: text("auth", { mode: "json" }).$type<SkillAuthType>(),
+	toolsCache: text("tools_cache", { mode: "json" }).$type<SkillToolType[]>(),
+	toolWhitelist: text("tool_whitelist", { mode: "json" }).$type<string[]>(),
+	lastSyncAt: text("last_sync_at"),
+	maxResultChars: integer("max_result_chars")
+		.notNull()
+		.default(DEFAULT_SKILL_MAX_RESULT_CHARS),
+	timeout: integer("timeout_ms").notNull().default(DEFAULT_SKILL_TIMEOUT_MS),
 	priority: integer("priority").notNull().default(0),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -737,9 +786,11 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	inputAudioPath: text("input_audio_path"),
 	wakewordUsed: text("wakeword_used").notNull().default(DEFAULT_WAKE_WORD),
 	sttResult: text("stt_result"),
-	mcpServerUsed: text("mcp_server_used"),
-	mcpPrompt: text("mcp_prompt"),
-	mcpResponse: text("mcp_response", { mode: "json" }),
+	intentDecision: text("intent_decision"),
+	intentMs: integer("intent_ms"),
+	skillProviderUsed: text("skill_provider_used"),
+	skillPrompt: text("skill_prompt"),
+	skillResponse: text("skill_response", { mode: "json" }),
 	llmPrompt: text("llm_prompt"),
 	llmResponse: text("llm_response"),
 	heardReply: text("heard_reply"),
@@ -805,7 +856,7 @@ export const domiaRelations = relations(domia, ({ one, many }) => ({
 	sttConfigs: many(sttConfig),
 	llmModelConfigs: many(llmModelConfig),
 	ttsConfigs: many(ttsConfig),
-	mcpServerConfigs: many(mcpServerConfig),
+	skillProviders: many(skillProvider),
 	audioPlaybackConfigs: many(audioPlaybackConfig),
 	mqttConfigs: many(mqttConfig),
 	interactionTraces: many(interactionTrace),
@@ -894,15 +945,12 @@ export const ttsConfigRelations = relations(ttsConfig, ({ one }) => ({
 	}),
 }))
 
-export const mcpServerConfigRelations = relations(
-	mcpServerConfig,
-	({ one }) => ({
-		domia: one(domia, {
-			fields: [mcpServerConfig.domiaId],
-			references: [domia.id],
-		}),
+export const skillProviderRelations = relations(skillProvider, ({ one }) => ({
+	domia: one(domia, {
+		fields: [skillProvider.domiaId],
+		references: [domia.id],
 	}),
-)
+}))
 
 export const audioPlaybackConfigRelations = relations(
 	audioPlaybackConfig,

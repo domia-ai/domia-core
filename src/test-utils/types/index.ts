@@ -3,7 +3,7 @@ import {
 	type SelectDomiaType,
 	type SelectEmotionStateType,
 	type SelectLlmModelConfigType,
-	type SelectMcpServerConfigType,
+	type SelectSkillProviderType,
 	type SelectModuleSettingsType,
 	type SelectSttConfigType,
 	type SelectTtsConfigType,
@@ -25,7 +25,7 @@ export type GetDomiaParamsType = {
 	llmModelConfigOverrides?: Partial<SelectLlmModelConfigType>
 	ttsConfigOverrides?: Partial<SelectTtsConfigType>
 	audioPlaybackConfigOverrides?: Partial<SelectAudioPlaybackConfigType>
-	mcpServerConfigOverrides?: Partial<SelectMcpServerConfigType>
+	skillProviderOverrides?: Partial<SelectSkillProviderType>
 	mqttConfigOverrides?: Partial<SelectMqttConfigType>
 	capabilityDelegationOverrides?: Partial<SelectCapabilityDelegationType>
 }

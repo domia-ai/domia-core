@@ -40,6 +40,11 @@ export const sendHeartbeat = async ({
 		}
 		delete payload.mqttConfigs
 		delete payload.localMqttConfig
+		if (domia.skillProviders?.length)
+			payload.skillProviders = domia.skillProviders.map((p) => ({
+				...p,
+				auth: p.auth?.kind ? { kind: p.auth.kind } : null,
+			}))
 		mqttClient?.publish(topic, JSON.stringify(payload))
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })

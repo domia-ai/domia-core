@@ -9,7 +9,7 @@ import { getWakeWordConfig } from "./wake-word-config"
 import { getSttConfig } from "./stt-config"
 import { getLlmModelConfig } from "./llm-model-config"
 import { getTtsConfig } from "./tts-config"
-import { getMcpServerConfig } from "./mcp-server-config"
+import { getSkillProvider } from "./skill-provider"
 import { getAudioPlaybackConfig } from "./audio-playback-config"
 import { getRuntimeCapabilities } from "./runtime-capabilities"
 import { getMqttConfig } from "./mqtt-config"
@@ -33,7 +33,7 @@ export const getDomia = ({
 	llmModelConfigOverrides = {},
 	ttsConfigOverrides = {},
 	audioPlaybackConfigOverrides = {},
-	mcpServerConfigOverrides = {},
+	skillProviderOverrides = {},
 	mqttConfigOverrides = {},
 	capabilityDelegationOverrides = {},
 }: GetDomiaParamsType): DomiaType => {
@@ -74,8 +74,8 @@ export const getDomia = ({
 		...audioPlaybackConfigOverrides,
 		domiaId: baseDomia?.id,
 	})
-	const mcpServerConfig = getMcpServerConfig({
-		...mcpServerConfigOverrides,
+	const skillProvider = getSkillProvider({
+		...skillProviderOverrides,
 		domiaId: baseDomia?.id,
 	})
 	const localMqttConfig = getMqttConfig({
@@ -98,7 +98,7 @@ export const getDomia = ({
 		llmModelConfig,
 		ttsConfig,
 		audioPlaybackConfig,
-		mcpServerConfigs: [mcpServerConfig],
+		skillProviders: [skillProvider],
 		localMqttConfig,
 		capabilityDelegations: [capabilityDelegation],
 	}

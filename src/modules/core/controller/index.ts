@@ -32,7 +32,7 @@ export const transformDomia = (
 	const llmModelConfig = domia?.llmModelConfigs?.[0] || null
 	const ttsConfig = domia?.ttsConfigs?.[0] || null
 	const audioPlaybackConfig = domia?.audioPlaybackConfigs?.[0] || null
-	const mcpServerConfigs = domia?.mcpServerConfigs || null
+	const skillProviders = domia?.skillProviders || null
 	const localMqttConfig =
 		domia?.mqttConfigs?.find((config) => config?.type === "LOCAL") || null
 	const capabilityDelegations = domia?.capabilityDelegations || null
@@ -73,7 +73,7 @@ export const transformDomia = (
 		sttConfig,
 		llmModelConfig,
 		ttsConfig,
-		mcpServerConfigs,
+		skillProviders,
 		audioPlaybackConfig,
 		localMqttConfig,
 		capabilityDelegations,

@@ -12,7 +12,7 @@ import {
 	ttsConfig,
 	audioPlaybackConfig,
 	mqttConfig,
-	mcpServerConfig,
+	skillProvider,
 	capabilityDelegation,
 	type DBClientOrTxType,
 	DEFAULT_TIMESTAMP,
@@ -180,23 +180,38 @@ const dbAdapter = {
 				.run()
 	},
 
-	replaceMcpServers: (
+	replaceSkillProviders: (
 		domiaId: string,
-		items: Omit<typeof mcpServerConfig.$inferInsert, "id" | "domiaId">[],
+		items: (Omit<typeof skillProvider.$inferInsert, "id" | "domiaId"> & {
+			id?: string
+		})[],
 		tx: DBClientOrTxType,
 	): void => {
-		tx.delete(mcpServerConfig).where(eq(mcpServerConfig.domiaId, domiaId)).run()
-		if (items.length)
-			tx.insert(mcpServerConfig)
-				.values(
-					items.map((i) => ({
-						...i,
-						id: generateUuid(),
-						domiaId,
-						isActive: true,
-					})),
-				)
-				.run()
+		const existing = tx
+			.select()
+			.from(skillProvider)
+			.where(eq(skillProvider.domiaId, domiaId))
+			.all()
+		const byId = new Map(existing.map((row) => [row.id, row]))
+		const byName = new Map(existing.map((row) => [row.name, row]))
+		const keptIds = new Set<string>()
+		for (const item of items) {
+			const { id: incomingId, ...rest } = item
+			const prev = (incomingId && byId.get(incomingId)) || byName.get(rest.name)
+			if (prev) {
+				keptIds.add(prev.id)
+				tx.update(skillProvider)
+					.set(stamp(skillProvider, { ...rest, isActive: true }))
+					.where(eq(skillProvider.id, prev.id))
+					.run()
+			} else
+				tx.insert(skillProvider)
+					.values({ ...rest, id: generateUuid(), domiaId, isActive: true })
+					.run()
+		}
+		for (const row of existing)
+			if (!keptIds.has(row.id))
+				tx.delete(skillProvider).where(eq(skillProvider.id, row.id)).run()
 	},
 
 	replaceDelegations: (

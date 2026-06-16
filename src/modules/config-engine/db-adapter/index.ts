@@ -9,7 +9,7 @@ import {
 	sttConfig,
 	llmModelConfig,
 	ttsConfig,
-	mcpServerConfig,
+	skillProvider,
 	audioPlaybackConfig,
 	mqttConfig,
 	runtimeCapabilities,
@@ -21,7 +21,7 @@ import {
 	type InsertSttConfigType,
 	type InsertLlmModelConfigType,
 	type InsertTtsConfigType,
-	type InsertMcpServerConfigType,
+	type InsertSkillProviderType,
 	type InsertAudioPlaybackConfigType,
 	type InsertMqttConfigType,
 	type UpdateModuleSettingsType,
@@ -167,21 +167,21 @@ const dbAdapter = {
 				set: data,
 				where: eq(ttsConfig.domiaId, data.domiaId),
 			}),
-	insertMcpServerConfig: (
-		data: InsertMcpServerConfigType,
+	insertSkillProvider: (
+		data: InsertSkillProviderType,
 		client: DBClientOrTxType = dbClient,
-	) => client.insert(mcpServerConfig).values(data),
-	upsertMcpServerConfig: (
-		data: InsertMcpServerConfigType,
+	) => client.insert(skillProvider).values(data),
+	upsertSkillProvider: (
+		data: InsertSkillProviderType,
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client
-			.insert(mcpServerConfig)
+			.insert(skillProvider)
 			.values({ ...data, updatedAt: DEFAULT_TIMESTAMP })
 			.onConflictDoUpdate({
-				target: mcpServerConfig.id,
+				target: skillProvider.id,
 				set: data,
-				where: eq(mcpServerConfig.domiaId, data.domiaId),
+				where: eq(skillProvider.domiaId, data.domiaId),
 			}),
 	insertAudioPlaybackConfig: (
 		data: InsertAudioPlaybackConfigType,

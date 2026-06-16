@@ -10,7 +10,7 @@ import type {
 	SelectWakeWordConfigType,
 	SelectAudioPlaybackConfigType,
 	SelectMqttConfigType,
-	SelectMcpServerConfigType,
+	SelectSkillProviderType,
 	SelectCapabilityDelegationType,
 } from "@/db"
 import type { z } from "zod"
@@ -71,7 +71,7 @@ export type ConfigSnapshotType = {
 		BundleSectionType<SelectMqttConfigType>,
 		"type" | "password"
 	> | null
-	mcpServers: BundleSectionType<SelectMcpServerConfigType>[]
+	skillProviders: BundleSectionType<SelectSkillProviderType>[]
 	delegations: BundleSectionType<SelectCapabilityDelegationType>[]
 }
 

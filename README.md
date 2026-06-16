@@ -1,10 +1,20 @@
 # Domia — The Local AI That Lives With You
 
-**Domia** is a local-first, privacy-respecting AI companion. It listens, thinks, and talks back — **100% on your own hardware**, no cloud. Each Domia is a unique character with its own personality, voice, emotions, and memory, and several Domias can work together across your home as one mesh.
+**Domia** is a local-first, privacy-respecting AI companion. It listens, thinks, and talks back — **100% on your own hardware**, no cloud. Each Domia is a unique character with its own personality, voice, emotions, and memory, and several Domias can work together across your spaces as one mesh.
 
 Unlike a traditional assistant, Domia is not a single service in someone else's datacenter — it's a presence that runs where you are, keeps its own identity, and can borrow compute from a more powerful Domia nearby without ever giving up _who it is to you_.
 
+**Three things make Domia different:**
+
+- 🎭 **Personality** — every Domia is a character with its own voice, an 8-dimension emotional state, and memory. A presence with continuity, not a stateless command box.
+- 🕸️ **Delegation** — drop a Domia in any space; they form a peer-to-peer mesh and **share compute**. A thin device leans on a stronger one, and its persona travels with the request — so a hub answers _as your Domia_, in its voice.
+- 🧩 **Skills** — extensible via the Model Context Protocol: Domia decides when a turn needs a tool, calls it mid-conversation, and folds the result into its spoken reply. Point it at any MCP server to act in the world — still 100% local.
+
+**▶ See it live — [console.domia.ai](https://console.domia.ai)** — a read-only console of real captured conversations across five personas (voices, emotion, memory, per-stage latency, and the mesh delegation between spaces).
+
 > 🛠️ Living document — early but real. The sections below describe **what actually works today**, with pointers into the code, plus where we're headed.
+
+**Ecosystem:** [domia.ai](https://domia.ai) (site) · this repo `domia-core` (the voice AI) · [domia-app](https://github.com/domia-ai/domia-app) (the Console — [live demo](https://console.domia.ai)) · [@domia_ai](https://x.com/domia_ai) · [Discord](https://discord.gg/Sx4ACEMSyv)
 
 ---
 
@@ -18,7 +28,7 @@ Every capability below is implemented and runs end-to-end on your own hardware �
   `src/modules/{grpc-client,network-sync,heartbeat-manager}` · `src/setups/grpc-server`
 - **Capability delegation** — a thin device (e.g. a Raspberry Pi) can delegate STT/LLM/TTS to a stronger Domia. The origin orchestrates; the responder just lends compute.
   `src/modules/capability-resolver`
-- **Multi-room parallel hub** — one hub can serve several rooms **at the same time** via child-process inference pools (warm/lazy/reap/recycle workers, RAM-aware).
+- **Multi-space parallel hub** — one hub can serve several spaces **at the same time** via child-process inference pools (warm/lazy/reap/recycle workers, RAM-aware).
   `src/modules/inference-pool`
 - **Identity owned by the origin** — your Domia's **persona, voice, emotion, and memory travel with the request**, so when a hub answers for it, it answers in _your_ Domia's character and voice, not the hub's.
   `src/modules/{prompt-context-builder,emotion-engine,memory,reflection}`
@@ -26,14 +36,16 @@ Every capability below is implemented and runs end-to-end on your own hardware �
   `src/modules/{emotion-engine,reflection}`
 - **Memory** — recent-conversation memory + durable fact memory ("what it knows about you").
   `src/modules/memory`
+- **Skills / tool-calling via MCP** (opt-in) — Domia speaks the Model Context Protocol: it decides when a turn needs a tool, picks it, calls it mid-conversation, and folds the result into its spoken reply. Point it at any MCP server — including a Home Assistant one — to act in the world. Gated by a module flag + at least one active provider.
+  `src/modules/{skill-engine,agent}` · `src/modules/llm-engine` (tool-calling)
 - **Everything is DB-driven + remotely reconfigurable** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle); a Domia boots minimal and gets its role by importing a config bundle (`POST /config`), which persists and restarts it to reload cleanly.
   `src/db` · `src/modules/config-engine` · HTTP `POST /config`
-- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config`, `/config/health`, `/admin/restart`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation. A separate **web console** (fleet observability + remote config) drives this API across every Domia.
+- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config`, `/config/health`, `/admin/restart`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation. A separate **web console** — [domia-app](https://github.com/domia-ai/domia-app) — drives this API across every Domia (fleet observability + remote config); [live read-only demo](https://console.domia.ai).
   `src/setups/http-server` · `src/cli/dev`
 - **Voice UX** — wake word, barge-in (interrupt a reply), follow-up conversation mode (keep talking without re-waking), model warm-up on boot, and non-verbal feedback sounds — all DB-configurable.
-- **Hardware spectrum** — the same code runs from a Raspberry Pi-class device to a workstation; the difference is just DB config (model size, engine, threads), never hardcoded.
+- **Adapts to your hardware** — the same code runs on a thin edge device or a powerful hub; model size, engine, and thread counts are just DB config, never hardcoded. Better hardware, better experience.
 
-**On the roadmap (not built yet):** skills / tool-calling (MCP, Home Assistant), fine-tuned lightweight models (QLoRA), vector-RAG long-term memory, and a marketplace for voices/characters.
+**On the roadmap (not built yet):** multilingual speech, fine-tuned lightweight models (QLoRA), vector-RAG long-term memory, and a marketplace for voices/characters.
 
 ---
 
@@ -53,7 +65,7 @@ The LLM streams tokens; a sentence-splitter feeds finished sentences to TTS imme
 
 ### Any Domia, role decided by config
 
-There is no hardcoded "server" or "client". **Every instance is just a Domia.** What it does — run STT locally? delegate TTS? act as a hub for other rooms? — is decided entirely by its database config (capabilities, engines, delegations). In development we run two instances labelled _smart_ and _dump_ to exercise cross-Domia features, but those labels don't exist in production.
+There is no hardcoded "server" or "client". **Every instance is just a Domia.** What it does — run STT locally? delegate TTS? act as a hub for other spaces? — is decided entirely by its database config (capabilities, engines, delegations). In development we run two instances labelled _smart_ and _dump_ to exercise cross-Domia features, but those labels don't exist in production.
 
 ### Identity travels with the request
 
@@ -65,7 +77,7 @@ A (origin) ──gRPC──► B (responder, lends compute)
 B answers in A's character and A's voice, then reports new emotion/facts back to A
 ```
 
-The hub never "owns" the conversation — it lends CPU, while the **identity stays with the origin**. That's why several rooms can share one hub and each still sounds and feels like itself.
+The hub never "owns" the conversation — it lends CPU, while the **identity stays with the origin**. That's why several spaces can share one hub and each still sounds and feels like itself.
 
 For the full architecture, see [`.claude/docs/domia-state-and-roadmap.md`](./.claude/docs/domia-state-and-roadmap.md).
 
@@ -106,7 +118,7 @@ npm run dev-cli -- tts -t "hello, this is my own voice"
 
 **Born minimal, configured externally.** A Domia has no baked-in role — it boots minimal and you apply a config template (`full-hub`, `thin-client`, or your own) via the CLI or the web console; the change persists and the Domia restarts to apply it.
 
-**Many Domias (delegation / multi-room):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. A second `.env.edge` is provided: `npm run db:reset:edge` then `npm run dev:edge`. Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
+**Many Domias (delegation / multi-space):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. A second `.env.edge` is provided: `npm run db:reset:edge` then `npm run dev:edge`. Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
 
 See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and per-component testing.
 
@@ -129,9 +141,7 @@ See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and 
 ## 📦 Roadmap
 
 - **Now → next:** test suite + CI, performance/latency polish, admin CLI.
-- **Skills:** tool-calling via MCP, Home Assistant bridge (control lights/devices locally).
-- **Memory & models:** vector-RAG long-term memory, fine-tuned lightweight models.
-- **Ecosystem:** web/mobile dashboard, marketplace for voices & characters, optional audited cloud.
+- **Memory & models:** vector-RAG long-term memory, fine-tuned lightweight models, multilingual speech.
 
 ---
 

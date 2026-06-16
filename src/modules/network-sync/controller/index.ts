@@ -11,7 +11,7 @@ import {
 	normalizeRuntimeCapabilities,
 	normalizeCapabilityDelegations,
 	normalizeLlmModelConfig,
-	normalizeMcpServerConfigs,
+	normalizeSkillProviders,
 	normalizeSttConfig,
 	normalizeTtsConfig,
 } from "../utils"
@@ -112,15 +112,15 @@ export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 			dbAdapter.upsertLlmModelConfig(llmModelConfig, tx).run()
 		}
 
-		const mcpServerConfigs = normalizeMcpServerConfigs(domia)
-		if (mcpServerConfigs) {
+		const skillProviders = normalizeSkillProviders(domia)
+		if (skillProviders) {
 			networkSyncLogger.debug(
 				"Upserting MCP server configs for Domia",
 				logParams,
 			)
 
-			for (const mcpServerConfig of mcpServerConfigs) {
-				dbAdapter.upsertMcpServerConfig(mcpServerConfig, tx).run()
+			for (const skillProvider of skillProviders) {
+				dbAdapter.upsertSkillProvider(skillProvider, tx).run()
 			}
 		}
 

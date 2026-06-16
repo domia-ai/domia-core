@@ -48,9 +48,8 @@ const dbAdapter = {
 					where: (audioPlaybackConfigs, { eq }) =>
 						eq(audioPlaybackConfigs.isActive, true),
 				},
-				mcpServerConfigs: {
-					where: (mcpServerConfig, { eq }) =>
-						eq(mcpServerConfig.isActive, true),
+				skillProviders: {
+					where: (skillProvider, { eq }) => eq(skillProvider.isActive, true),
 				},
 				mqttConfigs: {
 					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
@@ -97,9 +96,8 @@ const dbAdapter = {
 					where: (audioPlaybackConfigs, { eq }) =>
 						eq(audioPlaybackConfigs.isActive, true),
 				},
-				mcpServerConfigs: {
-					where: (mcpServerConfig, { eq }) =>
-						eq(mcpServerConfig.isActive, true),
+				skillProviders: {
+					where: (skillProvider, { eq }) => eq(skillProvider.isActive, true),
 				},
 				mqttConfigs: {
 					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),
@@ -146,9 +144,8 @@ const dbAdapter = {
 					where: (audioPlaybackConfigs, { eq }) =>
 						eq(audioPlaybackConfigs.isActive, true),
 				},
-				mcpServerConfigs: {
-					where: (mcpServerConfig, { eq }) =>
-						eq(mcpServerConfig.isActive, true),
+				skillProviders: {
+					where: (skillProvider, { eq }) => eq(skillProvider.isActive, true),
 				},
 				mqttConfigs: {
 					where: (mqttConfig, { eq }) => eq(mqttConfig.isActive, true),

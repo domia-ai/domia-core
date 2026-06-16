@@ -27,6 +27,11 @@ export const baseLlmModelConfig = (
 		numPredict: DEFAULT_LLM_MODEL_NUM_PREDICT,
 		llmConcurrency: DEFAULT_LLM_CONCURRENCY,
 		useCompactPrompt: false,
+		agentPromptMode: "compact",
+		skillsRouting: "intent-gate",
+		intentModelName: null,
+		toolModelName: null,
+		agentMaxSteps: 5,
 		createdAt: now(),
 		updatedAt: now(),
 	}

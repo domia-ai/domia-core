@@ -2,6 +2,8 @@
 
 This guide takes you from a clean machine to a running Domia. All speech inference runs **in-process** via `sherpa-onnx-node` and the LLM runs locally via **Ollama**.
 
+> **▶ Want to see what you're building toward first?** Explore [**console.domia.ai**](https://console.domia.ai) — a read-only Console of real captured conversations across five personas (voices, emotion, memory, per-stage latency, and mesh delegation between spaces).
+
 ## 📋 Prerequisites
 
 - **Node.js ≥ 24** (nvm recommended)

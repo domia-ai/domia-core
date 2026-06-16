@@ -3,7 +3,7 @@ import {
 	type InsertRuntimeCapabilitiesType,
 	type InsertCapabilityDelegationType,
 	type InsertLlmModelConfigType,
-	type InsertMcpServerConfigType,
+	type InsertSkillProviderType,
 	type InsertSttConfigType,
 	type InsertTtsConfigType,
 } from "@/db"
@@ -91,27 +91,40 @@ export const normalizeLlmModelConfig = (
 		numPredict: llmModelConfig?.numPredict,
 		llmConcurrency: llmModelConfig?.llmConcurrency,
 		useCompactPrompt: llmModelConfig?.useCompactPrompt,
+		reflectionModelName: llmModelConfig?.reflectionModelName,
+		agentPromptMode: llmModelConfig?.agentPromptMode,
+		skillsRouting: llmModelConfig?.skillsRouting,
+		intentModelName: llmModelConfig?.intentModelName,
+		agentMaxSteps: llmModelConfig?.agentMaxSteps,
 	}
 }
 
-export const normalizeMcpServerConfigs = (
+export const normalizeSkillProviders = (
 	domia: DomiaType,
-): InsertMcpServerConfigType[] | null => {
-	const mcpServerConfigs = domia?.mcpServerConfigs
-	if (!mcpServerConfigs?.length) {
+): InsertSkillProviderType[] | null => {
+	const skillProviders = domia?.skillProviders
+	if (!skillProviders?.length) {
 		return null
 	}
 
-	return mcpServerConfigs?.map((mcpServerConfig) => {
+	return skillProviders?.map((skillProvider) => {
 		return {
-			id: mcpServerConfig?.id,
+			id: skillProvider?.id,
 			domiaId: domia?.id,
-			name: mcpServerConfig?.name,
-			isActive: mcpServerConfig?.isActive,
-			url: mcpServerConfig?.url,
-			description: mcpServerConfig?.description,
-			timeout: mcpServerConfig?.timeout,
-			priority: mcpServerConfig?.priority,
+			name: skillProvider?.name,
+			isActive: skillProvider?.isActive,
+			protocol: skillProvider?.protocol,
+			type: skillProvider?.type,
+			url: skillProvider?.url,
+			description: skillProvider?.description,
+			config: skillProvider?.config,
+			auth: skillProvider?.auth,
+			toolsCache: skillProvider?.toolsCache,
+			toolWhitelist: skillProvider?.toolWhitelist,
+			lastSyncAt: skillProvider?.lastSyncAt,
+			maxResultChars: skillProvider?.maxResultChars,
+			timeout: skillProvider?.timeout,
+			priority: skillProvider?.priority,
 		}
 	})
 }

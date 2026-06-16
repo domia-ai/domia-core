@@ -12,7 +12,7 @@ import {
 	wakeWordConfig,
 	audioPlaybackConfig,
 	mqttConfig,
-	mcpServerConfig,
+	skillProvider,
 	capabilityDelegation,
 } from "@/db"
 
@@ -73,8 +73,13 @@ export const configBundleSchema = z
 			.omit({ ...META_ACTIVE, type: true })
 			.strict()
 			.nullish(),
-		mcpServers: z
-			.array(createInsertSchema(mcpServerConfig).omit(META_ACTIVE).strict())
+		skillProviders: z
+			.array(
+				createInsertSchema(skillProvider)
+					.omit(META_ACTIVE)
+					.extend({ id: z.string().optional() })
+					.strict(),
+			)
 			.nullish(),
 		delegations: z
 			.array(

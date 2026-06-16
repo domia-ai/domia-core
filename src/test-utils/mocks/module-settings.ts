@@ -23,6 +23,7 @@ export const baseModuleSettings = (
 	remoteAccessEngine: faker.datatype.boolean(),
 	narrativeEngine: faker.datatype.boolean(),
 	identityEngine: faker.datatype.boolean(),
+	skillsEngine: false,
 	createdAt: now(),
 	updatedAt: now(),
 })

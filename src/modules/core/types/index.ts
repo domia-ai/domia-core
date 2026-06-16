@@ -8,7 +8,7 @@ import {
 	type SelectSttConfigType,
 	type SelectLlmModelConfigType,
 	type SelectTtsConfigType,
-	type SelectMcpServerConfigType,
+	type SelectSkillProviderType,
 	type SelectAudioPlaybackConfigType,
 	type SelectMqttConfigType,
 	type SelectCapabilityDelegationType,
@@ -24,7 +24,7 @@ export type DomiaType = SelectDomiaType & {
 	llmModelConfig: SelectLlmModelConfigType | null
 	ttsConfig: SelectTtsConfigType | null
 	audioPlaybackConfig: SelectAudioPlaybackConfigType | null
-	mcpServerConfigs: SelectMcpServerConfigType[] | null
+	skillProviders: SelectSkillProviderType[] | null
 	localMqttConfig: SelectMqttConfigType | null
 	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }
@@ -39,7 +39,7 @@ export type DomiaWithRawRelationsType = SelectDomiaType & {
 	llmModelConfigs: SelectLlmModelConfigType[] | null
 	ttsConfigs: SelectTtsConfigType[] | null
 	audioPlaybackConfigs: SelectAudioPlaybackConfigType[] | null
-	mcpServerConfigs: SelectMcpServerConfigType[] | null
+	skillProviders: SelectSkillProviderType[] | null
 	mqttConfigs: SelectMqttConfigType[] | null
 	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }

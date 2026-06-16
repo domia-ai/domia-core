@@ -20,7 +20,8 @@
 		"collectiveMind": false,
 		"narrativeEngine": false,
 		"identityEngine": true,
-		"remoteAccessEngine": true
+		"remoteAccessEngine": true,
+		"skillsEngine": false
 	},
 	"stt": {
 		"name": "Default",

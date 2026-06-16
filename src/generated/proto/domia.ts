@@ -137,6 +137,20 @@ export interface LlmStreamRequest {
   personaContextJson?: string | undefined;
 }
 
+export interface InferenceRequest {
+  senderDomiaKey: string;
+  messagesJson: string;
+  toolsJson: string;
+  originDomiaKey?: string | undefined;
+  interactionId?: string | undefined;
+  sessionId?: string | undefined;
+}
+
+export interface InferenceResponse {
+  reply?: string | undefined;
+  toolCallsJson?: string | undefined;
+}
+
 export interface TtsStreamRequest {
   senderDomiaKey: string;
   reply: string;
@@ -2333,6 +2347,257 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
   },
 };
 
+function createBaseInferenceRequest(): InferenceRequest {
+  return {
+    senderDomiaKey: "",
+    messagesJson: "",
+    toolsJson: "",
+    originDomiaKey: undefined,
+    interactionId: undefined,
+    sessionId: undefined,
+  };
+}
+
+export const InferenceRequest: MessageFns<InferenceRequest> = {
+  encode(message: InferenceRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.senderDomiaKey !== "") {
+      writer.uint32(10).string(message.senderDomiaKey);
+    }
+    if (message.messagesJson !== "") {
+      writer.uint32(18).string(message.messagesJson);
+    }
+    if (message.toolsJson !== "") {
+      writer.uint32(26).string(message.toolsJson);
+    }
+    if (message.originDomiaKey !== undefined) {
+      writer.uint32(34).string(message.originDomiaKey);
+    }
+    if (message.interactionId !== undefined) {
+      writer.uint32(42).string(message.interactionId);
+    }
+    if (message.sessionId !== undefined) {
+      writer.uint32(50).string(message.sessionId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InferenceRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInferenceRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.senderDomiaKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.messagesJson = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.toolsJson = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.originDomiaKey = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.interactionId = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.sessionId = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InferenceRequest {
+    return {
+      senderDomiaKey: isSet(object.senderDomiaKey)
+        ? globalThis.String(object.senderDomiaKey)
+        : isSet(object.sender_domia_key)
+        ? globalThis.String(object.sender_domia_key)
+        : "",
+      messagesJson: isSet(object.messagesJson)
+        ? globalThis.String(object.messagesJson)
+        : isSet(object.messages_json)
+        ? globalThis.String(object.messages_json)
+        : "",
+      toolsJson: isSet(object.toolsJson)
+        ? globalThis.String(object.toolsJson)
+        : isSet(object.tools_json)
+        ? globalThis.String(object.tools_json)
+        : "",
+      originDomiaKey: isSet(object.originDomiaKey)
+        ? globalThis.String(object.originDomiaKey)
+        : isSet(object.origin_domia_key)
+        ? globalThis.String(object.origin_domia_key)
+        : undefined,
+      interactionId: isSet(object.interactionId)
+        ? globalThis.String(object.interactionId)
+        : isSet(object.interaction_id)
+        ? globalThis.String(object.interaction_id)
+        : undefined,
+      sessionId: isSet(object.sessionId)
+        ? globalThis.String(object.sessionId)
+        : isSet(object.session_id)
+        ? globalThis.String(object.session_id)
+        : undefined,
+    };
+  },
+
+  toJSON(message: InferenceRequest): unknown {
+    const obj: any = {};
+    if (message.senderDomiaKey !== "") {
+      obj.senderDomiaKey = message.senderDomiaKey;
+    }
+    if (message.messagesJson !== "") {
+      obj.messagesJson = message.messagesJson;
+    }
+    if (message.toolsJson !== "") {
+      obj.toolsJson = message.toolsJson;
+    }
+    if (message.originDomiaKey !== undefined) {
+      obj.originDomiaKey = message.originDomiaKey;
+    }
+    if (message.interactionId !== undefined) {
+      obj.interactionId = message.interactionId;
+    }
+    if (message.sessionId !== undefined) {
+      obj.sessionId = message.sessionId;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<InferenceRequest>): InferenceRequest {
+    return InferenceRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<InferenceRequest>): InferenceRequest {
+    const message = createBaseInferenceRequest();
+    message.senderDomiaKey = object.senderDomiaKey ?? "";
+    message.messagesJson = object.messagesJson ?? "";
+    message.toolsJson = object.toolsJson ?? "";
+    message.originDomiaKey = object.originDomiaKey ?? undefined;
+    message.interactionId = object.interactionId ?? undefined;
+    message.sessionId = object.sessionId ?? undefined;
+    return message;
+  },
+};
+
+function createBaseInferenceResponse(): InferenceResponse {
+  return { reply: undefined, toolCallsJson: undefined };
+}
+
+export const InferenceResponse: MessageFns<InferenceResponse> = {
+  encode(message: InferenceResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.reply !== undefined) {
+      writer.uint32(10).string(message.reply);
+    }
+    if (message.toolCallsJson !== undefined) {
+      writer.uint32(18).string(message.toolCallsJson);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InferenceResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInferenceResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.reply = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.toolCallsJson = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InferenceResponse {
+    return {
+      reply: isSet(object.reply) ? globalThis.String(object.reply) : undefined,
+      toolCallsJson: isSet(object.toolCallsJson)
+        ? globalThis.String(object.toolCallsJson)
+        : isSet(object.tool_calls_json)
+        ? globalThis.String(object.tool_calls_json)
+        : undefined,
+    };
+  },
+
+  toJSON(message: InferenceResponse): unknown {
+    const obj: any = {};
+    if (message.reply !== undefined) {
+      obj.reply = message.reply;
+    }
+    if (message.toolCallsJson !== undefined) {
+      obj.toolCallsJson = message.toolCallsJson;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<InferenceResponse>): InferenceResponse {
+    return InferenceResponse.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<InferenceResponse>): InferenceResponse {
+    const message = createBaseInferenceResponse();
+    message.reply = object.reply ?? undefined;
+    message.toolCallsJson = object.toolCallsJson ?? undefined;
+    return message;
+  },
+};
+
 function createBaseTtsStreamRequest(): TtsStreamRequest {
   return {
     senderDomiaKey: "",
@@ -2671,6 +2936,14 @@ export const DomiaNodeDefinition = {
       responseStream: false,
       options: {},
     },
+    runInferenceWithTools: {
+      name: "RunInferenceWithTools",
+      requestType: InferenceRequest as typeof InferenceRequest,
+      requestStream: false,
+      responseType: InferenceResponse as typeof InferenceResponse,
+      responseStream: false,
+      options: {},
+    },
   },
 } as const;
 
@@ -2705,6 +2978,10 @@ export interface DomiaNodeServiceImplementation<CallContextExt = {}> {
     request: StageExecutionReport,
     context: CallContext & CallContextExt,
   ): Promise<DeepPartial<StageExecutionAck>>;
+  runInferenceWithTools(
+    request: InferenceRequest,
+    context: CallContext & CallContextExt,
+  ): Promise<DeepPartial<InferenceResponse>>;
 }
 
 export interface DomiaNodeClient<CallOptionsExt = {}> {
@@ -2732,6 +3009,10 @@ export interface DomiaNodeClient<CallOptionsExt = {}> {
     request: DeepPartial<StageExecutionReport>,
     options?: CallOptions & CallOptionsExt,
   ): Promise<StageExecutionAck>;
+  runInferenceWithTools(
+    request: DeepPartial<InferenceRequest>,
+    options?: CallOptions & CallOptionsExt,
+  ): Promise<InferenceResponse>;
 }
 
 function bytesFromBase64(b64: string): Uint8Array {

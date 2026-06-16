@@ -56,8 +56,14 @@ export const handleWakeDetected = async (
 			features.canRunLlm &&
 			features.canSentencePipeline &&
 			Boolean(features.llm?.adapter.runStream)
+		const skillsMayIntercept =
+			domia.moduleSettings?.skillsEngine === true &&
+			(domia.skillProviders ?? []).some(
+				(p) => p.isActive && (p.toolsCache?.length ?? 0) > 0,
+			)
 		if (
 			speculativeMs > 0 &&
+			!skillsMayIntercept &&
 			stt?.adapter.runPcm &&
 			(localSpeculation || !features.canRunLlm)
 		) {

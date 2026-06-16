@@ -9,7 +9,8 @@ import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
 import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
 import { updateInteraction } from "@/modules/session-manager"
-import { runLLM } from "@/modules/llm-engine"
+import { runLLM, runLLMWithTools } from "@/modules/llm-engine"
+import type { ChatMessageType, ToolDefinitionType } from "@/modules/llm-engine"
 import {
 	DomiaNodeDefinition,
 	type DomiaNodeServiceImplementation,
@@ -26,6 +27,8 @@ import {
 	type ReflectionAck,
 	type StageExecutionReport,
 	type StageExecutionAck,
+	type InferenceRequest,
+	type InferenceResponse,
 } from "@/generated/proto/domia"
 import type { GrpcServerArgsType } from "./types"
 import {
@@ -413,6 +416,29 @@ const buildImplementation = ({
 				grpcServerLogger.error("❌ reportStageExecution failed", { err })
 				return { accepted: false }
 			}
+		},
+
+		async runInferenceWithTools(
+			request: InferenceRequest,
+		): Promise<InferenceResponse> {
+			setTraceContext({
+				interactionId: request.interactionId,
+				originDomiaKey: request.originDomiaKey,
+			})
+			const { domia, features } = await resolveLive()
+			if (!features.canRunLlm) {
+				throw new Error("llm capability disabled on this domia")
+			}
+			const messages = JSON.parse(request.messagesJson) as ChatMessageType[]
+			const tools = JSON.parse(request.toolsJson) as ToolDefinitionType[]
+			grpcServerLogger.info("🛠️ RunInferenceWithTools (hub inference only)", {
+				toolCount: tools.length,
+				model: domia.llmModelConfig?.modelName,
+				origin: request.originDomiaKey,
+			})
+			const out = await runLLMWithTools(domia, messages, tools)
+			if (out.kind === "reply") return { reply: out.text }
+			return { toolCallsJson: JSON.stringify(out.calls) }
 		},
 	}
 }

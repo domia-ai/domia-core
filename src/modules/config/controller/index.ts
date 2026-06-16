@@ -5,6 +5,7 @@ import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
 import { getBootStatus, requestRestart } from "@/modules/runtime-control"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
+import { resolveSkillAdapter } from "@/modules/skill-engine"
 import { configEngineLogger } from "@/utils"
 import dbAdapter from "../db-adapter"
 import { CONFIG_BUNDLE_VERSION, configBundleSchema } from "../schemas"
@@ -108,6 +109,50 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			path: null,
 			status: "ok",
 		})
+	const skillsOn = domia.moduleSettings?.skillsEngine === true
+	const providers = (domia.skillProviders ?? []).filter((p) => p.isActive)
+	if (skillsOn && providers.length === 0)
+		entries.push({
+			stage: "skills",
+			engine: null,
+			configured: null,
+			path: null,
+			status: "unknown",
+			detail: "Skills engine is on but no providers are configured",
+		})
+	for (const p of providers) {
+		let status: ConfigHealthEntryType["status"] = "ok"
+		let detail: string | undefined
+		if (!resolveSkillAdapter(p.protocol)) {
+			status = "missing"
+			detail = `Unsupported protocol '${p.protocol}' — no adapter installed`
+		} else if (!skillsOn) {
+			status = "unknown"
+			detail = "Skills engine is off — this provider is not loaded"
+		} else if (!p.url) {
+			status = "missing"
+			detail = "Missing endpoint URL"
+		} else if (!p.toolsCache?.length) {
+			status = "unknown"
+			detail =
+				"No tools cached — provider unreachable, wrong transport, or missing/invalid auth"
+		} else {
+			const cached = new Set(p.toolsCache.map((t) => t.rawName))
+			const orphanWhitelist = (p.toolWhitelist ?? []).filter(
+				(w) => !cached.has(w),
+			)
+			if (orphanWhitelist.length)
+				detail = `Allow-list tools not offered by provider: ${orphanWhitelist.join(", ")}`
+		}
+		entries.push({
+			stage: "skill",
+			engine: p.protocol,
+			configured: `${p.name} (${p.type}${p.toolsCache?.length ? `, ${p.toolsCache.length} tools` : ""})`,
+			path: p.url,
+			status,
+			detail,
+		})
+	}
 	return { ok: entries.every((e) => e.status !== "missing"), entries }
 }
 
@@ -157,9 +202,12 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 		wakeWord: toBundleSection(domia.wakeWordConfig),
 		playback: toBundleSection(domia.audioPlaybackConfig),
 		mqttLocal: toBundleSection(domia.localMqttConfig, ["type", "password"]),
-		mcpServers: (domia.mcpServerConfigs ?? []).map(
-			(s) => toBundleSection(s) as Record<string, unknown>,
-		),
+		skillProviders: (domia.skillProviders ?? []).map((s) => {
+			const section = toBundleSection(s, ["auth"]) as Record<string, unknown>
+			section.id = s.id
+			if (s.auth?.kind) section.auth = { kind: s.auth.kind }
+			return section
+		}),
 		delegations: (domia.capabilityDelegations ?? []).map(
 			(d) => toBundleSection(d) as Record<string, unknown>,
 		),
@@ -198,8 +246,8 @@ export const persistConfig = async (
 			dbAdapter.materializePlayback(domia.id, bundle.playback, tx).run()
 		if (bundle.mqttLocal)
 			dbAdapter.materializeMqtt(domia.id, "LOCAL", bundle.mqttLocal, tx)
-		if (bundle.mcpServers)
-			dbAdapter.replaceMcpServers(domia.id, bundle.mcpServers, tx)
+		if (bundle.skillProviders)
+			dbAdapter.replaceSkillProviders(domia.id, bundle.skillProviders, tx)
 		if (bundle.delegations)
 			dbAdapter.replaceDelegations(domia.id, bundle.delegations, tx)
 	})

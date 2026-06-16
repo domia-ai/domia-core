@@ -292,11 +292,15 @@ export const buildPromptFromPersona = (
 		if (turns) sections.push(["RECENT TURNS", turns])
 	}
 
-	sections.push(["USER INPUT", transcript?.trim() ?? ""])
+	if (!options?.omitUserInput) {
+		sections.push(["USER INPUT", transcript?.trim() ?? ""])
+	}
 
 	const body = sections
 		.map(([title, content]) => `### ${title}\n${content}`)
 		.join("\n\n")
+
+	if (options?.omitUserInput) return body
 
 	return `${body}\n\n### YOUR REPLY (as ${name}, spoken aloud):`
 }

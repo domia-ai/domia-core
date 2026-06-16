@@ -159,14 +159,22 @@ export type UpdateTtsConfigType = Partial<Omit<InsertTtsConfigType, "id">> & {
 	id: string
 }
 
-export type SelectMcpServerConfigType = InferSelectModel<
-	typeof schema.mcpServerConfig
+export type {
+	SkillAuthType,
+	SkillToolType,
+	SkillProviderConfigType,
+	ToolFinalizeRuleType,
+	ToolFinalizeMapType,
+} from "./json-types"
+
+export type SelectSkillProviderType = InferSelectModel<
+	typeof schema.skillProvider
 >
-export type InsertMcpServerConfigType = InferInsertModel<
-	typeof schema.mcpServerConfig
+export type InsertSkillProviderType = InferInsertModel<
+	typeof schema.skillProvider
 >
-export type UpdateMcpServerConfigType = Partial<
-	Omit<InsertMcpServerConfigType, "id">
+export type UpdateSkillProviderType = Partial<
+	Omit<InsertSkillProviderType, "id">
 > & { id: string }
 
 export type SelectInteractionTraceType = InferSelectModel<

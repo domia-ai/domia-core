@@ -11,6 +11,12 @@ import {
 	type StageMetric,
 } from "@/generated/proto/domia"
 import type {
+	ChatMessageType,
+	ToolCallType,
+	ToolCallOrReplyType,
+	ToolDefinitionType,
+} from "@/modules/llm-engine"
+import type {
 	DeliverEventTarget,
 	DeliverEventPayloadMap,
 	DeliverEventResult,
@@ -700,6 +706,52 @@ export const reportStageExecutionToTarget = async (
 			`✗ reportStageExecution to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
 		)
 		return false
+	} finally {
+		clearTimeout(timer)
+	}
+}
+
+export const delegateInferenceWithTools = async (
+	senderDomiaKey: string,
+	target: DeliverEventTarget,
+	payload: {
+		messages: ChatMessageType[]
+		tools: ToolDefinitionType[]
+		originDomiaKey?: string
+		interactionId?: string
+		sessionId?: string
+	},
+): Promise<ToolCallOrReplyType> => {
+	const client = getClient(target)
+	if (!client) throw new Error(`no grpc client for ${target.domiaKey}`)
+	const addr = addrOf(target)
+	const ac = new AbortController()
+	const timer = setTimeout(() => ac.abort(), tunables.unaryDeadlineMs)
+	try {
+		const res = await client.runInferenceWithTools(
+			{
+				senderDomiaKey,
+				messagesJson: JSON.stringify(payload.messages),
+				toolsJson: JSON.stringify(payload.tools),
+				originDomiaKey: payload.originDomiaKey,
+				interactionId: payload.interactionId,
+				sessionId: payload.sessionId,
+			},
+			{ signal: ac.signal },
+		)
+		if (res.toolCallsJson) {
+			return {
+				kind: "tool_calls",
+				calls: JSON.parse(res.toolCallsJson) as ToolCallType[],
+			}
+		}
+		return { kind: "reply", text: res.reply ?? "" }
+	} catch (err) {
+		if (isUnavailableError(err)) closeChannel(addr)
+		grpcClientLogger.warn(
+			`✗ runInferenceWithTools to ${target.domiaKey} @ ${addr} failed: ${errMsg(err)}`,
+		)
+		throw err
 	} finally {
 		clearTimeout(timer)
 	}

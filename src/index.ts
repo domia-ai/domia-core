@@ -13,6 +13,7 @@ import {
 	setupHttpServer,
 	setupHeartbeat,
 	setupGrpcServer,
+	setupSkills,
 } from "./setups"
 
 process.on("uncaughtException", (err) => {
@@ -51,6 +52,9 @@ async function main() {
 		domia: ownDomia,
 		runtimeCapabilities,
 	})
+	await setupSkills(ownDomia).catch((err) =>
+		appLogger.error("Skill setup failed (skills disabled)", { err }),
+	)
 	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
 	setupHttpServer({ domia: ownDomia, mqttClient: localMqttClient })
 

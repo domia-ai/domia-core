@@ -12,6 +12,7 @@ service DomiaNode {
   rpc StreamVoiceReply(stream AudioChunk) returns (stream ReplyAudioMessage);
   rpc ReportReflection(ReflectionReport) returns (ReflectionAck);
   rpc ReportStageExecution(StageExecutionReport) returns (StageExecutionAck);
+  rpc RunInferenceWithTools(InferenceRequest) returns (InferenceResponse);
 }
 
 message HealthRequest {}
@@ -138,6 +139,20 @@ message LlmStreamRequest {
   optional string interaction_id = 4;
   optional string response_type = 5;
   optional string persona_context_json = 6;
+}
+
+message InferenceRequest {
+  string sender_domia_key = 1;
+  string messages_json = 2;
+  string tools_json = 3;
+  optional string origin_domia_key = 4;
+  optional string interaction_id = 5;
+  optional string session_id = 6;
+}
+
+message InferenceResponse {
+  optional string reply = 1;
+  optional string tool_calls_json = 2;
 }
 
 message TtsStreamRequest {

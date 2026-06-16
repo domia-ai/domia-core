@@ -47,7 +47,8 @@
 		"collectiveMind": true,
 		"remoteAccessEngine": true,
 		"narrativeEngine": true,
-		"identityEngine": true
+		"identityEngine": true,
+		"skillsEngine": false
 	},
 	"capabilities": {
 		"wakeword": false,
@@ -139,6 +140,6 @@
 		"outputDevice": null
 	},
 	"mqttLocal": null,
-	"mcpServers": [],
+	"skillProviders": [],
 	"delegations": []
 }

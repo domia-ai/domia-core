@@ -30,7 +30,9 @@ import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
+	type SkillToolType,
 } from "@/db"
+import type { DomiaType } from "@/modules/core"
 import {
 	buildPromptContext,
 	personaContextFromDomia,
@@ -39,12 +41,24 @@ import {
 import { reflectOnInteraction } from "@/modules/reflection"
 import { playFeedbackSound } from "@/modules/feedback-sounds"
 import { admitVoiceReply } from "@/modules/voice-admission"
-import { runLLM } from "@/modules/llm-engine"
+import {
+	runLLM,
+	runLLMWithTools,
+	runLLMReplyStreamOrTools,
+} from "@/modules/llm-engine"
+import {
+	runAgentTurn,
+	type AgentInferenceType,
+	type AgentStreamInferenceType,
+	type AgentResultType,
+} from "@/modules/agent"
+import { classifyNeedsSkill } from "@/modules/intent-router"
 import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
 	streamLlmFromTarget,
 	streamReplyAudioFromTarget,
+	delegateInferenceWithTools,
 	type DeliverEventTarget,
 } from "@/modules/grpc-client"
 import type {
@@ -330,6 +344,106 @@ const runLocalSyncLlm = async (
 			session.originDomiaKey,
 		)
 	}
+}
+
+const skillsEnabled = (ctx: CoreBusContextType): boolean =>
+	ctx.domia.moduleSettings?.skillsEngine === true
+
+const cachedToolsOf = (domia: DomiaType): SkillToolType[] =>
+	(domia.skillProviders ?? [])
+		.filter((s) => s.isActive)
+		.flatMap((s) => s.toolsCache ?? [])
+
+const withAgentSummary = (result: AgentResultType): unknown[] | null => {
+	if (!result.skillResponses.length) return null
+	return [
+		...result.skillResponses,
+		{
+			__summary: {
+				decisionMs: result.decisionMs,
+				toolMs: result.toolMs,
+				finalizeMs: result.finalizeMs,
+				finalizeMode: result.finalizeMode,
+			},
+		},
+	]
+}
+
+const tryAgentTurn = async (
+	ctx: CoreBusContextType,
+	session: SttFlowSessionType,
+	tools: SkillToolType[],
+	inference: AgentInferenceType,
+	executor: { key: string; model: string | null },
+	streamFinalize?: AgentStreamInferenceType,
+): Promise<boolean> => {
+	const { domia } = ctx
+	const startTime = Date.now()
+	let result: AgentResultType
+	try {
+		result = await runAgentTurn(domia, session.transcript, tools, inference, {
+			voice: session.isVoice,
+			streamFinalize,
+		})
+	} catch (err) {
+		domiaBusLogger.warn("agent turn failed — falling through to normal LLM", {
+			domiaId: domia.id,
+			interactionId: session.interactionId,
+			err,
+		})
+		return false
+	}
+
+	if (result.replyStream && session.isVoice) {
+		await updateInteraction({
+			id: session.interactionId,
+			skillProviderUsed: result.serversUsed.join(",") || null,
+			skillPrompt: result.skillPrompt,
+			skillResponse: withAgentSummary(result),
+		})
+		return pipelineVoiceFromTokens(ctx, session, result.replyStream, {
+			llmExecutorKey: executor.key,
+			llmModelUsed: executor.model,
+		})
+	}
+
+	const { reply } = ensureReplyOrFallback(result.reply)
+	const llmElapsed = Date.now() - startTime
+
+	await updateInteraction({
+		id: session.interactionId,
+		llmPrompt: session.promptContext,
+		llmResponse: reply,
+		llmExecutorKey: executor.key,
+		llmMs: llmElapsed,
+		llmModelUsed: executor.model,
+		skillProviderUsed: result.serversUsed.join(",") || null,
+		skillPrompt: result.skillPrompt,
+		skillResponse: withAgentSummary(result),
+		totalMs: pipelineElapsed(session.interactionId),
+	})
+
+	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+		reply,
+		transcript: session.transcript,
+		interactionId: session.interactionId,
+		originDomiaKey: session.originDomiaKey,
+		responseType: session.responseType,
+		speechEndAt: session.speechEndAt,
+		liveVoice: session.liveVoice,
+	})
+
+	if (!session.isVoice) {
+		await updateInteraction({ id: session.interactionId, heardReply: reply })
+		void reflectOnInteraction(
+			domia,
+			session.transcript,
+			reply,
+			session.interactionId,
+			session.originDomiaKey,
+		)
+	}
+	return true
 }
 
 const tryDelegatedReplyAudio = async (
@@ -655,6 +769,54 @@ const handleSttDoneFlow = async (
 				return
 			}
 			try {
+				if (skillsEnabled(ctx)) {
+					const tools = cachedToolsOf(domia)
+					if (tools.length > 0 && features.llm?.adapter.runWithTools) {
+						const intentStart = Date.now()
+						const decision = await classifyNeedsSkill(
+							domia,
+							session.transcript,
+							tools.map((t) => ({
+								name: t.rawName,
+								description: t.description,
+							})),
+							{ canRunLlm: true },
+						)
+						const intentDecision = `${decision.needsSkill ? "skill" : "chat"} (${decision.reason})`
+						const intentMs = Date.now() - intentStart
+						domiaBusLogger.info(`🧭 intent: ${intentDecision} ${intentMs}ms`, {
+							domiaId: domia.id,
+						})
+						void updateInteraction({
+							id: session.interactionId,
+							intentDecision,
+							intentMs,
+						})
+						if (decision.needsSkill) {
+							const inference: AgentInferenceType = (messages, toolDefs) =>
+								runLLMWithTools(domia, messages, toolDefs)
+							const streamFinalize: AgentStreamInferenceType | undefined =
+								features.canSentencePipeline
+									? (messages, toolDefs) =>
+											runLLMReplyStreamOrTools(domia, messages, toolDefs)
+									: undefined
+							if (
+								await tryAgentTurn(
+									ctx,
+									session,
+									tools,
+									inference,
+									{
+										key: domia.domiaKey,
+										model: domia.llmModelConfig?.modelName ?? null,
+									},
+									streamFinalize,
+								)
+							)
+								return
+						}
+					}
+				}
 				if (
 					await tryLocalFullStreamVoice(ctx, session, payload.prestartedTokens)
 				)
@@ -711,6 +873,31 @@ const handleSttDoneFlow = async (
 				responseType,
 			})
 			return
+		}
+
+		if (skillsEnabled(ctx)) {
+			const tools = cachedToolsOf(domia)
+			if (tools.length > 0) {
+				const target = targets[0]
+				domiaBusLogger.info("🛰️ delegating agent inference to peer", {
+					target: target.domiaKey,
+					tools: tools.length,
+				})
+				const inference: AgentInferenceType = (messages, toolDefs) =>
+					delegateInferenceWithTools(domia.domiaKey, target, {
+						messages,
+						tools: toolDefs,
+						originDomiaKey: originDomiaKey ?? domia.domiaKey,
+						interactionId,
+					})
+				if (
+					await tryAgentTurn(ctx, session, tools, inference, {
+						key: target.domiaKey,
+						model: null,
+					})
+				)
+					return
+			}
 		}
 
 		if (await tryDelegatedReplyAudio(ctx, session, targets)) return

@@ -13,6 +13,7 @@ export type BuildPromptContextOptionsType = {
 	recentTurns?: RecentTurnType[]
 	knownFacts?: string[]
 	userMoodTrend?: string[]
+	omitUserInput?: boolean
 }
 
 export type PersonaContextType = z.infer<typeof personaContextSchema>
