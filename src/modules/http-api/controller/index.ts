@@ -3,6 +3,7 @@ import { ZodError } from "zod"
 import { writeFile } from "fs/promises"
 import { join, resolve, sep } from "path"
 import { generateUuid } from "@/utils"
+import { DEFAULT_OLLAMA_HOST } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { requestRestart } from "@/modules/runtime-control"
 import { RECORDINGS_DIR } from "@/modules/audio-capture/constants"
@@ -227,16 +228,19 @@ export const handleGetConfigHealth = async (domia: DomiaType) => {
 	return { health: configHealth(domia) }
 }
 
-export const handleGetModels = async () => {
-	return { models: await listModels() }
+export const handleGetModels = async (domia: DomiaType) => {
+	const ollamaHost = domia.llmModelConfig?.baseUrl ?? DEFAULT_OLLAMA_HOST
+	return { models: await listModels(ollamaHost) }
 }
 
 export const handlePostModelInstall = async (
+	domia: DomiaType,
 	body: unknown,
 	reply: FastifyReply,
 ) => {
+	const ollamaHost = domia.llmModelConfig?.baseUrl ?? DEFAULT_OLLAMA_HOST
 	try {
-		return { job: startInstall(body) }
+		return { job: startInstall(body, ollamaHost) }
 	} catch (err) {
 		httpServerLogger.error("Model install request failed", { err })
 		return reply.code(400).send({ error: "Invalid model install spec" })

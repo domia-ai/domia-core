@@ -11,7 +11,6 @@ import {
 } from "fs"
 import { basename, join, resolve } from "path"
 import { Ollama } from "ollama"
-import { env } from "@/config"
 import { generateUuid, modelManagerLogger } from "@/utils"
 import { modelInstallSpecSchema } from "../schemas"
 import type {
@@ -42,9 +41,11 @@ const readCatalog = (): ModelInstallSpecType[] => {
 	}
 }
 
-const listOllama = async (): Promise<InstalledModelType[]> => {
+const listOllama = async (
+	ollamaHost: string,
+): Promise<InstalledModelType[]> => {
 	try {
-		const client = new Ollama({ host: env.OLLAMA_HOST })
+		const client = new Ollama({ host: ollamaHost })
 		const res = await client.list()
 		return res.models.map((m) => ({
 			name: m.name,
@@ -56,7 +57,9 @@ const listOllama = async (): Promise<InstalledModelType[]> => {
 	}
 }
 
-export const listModels = async (): Promise<ModelsReportType> => {
+export const listModels = async (
+	ollamaHost: string,
+): Promise<ModelsReportType> => {
 	const installed: InstalledModelType[] = []
 	if (existsSync(MODELS_DIR)) {
 		for (const entry of readdirSync(MODELS_DIR, { withFileTypes: true })) {
@@ -77,7 +80,7 @@ export const listModels = async (): Promise<ModelsReportType> => {
 			})
 		}
 	}
-	installed.push(...(await listOllama()))
+	installed.push(...(await listOllama(ollamaHost)))
 	return { modelsDir: MODELS_DIR, installed, catalog: readCatalog() }
 }
 
@@ -114,17 +117,21 @@ const runFile = async (
 
 const runOllama = async (
 	spec: Extract<ModelInstallSpecType, { kind: "ollama" }>,
+	ollamaHost: string,
 ): Promise<void> => {
-	const client = new Ollama({ host: env.OLLAMA_HOST })
+	const client = new Ollama({ host: ollamaHost })
 	await client.pull({ model: spec.model })
 }
 
-const runInstall = async (job: ModelJobType): Promise<void> => {
+const runInstall = async (
+	job: ModelJobType,
+	ollamaHost: string,
+): Promise<void> => {
 	try {
 		if (!existsSync(MODELS_DIR)) mkdirSync(MODELS_DIR, { recursive: true })
 		if (job.spec.kind === "sherpa-archive") await runSherpaArchive(job.spec)
 		else if (job.spec.kind === "file") await runFile(job.spec)
-		else await runOllama(job.spec)
+		else await runOllama(job.spec, ollamaHost)
 		job.status = "done"
 		job.detail = "installed"
 		modelManagerLogger.info("📦 model installed", { jobId: job.id })
@@ -137,7 +144,10 @@ const runInstall = async (job: ModelJobType): Promise<void> => {
 	}
 }
 
-export const startInstall = (input: unknown): ModelJobType => {
+export const startInstall = (
+	input: unknown,
+	ollamaHost: string,
+): ModelJobType => {
 	const spec = modelInstallSpecSchema.parse(input)
 	const job: ModelJobType = {
 		id: generateUuid(),
@@ -148,7 +158,7 @@ export const startInstall = (input: unknown): ModelJobType => {
 		finishedAt: null,
 	}
 	jobs.set(job.id, job)
-	void runInstall(job)
+	void runInstall(job, ollamaHost)
 	return job
 }
 

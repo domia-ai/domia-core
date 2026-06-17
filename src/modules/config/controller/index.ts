@@ -198,7 +198,7 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 		capabilities: toBundleSection(domia.runtimeCapabilities),
 		stt: toBundleSection(domia.sttConfig),
 		tts: toBundleSection(domia.ttsConfig),
-		llm: toBundleSection(domia.llmModelConfig),
+		llm: toBundleSection(domia.llmModelConfig, ["apiKey"]),
 		wakeWord: toBundleSection(domia.wakeWordConfig),
 		playback: toBundleSection(domia.audioPlaybackConfig),
 		mqttLocal: toBundleSection(domia.localMqttConfig, ["type", "password"]),

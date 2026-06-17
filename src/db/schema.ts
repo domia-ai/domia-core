@@ -114,6 +114,7 @@ import {
 	INTERACTION_STATUS_ENUM_VALUES,
 	INTERACTION_STATUS_ENUM,
 	DEFAULT_LLM_MODEL_NAME,
+	DEFAULT_OLLAMA_HOST,
 	DEFAULT_TTS_VOICE_NAME,
 	DEFAULT_TTS_MODEL_PATH,
 	DEFAULT_TTS_NUM_THREADS,
@@ -533,6 +534,8 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 		.notNull()
 		.default(LLM_ENGINE_ENUM.OLLAMA),
 	modelName: text("model_name").notNull().default(DEFAULT_LLM_MODEL_NAME),
+	baseUrl: text("base_url").notNull().default(DEFAULT_OLLAMA_HOST),
+	apiKey: text("api_key"),
 	reflectionModelName: text("reflection_model_name"),
 	temperature: real("temperature")
 		.notNull()

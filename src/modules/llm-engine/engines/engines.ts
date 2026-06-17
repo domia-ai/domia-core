@@ -1,7 +1,7 @@
 import { type LlmEngineEnumType, LLM_ENGINE_ENUM } from "@/db"
 
 import { ollamaEngine } from "./ollama"
-import { llamaCppEngine } from "./llamaCpp"
+import { openAiCompatibleEngine } from "./openai-compatible"
 import type { LlmEngineAdapterType } from "../types"
 
 export const llmEngineRegistry: Record<
@@ -9,7 +9,7 @@ export const llmEngineRegistry: Record<
 	LlmEngineAdapterType
 > = {
 	[LLM_ENGINE_ENUM.OLLAMA]: ollamaEngine,
-	[LLM_ENGINE_ENUM.LLAMA_CPP]: llamaCppEngine,
+	[LLM_ENGINE_ENUM.OPENAI_COMPATIBLE]: openAiCompatibleEngine,
 }
 
 export const getLlmEngine = (
@@ -18,5 +18,5 @@ export const getLlmEngine = (
 
 export const llmEngines = {
 	[LLM_ENGINE_ENUM.OLLAMA]: ollamaEngine.run,
-	[LLM_ENGINE_ENUM.LLAMA_CPP]: llamaCppEngine.run,
+	[LLM_ENGINE_ENUM.OPENAI_COMPATIBLE]: openAiCompatibleEngine.run,
 }

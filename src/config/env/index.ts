@@ -13,7 +13,6 @@ const envSchema = z.object({
 	GRPC_HOST: z.string().default("127.0.0.1"),
 	GRPC_PORT: z.string().default("5052"),
 	DOMIA_LOG_FILE: z.string().optional(),
-	OLLAMA_HOST: z.string().default("http://localhost:11434"),
 })
 
 export const env = envSchema.parse(process.env)

@@ -65,6 +65,7 @@ export const DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS = 15_000
 export const DEFAULT_STT_POOL_EXECUTION_TIMEOUT_MS = 30_000
 export const DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS = 0
 export const DEFAULT_LLM_MODEL_NAME = "llama3.1:8b"
+export const DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 export const DEFAULT_TTS_VOICE_NAME = "af_heart"
 export const DEFAULT_TTS_MODEL_PATH = "data/models/kokoro-en-v0_19"
 export const DEFAULT_TTS_NUM_THREADS = 2
@@ -235,11 +236,11 @@ export const STT_ENGINE_ENUM_VALUES = [
 
 export const LLM_ENGINE_ENUM = {
 	OLLAMA: "OLLAMA",
-	LLAMA_CPP: "LLAMA_CPP",
+	OPENAI_COMPATIBLE: "OPENAI_COMPATIBLE",
 } as const
 export const LLM_ENGINE_ENUM_VALUES = [
 	LLM_ENGINE_ENUM.OLLAMA,
-	LLM_ENGINE_ENUM.LLAMA_CPP,
+	LLM_ENGINE_ENUM.OPENAI_COMPATIBLE,
 ] as const
 
 export const TTS_ENGINE_ENUM = {

@@ -7,6 +7,7 @@ import {
 	DEFAULT_LLM_MODEL_NUM_PREDICT,
 	DEFAULT_LLM_MODEL_TEMPERATURE,
 	DEFAULT_LLM_CONCURRENCY,
+	DEFAULT_OLLAMA_HOST,
 	LLM_ENGINE_ENUM,
 } from "@/db/constants"
 import { type SelectLlmModelConfigType } from "@/db"
@@ -22,6 +23,8 @@ export const baseLlmModelConfig = (
 		engine: LLM_ENGINE_ENUM.OLLAMA,
 		reflectionModelName: null,
 		modelName: DEFAULT_LLM_MODEL_NAME,
+		baseUrl: DEFAULT_OLLAMA_HOST,
+		apiKey: null,
 		temperature: DEFAULT_LLM_MODEL_TEMPERATURE,
 		contextWindow: DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
 		numPredict: DEFAULT_LLM_MODEL_NUM_PREDICT,

@@ -1,10 +1,13 @@
 import { Ollama, type Message, type Tool } from "ollama"
 
-import { env } from "@/config"
 import { DomiaType } from "@/modules/core"
 import { llmEngineLogger, createAsyncSemaphore } from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
-import { LLM_ENGINE_ENUM, DEFAULT_LLM_CONCURRENCY } from "@/db"
+import {
+	LLM_ENGINE_ENUM,
+	DEFAULT_LLM_CONCURRENCY,
+	DEFAULT_OLLAMA_HOST,
+} from "@/db"
 import type {
 	ChatMessageType,
 	LlmEngineAdapterType,
@@ -14,7 +17,16 @@ import type {
 	ToolDefinitionType,
 } from "../../types"
 
-const client = new Ollama({ host: env.OLLAMA_HOST })
+const clients = new Map<string, Ollama>()
+
+const getClient = (domia: DomiaType): Ollama => {
+	const host = domia.llmModelConfig?.baseUrl?.trim() || DEFAULT_OLLAMA_HOST
+	const existing = clients.get(host)
+	if (existing) return existing
+	const client = new Ollama({ host })
+	clients.set(host, client)
+	return client
+}
 
 const KEEP_ALIVE = -1
 const JSON_NUM_PREDICT = 192
@@ -56,6 +68,7 @@ export const runOllama = async (
 ): Promise<string> => {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
+	const client = getClient(domia)
 	try {
 		const response = await client.generate({
 			model: modelName,
@@ -82,6 +95,7 @@ const runOllamaStream = async function* (
 ): AsyncIterable<string> {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
+	const client = getClient(domia)
 	let abortStream: (() => void) | null = null
 	try {
 		if (shouldAbort?.()) return
@@ -123,6 +137,7 @@ const runOllamaJson = async (
 ): Promise<string> => {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
+	const client = getClient(domia)
 	try {
 		if (shouldAbort?.()) return ""
 		const stream = await client.generate({
@@ -198,6 +213,7 @@ const runOllamaWithTools = async (
 ): Promise<ToolCallOrReplyType> => {
 	const modelName = requireToolModel(domia)
 	const release = await acquireSlot(domia)
+	const client = getClient(domia)
 	try {
 		const response = await client.chat({
 			model: modelName,
@@ -237,6 +253,7 @@ const runOllamaReplyStreamOrTools = async (
 ): Promise<StreamReplyOrToolsType> => {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
+	const client = getClient(domia)
 	let released = false
 	const releaseOnce = () => {
 		if (released) return
@@ -311,6 +328,7 @@ const runOllamaIntent = async (
 	modelName: string,
 ): Promise<string> => {
 	const release = await acquireSlot(domia)
+	const client = getClient(domia)
 	try {
 		const response = await client.generate({
 			model: modelName,
@@ -331,7 +349,10 @@ const runOllamaIntent = async (
 	}
 }
 
-const warmupModel = async (modelName: string): Promise<void> => {
+const warmupModel = async (
+	client: Ollama,
+	modelName: string,
+): Promise<void> => {
 	await client.generate({
 		model: modelName,
 		prompt: "Hi",
@@ -342,6 +363,7 @@ const warmupModel = async (modelName: string): Promise<void> => {
 }
 
 const warmupOllama = async (domia: DomiaType): Promise<void> => {
+	const client = getClient(domia)
 	const main = domia.llmModelConfig?.modelName
 	const reflection = domia.llmModelConfig?.reflectionModelName?.trim()
 	const tool = domia.llmModelConfig?.toolModelName?.trim()
@@ -349,7 +371,7 @@ const warmupOllama = async (domia: DomiaType): Promise<void> => {
 		(m): m is string => Boolean(m),
 	)
 	for (const model of models) {
-		await warmupModel(model)
+		await warmupModel(client, model)
 	}
 }
 

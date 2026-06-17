@@ -107,10 +107,10 @@ export const setupHttpServer = async ({
 		return handleRestart()
 	})
 
-	fastify.get("/models", async () => handleGetModels())
+	fastify.get("/models", async () => handleGetModels(await liveDomia(domia)))
 
 	fastify.post("/models/install", async (request, reply) =>
-		handlePostModelInstall(request.body, reply),
+		handlePostModelInstall(await liveDomia(domia), request.body, reply),
 	)
 
 	fastify.get<{ Params: { id: string } }>(
