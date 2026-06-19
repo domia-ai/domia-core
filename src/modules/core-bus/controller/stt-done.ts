@@ -238,6 +238,7 @@ const pipelineVoiceFromTokens = async (
 		llmExecutorKey: executors.llmExecutorKey,
 		ttsExecutorKey: domia.domiaKey,
 		ttsAudioPath: playback.filePath,
+		// pipelined: llmMs = reply-generation span, ttsMs = audio tail; they overlap (sum ≥ wall) — ttfaMs is the headline
 		llmMs: llmElapsed,
 		ttsMs: Math.max(0, totalElapsed - llmElapsed),
 		llmModelUsed: executors.llmModelUsed,
@@ -369,6 +370,18 @@ const withAgentSummary = (result: AgentResultType): unknown[] | null => {
 	]
 }
 
+const agentTimingCols = (
+	result: AgentResultType,
+): {
+	agentDecisionMs: number | null
+	agentToolMs: number | null
+	agentFinalizeMs: number | null
+} => ({
+	agentDecisionMs: result.decisionMs ?? null,
+	agentToolMs: result.toolMs ?? null,
+	agentFinalizeMs: result.finalizeMs ?? null,
+})
+
 const tryAgentTurn = async (
 	ctx: CoreBusContextType,
 	session: SttFlowSessionType,
@@ -400,6 +413,7 @@ const tryAgentTurn = async (
 			skillProviderUsed: result.serversUsed.join(",") || null,
 			skillPrompt: result.skillPrompt,
 			skillResponse: withAgentSummary(result),
+			...agentTimingCols(result),
 		})
 		return pipelineVoiceFromTokens(ctx, session, result.replyStream, {
 			llmExecutorKey: executor.key,
@@ -415,11 +429,12 @@ const tryAgentTurn = async (
 		llmPrompt: session.promptContext,
 		llmResponse: reply,
 		llmExecutorKey: executor.key,
-		llmMs: llmElapsed,
+		llmMs: result.finalizeMs ?? llmElapsed,
 		llmModelUsed: executor.model,
 		skillProviderUsed: result.serversUsed.join(",") || null,
 		skillPrompt: result.skillPrompt,
 		skillResponse: withAgentSummary(result),
+		...agentTimingCols(result),
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 

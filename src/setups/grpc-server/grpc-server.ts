@@ -77,10 +77,14 @@ const buildImplementation = ({
 			}
 			try {
 				const sttStart = Date.now()
+				let sttExecMs: number | null = null
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
 					request,
 					features,
+					(t) => {
+						sttExecMs = t.execMs
+					},
 				)
 				setTraceContext({
 					interactionId: meta?.interactionId,
@@ -98,7 +102,7 @@ const buildImplementation = ({
 						{
 							stage: "stt",
 							executorDomiaKey: domia.domiaKey,
-							stageMs: Date.now() - sttStart,
+							stageMs: sttExecMs ?? Date.now() - sttStart,
 							model: domia.sttConfig?.modelName,
 							engine: domia.sttConfig?.engine,
 						},
@@ -275,10 +279,14 @@ const buildImplementation = ({
 			const release = await admitVoiceReplyOrBusy(domia, {})
 			try {
 				const sttStart = Date.now()
+				let sttExecMs: number | null = null
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
 					request,
 					features,
+					(t) => {
+						sttExecMs = t.execMs
+					},
 				)
 				setTraceContext({
 					interactionId: meta?.interactionId,
@@ -296,7 +304,7 @@ const buildImplementation = ({
 						{
 							stage: "stt",
 							executorDomiaKey: domia.domiaKey,
-							stageMs: Date.now() - sttStart,
+							stageMs: sttExecMs ?? Date.now() - sttStart,
 							model: domia.sttConfig?.modelName,
 							engine: domia.sttConfig?.engine,
 						},

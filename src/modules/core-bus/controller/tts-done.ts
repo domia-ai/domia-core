@@ -10,6 +10,7 @@ import {
 } from "../utils"
 import {
 	getOrCreateInteractionId,
+	pipelineElapsed,
 	updateInteraction,
 } from "@/modules/session-manager"
 import { reflectOnInteraction } from "@/modules/reflection"
@@ -78,6 +79,10 @@ export const handleTtsDone = async (
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
 				interactionId,
 				originDomiaKey,
+			})
+			await updateInteraction({
+				id: interactionId,
+				ttfaMs: pipelineElapsed(interactionId),
 			})
 			let interrupted = false
 			try {

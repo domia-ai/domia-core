@@ -29,6 +29,7 @@ import type { StageMetric } from "@/generated/proto/domia"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLM } from "@/modules/llm-engine"
 import { runSTT } from "@/modules/stt-engine"
+import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 import {
 	runTTS,
 	ttsAdapterToPcmChunks,
@@ -241,6 +242,7 @@ export const transcribeAudioStream = async (
 	domia: DomiaType,
 	request: AsyncIterable<AudioChunk>,
 	features: CoreBusFeaturesType,
+	onSttTiming?: PoolJobTimingCbType,
 ): Promise<{ transcript: string; meta?: StreamSttMeta }> => {
 	const captured: { meta?: StreamSttMeta } = {}
 	const pcm = (async function* (): AsyncIterable<Buffer> {
@@ -259,6 +261,7 @@ export const transcribeAudioStream = async (
 						pcm,
 						() => captured.meta?.interactionId ?? "",
 					),
+					onSttTiming,
 				)
 
 	return { transcript, meta: captured.meta }
@@ -280,6 +283,7 @@ export const streamReplyAudioMessages = async function* (
 	let chunkCount = 0
 	let totalBytes = 0
 	let firstChunkAt: number | null = null
+	let llmDoneAt: number | null = null
 	let sentenceCount = 0
 	let assembled = ""
 
@@ -295,9 +299,11 @@ export const streamReplyAudioMessages = async function* (
 		const onSentence = (sentence: string): void => {
 			sentenceCount++
 			assembled += (assembled.length > 0 ? " " : "") + sentence
+			llmDoneAt = Date.now()
 		}
 		const onReply = (reply: string): void => {
 			assembled = reply
+			llmDoneAt = Date.now()
 		}
 
 		const emptyTranscript = !transcript?.trim()
@@ -378,9 +384,9 @@ export const streamReplyAudioMessages = async function* (
 			approxAudioMs: bytesToAudioMs(totalBytes, sampleRate, channels),
 			replyLen: assembled.length,
 		})
-		const ttfa =
-			firstChunkAt !== null ? firstChunkAt - startedAt : Date.now() - startedAt
 		const total = Date.now() - startedAt
+		// pipelined: llmMs = reply-generation span, ttsMs = audio tail; they overlap (sum ≥ wall) — ttfaMs is the headline
+		const llmMs = llmDoneAt !== null ? llmDoneAt - startedAt : total
 		void reportStageExecution(
 			domia,
 			logCtx.originDomiaKey,
@@ -389,14 +395,14 @@ export const streamReplyAudioMessages = async function* (
 				{
 					stage: "llm",
 					executorDomiaKey: domia.domiaKey,
-					stageMs: ttfa,
+					stageMs: llmMs,
 					model: domia.llmModelConfig?.modelName,
 					engine: domia.llmModelConfig?.engine,
 				},
 				{
 					stage: "tts",
 					executorDomiaKey: domia.domiaKey,
-					stageMs: Math.max(0, total - ttfa),
+					stageMs: Math.max(0, total - llmMs),
 					engine: domia.ttsConfig?.engine,
 					voice: ttsOptions?.voice?.voiceName ?? domia.ttsConfig?.voiceName,
 				},

@@ -7,6 +7,7 @@ import { admitVoiceReply } from "@/modules/voice-admission"
 import { isSemaphoreBusyError, onceFn } from "@/utils"
 import {
 	getOrCreateInteractionId,
+	markPipelineStart,
 	updateInteraction,
 } from "@/modules/session-manager"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
@@ -117,6 +118,7 @@ export const handleWakeDetected = async (
 			const { chunks, filePathPromise, speechEndAt } = startAudioStream(domia)
 			const transcript = await stt.adapter.runStream(domia, chunks)
 
+			markPipelineStart(interactionId)
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,

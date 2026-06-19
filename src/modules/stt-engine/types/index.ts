@@ -4,6 +4,7 @@ import type {
 } from "@/utils/ml-runtime/types"
 import type { SttEngineEnumType } from "@/db"
 import type { DomiaType } from "@/modules/core"
+import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 
 export type SttCapabilitiesType = {
 	streaming: boolean
@@ -13,12 +14,20 @@ export type SttCapabilitiesType = {
 export type SttEngineAdapterType = {
 	id: SttEngineEnumType
 	capabilities: SttCapabilitiesType
-	run: (domia: DomiaType, filePath: string) => Promise<string>
+	run: (
+		domia: DomiaType,
+		filePath: string,
+		onTiming?: PoolJobTimingCbType,
+	) => Promise<string>
 	runStream?: (
 		domia: DomiaType,
 		audioStream: AsyncIterable<Buffer>,
 	) => Promise<string>
-	runPcm?: (domia: DomiaType, pcm: Buffer) => Promise<string>
+	runPcm?: (
+		domia: DomiaType,
+		pcm: Buffer,
+		onTiming?: PoolJobTimingCbType,
+	) => Promise<string>
 	createSession?: (domia: DomiaType) => SttStreamSessionType
 }
 

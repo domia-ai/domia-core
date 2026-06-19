@@ -10,6 +10,7 @@ import type {
 	InferencePoolConfigType,
 	InferencePoolType,
 	PendingJobType,
+	PoolJobTimingCbType,
 	PoolSessionType,
 	WorkerStateType,
 } from "../types"
@@ -156,8 +157,15 @@ export const createInferencePool = (
 		ws.jobs++
 		if (job?.execTimer) clearTimeout(job.execTimer)
 		if (job && job.id === id) {
-			if (err) job.pending.reject(err)
-			else job.pending.resolve(result)
+			const p = job.pending
+			if (p.onTiming && p.startedAt !== null) {
+				p.onTiming({
+					queueWaitMs: Math.max(0, p.startedAt - p.enqueuedAt),
+					execMs: Math.max(0, Date.now() - p.startedAt),
+				})
+			}
+			if (err) p.reject(err)
+			else p.resolve(result)
 		}
 		if (ws.sessionHeld) {
 			pump()
@@ -181,6 +189,7 @@ export const createInferencePool = (
 			clearTimeout(pending.timer)
 			pending.timer = null
 		}
+		pending.startedAt = Date.now()
 		const id = nextJobId++
 		const execTimer =
 			executionTimeoutMs > 0
@@ -221,7 +230,10 @@ export const createInferencePool = (
 		}
 	}
 
-	const submit = <T>(payload: unknown): Promise<T> => {
+	const submit = <T>(
+		payload: unknown,
+		onTiming?: PoolJobTimingCbType,
+	): Promise<T> => {
 		if (shuttingDown) {
 			return Promise.reject(poolBusyError(`${label} pool is shutting down`))
 		}
@@ -234,6 +246,9 @@ export const createInferencePool = (
 				resolve: resolve as (result: unknown) => void,
 				reject,
 				timer: null,
+				enqueuedAt: Date.now(),
+				startedAt: null,
+				onTiming: onTiming ?? null,
 			}
 			if (queueTimeoutMs > 0) {
 				pending.timer = setTimeout(() => {
@@ -286,6 +301,9 @@ export const createInferencePool = (
 					resolve: resolve as (result: unknown) => void,
 					reject,
 					timer: null,
+					enqueuedAt: Date.now(),
+					startedAt: null,
+					onTiming: null,
 				})
 			})
 		}

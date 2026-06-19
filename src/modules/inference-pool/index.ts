@@ -9,4 +9,6 @@ export type {
 	InferencePoolType,
 	InferencePoolConfigType,
 	WorkerBackendType,
+	PoolJobTimingType,
+	PoolJobTimingCbType,
 } from "./types"

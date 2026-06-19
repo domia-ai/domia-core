@@ -2,7 +2,7 @@ import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger } from "@/utils"
 import { CAPABILITY_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { startSpeculativeCapture } from "@/modules/audio-capture"
-import { updateInteraction } from "@/modules/session-manager"
+import { markPipelineStart, updateInteraction } from "@/modules/session-manager"
 import {
 	buildPromptContext,
 	personaContextFromDomia,
@@ -237,6 +237,7 @@ export const runSpeculativeTurn = async (
 					`🔮 speculation g${winner.generation} confirmed — LLM already running`,
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
+				markPipelineStart(args.interactionId)
 				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 					transcript: final || transcript,
 					interactionId: args.interactionId,
@@ -263,6 +264,7 @@ export const runSpeculativeTurn = async (
 		domiaId: domia.id,
 		interactionId: args.interactionId,
 	})
+	markPipelineStart(args.interactionId)
 	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 		transcript,
 		interactionId: args.interactionId,

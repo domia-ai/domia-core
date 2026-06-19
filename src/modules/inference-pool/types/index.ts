@@ -30,13 +30,20 @@ export type InferencePoolConfigType = {
 	recycleAfterJobs: number
 }
 
+export type PoolJobTimingType = {
+	queueWaitMs: number
+	execMs: number
+}
+
+export type PoolJobTimingCbType = (timing: PoolJobTimingType) => void
+
 export type PoolSessionType = {
 	exchange: <T>(payload: unknown) => Promise<T>
 	release: () => void
 }
 
 export type InferencePoolType = {
-	submit: <T>(payload: unknown) => Promise<T>
+	submit: <T>(payload: unknown, onTiming?: PoolJobTimingCbType) => Promise<T>
 	acquireSession: () => PoolSessionType
 	activeWorkers: () => number
 	busyWorkers: () => number
@@ -49,6 +56,9 @@ export type PendingJobType = {
 	resolve: (result: unknown) => void
 	reject: (err: unknown) => void
 	timer: ReturnType<typeof setTimeout> | null
+	enqueuedAt: number
+	startedAt: number | null
+	onTiming: PoolJobTimingCbType | null
 }
 
 export type WorkerStateType = {

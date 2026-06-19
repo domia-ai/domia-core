@@ -3,6 +3,7 @@ import path from "path"
 import { type DomiaType } from "@/modules/core"
 import { STT_ERRORS, sttEngineLogger, domiaError } from "@/utils"
 import { type SelectSttConfigType } from "@/db"
+import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 import { getSttPool } from "./pool"
 import type {
 	SttWorkerEngineConfigType,
@@ -45,14 +46,18 @@ const engineConfigOf = (
 export const runSttPooled = async (
 	domia: DomiaType,
 	filePath: string,
+	onTiming?: PoolJobTimingCbType,
 ): Promise<string> => {
 	const sttConfig = requireSttConfig(domia)
 	const pool = getSttPool(sttConfig)
-	const result = await pool.submit<SttWorkerResultType>({
-		kind: "file",
-		engineConfig: engineConfigOf(sttConfig),
-		wavPath: filePath,
-	})
+	const result = await pool.submit<SttWorkerResultType>(
+		{
+			kind: "file",
+			engineConfig: engineConfigOf(sttConfig),
+			wavPath: filePath,
+		},
+		onTiming,
+	)
 	return result.text
 }
 
@@ -153,16 +158,20 @@ export const createSttSessionPooled = (
 export const runSttPcmPooled = async (
 	domia: DomiaType,
 	pcm: Buffer,
+	onTiming?: PoolJobTimingCbType,
 ): Promise<string> => {
 	if (pcm.length === 0) return ""
 	const sttConfig = requireSttConfig(domia)
 	const pool = getSttPool(sttConfig)
-	const result = await pool.submit<SttWorkerResultType>({
-		kind: "pcm",
-		engineConfig: engineConfigOf(sttConfig),
-		pcm,
-		sampleRate: STT_SAMPLE_RATE,
-	})
+	const result = await pool.submit<SttWorkerResultType>(
+		{
+			kind: "pcm",
+			engineConfig: engineConfigOf(sttConfig),
+			pcm,
+			sampleRate: STT_SAMPLE_RATE,
+		},
+		onTiming,
+	)
 	return result.text
 }
 

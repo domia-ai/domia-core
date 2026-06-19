@@ -112,11 +112,6 @@ export const handlePostChat = async (
 				},
 			})
 			const timings = computeTimings(stages)
-			await updateInteraction({
-				id: result.interactionId,
-				ttfaMs: timings.ttfaMs,
-				totalMs: timings.totalMs,
-			})
 			const audioUrl = result.ttsFilePath
 				? (registerAudioForServing(result.interactionId, result.ttsFilePath),
 					`/audio/${result.interactionId}`)
@@ -176,12 +171,6 @@ export const handlePostVoice = async (
 			},
 		})
 		const timings = computeTimings(stages)
-		await updateInteraction({
-			id: result.interactionId,
-			ttfaMs: timings.ttfaMs,
-			totalMs: timings.totalMs,
-		})
-
 		const audioUrl = result.ttsFilePath
 			? (registerAudioForServing(result.interactionId, result.ttsFilePath),
 				`/audio/${result.interactionId}`)

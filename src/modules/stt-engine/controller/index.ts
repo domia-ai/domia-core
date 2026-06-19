@@ -1,9 +1,14 @@
 import { type DomiaType } from "@/modules/core"
 import { STT_ENGINE_ENUM_VALUES } from "@/db"
 import { STT_ERRORS, sttEngineLogger, domiaError } from "@/utils"
+import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 import { sttEngines } from "../engines"
 
-export const runSTT = async (domia: DomiaType, filePath: string) => {
+export const runSTT = async (
+	domia: DomiaType,
+	filePath: string,
+	onTiming?: PoolJobTimingCbType,
+) => {
 	const sttConfig = domia?.sttConfig
 	const engine = sttConfig?.engine
 
@@ -18,5 +23,5 @@ export const runSTT = async (domia: DomiaType, filePath: string) => {
 
 	const handler = sttEngines[engine]
 
-	return await handler(domia, filePath)
+	return await handler(domia, filePath, onTiming)
 }

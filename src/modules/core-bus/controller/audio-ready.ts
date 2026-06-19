@@ -130,7 +130,7 @@ const tryFusedVoiceReply = async (
 
 	const timedAudio = (async function* (): AsyncIterable<Buffer> {
 		try {
-			ttfaMs = Date.now() - startTime
+			ttfaMs = pipelineElapsed(interactionId) ?? Date.now() - startTime
 			if (args.speechEndAt) perceivedTtfaMs = Date.now() - args.speechEndAt
 			audioEmitted = true
 			yield firstRes.value
@@ -282,11 +282,17 @@ export const handleAudioReady = async (
 				throw new Error("AUDIO_READY: missing filePath and audioUrl")
 			}
 			const sttStart = Date.now()
-			const transcript = await runSTT(domia, pathForStt)
+			let sttExecMs: number | null = null
+			let sttQueueMs: number | null = null
+			const transcript = await runSTT(domia, pathForStt, (t) => {
+				sttExecMs = t.execMs
+				sttQueueMs = t.queueWaitMs
+			})
 			await updateInteraction({
 				id: interactionId,
 				sttExecutorKey: domia.domiaKey,
-				sttMs: Date.now() - sttStart,
+				sttMs: sttExecMs ?? Date.now() - sttStart,
+				sttQueueMs,
 				sttModelUsed: domia.sttConfig?.modelName ?? null,
 				totalMs: pipelineElapsed(interactionId),
 			})
