@@ -12,6 +12,8 @@ import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
 import { prefetchMemoryBundle } from "./prefetch-memory"
+import { beginTurn } from "./turn-scope"
+import { setPresenceStatus } from "./presence-registry"
 import type {
 	SttDonePayloadType,
 	LlmDonePayloadType,
@@ -30,14 +32,19 @@ export const requestVoiceReply = async (
 	audioPath: string,
 	options: RequestVoiceReplyOptions = {},
 ): Promise<RequestVoiceReplyResult> => {
-	const { timeoutMs = DEFAULT_TIMEOUT_MS, speak = true, onStage } = options
+	const {
+		timeoutMs = DEFAULT_TIMEOUT_MS,
+		speak = true,
+		onStage,
+		interactionId: providedId,
+	} = options
 
 	const absPath = path.resolve(audioPath)
 	if (!existsSync(absPath)) {
 		throw new Error(`requestVoiceReply: audio file not found: ${absPath}`)
 	}
 
-	const interactionId = await getOrCreateInteractionId(domia, undefined, {
+	const interactionId = await getOrCreateInteractionId(domia, providedId, {
 		inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
 		responseType: speak ? RESPONSE_TYPE_ENUM.VOICE : RESPONSE_TYPE_ENUM.TEXT,
 		inputAudioPath: absPath,
@@ -48,6 +55,8 @@ export const requestVoiceReply = async (
 	prefetchMemoryBundle(domia, interactionId)
 
 	const domiaId = domia.id
+	const turn = beginTurn(domiaId, interactionId)
+	setPresenceStatus(domia.domiaKey, "thinking", true)
 	const t0 = Date.now()
 	let transcript = ""
 	let reply = ""
@@ -74,6 +83,7 @@ export const requestVoiceReply = async (
 	try {
 		await new Promise<void>((resolve, reject) => {
 			const timeout = setTimeout(() => {
+				turn.abort("timeout")
 				reject(new Error(`requestVoiceReply: timeout after ${timeoutMs}ms`))
 			}, timeoutMs)
 
@@ -102,6 +112,7 @@ export const requestVoiceReply = async (
 				DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED,
 				(p: PlaybackStartedPayloadType) => {
 					if (p.interactionId !== interactionId) return
+					setPresenceStatus(domia.domiaKey, "speaking")
 					onStage?.("firstAudioChunk", Date.now() - t0)
 				},
 			)
@@ -134,6 +145,8 @@ export const requestVoiceReply = async (
 		})
 	} finally {
 		cleanup()
+		turn.end()
+		setPresenceStatus(domia.domiaKey, "idle", true)
 	}
 
 	return { interactionId, transcript, reply, ttsFilePath }

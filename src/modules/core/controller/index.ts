@@ -1,4 +1,5 @@
 import { env } from "@/config"
+import { generateUuid } from "@/utils"
 
 import dbAdapter from "../db-adapter"
 import {
@@ -15,8 +16,18 @@ import {
 	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
 	DEFAULT_GRPC_STREAM_DEADLINE_MS,
 	DEFAULT_PEER_STALE_AFTER_MS,
+	DEFAULT_IS_HOSTED,
+	type InsertSatelliteConfigType,
+	type SelectSatelliteConfigType,
 } from "@/db"
 import type { DomiaWithRawRelationsType, DomiaType } from "../types"
+
+const REDACTED = "__redacted__"
+
+const redactSatellite = (s: SelectSatelliteConfigType) => ({
+	...s,
+	encryptionKey: s.encryptionKey ? REDACTED : null,
+})
 
 export const transformDomia = (
 	domia: DomiaWithRawRelationsType | undefined,
@@ -53,6 +64,7 @@ export const transformDomia = (
 			domia?.voiceQueueTimeoutMs ?? DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
 		ownConfigTtlMs: domia?.ownConfigTtlMs ?? DEFAULT_OWN_CONFIG_TTL_MS,
 		warmupOnBoot: domia?.warmupOnBoot ?? DEFAULT_WARMUP_ON_BOOT,
+		isHosted: domia?.isHosted ?? DEFAULT_IS_HOSTED,
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
 		lastSeenAt: domia?.lastSeenAt ?? null,
@@ -102,5 +114,45 @@ export const getDomia = async (
 export const getActiveDomias = async () =>
 	transformDomias(await dbAdapter.getActiveDomias())
 
+export const getHostedDomias = async () =>
+	transformDomias(await dbAdapter.getHostedDomias())
+
+export const setDomiaHosted = (domiaKey: string, isHosted: boolean) =>
+	dbAdapter.setDomiaHosted(domiaKey, isHosted)
+
+export const retireDomia = (domiaKey: string) => dbAdapter.retireDomia(domiaKey)
+
+export const reactivateDomia = (domiaKey: string) =>
+	dbAdapter.reactivateDomia(domiaKey)
+
 export const insertDomia = (data: InsertDomiaType, client?: DBClientOrTxType) =>
 	dbAdapter.insertDomia(data, client)
+
+const HOST_NODE_SINGLETON_ID = "singleton"
+
+let cachedNodeId: string | null = null
+
+export const getNodeId = async (): Promise<string> => {
+	if (cachedNodeId) return cachedNodeId
+	await dbAdapter.ensureHostNode(HOST_NODE_SINGLETON_ID, generateUuid())
+	const row = await dbAdapter.getHostNode()
+	if (!row) throw new Error("host_node singleton missing after ensure")
+	cachedNodeId = row.nodeId
+	return row.nodeId
+}
+
+export const getSatellitesForDomia = (domiaId: string) =>
+	dbAdapter.getSatellitesForDomia(domiaId)
+
+export const getRedactedSatellitesForDomia = async (domiaId: string) =>
+	(await dbAdapter.getSatellitesForDomia(domiaId)).map(redactSatellite)
+
+export const getActiveSatellites = () => dbAdapter.getActiveSatellites()
+
+export const upsertSatellite = (
+	domiaId: string,
+	data: Omit<InsertSatelliteConfigType, "domiaId">,
+) => dbAdapter.upsertSatellite(domiaId, data)
+
+export const deleteSatellite = (domiaId: string, satelliteId: string) =>
+	dbAdapter.deleteSatellite(domiaId, satelliteId)

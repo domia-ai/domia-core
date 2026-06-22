@@ -23,12 +23,14 @@ import { type ConfigType } from "../types"
 
 export const getDomiaCreateInputFromConfig = (
 	config: ConfigType,
+	isHosted = false,
 ): InsertDomiaType => {
 	return {
 		id: generateUuid(),
 		name: config?.name,
 		domiaKey: config?.domiaKey,
 		localIp: getLocalIp(),
+		isHosted,
 	}
 }
 

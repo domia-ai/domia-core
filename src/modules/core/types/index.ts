@@ -43,3 +43,8 @@ export type DomiaWithRawRelationsType = SelectDomiaType & {
 	mqttConfigs: SelectMqttConfigType[] | null
 	capabilityDelegations: SelectCapabilityDelegationType[] | null
 }
+
+export type OwnDomiaEntryType = {
+	value: DomiaType
+	expiresAt: number
+}

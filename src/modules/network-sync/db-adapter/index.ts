@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm"
 
+import { networkSyncLogger } from "@/utils"
 import {
 	domia,
 	dbClient,
@@ -54,11 +55,18 @@ const dbAdapter = {
 		client: DBClientOrTxType = dbClient,
 	): void => {
 		const existing = client
-			.select({ id: domia.id })
+			.select({ id: domia.id, isHosted: domia.isHosted })
 			.from(domia)
 			.where(eq(domia.domiaKey, domiaKey))
 			.get()
 		if (!existing || existing.id === newId) return
+		if (existing.isHosted) {
+			networkSyncLogger.warn(
+				"domiaKey conflict: a network peer shares a locally-hosted identity's key — keeping the local row",
+				{ domiaKey, localId: existing.id, peerId: newId },
+			)
+			return
+		}
 		for (const table of PEER_CHILD_TABLES) {
 			client.delete(table).where(eq(table.domiaId, existing.id)).run()
 		}

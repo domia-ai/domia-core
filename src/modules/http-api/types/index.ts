@@ -8,6 +8,7 @@ import {
 import {
 	postChatBodySchema,
 	postVoiceBodySchema,
+	postSpeakBodySchema,
 	postImportMindBodySchema,
 	getSyncQuerySchema,
 	getAudioQuerySchema,
@@ -71,6 +72,17 @@ export type PostVoiceResponseType = {
 
 export type PostVoiceRouteType = {
 	Body: PostVoiceBodyType
+}
+
+export type PostSpeakBodyType = z.infer<typeof postSpeakBodySchema>
+
+export type PostSpeakResponseType = {
+	delivered: boolean
+	target: "satellite" | "local" | "none"
+}
+
+export type PostSpeakRouteType = {
+	Body: PostSpeakBodyType
 }
 
 export type PostImportMindBodyType = z.infer<typeof postImportMindBodySchema>

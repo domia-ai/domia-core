@@ -1,13 +1,18 @@
 import mqtt from "mqtt"
 
 import { mqttLogger, localMqttLogger } from "@/utils"
+import { env } from "@/config"
+import { MQTT_TYPE_ENUM } from "@/db"
 import type { SetupMqttArgsType } from "./types"
 import { MQTT_EVENT_ENUM } from "./constants"
 import { handleMqttMessage } from "@/modules/mqtt-event-handler"
 
+const ROOT = env.MQTT_TOPIC_ROOT
+
 export const setupMqtt = ({
 	domia,
 	config,
+	nodeId,
 }: SetupMqttArgsType): mqtt.MqttClient | null => {
 	const type = config?.type
 	const logger = config ? localMqttLogger : mqttLogger
@@ -29,6 +34,14 @@ export const setupMqtt = ({
 		password: config?.password || "",
 		protocol: config?.protocol,
 		port: config?.port || 1883,
+		will: nodeId
+			? {
+					topic: `${ROOT}/${nodeId}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.OFFLINE}`,
+					payload: Buffer.from(JSON.stringify({ nodeId })),
+					qos: 0,
+					retain: false,
+				}
+			: undefined,
 	})
 
 	client.on("connect", () => {
@@ -56,11 +69,11 @@ export const setupMqtt = ({
 	logger.info(
 		"📡 Subscribing to heartbeat topic only (delegations now via gRPC)",
 	)
-	const heartbeatTopic = `domia/+/${type}/${MQTT_EVENT_ENUM.HEARTBEAT}`
+	const heartbeatTopic = `${ROOT}/+/${type}/${MQTT_EVENT_ENUM.HEARTBEAT}`
 	logger.info(`🔗 Subscribing to ${heartbeatTopic}`)
 	client.subscribe(heartbeatTopic)
 
-	const configChangedTopic = `domia/${domiaKey}/${type}/${MQTT_EVENT_ENUM.CONFIG_CHANGED}`
+	const configChangedTopic = `${ROOT}/${domiaKey}/${type}/${MQTT_EVENT_ENUM.CONFIG_CHANGED}`
 	client.subscribe(configChangedTopic)
 
 	logger.success("✅ MQTT setup completed successfully")

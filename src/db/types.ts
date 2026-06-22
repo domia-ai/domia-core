@@ -197,6 +197,16 @@ export type UpdateInteractionSessionTraceType = Partial<
 	Omit<InsertInteractionSessionTraceType, "id">
 > & { id: string }
 
+export type SelectSatelliteConfigType = InferSelectModel<
+	typeof schema.satelliteConfig
+>
+export type InsertSatelliteConfigType = InferInsertModel<
+	typeof schema.satelliteConfig
+>
+export type UpdateSatelliteConfigType = Partial<
+	Omit<InsertSatelliteConfigType, "id">
+> & { id: string }
+
 export type SelectCapabilityDelegationType = InferSelectModel<
 	typeof schema.capabilityDelegation
 >

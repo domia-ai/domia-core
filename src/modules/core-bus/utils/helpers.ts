@@ -1,7 +1,8 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, toError, withTimeout } from "@/utils"
-import { rejectPending } from "./pending-requests"
-import { RESPONSE_TYPE_ENUM } from "@/db"
+import { rejectPending, resolvePending } from "./pending-requests"
+import { updateInteraction } from "@/modules/session-manager"
+import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { playAudio } from "@/modules/audio-playback"
 import { runTTS } from "@/modules/tts-engine"
 import { deliverEvent } from "@/modules/grpc-client"
@@ -160,4 +161,27 @@ export const notifyAudioFallback = (
 				playedLocally: played,
 			}),
 	)
+}
+
+export const notifyTurnAborted = async (
+	domiaId: string,
+	interactionId: string,
+	originDomiaKey: string | undefined,
+	reply = "",
+): Promise<void> => {
+	await updateInteraction({
+		id: interactionId,
+		status: INTERACTION_STATUS_ENUM.ABORTED,
+	}).catch(() => undefined)
+	resolvePending(interactionId, reply)
+	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
+		interactionId,
+		originDomiaKey,
+		status: "interrupted",
+		playedLocally: false,
+	})
+	domiaBusLogger.info(`🛑 turn aborted — stage skipped`, {
+		domiaId,
+		interactionId,
+	})
 }

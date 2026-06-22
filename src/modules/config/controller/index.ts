@@ -251,8 +251,8 @@ export const persistConfig = async (
 		if (bundle.delegations)
 			dbAdapter.replaceDelegations(domia.id, bundle.delegations, tx)
 	})
-	invalidateOwnDomia()
-	const fresh = (await getOwnDomia()) ?? domia
+	invalidateOwnDomia(domia.domiaKey)
+	const fresh = (await getOwnDomia(domia.domiaKey)) ?? domia
 	setGrpcClientTunables(fresh)
 	configEngineLogger.info("📥 config persisted", { domiaId: domia.id })
 	return { config: serializeConfig(fresh) }

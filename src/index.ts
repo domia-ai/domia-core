@@ -2,18 +2,18 @@ import { env } from "@/config"
 import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
 import { initialize } from "./modules/config-engine"
 import { setGrpcClientTunables } from "./modules/grpc-client"
+import { isHostedIdentity, getNodeId } from "./modules/core"
+import { setLocalMqttClient } from "./modules/heartbeat-manager"
 import { setupTempSweeper } from "./setups/temp-sweeper"
-import { warmupOnBoot } from "@/modules/warmup"
 import {
 	setupVoiceListener,
-	setupCoreBus,
 	setupMqtt,
 	setupEnvironment,
 	normalizeRuntimeCapabilities,
 	setupHttpServer,
-	setupHeartbeat,
 	setupGrpcServer,
-	setupSkills,
+	setupSatelliteClients,
+	bootHostedIdentities,
 } from "./setups"
 
 process.on("uncaughtException", (err) => {
@@ -30,7 +30,7 @@ process.on("unhandledRejection", (reason) => {
 
 async function main() {
 	appLogger.info("Initialize Domia with default config")
-	const ownDomia = await initialize()
+	const ownDomia = await initialize(undefined, { isHosted: true })
 	setGrpcClientTunables(ownDomia)
 	setupTempSweeper()
 
@@ -44,25 +44,27 @@ async function main() {
 	)
 	const { missingBinaries } = setupEnvironment(runtimeCapabilities)
 
+	const nodeId = await getNodeId()
 	const localMqttClient = setupMqtt({
 		domia: ownDomia,
 		config: ownDomia.localMqttConfig,
+		nodeId,
 	})
-	setupCoreBus({
-		domia: ownDomia,
-		runtimeCapabilities,
-	})
-	await setupSkills(ownDomia).catch((err) =>
-		appLogger.error("Skill setup failed (skills disabled)", { err }),
-	)
-	setupHeartbeat({ domia: ownDomia, mqttClient: localMqttClient })
+	setLocalMqttClient(localMqttClient)
+
+	await bootHostedIdentities({ mqttClient: localMqttClient })
+
 	setupHttpServer({ domia: ownDomia, mqttClient: localMqttClient })
-
 	await setupGrpcServer({ domia: ownDomia, capabilities: runtimeCapabilities })
+	await setupSatelliteClients({ fallback: ownDomia })
 
-	await setupVoiceListener(ownDomia, missingBinaries)
-
-	warmupOnBoot(ownDomia, runtimeCapabilities)
+	if (isHostedIdentity(ownDomia.domiaKey)) {
+		await setupVoiceListener(ownDomia, missingBinaries)
+	} else {
+		appLogger.info(
+			`🎙️ local voice listener skipped — ${ownDomia.domiaKey} is not in the hosted set`,
+		)
+	}
 
 	appLogger.info(`DOMIA is running and waiting for events...`)
 }

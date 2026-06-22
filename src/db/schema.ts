@@ -91,6 +91,7 @@ import {
 	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
 	DEFAULT_OWN_CONFIG_TTL_MS,
 	DEFAULT_WARMUP_ON_BOOT,
+	DEFAULT_IS_HOSTED,
 	DEFAULT_STT_MODEL_NAME,
 	DEFAULT_STT_MODEL_PATH,
 	DEFAULT_STT_ENABLE_ENDPOINT,
@@ -149,6 +150,10 @@ import {
 	MQTT_PROTOCOL_ENUM,
 	MQTT_PROTOCOL_ENUM_VALUES,
 	CAPABILITY_ENUM_VALUES,
+	SATELLITE_PROTOCOL_ENUM_VALUES,
+	DEFAULT_SATELLITE_PROTOCOL,
+	DEFAULT_SATELLITE_PORT,
+	DEFAULT_SATELLITE_ACTIVE,
 	SKILL_PROTOCOL_ENUM_VALUES,
 	MCP_TRANSPORT_ENUM_VALUES,
 	AGENT_PROMPT_MODE_ENUM_VALUES,
@@ -164,6 +169,12 @@ import {
 } from "./constants"
 
 export const DEFAULT_TIMESTAMP = sql`CURRENT_TIMESTAMP`
+
+export const hostNode = sqliteTable("host_node", {
+	id: text("id").primaryKey(),
+	nodeId: text("node_id").notNull(),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+})
 
 export const domia = sqliteTable("domia", {
 	id: text("id").primaryKey(),
@@ -194,6 +205,9 @@ export const domia = sqliteTable("domia", {
 	warmupOnBoot: integer("warmup_on_boot", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_WARMUP_ON_BOOT),
+	isHosted: integer("is_hosted", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_IS_HOSTED),
 	localIp: text("local_ip"),
 	grpcPort: integer("grpc_port"),
 	lastSeenAt: integer("last_seen_at"),
@@ -847,6 +861,30 @@ export const capabilityDelegation = sqliteTable("capability_delegation", {
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
+export const satelliteConfig = sqliteTable(
+	"satellite_config",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		satelliteId: text("satellite_id").notNull(),
+		name: text("name"),
+		host: text("host").notNull(),
+		port: integer("port").notNull().default(DEFAULT_SATELLITE_PORT),
+		encryptionKey: text("encryption_key"),
+		protocol: text("protocol", { enum: SATELLITE_PROTOCOL_ENUM_VALUES })
+			.notNull()
+			.default(DEFAULT_SATELLITE_PROTOCOL),
+		isActive: integer("is_active", { mode: "boolean" })
+			.notNull()
+			.default(DEFAULT_SATELLITE_ACTIVE),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [unique().on(t.domiaId, t.satelliteId)],
+)
+
 export const domiaRelations = relations(domia, ({ one, many }) => ({
 	runtimeCapabilities: one(runtimeCapabilities, {
 		fields: [domia.id],
@@ -869,6 +907,7 @@ export const domiaRelations = relations(domia, ({ one, many }) => ({
 	mqttConfigs: many(mqttConfig),
 	interactionTraces: many(interactionTrace),
 	interactionSessionTraces: many(interactionSessionTrace),
+	satellites: many(satelliteConfig),
 	capabilityDelegations: many(capabilityDelegation, {
 		relationName: "delegator",
 	}),
@@ -882,6 +921,16 @@ export const runtimeCapabilitiesRelations = relations(
 	({ one }) => ({
 		domia: one(domia, {
 			fields: [runtimeCapabilities.domiaId],
+			references: [domia.id],
+		}),
+	}),
+)
+
+export const satelliteConfigRelations = relations(
+	satelliteConfig,
+	({ one }) => ({
+		domia: one(domia, {
+			fields: [satelliteConfig.domiaId],
 			references: [domia.id],
 		}),
 	}),

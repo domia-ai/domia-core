@@ -39,6 +39,7 @@ export const configBundleSchema = z
 				localIp: true,
 				grpcPort: true,
 				isActive: true,
+				isHosted: true,
 			})
 			.strict()
 			.nullish(),

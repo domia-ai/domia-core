@@ -1,10 +1,10 @@
 import { dbClient } from "@/db"
-import { getDomia, insertDomia } from "@/modules/core"
+import { getDomia, insertDomia, setDomiaHosted } from "@/modules/core"
 import { refreshDomiaLocalIp } from "@/modules/network-sync"
 import { configEngineLogger, domiaError, CORE_ERRORS } from "@/utils"
 
 import { DEFAULT_CONFIG_VALUES } from "../constants"
-import { type ConfigType } from "../types"
+import { type ConfigType, type InitializeOptionsType } from "../types"
 import {
 	getRuntimeCapabilitiesCreateInputFromConfig,
 	getCharacterProfileCreateInputFromConfig,
@@ -23,6 +23,7 @@ import { configSchema } from "../schemas"
 
 export const initialize = async (
 	initialConfig: ConfigType = DEFAULT_CONFIG_VALUES,
+	{ isHosted = false }: InitializeOptionsType = {},
 ) => {
 	configEngineLogger.info("Initializing config engine with config")
 
@@ -33,12 +34,16 @@ export const initialize = async (
 		configEngineLogger.info("Found existing Domia instance", {
 			domiaId: currentDomia.id,
 		})
+		if (isHosted && !currentDomia.isHosted) {
+			await setDomiaHosted(currentDomia.domiaKey, true)
+			return refreshDomiaLocalIp({ ...currentDomia, isHosted: true })
+		}
 		return refreshDomiaLocalIp(currentDomia)
 	}
 
 	configEngineLogger.info("Creating new Domia instance")
 	const [insertedDomia] = await insertDomia(
-		getDomiaCreateInputFromConfig(validatedConfig),
+		getDomiaCreateInputFromConfig(validatedConfig, isHosted),
 		dbClient,
 	)
 	const initializedDomia = await getDomia(insertedDomia?.id, false)

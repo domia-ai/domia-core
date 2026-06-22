@@ -1,5 +1,21 @@
 import { z } from "zod"
 
+import { SATELLITE_PROTOCOL_ENUM_VALUES } from "@/db"
+
+export const postIdentityBodySchema = z.object({
+	name: z.string().trim().min(1).max(80),
+	domiaKey: z.string().trim().min(1).max(200).optional(),
+})
+
+export const postSatelliteBodySchema = z.object({
+	satelliteId: z.string().trim().min(1).max(200),
+	name: z.string().trim().min(1).max(120).optional(),
+	host: z.string().trim().min(1).max(200),
+	port: z.coerce.number().int().positive().max(65535).optional(),
+	encryptionKey: z.string().trim().min(1).max(200).optional(),
+	protocol: z.enum(SATELLITE_PROTOCOL_ENUM_VALUES).optional(),
+})
+
 export const postChatBodySchema = z.object({
 	text: z
 		.string()
@@ -17,6 +33,22 @@ export const postVoiceBodySchema = z
 	.refine((b) => Boolean(b.filePath || b.audioBase64), {
 		message: "Body must include a non-empty 'filePath' or 'audioBase64'.",
 	})
+
+export const postSpeakBodySchema = z.object({
+	domiaKey: z.string().trim().min(1).optional(),
+	broadcast: z.boolean().optional().default(false),
+	active: z.boolean().optional().default(false),
+	text: z
+		.string()
+		.min(1, "Body must include a non-empty 'text' string.")
+		.trim(),
+})
+
+export const postIntercomBodySchema = z.object({
+	from: z.string().trim().min(1),
+	to: z.string().trim().min(1).optional(),
+	stop: z.boolean().optional().default(false),
+})
 
 export const postImportMindBodySchema = z.object({
 	mind: z.unknown(),

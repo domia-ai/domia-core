@@ -12,6 +12,7 @@ const envSchema = z.object({
 	HTTP_SERVER_PORT: z.string().default("3000"),
 	GRPC_HOST: z.string().default("127.0.0.1"),
 	GRPC_PORT: z.string().default("5052"),
+	MQTT_TOPIC_ROOT: z.string().default("domia"),
 	DOMIA_LOG_FILE: z.string().optional(),
 })
 

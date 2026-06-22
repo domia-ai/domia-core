@@ -13,6 +13,17 @@ service DomiaNode {
   rpc ReportReflection(ReflectionReport) returns (ReflectionAck);
   rpc ReportStageExecution(StageExecutionReport) returns (StageExecutionAck);
   rpc RunInferenceWithTools(InferenceRequest) returns (InferenceResponse);
+  rpc Speak(SpeakRequest) returns (SpeakAck);
+}
+
+message SpeakRequest {
+  string target_domia_key = 1;
+  string text = 2;
+}
+
+message SpeakAck {
+  bool delivered = 1;
+  string target = 2;
 }
 
 message HealthRequest {}
@@ -64,6 +75,7 @@ message InteractionFailedPayload {
 
 message EventEnvelope {
   string sender_domia_key = 1;
+  optional string target_domia_key = 2;
   oneof payload {
     AudioReadyPayload audio_ready = 10;
     SttDonePayload stt_done = 11;
@@ -85,6 +97,7 @@ message StreamSttMeta {
   optional string interaction_id = 3;
   optional string response_type = 4;
   optional string persona_context_json = 5;
+  optional string target_domia_key = 6;
 }
 
 message ReflectionReport {
@@ -139,6 +152,7 @@ message LlmStreamRequest {
   optional string interaction_id = 4;
   optional string response_type = 5;
   optional string persona_context_json = 6;
+  optional string target_domia_key = 7;
 }
 
 message InferenceRequest {
@@ -148,6 +162,7 @@ message InferenceRequest {
   optional string origin_domia_key = 4;
   optional string interaction_id = 5;
   optional string session_id = 6;
+  optional string target_domia_key = 7;
 }
 
 message InferenceResponse {
@@ -161,6 +176,7 @@ message TtsStreamRequest {
   optional string origin_domia_key = 3;
   optional string interaction_id = 4;
   optional string tts_voice_json = 5;
+  optional string target_domia_key = 6;
 }
 
 message ReplyAudioMessage {

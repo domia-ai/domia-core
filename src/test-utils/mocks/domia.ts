@@ -16,6 +16,7 @@ export const baseDomia: SelectDomiaType = {
 	voiceQueueTimeoutMs: 15_000,
 	ownConfigTtlMs: 30_000,
 	warmupOnBoot: true,
+	isHosted: true,
 	lastSeenAt: null,
 	grpcUnaryDeadlineMs: 10_000,
 	grpcStreamIdleTimeoutMs: 15_000,

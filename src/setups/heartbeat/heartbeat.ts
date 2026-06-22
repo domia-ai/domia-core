@@ -13,7 +13,7 @@ export const setupHeartbeat = ({
 
 	return setInterval(() => {
 		void (async () => {
-			const live = (await getOwnDomia().catch(() => null)) ?? domia
+			const live = (await getOwnDomia(domiaKey).catch(() => null)) ?? domia
 			heartbeatLogger.info(`💓 Sending heartbeat for ${domiaKey}`)
 			await sendHeartbeat({ domia: live, mqttClient })
 		})()

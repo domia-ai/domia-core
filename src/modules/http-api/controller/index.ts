@@ -4,7 +4,26 @@ import { writeFile } from "fs/promises"
 import { join, resolve, sep } from "path"
 import { generateUuid } from "@/utils"
 import { DEFAULT_OLLAMA_HOST } from "@/db"
-import { type DomiaType } from "@/modules/core"
+import { env } from "@/config"
+import {
+	type DomiaType,
+	getActiveDomias,
+	getDomia,
+	retireDomia,
+	reactivateDomia,
+	invalidateOwnDomia,
+	getRedactedSatellitesForDomia,
+	upsertSatellite,
+	deleteSatellite,
+} from "@/modules/core"
+import { publishIdentityState } from "@/modules/heartbeat-manager"
+import { discoverEsphome } from "@/modules/satellite-discovery"
+import {
+	DEFAULT_SATELLITE_PORT,
+	DEFAULT_SATELLITE_PROTOCOL,
+	DEFAULT_SATELLITE_PORT_BY_PROTOCOL,
+} from "@/db"
+import { initialize, DEFAULT_CONFIG_VALUES } from "@/modules/config-engine"
 import { requestRestart } from "@/modules/runtime-control"
 import { RECORDINGS_DIR } from "@/modules/audio-capture/constants"
 import {
@@ -36,12 +55,18 @@ import type {
 	PostVoiceBodyType,
 	PostVoiceResponseType,
 	PostVoiceTimingsType,
+	PostSpeakBodyType,
+	PostSpeakResponseType,
 	PostImportMindBodyType,
 } from "../types"
 import {
 	postChatBodySchema,
 	postVoiceBodySchema,
+	postSpeakBodySchema,
+	postIntercomBodySchema,
 	postImportMindBodySchema,
+	postIdentityBodySchema,
+	postSatelliteBodySchema,
 	getSyncQuerySchema,
 	getAudioQuerySchema,
 } from "../schemas"
@@ -51,7 +76,15 @@ import {
 	getAudioFilePath,
 	registerAudioForServing,
 	requestVoiceReply,
+	speak,
+	speakActiveRoom,
+	speakBroadcast,
+	getAllPresence,
+	startIntercom,
+	stopIntercom,
+	abortActiveTurn,
 	type RequestVoiceReplyStage,
+	type SpeakBroadcastResultType,
 } from "@/modules/core-bus"
 import { httpServerLogger } from "@/utils"
 import type { FastifyRequest, FastifyReply } from "fastify"
@@ -188,6 +221,62 @@ export const handlePostVoice = async (
 	}
 }
 
+export const handlePostSpeak = async (
+	domia: DomiaType,
+	body: PostSpeakBodyType,
+): Promise<PostSpeakResponseType | SpeakBroadcastResultType> => {
+	const { text, broadcast, active } = postSpeakBodySchema.parse(body)
+	if (broadcast) {
+		const result = await speakBroadcast(text)
+		httpServerLogger.info(`📢 /speak broadcast → ${result.delivered.length}`, {
+			delivered: result.delivered,
+		})
+		return result
+	}
+	if (active) {
+		const result = await speakActiveRoom(text)
+		httpServerLogger.info(`📢 /speak active → ${result.target}`, {
+			delivered: result.delivered,
+		})
+		return result
+	}
+	const result = await speak(domia, text)
+	httpServerLogger.info(`📢 /speak → ${result.target}`, {
+		domiaKey: domia.domiaKey,
+		delivered: result.delivered,
+	})
+	return result
+}
+
+export const handlePostTurnCancel = (domia: DomiaType) => {
+	const aborted = abortActiveTurn(domia.id, "console-stop")
+	httpServerLogger.info(`🛑 /turn/cancel → ${aborted ? "aborted" : "no-op"}`, {
+		domiaKey: domia.domiaKey,
+	})
+	return { aborted }
+}
+
+export const handleGetPresence = () => {
+	return { presence: getAllPresence() }
+}
+
+export const handlePostIntercom = async (body: unknown) => {
+	const { from, to, stop } = postIntercomBodySchema.parse(body)
+	if (stop || !to) {
+		const stopped = await stopIntercom(from)
+		return { intercom: "stopped" as const, from, stopped }
+	}
+	const started = await startIntercom(from, to, {
+		sampleRate: 16000,
+		channels: 1,
+	})
+	return {
+		intercom: started ? ("started" as const) : ("failed" as const),
+		from,
+		to,
+	}
+}
+
 export const handleGetMind = async (domia: DomiaType) => {
 	return { mind: serializeMind(domia) }
 }
@@ -245,6 +334,173 @@ export const handleGetModelJob = async (id: string, reply: FastifyReply) => {
 export const handleRestart = async () => {
 	requestRestart()
 	return { restarting: true }
+}
+
+const slugifyDomiaKey = (name: string): string =>
+	`DOMIA_${name
+		.normalize("NFKD")
+		.replace(/[^A-Za-z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.toUpperCase()}`
+
+const roleOf = (isHosted: boolean, isPrincipal: boolean): string =>
+	isPrincipal ? "principal" : isHosted ? "hosted" : "peer"
+
+export const handleGetIdentities = async () => {
+	const domias = (await getActiveDomias()).filter(
+		(domia): domia is DomiaType => !!domia,
+	)
+	return {
+		identities: domias.map((domia) => {
+			const isPrincipal = domia.domiaKey === env.DOMIA_KEY
+			return {
+				domiaKey: domia.domiaKey,
+				name: domia.name,
+				isHosted: domia.isHosted,
+				isPrincipal,
+				role: roleOf(domia.isHosted, isPrincipal),
+			}
+		}),
+	}
+}
+
+export const handlePostIdentity = async (
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	const parsed = postIdentityBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid identity body" })
+	}
+	const { name, domiaKey } = parsed.data
+	const baseKey = domiaKey ?? slugifyDomiaKey(name)
+	let key = baseKey
+	const existing = await getDomia(key)
+	if (existing) {
+		if (!existing.isActive || !existing.isHosted) {
+			await reactivateDomia(key)
+			invalidateOwnDomia(key)
+			await publishIdentityState(key)
+			requestRestart()
+			return {
+				identity: { domiaKey: key, name: existing.name },
+				restarting: true,
+				restored: true,
+			}
+		}
+		if (domiaKey) {
+			return reply.code(409).send({ error: `identity already exists: ${key}` })
+		}
+		key = `${baseKey}_${generateUuid().slice(0, 6).toUpperCase()}`
+	}
+	await initialize(
+		{ ...DEFAULT_CONFIG_VALUES, name, domiaKey: key },
+		{ isHosted: true },
+	)
+	requestRestart()
+	return { identity: { domiaKey: key, name }, restarting: true }
+}
+
+export const handleDeleteIdentity = async (
+	domiaKey: string,
+	reply: FastifyReply,
+) => {
+	if (domiaKey === env.DOMIA_KEY) {
+		return reply
+			.code(409)
+			.send({ error: "principal identity cannot be removed" })
+	}
+	const existing = await getDomia(domiaKey)
+	if (!existing) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	await retireDomia(domiaKey)
+	invalidateOwnDomia(domiaKey)
+	await publishIdentityState(domiaKey)
+	requestRestart()
+	return { removed: true, restarting: true }
+}
+
+export const handleDiscoverSatellites = async () => ({
+	satellites: await discoverEsphome(),
+})
+
+export const handleGetSatellites = async (
+	domiaKey: string | undefined,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	return { satellites: await getRedactedSatellitesForDomia(domia.id) }
+}
+
+export const handlePostSatellite = async (
+	domiaKey: string | undefined,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({
+			error: `satellites can only be bound to a hosted identity (room): ${domiaKey}`,
+		})
+	}
+	const parsed = postSatelliteBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid satellite body" })
+	}
+	const { satelliteId, name, host, port, encryptionKey, protocol } = parsed.data
+	const resolvedProtocol = protocol ?? DEFAULT_SATELLITE_PROTOCOL
+	await upsertSatellite(domia.id, {
+		id: generateUuid(),
+		satelliteId,
+		name: name ?? null,
+		host,
+		port:
+			port ??
+			DEFAULT_SATELLITE_PORT_BY_PROTOCOL[resolvedProtocol] ??
+			DEFAULT_SATELLITE_PORT,
+		encryptionKey: encryptionKey ?? null,
+		protocol: resolvedProtocol,
+	})
+	invalidateOwnDomia(domiaKey)
+	requestRestart()
+	return { bound: true, restarting: true }
+}
+
+export const handleDeleteSatellite = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	await deleteSatellite(domia.id, satelliteId)
+	invalidateOwnDomia(domiaKey)
+	requestRestart()
+	return { removed: true, restarting: true }
 }
 
 export const handleImportMind = async (

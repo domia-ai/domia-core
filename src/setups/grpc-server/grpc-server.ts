@@ -2,9 +2,11 @@ import { createServer, type Server } from "nice-grpc"
 
 import { env } from "@/config"
 import { grpcServerLogger, setTraceContext } from "@/utils"
-import { resolveLiveDomia } from "@/setups/live-domia"
+import { resolveLiveDomia, resolveLiveIdentity } from "@/setups/live-domia"
+import { getOwnDomia, isHostedIdentity } from "@/modules/core"
+import { speak as speakOnDomia } from "@/modules/core-bus"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
-import { closeAllChannels } from "@/modules/grpc-client"
+import { closeAllChannels, setLocalService } from "@/modules/grpc-client"
 import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
 import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
@@ -29,6 +31,8 @@ import {
 	type StageExecutionAck,
 	type InferenceRequest,
 	type InferenceResponse,
+	type SpeakRequest,
+	type SpeakAck,
 } from "@/generated/proto/domia"
 import type { GrpcServerArgsType } from "./types"
 import {
@@ -51,6 +55,45 @@ const buildImplementation = ({
 	capabilities: bootCapabilities,
 }: GrpcServerArgsType): DomiaNodeServiceImplementation => {
 	const resolveLive = () => resolveLiveDomia(bootDomia, bootCapabilities)
+	const resolveTarget = (targetDomiaKey?: string) =>
+		resolveLiveIdentity(bootDomia, bootCapabilities, targetDomiaKey)
+
+	const originKeyOf = (envelope: EventEnvelope): string | undefined => {
+		const p = envelope.payload
+		if (!p?.$case) return undefined
+		switch (p.$case) {
+			case "audioReady":
+				return p.audioReady.originDomiaKey
+			case "sttDone":
+				return p.sttDone.originDomiaKey
+			case "llmDone":
+				return p.llmDone.originDomiaKey
+			case "ttsDone":
+				return p.ttsDone.originDomiaKey
+			case "interactionFailed":
+				return p.interactionFailed.originDomiaKey
+		}
+	}
+
+	const peekAudioTarget = async (
+		request: AsyncIterable<AudioChunk>,
+	): Promise<{
+		targetDomiaKey?: string
+		stream: AsyncIterable<AudioChunk>
+	}> => {
+		const iterator = request[Symbol.asyncIterator]()
+		const first = await iterator.next()
+		const targetDomiaKey = first.value?.meta?.targetDomiaKey
+		const stream = (async function* (): AsyncIterable<AudioChunk> {
+			if (!first.done) yield first.value as AudioChunk
+			while (true) {
+				const next = await iterator.next()
+				if (next.done) break
+				yield next.value
+			}
+		})()
+		return { targetDomiaKey, stream }
+	}
 
 	return {
 		async health(): Promise<HealthResponse> {
@@ -64,14 +107,17 @@ const buildImplementation = ({
 		},
 
 		async deliverEvent(envelope: EventEnvelope): Promise<DeliveryAck> {
-			const { domia } = await resolveLive()
+			const { domia } = await resolveTarget(
+				envelope.targetDomiaKey || originKeyOf(envelope),
+			)
 			return handleDeliverEvent({ domia }, envelope)
 		},
 
 		async streamStt(
 			request: AsyncIterable<AudioChunk>,
 		): Promise<SttDonePayload> {
-			const { domia, features } = await resolveLive()
+			const { targetDomiaKey, stream } = await peekAudioTarget(request)
+			const { domia, features } = await resolveTarget(targetDomiaKey)
 			if (!features.canRunStt) {
 				throw new Error("stt capability disabled on this domia")
 			}
@@ -80,7 +126,7 @@ const buildImplementation = ({
 				let sttExecMs: number | null = null
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
-					request,
+					stream,
 					features,
 					(t) => {
 						sttExecMs = t.execMs
@@ -125,7 +171,7 @@ const buildImplementation = ({
 				interactionId: request.interactionId,
 				originDomiaKey: request.originDomiaKey,
 			})
-			const { domia, features } = await resolveLive()
+			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunLlm) {
 				throw new Error("llm capability disabled on this domia")
 			}
@@ -171,7 +217,7 @@ const buildImplementation = ({
 				interactionId: request.interactionId,
 				originDomiaKey: request.originDomiaKey,
 			})
-			const { domia, features } = await resolveLive()
+			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunTts) {
 				throw new Error("tts capability disabled on this domia")
 			}
@@ -238,7 +284,7 @@ const buildImplementation = ({
 				interactionId: request.interactionId,
 				originDomiaKey: request.originDomiaKey,
 			})
-			const { domia, features } = await resolveLive()
+			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunLlm || !features.canRunTts) {
 				throw new Error("llm+tts capabilities required for streamReplyAudio")
 			}
@@ -270,7 +316,8 @@ const buildImplementation = ({
 		async *streamVoiceReply(
 			request: AsyncIterable<AudioChunk>,
 		): AsyncIterable<ReplyAudioMessage> {
-			const { domia, features } = await resolveLive()
+			const { targetDomiaKey, stream } = await peekAudioTarget(request)
+			const { domia, features } = await resolveTarget(targetDomiaKey)
 			if (!features.canRunStt || !features.canRunLlm || !features.canRunTts) {
 				throw new Error(
 					"stt+llm+tts capabilities required for streamVoiceReply",
@@ -282,7 +329,7 @@ const buildImplementation = ({
 				let sttExecMs: number | null = null
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
-					request,
+					stream,
 					features,
 					(t) => {
 						sttExecMs = t.execMs
@@ -328,7 +375,7 @@ const buildImplementation = ({
 
 		async reportReflection(request: ReflectionReport): Promise<ReflectionAck> {
 			setTraceContext({ interactionId: request.interactionId })
-			const { domia } = await resolveLive()
+			const { domia } = await resolveTarget(request.originDomiaKey)
 			if (request.originDomiaKey && request.originDomiaKey !== domia.domiaKey) {
 				grpcServerLogger.warn(
 					"⚠️ reflection report misrouted — origin mismatch, rejecting",
@@ -385,7 +432,7 @@ const buildImplementation = ({
 			setTraceContext({ interactionId: request.interactionId })
 			const id = request.interactionId
 			if (!id) return { accepted: false }
-			const { domia } = await resolveLive()
+			const { domia } = await resolveTarget(request.originDomiaKey)
 			if (request.originDomiaKey && request.originDomiaKey !== domia.domiaKey) {
 				grpcServerLogger.warn(
 					"⚠️ stage report misrouted — origin mismatch, rejecting",
@@ -433,7 +480,7 @@ const buildImplementation = ({
 				interactionId: request.interactionId,
 				originDomiaKey: request.originDomiaKey,
 			})
-			const { domia, features } = await resolveLive()
+			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunLlm) {
 				throw new Error("llm capability disabled on this domia")
 			}
@@ -448,6 +495,29 @@ const buildImplementation = ({
 			if (out.kind === "reply") return { reply: out.text }
 			return { toolCallsJson: JSON.stringify(out.calls) }
 		},
+
+		async speak(request: SpeakRequest): Promise<SpeakAck> {
+			if (!isHostedIdentity(request.targetDomiaKey)) {
+				grpcServerLogger.warn("📢 Speak: identity not hosted", {
+					targetDomiaKey: request.targetDomiaKey,
+				})
+				return { delivered: false, target: "unknown" }
+			}
+			const target = await getOwnDomia(request.targetDomiaKey).catch(() => null)
+			if (!target) {
+				grpcServerLogger.warn("📢 Speak: unknown target identity", {
+					targetDomiaKey: request.targetDomiaKey,
+				})
+				return { delivered: false, target: "unknown" }
+			}
+			setTraceContext({ originDomiaKey: target.domiaKey })
+			const result = await speakOnDomia(target, request.text)
+			grpcServerLogger.info(`📢 Speak → ${result.target}`, {
+				targetDomiaKey: target.domiaKey,
+				delivered: result.delivered,
+			})
+			return { delivered: result.delivered, target: result.target }
+		},
 	}
 }
 
@@ -461,7 +531,9 @@ export const setupGrpcServer = async ({
 	}
 
 	server = createServer()
-	server.add(DomiaNodeDefinition, buildImplementation({ domia, capabilities }))
+	const implementation = buildImplementation({ domia, capabilities })
+	server.add(DomiaNodeDefinition, implementation)
+	setLocalService(implementation)
 
 	const addr = `${env.GRPC_HOST}:${env.GRPC_PORT}`
 	try {

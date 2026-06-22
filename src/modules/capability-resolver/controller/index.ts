@@ -1,11 +1,21 @@
 import { type DomiaType } from "@/modules/core"
-import { getDomiaById } from "@/modules/core"
+import { getDomiaById, isHostedIdentity } from "@/modules/core"
 import { type CapabilityEnumType } from "@/db"
 import dbAdapter from "../db-adapter"
 import { resolveDomiaStreamingCapabilities } from "../utils"
 import type { ResolvedDelegateType } from "../types"
 
 const CACHE_TTL_MS = 4000
+
+const proximityRank = (
+	candidateKey: string | null | undefined,
+	candidateIp: string | null | undefined,
+	originIp: string | null | undefined,
+): number => {
+	if (candidateKey && isHostedIdentity(candidateKey)) return 0
+	if (candidateIp && originIp && candidateIp === originIp) return 1
+	return 2
+}
 
 const isStalePeer = (
 	target: { lastSeenAt: number | null },
@@ -52,9 +62,14 @@ const resolveCapabilityDelegationsUncached = async (
 		})
 	}
 
-	const candidates =
-		await dbAdapter.findAvailableDomiasForCapability(capability)
-	for (const candidate of candidates ?? []) {
+	const candidates = [
+		...((await dbAdapter.findAvailableDomiasForCapability(capability)) ?? []),
+	].sort(
+		(a, b) =>
+			proximityRank(a?.domia?.domiaKey, a?.domia?.localIp, domia.localIp) -
+			proximityRank(b?.domia?.domiaKey, b?.domia?.localIp, domia.localIp),
+	)
+	for (const candidate of candidates) {
 		const cd = candidate?.domia
 		if (!cd) continue
 		if (cd.id === domia?.id) continue

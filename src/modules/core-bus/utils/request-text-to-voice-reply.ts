@@ -8,6 +8,8 @@ import {
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
+import { beginTurn } from "./turn-scope"
+import { setPresenceStatus } from "./presence-registry"
 import type {
 	LlmDonePayloadType,
 	TtsDonePayloadType,
@@ -36,6 +38,8 @@ export const requestTextToVoiceReply = async (
 	}
 
 	const domiaId = domia.id
+	const turn = beginTurn(domiaId, interactionId)
+	setPresenceStatus(domia.domiaKey, "thinking", true)
 	const t0 = Date.now()
 	let reply = ""
 	let ttsFilePath: string | undefined
@@ -61,6 +65,7 @@ export const requestTextToVoiceReply = async (
 	try {
 		await new Promise<void>((resolve, reject) => {
 			const timeout = setTimeout(() => {
+				turn.abort("timeout")
 				reject(
 					new Error(`requestTextToVoiceReply: timeout after ${timeoutMs}ms`),
 				)
@@ -82,6 +87,7 @@ export const requestTextToVoiceReply = async (
 				DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED,
 				(p: PlaybackStartedPayloadType) => {
 					if (p.interactionId !== interactionId) return
+					setPresenceStatus(domia.domiaKey, "speaking")
 					onStage?.("firstAudioChunk", Date.now() - t0)
 				},
 			)
@@ -115,6 +121,8 @@ export const requestTextToVoiceReply = async (
 		})
 	} finally {
 		cleanup()
+		turn.end()
+		setPresenceStatus(domia.domiaKey, "idle", true)
 	}
 
 	return { interactionId, reply, ttsFilePath }

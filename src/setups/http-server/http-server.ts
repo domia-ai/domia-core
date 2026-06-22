@@ -3,14 +3,24 @@ import Fastify from "fastify"
 import { httpServerLogger } from "@/utils"
 import { env } from "@/config"
 import type { MqttClient } from "mqtt"
-import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
+import {
+	type DomiaType,
+	getOwnDomia,
+	invalidateOwnDomia,
+	isHostedIdentity,
+} from "@/modules/core"
 import { sendHeartbeat } from "@/modules/heartbeat-manager"
+import { setupSatelliteGateway } from "@/modules/satellite-gateway"
 import {
 	handleGetRoot,
 	handleGetHealth,
 	handleGetAudio,
 	handlePostChat,
 	handlePostVoice,
+	handlePostSpeak,
+	handleGetPresence,
+	handlePostTurnCancel,
+	handlePostIntercom,
 	handleGetMind,
 	handleGetConfig,
 	handlePostConfig,
@@ -22,11 +32,19 @@ import {
 	handleImportMind,
 	handleGetTemplates,
 	handleActivateTemplate,
+	handleGetIdentities,
+	handlePostIdentity,
+	handleDeleteIdentity,
+	handleDiscoverSatellites,
+	handleGetSatellites,
+	handlePostSatellite,
+	handleDeleteSatellite,
 	handleGetSync,
 	type PostChatRouteType,
 	type GetAudioRouteType,
 	type GetSyncRouteType,
 	type PostVoiceRouteType,
+	type PostSpeakRouteType,
 	type PostImportMindRouteType,
 	type TemplateIdRouteType,
 } from "@/modules/http-api"
@@ -34,13 +52,35 @@ import {
 const HTTP_SERVER_HOST = env?.HTTP_SERVER_HOST
 const HTTP_SERVER_PORT = Number(env?.HTTP_SERVER_PORT)
 
-const liveDomia = async (fallback: DomiaType): Promise<DomiaType> => {
-	try {
-		return (await getOwnDomia()) ?? fallback
-	} catch (err) {
-		httpServerLogger.warn("getOwnDomia failed — using boot domia", { err })
-		return fallback
+const liveDomia = async (
+	fallback: DomiaType,
+	domiaKey?: string,
+): Promise<DomiaType> => {
+	if (!domiaKey) {
+		const own = await getOwnDomia().catch((err) => {
+			httpServerLogger.warn("getOwnDomia failed — using boot domia", { err })
+			return null
+		})
+		const resolved = own ?? fallback
+		if (!isHostedIdentity(resolved.domiaKey))
+			throw new Error(`identity not hosted: ${resolved.domiaKey}`)
+		return resolved
 	}
+	if (!isHostedIdentity(domiaKey))
+		throw new Error(`identity not hosted: ${domiaKey}`)
+	const live = await getOwnDomia(domiaKey).catch(() => null)
+	if (!live) throw new Error(`unknown identity: ${domiaKey}`)
+	return live
+}
+
+const bodyDomiaKey = (body: unknown): string | undefined => {
+	const key = (body as { domiaKey?: unknown } | null)?.domiaKey
+	return typeof key === "string" && key.length > 0 ? key : undefined
+}
+
+const queryDomiaKey = (query: unknown): string | undefined => {
+	const key = (query as { domiaKey?: unknown } | null)?.domiaKey
+	return typeof key === "string" && key.length > 0 ? key : undefined
 }
 
 export const setupHttpServer = async ({
@@ -66,11 +106,24 @@ export const setupHttpServer = async ({
 	)
 
 	fastify.post<PostChatRouteType>("/chat", async (request) =>
-		handlePostChat(await liveDomia(domia), request.body),
+		handlePostChat(
+			await liveDomia(domia, bodyDomiaKey(request.body)),
+			request.body,
+		),
 	)
 
 	fastify.post<PostVoiceRouteType>("/voice", async (request) =>
-		handlePostVoice(await liveDomia(domia), request.body),
+		handlePostVoice(
+			await liveDomia(domia, bodyDomiaKey(request.body)),
+			request.body,
+		),
+	)
+
+	fastify.post<PostSpeakRouteType>("/speak", async (request) =>
+		handlePostSpeak(
+			await liveDomia(domia, bodyDomiaKey(request.body)),
+			request.body,
+		),
 	)
 
 	fastify.post("/config/refresh", async () => {
@@ -83,23 +136,39 @@ export const setupHttpServer = async ({
 	})
 
 	fastify.get<GetSyncRouteType>("/sync", async (request) =>
-		handleGetSync(await liveDomia(domia), request.query),
+		handleGetSync(
+			await liveDomia(domia, queryDomiaKey(request.query)),
+			request.query,
+		),
 	)
 
-	fastify.get("/mind", async () => handleGetMind(await liveDomia(domia)))
+	fastify.get("/presence", async () => handleGetPresence())
 
-	fastify.get("/config", async () => handleGetConfig(await liveDomia(domia)))
+	fastify.post("/turn/cancel", async (request) =>
+		handlePostTurnCancel(await liveDomia(domia, bodyDomiaKey(request.body))),
+	)
+
+	fastify.post("/intercom", async (request) => handlePostIntercom(request.body))
+
+	fastify.get("/mind", async (request) =>
+		handleGetMind(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
+
+	fastify.get("/config", async (request) =>
+		handleGetConfig(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
 
 	fastify.post("/config", async (request, reply) => {
-		const live = await liveDomia(domia)
+		const key = queryDomiaKey(request.query)
+		const live = await liveDomia(domia, key)
 		const result = await handlePostConfig(live, request.body, reply)
-		const fresh = await liveDomia(domia)
+		const fresh = await liveDomia(domia, key)
 		void sendHeartbeat({ domia: fresh, mqttClient })
 		return result
 	})
 
-	fastify.get("/config/health", async () =>
-		handleGetConfigHealth(await liveDomia(domia)),
+	fastify.get("/config/health", async (request) =>
+		handleGetConfigHealth(await liveDomia(domia, queryDomiaKey(request.query))),
 	)
 
 	fastify.post("/admin/restart", async () => {
@@ -107,10 +176,16 @@ export const setupHttpServer = async ({
 		return handleRestart()
 	})
 
-	fastify.get("/models", async () => handleGetModels(await liveDomia(domia)))
+	fastify.get("/models", async (request) =>
+		handleGetModels(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
 
 	fastify.post("/models/install", async (request, reply) =>
-		handlePostModelInstall(await liveDomia(domia), request.body, reply),
+		handlePostModelInstall(
+			await liveDomia(domia, queryDomiaKey(request.query)),
+			request.body,
+			reply,
+		),
 	)
 
 	fastify.get<{ Params: { id: string } }>(
@@ -121,7 +196,7 @@ export const setupHttpServer = async ({
 	fastify.post<PostImportMindRouteType>(
 		"/mind/import",
 		async (request, reply) => {
-			const live = await liveDomia(domia)
+			const live = await liveDomia(domia, queryDomiaKey(request.query))
 			const result = await handleImportMind(live, request.body, reply)
 			void sendHeartbeat({ domia: live, mqttClient })
 			return result
@@ -133,7 +208,7 @@ export const setupHttpServer = async ({
 	fastify.post<TemplateIdRouteType>(
 		"/templates/:id/activate",
 		async (request, reply) => {
-			const live = await liveDomia(domia)
+			const live = await liveDomia(domia, queryDomiaKey(request.query))
 			const result = await handleActivateTemplate(
 				live,
 				request.params.id,
@@ -143,6 +218,40 @@ export const setupHttpServer = async ({
 			return result
 		},
 	)
+
+	fastify.get("/identities", async () => handleGetIdentities())
+
+	fastify.post("/identities", async (request, reply) =>
+		handlePostIdentity(request.body, reply),
+	)
+
+	fastify.delete<{ Params: { domiaKey: string } }>(
+		"/identities/:domiaKey",
+		async (request, reply) =>
+			handleDeleteIdentity(request.params.domiaKey, reply),
+	)
+
+	fastify.get("/satellites/discover", async () => handleDiscoverSatellites())
+
+	fastify.get("/satellites", async (request, reply) =>
+		handleGetSatellites(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.post("/satellites", async (request, reply) =>
+		handlePostSatellite(queryDomiaKey(request.query), request.body, reply),
+	)
+
+	fastify.delete<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId",
+		async (request, reply) =>
+			handleDeleteSatellite(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				reply,
+			),
+	)
+
+	setupSatelliteGateway(fastify.server, domia)
 
 	try {
 		await fastify.listen({ port: HTTP_SERVER_PORT, host: HTTP_SERVER_HOST })

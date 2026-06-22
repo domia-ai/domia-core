@@ -11,7 +11,12 @@ import {
 	updateInteraction,
 } from "@/modules/session-manager"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
-import { prefetchMemoryBundle, tryBeginRecording, endRecording } from "../utils"
+import {
+	prefetchMemoryBundle,
+	tryBeginRecording,
+	endRecording,
+	abortActiveTurn,
+} from "../utils"
 import { runSpeculativeTurn } from "./speculative-turn"
 import type { CoreBusContextType } from "../types"
 
@@ -43,7 +48,11 @@ export const handleWakeDetected = async (
 		return
 	}
 
-	if (stopActivePlayback(domiaId)) {
+	if (abortActiveTurn(domiaId, "wake-bargein")) {
+		domiaBusLogger.info(`🛑 barge-in: in-flight turn aborted by wake word`, {
+			domiaId,
+		})
+	} else if (stopActivePlayback(domiaId)) {
 		domiaBusLogger.info(`🛑 barge-in: playback interrupted by wake word`, {
 			domiaId,
 		})

@@ -154,8 +154,74 @@ export type PlaybackFinishedPayloadType = {
 export type RequestVoiceReplyOptions = {
 	timeoutMs?: number
 	speak?: boolean
+	interactionId?: string
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
 }
+
+export type StreamingSinkFormatType = {
+	sampleRate: number
+	channels: 1 | 2
+}
+
+export type StreamingSinkType = {
+	begin?: (format: StreamingSinkFormatType) => void | Promise<void>
+	write: (chunk: Buffer) => void | Promise<void>
+	end?: () => void | Promise<void>
+}
+
+export type StreamMetaType = {
+	interactionId: string
+	originDomiaKey: string | undefined
+	onFirstChunk?: () => void
+	aborted?: () => boolean
+}
+
+export type TurnScopeType = {
+	domiaId: string
+	interactionId: string
+	signal: AbortSignal
+	aborted: () => boolean
+	reason: () => string | null
+	abort: (reason: string) => void
+	end: () => void
+}
+
+export type IntercomLinkType = {
+	to: string
+	sink: StreamingSinkType
+}
+
+export type SpeakResultType = {
+	delivered: boolean
+	target: "satellite" | "local" | "none"
+}
+
+export type SpeakBroadcastResultType = {
+	delivered: string[]
+}
+
+export type PresenceStatusType = "idle" | "listening" | "thinking" | "speaking"
+
+export type SatelliteProtocolType = "native" | "wyoming" | "esphome"
+
+export type SatellitePresenceType = {
+	satelliteId: string
+	protocol: SatelliteProtocolType
+	connected: boolean
+	connecting: boolean
+	connectedAt: number | null
+	lastError: string | null
+	lastErrorAt: number | null
+}
+
+export type PresenceEntryType = {
+	domiaKey: string
+	status: PresenceStatusType
+	lastActiveAt: number | null
+	satellites: SatellitePresenceType[]
+}
+
+export type PresenceListenerType = (status: PresenceStatusType) => void
 
 export type RequestVoiceReplyResult = {
 	interactionId: string

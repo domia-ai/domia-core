@@ -42,8 +42,8 @@ export const handleMqttMessage = ({
 				break
 			}
 			case MQTT_EVENT_ENUM.CONFIG_CHANGED: {
-				invalidateOwnDomia()
-				void getOwnDomia()
+				invalidateOwnDomia(domiaKey)
+				void getOwnDomia(domiaKey)
 					.then((fresh) => fresh && setGrpcClientTunables(fresh))
 					.catch(() => undefined)
 				logger.info(`🔄 config cache invalidated via MQTT [${domiaKey}]`)

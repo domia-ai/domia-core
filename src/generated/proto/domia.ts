@@ -10,6 +10,16 @@ import type { CallContext, CallOptions } from "nice-grpc-common";
 
 export const protobufPackage = "domia";
 
+export interface SpeakRequest {
+  targetDomiaKey: string;
+  text: string;
+}
+
+export interface SpeakAck {
+  delivered: boolean;
+  target: string;
+}
+
 export interface HealthRequest {
 }
 
@@ -60,6 +70,7 @@ export interface InteractionFailedPayload {
 
 export interface EventEnvelope {
   senderDomiaKey: string;
+  targetDomiaKey?: string | undefined;
   payload:
     | { $case: "audioReady"; audioReady: AudioReadyPayload }
     | { $case: "sttDone"; sttDone: SttDonePayload }
@@ -81,6 +92,7 @@ export interface StreamSttMeta {
   interactionId?: string | undefined;
   responseType?: string | undefined;
   personaContextJson?: string | undefined;
+  targetDomiaKey?: string | undefined;
 }
 
 export interface ReflectionReport {
@@ -135,6 +147,7 @@ export interface LlmStreamRequest {
   interactionId?: string | undefined;
   responseType?: string | undefined;
   personaContextJson?: string | undefined;
+  targetDomiaKey?: string | undefined;
 }
 
 export interface InferenceRequest {
@@ -144,6 +157,7 @@ export interface InferenceRequest {
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
   sessionId?: string | undefined;
+  targetDomiaKey?: string | undefined;
 }
 
 export interface InferenceResponse {
@@ -157,6 +171,7 @@ export interface TtsStreamRequest {
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
   ttsVoiceJson?: string | undefined;
+  targetDomiaKey?: string | undefined;
 }
 
 export interface ReplyAudioMessage {
@@ -165,6 +180,162 @@ export interface ReplyAudioMessage {
     transcript: string;
   } | undefined;
 }
+
+function createBaseSpeakRequest(): SpeakRequest {
+  return { targetDomiaKey: "", text: "" };
+}
+
+export const SpeakRequest: MessageFns<SpeakRequest> = {
+  encode(message: SpeakRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.targetDomiaKey !== "") {
+      writer.uint32(10).string(message.targetDomiaKey);
+    }
+    if (message.text !== "") {
+      writer.uint32(18).string(message.text);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SpeakRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSpeakRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.targetDomiaKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SpeakRequest {
+    return {
+      targetDomiaKey: isSet(object.targetDomiaKey)
+        ? globalThis.String(object.targetDomiaKey)
+        : isSet(object.target_domia_key)
+        ? globalThis.String(object.target_domia_key)
+        : "",
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+    };
+  },
+
+  toJSON(message: SpeakRequest): unknown {
+    const obj: any = {};
+    if (message.targetDomiaKey !== "") {
+      obj.targetDomiaKey = message.targetDomiaKey;
+    }
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SpeakRequest>): SpeakRequest {
+    return SpeakRequest.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SpeakRequest>): SpeakRequest {
+    const message = createBaseSpeakRequest();
+    message.targetDomiaKey = object.targetDomiaKey ?? "";
+    message.text = object.text ?? "";
+    return message;
+  },
+};
+
+function createBaseSpeakAck(): SpeakAck {
+  return { delivered: false, target: "" };
+}
+
+export const SpeakAck: MessageFns<SpeakAck> = {
+  encode(message: SpeakAck, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.delivered !== false) {
+      writer.uint32(8).bool(message.delivered);
+    }
+    if (message.target !== "") {
+      writer.uint32(18).string(message.target);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SpeakAck {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSpeakAck();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.delivered = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.target = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SpeakAck {
+    return {
+      delivered: isSet(object.delivered) ? globalThis.Boolean(object.delivered) : false,
+      target: isSet(object.target) ? globalThis.String(object.target) : "",
+    };
+  },
+
+  toJSON(message: SpeakAck): unknown {
+    const obj: any = {};
+    if (message.delivered !== false) {
+      obj.delivered = message.delivered;
+    }
+    if (message.target !== "") {
+      obj.target = message.target;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SpeakAck>): SpeakAck {
+    return SpeakAck.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SpeakAck>): SpeakAck {
+    const message = createBaseSpeakAck();
+    message.delivered = object.delivered ?? false;
+    message.target = object.target ?? "";
+    return message;
+  },
+};
 
 function createBaseHealthRequest(): HealthRequest {
   return {};
@@ -998,13 +1169,16 @@ export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
 };
 
 function createBaseEventEnvelope(): EventEnvelope {
-  return { senderDomiaKey: "", payload: undefined };
+  return { senderDomiaKey: "", targetDomiaKey: undefined, payload: undefined };
 }
 
 export const EventEnvelope: MessageFns<EventEnvelope> = {
   encode(message: EventEnvelope, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.senderDomiaKey !== "") {
       writer.uint32(10).string(message.senderDomiaKey);
+    }
+    if (message.targetDomiaKey !== undefined) {
+      writer.uint32(18).string(message.targetDomiaKey);
     }
     switch (message.payload?.$case) {
       case "audioReady":
@@ -1039,6 +1213,14 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
           }
 
           message.senderDomiaKey = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.targetDomiaKey = reader.string();
           continue;
         }
         case 10: {
@@ -1100,6 +1282,11 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
         : isSet(object.sender_domia_key)
         ? globalThis.String(object.sender_domia_key)
         : "",
+      targetDomiaKey: isSet(object.targetDomiaKey)
+        ? globalThis.String(object.targetDomiaKey)
+        : isSet(object.target_domia_key)
+        ? globalThis.String(object.target_domia_key)
+        : undefined,
       payload: isSet(object.audioReady)
         ? { $case: "audioReady", audioReady: AudioReadyPayload.fromJSON(object.audioReady) }
         : isSet(object.audio_ready)
@@ -1132,6 +1319,9 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
     if (message.senderDomiaKey !== "") {
       obj.senderDomiaKey = message.senderDomiaKey;
     }
+    if (message.targetDomiaKey !== undefined) {
+      obj.targetDomiaKey = message.targetDomiaKey;
+    }
     if (message.payload?.$case === "audioReady") {
       obj.audioReady = AudioReadyPayload.toJSON(message.payload.audioReady);
     } else if (message.payload?.$case === "sttDone") {
@@ -1152,6 +1342,7 @@ export const EventEnvelope: MessageFns<EventEnvelope> = {
   fromPartial(object: DeepPartial<EventEnvelope>): EventEnvelope {
     const message = createBaseEventEnvelope();
     message.senderDomiaKey = object.senderDomiaKey ?? "";
+    message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     switch (object.payload?.$case) {
       case "audioReady": {
         if (object.payload?.audioReady !== undefined && object.payload?.audioReady !== null) {
@@ -1293,6 +1484,7 @@ function createBaseStreamSttMeta(): StreamSttMeta {
     interactionId: undefined,
     responseType: undefined,
     personaContextJson: undefined,
+    targetDomiaKey: undefined,
   };
 }
 
@@ -1312,6 +1504,9 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     }
     if (message.personaContextJson !== undefined) {
       writer.uint32(42).string(message.personaContextJson);
+    }
+    if (message.targetDomiaKey !== undefined) {
+      writer.uint32(50).string(message.targetDomiaKey);
     }
     return writer;
   },
@@ -1363,6 +1558,14 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
           message.personaContextJson = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.targetDomiaKey = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1399,6 +1602,11 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
         : isSet(object.persona_context_json)
         ? globalThis.String(object.persona_context_json)
         : undefined,
+      targetDomiaKey: isSet(object.targetDomiaKey)
+        ? globalThis.String(object.targetDomiaKey)
+        : isSet(object.target_domia_key)
+        ? globalThis.String(object.target_domia_key)
+        : undefined,
     };
   },
 
@@ -1419,6 +1627,9 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     if (message.personaContextJson !== undefined) {
       obj.personaContextJson = message.personaContextJson;
     }
+    if (message.targetDomiaKey !== undefined) {
+      obj.targetDomiaKey = message.targetDomiaKey;
+    }
     return obj;
   },
 
@@ -1432,6 +1643,7 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     message.interactionId = object.interactionId ?? undefined;
     message.responseType = object.responseType ?? undefined;
     message.personaContextJson = object.personaContextJson ?? undefined;
+    message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     return message;
   },
 };
@@ -2188,6 +2400,7 @@ function createBaseLlmStreamRequest(): LlmStreamRequest {
     interactionId: undefined,
     responseType: undefined,
     personaContextJson: undefined,
+    targetDomiaKey: undefined,
   };
 }
 
@@ -2210,6 +2423,9 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     }
     if (message.personaContextJson !== undefined) {
       writer.uint32(50).string(message.personaContextJson);
+    }
+    if (message.targetDomiaKey !== undefined) {
+      writer.uint32(58).string(message.targetDomiaKey);
     }
     return writer;
   },
@@ -2269,6 +2485,14 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
           message.personaContextJson = reader.string();
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.targetDomiaKey = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2306,6 +2530,11 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
         : isSet(object.persona_context_json)
         ? globalThis.String(object.persona_context_json)
         : undefined,
+      targetDomiaKey: isSet(object.targetDomiaKey)
+        ? globalThis.String(object.targetDomiaKey)
+        : isSet(object.target_domia_key)
+        ? globalThis.String(object.target_domia_key)
+        : undefined,
     };
   },
 
@@ -2329,6 +2558,9 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     if (message.personaContextJson !== undefined) {
       obj.personaContextJson = message.personaContextJson;
     }
+    if (message.targetDomiaKey !== undefined) {
+      obj.targetDomiaKey = message.targetDomiaKey;
+    }
     return obj;
   },
 
@@ -2343,6 +2575,7 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     message.interactionId = object.interactionId ?? undefined;
     message.responseType = object.responseType ?? undefined;
     message.personaContextJson = object.personaContextJson ?? undefined;
+    message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     return message;
   },
 };
@@ -2355,6 +2588,7 @@ function createBaseInferenceRequest(): InferenceRequest {
     originDomiaKey: undefined,
     interactionId: undefined,
     sessionId: undefined,
+    targetDomiaKey: undefined,
   };
 }
 
@@ -2377,6 +2611,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     }
     if (message.sessionId !== undefined) {
       writer.uint32(50).string(message.sessionId);
+    }
+    if (message.targetDomiaKey !== undefined) {
+      writer.uint32(58).string(message.targetDomiaKey);
     }
     return writer;
   },
@@ -2436,6 +2673,14 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
           message.sessionId = reader.string();
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.targetDomiaKey = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2477,6 +2722,11 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
         : isSet(object.session_id)
         ? globalThis.String(object.session_id)
         : undefined,
+      targetDomiaKey: isSet(object.targetDomiaKey)
+        ? globalThis.String(object.targetDomiaKey)
+        : isSet(object.target_domia_key)
+        ? globalThis.String(object.target_domia_key)
+        : undefined,
     };
   },
 
@@ -2500,6 +2750,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     if (message.sessionId !== undefined) {
       obj.sessionId = message.sessionId;
     }
+    if (message.targetDomiaKey !== undefined) {
+      obj.targetDomiaKey = message.targetDomiaKey;
+    }
     return obj;
   },
 
@@ -2514,6 +2767,7 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
     message.sessionId = object.sessionId ?? undefined;
+    message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     return message;
   },
 };
@@ -2605,6 +2859,7 @@ function createBaseTtsStreamRequest(): TtsStreamRequest {
     originDomiaKey: undefined,
     interactionId: undefined,
     ttsVoiceJson: undefined,
+    targetDomiaKey: undefined,
   };
 }
 
@@ -2624,6 +2879,9 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     }
     if (message.ttsVoiceJson !== undefined) {
       writer.uint32(42).string(message.ttsVoiceJson);
+    }
+    if (message.targetDomiaKey !== undefined) {
+      writer.uint32(50).string(message.targetDomiaKey);
     }
     return writer;
   },
@@ -2675,6 +2933,14 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
           message.ttsVoiceJson = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.targetDomiaKey = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2707,6 +2973,11 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
         : isSet(object.tts_voice_json)
         ? globalThis.String(object.tts_voice_json)
         : undefined,
+      targetDomiaKey: isSet(object.targetDomiaKey)
+        ? globalThis.String(object.targetDomiaKey)
+        : isSet(object.target_domia_key)
+        ? globalThis.String(object.target_domia_key)
+        : undefined,
     };
   },
 
@@ -2727,6 +2998,9 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     if (message.ttsVoiceJson !== undefined) {
       obj.ttsVoiceJson = message.ttsVoiceJson;
     }
+    if (message.targetDomiaKey !== undefined) {
+      obj.targetDomiaKey = message.targetDomiaKey;
+    }
     return obj;
   },
 
@@ -2740,6 +3014,7 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
     message.ttsVoiceJson = object.ttsVoiceJson ?? undefined;
+    message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     return message;
   },
 };
@@ -2944,6 +3219,14 @@ export const DomiaNodeDefinition = {
       responseStream: false,
       options: {},
     },
+    speak: {
+      name: "Speak",
+      requestType: SpeakRequest as typeof SpeakRequest,
+      requestStream: false,
+      responseType: SpeakAck as typeof SpeakAck,
+      responseStream: false,
+      options: {},
+    },
   },
 } as const;
 
@@ -2982,6 +3265,7 @@ export interface DomiaNodeServiceImplementation<CallContextExt = {}> {
     request: InferenceRequest,
     context: CallContext & CallContextExt,
   ): Promise<DeepPartial<InferenceResponse>>;
+  speak(request: SpeakRequest, context: CallContext & CallContextExt): Promise<DeepPartial<SpeakAck>>;
 }
 
 export interface DomiaNodeClient<CallOptionsExt = {}> {
@@ -3013,6 +3297,7 @@ export interface DomiaNodeClient<CallOptionsExt = {}> {
     request: DeepPartial<InferenceRequest>,
     options?: CallOptions & CallOptionsExt,
   ): Promise<InferenceResponse>;
+  speak(request: DeepPartial<SpeakRequest>, options?: CallOptions & CallOptionsExt): Promise<SpeakAck>;
 }
 
 function bytesFromBase64(b64: string): Uint8Array {

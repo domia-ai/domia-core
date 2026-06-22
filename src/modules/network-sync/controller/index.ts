@@ -82,7 +82,10 @@ export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 		networkSyncLogger.debug("Upserting domia", logParams)
 		dbAdapter.deleteStalePeerByKey(domiaKey, domiaId, tx)
 		dbAdapter
-			.upsertDomia({ ...normalizeDomia(domia), lastSeenAt: Date.now() }, tx)
+			.upsertDomia(
+				{ ...normalizeDomia(domia), isHosted: false, lastSeenAt: Date.now() },
+				tx,
+			)
 			.run()
 
 		const runtimeCapabilities = normalizeRuntimeCapabilities(domia)

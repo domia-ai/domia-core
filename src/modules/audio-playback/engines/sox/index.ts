@@ -6,6 +6,7 @@ import { registerActivePlayback } from "../../utils"
 import type { AudioPlaybackResult, SoxStreamOptionsType } from "../../types"
 
 const STREAM_BUFFER_BYTES = 65536
+const KILL_GRACE_MS = 2000
 const STDERR_NOISE_PATTERN = /can't set sample rate/
 
 const volumeFromConfig = (
@@ -92,21 +93,39 @@ export const runSox = async (
 	return new Promise((resolve, reject) => {
 		const proc = spawn("play", args, { stdio: "ignore" })
 		let interrupted = false
+		let killTimer: ReturnType<typeof setTimeout> | null = null
+		const clearKillTimer = (): void => {
+			if (killTimer) {
+				clearTimeout(killTimer)
+				killTimer = null
+			}
+		}
 		const unregister = registerActivePlayback(domia.id, () => {
 			interrupted = true
 			audioPlaybackLogger.info("🛑 Sox playback interrupted", {
 				domiaId: domia.id,
 			})
 			proc.kill("SIGTERM")
+			killTimer = setTimeout(() => {
+				killTimer = null
+				try {
+					proc.kill("SIGKILL")
+				} catch {
+					/* */
+				}
+			}, KILL_GRACE_MS)
+			killTimer.unref()
 		})
 
 		proc.on("error", (err) => {
+			clearKillTimer()
 			unregister()
 			audioPlaybackLogger.error("🔇 Sox error", { err, domiaId: domia.id })
 			reject(err)
 		})
 
 		proc.on("exit", (code) => {
+			clearKillTimer()
 			unregister()
 			if (interrupted) {
 				resolve({ engine: "SOX", success: true, interrupted: true })
@@ -160,13 +179,33 @@ export const runSoxStream = async (
 			startedAt: Date.now(),
 		}
 
-		const killProcessGroup = (): void => {
-			try {
-				if (proc.pid) process.kill(-proc.pid, "SIGTERM")
-				else proc.kill("SIGTERM")
-			} catch {
-				proc.kill("SIGTERM")
+		let killTimer: ReturnType<typeof setTimeout> | null = null
+		const clearKillTimer = (): void => {
+			if (killTimer) {
+				clearTimeout(killTimer)
+				killTimer = null
 			}
+		}
+		const signalGroup = (signal: NodeJS.Signals): void => {
+			try {
+				if (proc.pid) process.kill(-proc.pid, signal)
+				else proc.kill(signal)
+			} catch {
+				try {
+					proc.kill(signal)
+				} catch {
+					/* */
+				}
+			}
+		}
+		const killProcessGroup = (): void => {
+			signalGroup("SIGTERM")
+			if (killTimer) return
+			killTimer = setTimeout(() => {
+				killTimer = null
+				if (!state.exited) signalGroup("SIGKILL")
+			}, KILL_GRACE_MS)
+			killTimer.unref()
 		}
 
 		const unregister = registerActivePlayback(domia.id, () => {
@@ -182,6 +221,7 @@ export const runSoxStream = async (
 		const settle = (result: AudioPlaybackResult, err?: Error): void => {
 			if (state.settled) return
 			state.settled = true
+			clearKillTimer()
 			unregister()
 			if (err) reject(err)
 			else resolve(result)
@@ -241,6 +281,7 @@ export const runSoxStream = async (
 		proc.on("exit", (code) => {
 			state.exited = true
 			state.exitCode = code ?? null
+			clearKillTimer()
 			if (code !== 0 && !state.interrupted) {
 				audioPlaybackLogger.error("🔇 Sox stream failed", {
 					code,

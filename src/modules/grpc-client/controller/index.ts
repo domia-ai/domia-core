@@ -1,9 +1,12 @@
 import { createChannel, createClient, type Channel } from "nice-grpc"
 
 import { grpcClientLogger } from "@/utils"
+import { env } from "@/config"
+import { isHostedIdentity } from "@/modules/core"
 import {
 	DomiaNodeDefinition,
 	type DomiaNodeClient,
+	type DomiaNodeServiceImplementation,
 	type EventEnvelope,
 	type AudioChunk,
 	type TokenChunk,
@@ -95,9 +98,86 @@ const isUnavailableError = (err: unknown): boolean => {
 
 const lastAddrByKey = new Map<string, string>()
 
-const getClient = (target: DeliverEventTarget): DomiaNodeClient | null => {
+let localClient: DomiaNodeClient | null = null
+
+const abortableLocalStream = <T>(
+	source: AsyncIterable<T>,
+	signal?: AbortSignal,
+): AsyncIterable<T> => {
+	if (!signal) return source
+	return (async function* (): AsyncIterable<T> {
+		const iterator = source[Symbol.asyncIterator]()
+		const onAbort = () => void iterator.return?.()
+		signal.addEventListener("abort", onAbort)
+		try {
+			if (signal.aborted) return
+			while (true) {
+				const next = await iterator.next()
+				if (next.done || signal.aborted) break
+				yield next.value
+			}
+		} finally {
+			signal.removeEventListener("abort", onAbort)
+		}
+	})()
+}
+
+const abortableLocalUnary = <T>(
+	promise: Promise<T>,
+	signal?: AbortSignal,
+): Promise<T> => {
+	if (!signal) return promise
+	if (signal.aborted) return Promise.reject(new Error("local call aborted"))
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(new Error("local call aborted"))
+		signal.addEventListener("abort", onAbort, { once: true })
+		promise
+			.then(resolve, reject)
+			.finally(() => signal.removeEventListener("abort", onAbort))
+	})
+}
+
+export const setLocalService = (impl: DomiaNodeServiceImplementation): void => {
+	localClient = new Proxy({} as DomiaNodeClient, {
+		get(_t, prop) {
+			const method = (impl as unknown as Record<string | symbol, unknown>)[prop]
+			if (typeof method !== "function") return undefined
+			return (request: unknown, opts?: { signal?: AbortSignal }) => {
+				const result = (
+					method as (req: unknown, ctx?: unknown) => unknown
+				).call(impl, request, {})
+				if (
+					result &&
+					typeof (result as AsyncIterable<unknown>)[Symbol.asyncIterator] ===
+						"function"
+				) {
+					return abortableLocalStream(
+						result as AsyncIterable<unknown>,
+						opts?.signal,
+					)
+				}
+				if (result && typeof (result as Promise<unknown>).then === "function") {
+					return abortableLocalUnary(result as Promise<unknown>, opts?.signal)
+				}
+				return result
+			}
+		},
+	})
+}
+
+const resolveTargetAddr = (target: DeliverEventTarget): string | null => {
+	if (isHostedIdentity(target.domiaKey)) return `127.0.0.1:${env.GRPC_PORT}`
 	if (!target.localIp || !target.grpcPort) return null
-	const addr = `${target.localIp}:${target.grpcPort}`
+	return `${target.localIp}:${target.grpcPort}`
+}
+
+const getClient = (target: DeliverEventTarget): DomiaNodeClient | null => {
+	if (localClient && isHostedIdentity(target.domiaKey)) {
+		grpcClientLogger.debug(`🔁 in-process dispatch → ${target.domiaKey}`)
+		return localClient
+	}
+	const addr = resolveTargetAddr(target)
+	if (!addr) return null
 	const previous = lastAddrByKey.get(target.domiaKey)
 	if (previous && previous !== addr) closeChannel(previous)
 	lastAddrByKey.set(target.domiaKey, addr)
@@ -204,7 +284,8 @@ export const deliverEvent = async <K extends keyof DeliverEventPayloadMap>(
 			)
 			continue
 		}
-		const addr = `${target.localIp}:${target.grpcPort}`
+		envelope.targetDomiaKey = target.domiaKey
+		const addr = addrOf(target)
 		try {
 			const ac = new AbortController()
 			const timer = setTimeout(() => ac.abort(), effectiveDeadlineMs)
@@ -256,7 +337,7 @@ export const deliverEvent = async <K extends keyof DeliverEventPayloadMap>(
 }
 
 const addrOf = (target: DeliverEventTarget): string =>
-	`${target.localIp}:${target.grpcPort}`
+	resolveTargetAddr(target) ?? `${target.localIp}:${target.grpcPort}`
 
 const errMsg = (err: unknown): string =>
 	err instanceof Error ? err.message : String(err)
@@ -301,6 +382,7 @@ export const streamSttToTarget = async (
 						originDomiaKey: meta.originDomiaKey,
 						interactionId: meta.interactionId,
 						responseType: meta.responseType,
+						targetDomiaKey: target.domiaKey,
 					},
 				}
 				for await (const buf of audioFactory()) {
@@ -340,7 +422,11 @@ export const streamSttToTarget = async (
 
 const openServerStream = async <T>(
 	targets: DeliverEventTarget[],
-	invoke: (client: DomiaNodeClient, signal: AbortSignal) => AsyncIterable<T>,
+	invoke: (
+		client: DomiaNodeClient,
+		signal: AbortSignal,
+		target: DeliverEventTarget,
+	) => AsyncIterable<T>,
 ): Promise<OpenedServerStream<T>> => {
 	if (targets.length === 0) {
 		return { delivered: false, error: "no targets", attemptedTargets: 0 }
@@ -363,7 +449,7 @@ const openServerStream = async <T>(
 			timer = setTimeout(() => ac.abort(), tunables.streamIdleTimeoutMs)
 		}
 		resetIdle()
-		const iterator = invoke(client, ac.signal)[Symbol.asyncIterator]()
+		const iterator = invoke(client, ac.signal, target)[Symbol.asyncIterator]()
 		let first: IteratorResult<T>
 		try {
 			first = await iterator.next()
@@ -417,18 +503,21 @@ export const streamLlmFromTarget = async (
 	targets: DeliverEventTarget[],
 	request: StreamLlmRequestType,
 ): Promise<StreamLlmResult> => {
-	const opened = await openServerStream<TokenChunk>(targets, (client, signal) =>
-		client.streamLlm(
-			{
-				senderDomiaKey,
-				transcript: request.transcript,
-				originDomiaKey: request.originDomiaKey,
-				interactionId: request.interactionId,
-				responseType: request.responseType,
-				personaContextJson: request.personaContextJson,
-			},
-			{ signal },
-		),
+	const opened = await openServerStream<TokenChunk>(
+		targets,
+		(client, signal, target) =>
+			client.streamLlm(
+				{
+					senderDomiaKey,
+					transcript: request.transcript,
+					originDomiaKey: request.originDomiaKey,
+					interactionId: request.interactionId,
+					responseType: request.responseType,
+					personaContextJson: request.personaContextJson,
+					targetDomiaKey: target.domiaKey,
+				},
+				{ signal },
+			),
 	)
 	if (!opened.delivered || !opened.stream) {
 		return {
@@ -455,17 +544,20 @@ export const streamTtsFromTarget = async (
 	targets: DeliverEventTarget[],
 	request: StreamTtsRequestType,
 ): Promise<StreamTtsResult> => {
-	const opened = await openServerStream<AudioChunk>(targets, (client, signal) =>
-		client.streamTts(
-			{
-				senderDomiaKey,
-				reply: request.reply,
-				originDomiaKey: request.originDomiaKey,
-				interactionId: request.interactionId,
-				ttsVoiceJson: request.ttsVoiceJson,
-			},
-			{ signal },
-		),
+	const opened = await openServerStream<AudioChunk>(
+		targets,
+		(client, signal, target) =>
+			client.streamTts(
+				{
+					senderDomiaKey,
+					reply: request.reply,
+					originDomiaKey: request.originDomiaKey,
+					interactionId: request.interactionId,
+					ttsVoiceJson: request.ttsVoiceJson,
+					targetDomiaKey: target.domiaKey,
+				},
+				{ signal },
+			),
 	)
 	if (!opened.delivered || !opened.stream) {
 		return {
@@ -498,7 +590,7 @@ export const streamReplyAudioFromTarget = async (
 ): Promise<StreamReplyAudioResult> => {
 	const opened = await openServerStream<ReplyAudioMessage>(
 		targets,
-		(client, signal) =>
+		(client, signal, target) =>
 			client.streamReplyAudio(
 				{
 					senderDomiaKey,
@@ -507,6 +599,7 @@ export const streamReplyAudioFromTarget = async (
 					interactionId: request.interactionId,
 					responseType: request.responseType,
 					personaContextJson: request.personaContextJson,
+					targetDomiaKey: target.domiaKey,
 				},
 				{ signal },
 			),
@@ -563,7 +656,7 @@ export const streamVoiceReplyFromTarget = async (
 ): Promise<StreamVoiceReplyResult> => {
 	const opened = await openServerStream<ReplyAudioMessage>(
 		targets,
-		(client, signal) => {
+		(client, signal, target) => {
 			const audioRequest = (async function* (): AsyncIterable<AudioChunk> {
 				yield {
 					pcm: new Uint8Array(0),
@@ -573,6 +666,7 @@ export const streamVoiceReplyFromTarget = async (
 						interactionId: request.interactionId,
 						responseType: request.responseType,
 						personaContextJson: request.personaContextJson,
+						targetDomiaKey: target.domiaKey,
 					},
 				}
 				for await (const buf of request.audioFactory()) {
@@ -736,6 +830,7 @@ export const delegateInferenceWithTools = async (
 				originDomiaKey: payload.originDomiaKey,
 				interactionId: payload.interactionId,
 				sessionId: payload.sessionId,
+				targetDomiaKey: target.domiaKey,
 			},
 			{ signal: ac.signal },
 		)

@@ -20,6 +20,9 @@ import {
 	splitSentences,
 	takeMemoryBundle,
 	sentenceTuningFromDomia,
+	getStreamingSink,
+	isTurnAborted,
+	notifyTurnAborted,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -29,6 +32,7 @@ import {
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
+	INTERACTION_STATUS_ENUM,
 	RESPONSE_TYPE_ENUM,
 	type SkillToolType,
 } from "@/db"
@@ -144,6 +148,7 @@ const pipelineVoiceFromTokens = async (
 		{
 			interactionId: session.interactionId,
 			originDomiaKey: session.originDomiaKey,
+			aborted: () => isTurnAborted(domia.id, session.interactionId),
 			onFirstChunk: () => {
 				ttfaMs =
 					pipelineElapsed(session.interactionId) ?? Date.now() - startTime
@@ -181,7 +186,7 @@ const pipelineVoiceFromTokens = async (
 			tokens,
 			sentenceTuningFromDomia(domia),
 		)) {
-			if (playbackGone) break
+			if (playbackGone || isTurnAborted(domia.id, session.interactionId)) break
 			fullReply += (fullReply.length > 0 ? " " : "") + sentence
 			await ttsStreamQueue.waitForSpace(queueDepth)
 			ttsStreamQueue.push(
@@ -194,7 +199,8 @@ const pipelineVoiceFromTokens = async (
 	} catch (err) {
 		tokenError = err
 	}
-	if (!tokenError) {
+	const aborted = isTurnAborted(domia.id, session.interactionId)
+	if (!tokenError && !aborted) {
 		const ensured = ensureReplyOrFallback(fullReply)
 		if (ensured.usedFallback) {
 			domiaBusLogger.warn("LLM returned empty reply — speaking fallback", {
@@ -224,6 +230,25 @@ const pipelineVoiceFromTokens = async (
 			error: toError(tokenError),
 			step: "llm",
 			liveVoice: session.liveVoice,
+		})
+		return true
+	}
+
+	if (aborted) {
+		await updateInteraction({
+			id: session.interactionId,
+			status: INTERACTION_STATUS_ENUM.ABORTED,
+			llmPrompt: session.promptContext,
+			llmResponse: fullReply,
+			ttsEngineUsed: tts.adapter.id,
+			ttsExecutorKey: domia.domiaKey,
+			ttsAudioPath: playback.filePath,
+			totalMs: pipelineElapsed(session.interactionId),
+		})
+		publishStreamedReplyComplete(domia.id, session, fullReply, playback)
+		domiaBusLogger.info(`🛑 turn aborted mid-pipeline — reflection skipped`, {
+			domiaId: domia.id,
+			interactionId: session.interactionId,
 		})
 		return true
 	}
@@ -291,13 +316,23 @@ const tryLocalFullStreamVoice = async (
 ): Promise<boolean> => {
 	const { features, domia } = ctx
 	const { llm, tts, canSentencePipeline } = features
-	if (!session.isVoice || !canSentencePipeline || !llm || !tts) return false
+	const pipelineForSink = getStreamingSink(session.interactionId) !== undefined
+	if (
+		!session.isVoice ||
+		(!canSentencePipeline && !pipelineForSink) ||
+		!llm ||
+		!tts
+	)
+		return false
 	if (!llm.adapter.runStream) return false
 
 	return pipelineVoiceFromTokens(
 		ctx,
 		session,
-		prestartedTokens ?? llm.adapter.runStream(domia, session.promptContext),
+		prestartedTokens ??
+			llm.adapter.runStream(domia, session.promptContext, () =>
+				isTurnAborted(domia.id, session.interactionId),
+			),
 		{
 			llmExecutorKey: domia.domiaKey,
 			llmModelUsed: domia.llmModelConfig?.modelName ?? null,
@@ -315,6 +350,16 @@ const runLocalSyncLlm = async (
 	)
 	const llmElapsed = Date.now() - startTime
 	domiaBusLogger.info(`⏱️ LLM execution time: ${llmElapsed}ms`)
+
+	if (isTurnAborted(ctx.domia.id, session.interactionId)) {
+		await notifyTurnAborted(
+			ctx.domia.id,
+			session.interactionId,
+			session.originDomiaKey,
+			reply,
+		)
+		return
+	}
 
 	await updateInteraction({
 		id: session.interactionId,
@@ -693,6 +738,11 @@ export const handleSttDone = async (
 			`📝 STT_DONE: alreadyHandled — fused voice reply already ran, skipping`,
 			{ domiaId, interactionId: payload.interactionId },
 		)
+		return
+	}
+
+	if (payload.interactionId && isTurnAborted(domiaId, payload.interactionId)) {
+		await notifyTurnAborted(domiaId, payload.interactionId, originDomiaKey)
 		return
 	}
 

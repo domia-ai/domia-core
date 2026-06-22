@@ -5,6 +5,8 @@ import { type SelectModuleSettingsType } from "@/db"
 
 export type ConfigType = z.infer<typeof configSchema>
 
+export type InitializeOptionsType = { isHosted?: boolean }
+
 export type ModulesType = Pick<
 	SelectModuleSettingsType,
 	| "collectiveMind"

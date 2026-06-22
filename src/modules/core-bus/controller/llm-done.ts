@@ -15,6 +15,9 @@ import {
 	playStreamedAudio,
 	registerAudioForServing,
 	resolvePending,
+	getStreamingSink,
+	isTurnAborted,
+	notifyTurnAborted,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -133,8 +136,9 @@ const tryLocalStreamingTtsPlayback = async (
 	session: LlmFlowSessionType,
 ): Promise<boolean> => {
 	const { tts, canPlayback } = ctx.features
+	const hasSink = getStreamingSink(session.interactionId) !== undefined
 	if (
-		!canPlayback ||
+		(!canPlayback && !hasSink) ||
 		tts?.adapter.capabilities.streaming !== true ||
 		!tts.adapter.runStream
 	)
@@ -153,6 +157,7 @@ const tryLocalStreamingTtsPlayback = async (
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				aborted: () => isTurnAborted(domia.id, session.interactionId),
 				onFirstChunk: () => {
 					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
 					if (session.speechEndAt) {
@@ -264,7 +269,7 @@ const runDelegatedStreamingTts = async (
 	const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
 	const sampleRate = streamed.sampleRate ?? DEFAULT_SAMPLE_RATE
 
-	if (!ctx.features.canPlayback) {
+	if (!ctx.features.canPlayback && !getStreamingSink(session.interactionId)) {
 		const chunks: Buffer[] = []
 		for await (const chunk of streamed.audio) chunks.push(chunk)
 		const wav = wrapPcmToWav(Buffer.concat(chunks), sampleRate, channels, 16)
@@ -292,6 +297,7 @@ const runDelegatedStreamingTts = async (
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				aborted: () => isTurnAborted(domia.id, session.interactionId),
 				onFirstChunk: () => {
 					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
 					if (session.speechEndAt) {
@@ -340,6 +346,16 @@ export const handleLlmDone = async (
 		domiaBusLogger.info(
 			`🗣️ LLM_DONE: alreadyStreamed flag set — handleSttDone already ran TTS+playback, skipping`,
 			{ domiaId, interactionId: payload.interactionId },
+		)
+		return
+	}
+
+	if (payload.interactionId && isTurnAborted(domiaId, payload.interactionId)) {
+		await notifyTurnAborted(
+			domiaId,
+			payload.interactionId,
+			originDomiaKey,
+			reply,
 		)
 		return
 	}
