@@ -99,8 +99,9 @@ export const registerNewInteraction = async (
 	domia: DomiaType,
 	data: NewInteractionDataType,
 	client?: DBClientOrTxType,
+	idOverride?: string,
 ) => {
-	const interactionId = generateUuid()
+	const interactionId = idOverride ?? generateUuid()
 
 	const { interactionSessionTraceId, sessionId } =
 		await getOrCreateSessionForDomia(domia)
@@ -133,6 +134,18 @@ export const getOrCreateInteractionId = async (
 	client?: DBClientOrTxType,
 ): Promise<string | null> => {
 	if (existingInteractionId) {
+		const existing = await getInteractionById(existingInteractionId, client)
+		if (existing) return existingInteractionId
+		try {
+			await registerNewInteraction(
+				domia,
+				defaultData,
+				client,
+				existingInteractionId,
+			)
+		} catch {
+			// row may have been created concurrently — fall through
+		}
 		return existingInteractionId
 	}
 	try {

@@ -1,4 +1,4 @@
-import { writeFile, readFile, unlink } from "fs/promises"
+import { writeFile, readFile } from "fs/promises"
 import { join } from "path"
 
 import { type DomiaType, getOwnDomia, isHostedIdentity } from "@/modules/core"
@@ -17,6 +17,7 @@ import {
 	abortActiveTurn,
 	buildAudioUrl,
 	registerAudioForServing,
+	getAudioFilePath,
 	type StreamingSinkType,
 } from "@/modules/core-bus"
 import {
@@ -176,10 +177,12 @@ export const createSatelliteSession = (
 			transport.sendTranscript(result.transcript)
 			if (urlPlayback) {
 				if (result.ttsFilePath) {
-					registerAudioForServing(result.interactionId, result.ttsFilePath)
+					registerAudioForServing(interactionId, result.ttsFilePath)
+				}
+				if (getAudioFilePath(interactionId)) {
 					transport.playAudioUrl?.(
-						buildAudioUrl(identity, result.interactionId),
-						result.interactionId,
+						buildAudioUrl(identity, interactionId),
+						interactionId,
 					)
 				}
 			} else if (framesSent === 0 && result.ttsFilePath) {
@@ -195,7 +198,6 @@ export const createSatelliteSession = (
 			transport.sendError(String(err))
 		} finally {
 			clearStreamingSink(interactionId)
-			await unlink(path).catch(() => undefined)
 			if (activeInteractionId === interactionId) {
 				activeInteractionId = null
 				setPresenceStatus(identity.domiaKey, "idle", true)
