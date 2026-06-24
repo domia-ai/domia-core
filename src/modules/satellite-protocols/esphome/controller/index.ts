@@ -8,17 +8,28 @@ import {
 	setPresenceStatus,
 	setSatelliteConnecting,
 	setSatelliteError,
+	updateSatelliteMeta,
+	registerSatelliteControl,
+	unregisterSatelliteControl,
 	onPresenceChange,
 	type PresenceStatusType,
+	type SatelliteWakeWordType,
+	type SatelliteNumberEntityType,
 } from "@/modules/core-bus"
 import { DEFAULT_SATELLITE_RECONNECT_MS } from "@/db"
 import { satelliteEsphomeLogger as logger } from "@/utils"
 
+import type { Entity, NumberEvent } from "esphome-client"
 import type {
 	EsphomeModuleType,
 	EsphomeBindingType,
 	EsphomeSatelliteHandleType,
+	NumberEntityInfoType,
 } from "../types"
+
+const isNumberEntity = (
+	e: Entity & { id: string },
+): e is NumberEntityInfoType => e.type === "number"
 
 const loadEsphome = new Function("s", "return import(s)") as (
 	s: string,
@@ -38,6 +49,22 @@ export const connectEsphomeSatellite = (
 	const scheduler = createReconnectScheduler(DEFAULT_SATELLITE_RECONNECT_MS)
 	let client: { disconnect: () => void } | null = null
 	let unsubscribePresence: (() => void) | null = null
+	let reconnectCount = 0
+	let desiredWakeWords = binding.desiredWakeWords
+		? [...binding.desiredWakeWords]
+		: []
+	const desiredNumbers: Record<string, number> = {
+		...(binding.desiredNumbers ?? {}),
+	}
+	let followUpEnabled = binding.followUpEnabled ?? false
+	let lastTranscriptChars = 0
+	const shouldFollowUp = () => followUpEnabled && lastTranscriptChars > 0
+	let numberEntities: SatelliteNumberEntityType[] = []
+	const idByKey = new Map<number, string>()
+	const publishNumbers = () =>
+		updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+			numberEntities,
+		})
 
 	const open = async (): Promise<void> => {
 		if (scheduler.isClosed()) return
@@ -65,8 +92,10 @@ export const connectEsphomeSatellite = (
 
 		const transport: SatelliteTransportType = {
 			sendReady: () => undefined,
-			sendTranscript: (text) =>
-				event(VoiceAssistantEvent.STT_END, [{ name: "text", value: text }]),
+			sendTranscript: (text) => {
+				lastTranscriptChars = text.trim().length
+				event(VoiceAssistantEvent.STT_END, [{ name: "text", value: text }])
+			},
 			sendReplyDone: () => undefined,
 			sendError: (message) =>
 				event(VoiceAssistantEvent.ERROR, [{ name: "message", value: message }]),
@@ -77,8 +106,17 @@ export const connectEsphomeSatellite = (
 			serverEndpointing: true,
 			notifySpeechEnd: () => event(VoiceAssistantEvent.STT_VAD_END),
 			playAudioUrl: (url) =>
-				event(VoiceAssistantEvent.TTS_END, [{ name: "url", value: url }]),
-			finishTurn: () => event(VoiceAssistantEvent.RUN_END),
+				shouldFollowUp()
+					? esp.sendVoiceAssistantAnnounce({
+							mediaId: url,
+							startConversation: true,
+						})
+					: event(VoiceAssistantEvent.TTS_END, [{ name: "url", value: url }]),
+			announce: (url) => esp.sendVoiceAssistantAnnounce({ mediaId: url }),
+			finishTurn: () => {
+				// RUN_END cancels an in-flight startConversation re-arm; skip on follow-up
+				if (!shouldFollowUp()) event(VoiceAssistantEvent.RUN_END)
+			},
 		}
 
 		const session = createSatelliteSession({
@@ -94,21 +132,107 @@ export const connectEsphomeSatellite = (
 		})
 
 		esp.on("connect", () => {
+			scheduler.reset()
 			esp.subscribeVoiceAssistant(VoiceAssistantSubscribeFlag.API_AUDIO)
 			logger.info("🛰️ connected to esphome satellite", {
 				host: binding.host,
 				satelliteId: binding.satelliteId,
 				domiaKey,
 			})
+			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+				reconnectCount,
+			})
+			registerSatelliteControl({
+				satelliteId: binding.satelliteId,
+				domiaKey: presenceKey,
+				setWakeWords: (ids) => {
+					desiredWakeWords = [...ids]
+					esp.setVoiceAssistantConfiguration(ids)
+				},
+				announce: (url) => esp.sendVoiceAssistantAnnounce({ mediaId: url }),
+				setNumber: (entityId, value) => {
+					desiredNumbers[entityId] = value
+					esp.sendNumberCommand(entityId, value)
+					const entity = numberEntities.find((n) => n.id === entityId)
+					if (entity) {
+						entity.value = value
+						publishNumbers()
+					}
+				},
+				setFollowUp: (enabled) => {
+					followUpEnabled = enabled
+				},
+			})
+			esp.requestVoiceAssistantConfiguration()
 			void session.onHello({ domiaKey, satelliteId: binding.satelliteId })
+		})
+
+		esp.on("voiceAssistantConfiguration", (config) => {
+			const available: SatelliteWakeWordType[] = config.availableWakeWords.map(
+				(w) => ({ id: w.id, wakeWord: w.wakeWord }),
+			)
+			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+				availableWakeWords: available,
+				activeWakeWords: config.activeWakeWords,
+			})
+			const sameSet =
+				desiredWakeWords.length === config.activeWakeWords.length &&
+				desiredWakeWords.every((id) => config.activeWakeWords.includes(id))
+			if (desiredWakeWords.length > 0 && !sameSet) {
+				logger.info("🛰️ applying desired wake words", {
+					satelliteId: binding.satelliteId,
+					desired: desiredWakeWords,
+				})
+				esp.setVoiceAssistantConfiguration(desiredWakeWords)
+			}
+		})
+
+		esp.on("entities", () => {
+			const nums = esp.getEntitiesWithIds().filter(isNumberEntity)
+			idByKey.clear()
+			numberEntities = nums.map((e) => {
+				idByKey.set(e.key, e.id)
+				return {
+					id: e.id,
+					name: e.name,
+					value: desiredNumbers[e.id] ?? null,
+					min: e.minValue ?? null,
+					max: e.maxValue ?? null,
+					step: e.step ?? null,
+					unit: e.unitOfMeasurement ?? null,
+				}
+			})
+			publishNumbers()
+			for (const [id, value] of Object.entries(desiredNumbers)) {
+				if (numberEntities.some((n) => n.id === id)) {
+					esp.sendNumberCommand(id, value)
+				}
+			}
+		})
+
+		esp.on("number", (evt: NumberEvent) => {
+			const id = idByKey.get(evt.key)
+			if (!id) return
+			const entity = numberEntities.find((n) => n.id === id)
+			if (!entity) return
+			entity.value = evt.state ?? entity.value
+			publishNumbers()
+		})
+
+		esp.on("voiceAssistantAnnounceFinished", () => {
+			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+				lastPlaybackAt: Date.now(),
+			})
 		})
 
 		esp.on("voiceAssistantRequest", (req: { start?: boolean }) => {
 			if (req.start) {
+				lastTranscriptChars = 0
 				esp.sendVoiceAssistantResponse(0, false)
 				event(VoiceAssistantEvent.RUN_START)
 				setPresenceStatus(presenceKey, "listening")
 			} else {
+				lastTranscriptChars = 0
 				session.onCancel()
 				setPresenceStatus(presenceKey, "idle", true)
 				event(VoiceAssistantEvent.RUN_END)
@@ -121,11 +245,14 @@ export const connectEsphomeSatellite = (
 		})
 
 		esp.on("disconnect", (reason?: string) => {
+			lastTranscriptChars = 0
 			session.onClose()
+			unregisterSatelliteControl(presenceKey, binding.satelliteId)
 			unsubscribePresence?.()
 			unsubscribePresence = null
 			client = null
 			if (!scheduler.isClosed()) {
+				reconnectCount++
 				logger.warn("esphome satellite disconnected — reconnecting", {
 					host: binding.host,
 					reason,

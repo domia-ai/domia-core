@@ -12,7 +12,12 @@ import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
 import { updateInteraction } from "@/modules/session-manager"
 import { runLLM, runLLMWithTools } from "@/modules/llm-engine"
-import type { ChatMessageType, ToolDefinitionType } from "@/modules/llm-engine"
+import type {
+	ChatMessageType,
+	ToolDefinitionType,
+	LlmUsageType,
+	LlmUsageSinkType,
+} from "@/modules/llm-engine"
 import {
 	DomiaNodeDefinition,
 	type DomiaNodeServiceImplementation,
@@ -180,15 +185,24 @@ const buildImplementation = ({
 			const runStream = features.llm?.adapter.runStream
 			let reply = ""
 			const llmStart = Date.now()
+			const llmUsageRef: { current: LlmUsageType | null } = { current: null }
+			const onLlmUsage: LlmUsageSinkType = (u) => {
+				llmUsageRef.current = u
+			}
 
 			try {
 				if (canStreamLlm(features) && runStream) {
-					for await (const token of runStream(domia, promptContext)) {
+					for await (const token of runStream(
+						domia,
+						promptContext,
+						undefined,
+						onLlmUsage,
+					)) {
 						reply += token
 						yield { token }
 					}
 				} else {
-					reply = await runLLM(domia, promptContext)
+					reply = await runLLM(domia, promptContext, onLlmUsage)
 					yield { token: reply }
 				}
 			} catch (err) {
@@ -207,6 +221,13 @@ const buildImplementation = ({
 						stageMs: Date.now() - llmStart,
 						model: domia.llmModelConfig?.modelName,
 						engine: domia.llmModelConfig?.engine,
+						promptTokens: llmUsageRef.current?.promptTokens ?? undefined,
+						completionTokens:
+							llmUsageRef.current?.completionTokens ?? undefined,
+						tokensPerSec: llmUsageRef.current?.tokensPerSec ?? undefined,
+						ttftMs: llmUsageRef.current?.ttftMs ?? undefined,
+						contextWindow: llmUsageRef.current?.contextWindow ?? undefined,
+						finishReason: llmUsageRef.current?.finishReason ?? undefined,
 					},
 				],
 			)
@@ -455,6 +476,12 @@ const buildImplementation = ({
 							llmMs: m.stageMs,
 							llmModelUsed: m.model ?? null,
 							llmExecutorKey: m.executorDomiaKey,
+							llmPromptTokens: m.promptTokens ?? null,
+							llmCompletionTokens: m.completionTokens ?? null,
+							llmTokensPerSec: m.tokensPerSec ?? null,
+							llmTtftMs: m.ttftMs ?? null,
+							llmContextWindow: m.contextWindow ?? null,
+							llmFinishReason: m.finishReason ?? null,
 						})
 					} else if (m.stage === "tts") {
 						await updateInteraction({

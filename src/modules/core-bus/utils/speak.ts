@@ -7,11 +7,86 @@ import { registerStreamingSink, clearStreamingSink } from "./streaming-sink"
 import { beginTurn } from "./turn-scope"
 import {
 	getSatelliteSinkFor,
+	getSatelliteAnnouncerFor,
 	getSatelliteDomiaKeys,
 } from "./satellite-registry"
+import { buildAudioUrl, registerAudioForServing } from "./audio"
 import { mostRecentlyActiveSatellite } from "./presence-registry"
-import { generateUuid } from "@/utils"
-import type { SpeakResultType, SpeakBroadcastResultType } from "../types"
+import { generateUuid, wrapPcmToWav, writeWavToTemp } from "@/utils"
+import type {
+	SpeakResultType,
+	SpeakBroadcastResultType,
+	ResolvedTtsEngineType,
+} from "../types"
+
+const renderTtsToServedUrl = async (
+	domia: DomiaType,
+	tts: NonNullable<ResolvedTtsEngineType>,
+	text: string,
+): Promise<string | null> => {
+	const interactionId = generateUuid()
+	const chunks: Buffer[] = []
+	for await (const chunk of ttsAdapterToPcmChunks(domia, tts.adapter, text)) {
+		chunks.push(chunk)
+	}
+	if (chunks.length === 0) return null
+	const wav = wrapPcmToWav(
+		Buffer.concat(chunks),
+		tts.adapter.capabilities.sampleRate,
+		tts.adapter.capabilities.channels,
+		16,
+	)
+	const filePath = await writeWavToTemp(wav, interactionId, "announce")
+	registerAudioForServing(interactionId, filePath)
+	return buildAudioUrl(domia, interactionId)
+}
+
+export const renderAnnouncementUrl = async (
+	domia: DomiaType,
+	text: string,
+): Promise<string | null> => {
+	const trimmed = text.trim()
+	if (!trimmed) return null
+	const capabilities = normalizeRuntimeCapabilities(
+		domia.runtimeCapabilities ?? {},
+	)
+	const features = resolveCoreBusFeatures(domia, capabilities)
+	if (!features.tts) return null
+	return renderTtsToServedUrl(domia, features.tts, trimmed)
+}
+
+const streamTtsTo = async (
+	domia: DomiaType,
+	features: ReturnType<typeof resolveCoreBusFeatures>,
+	tts: NonNullable<ResolvedTtsEngineType>,
+	text: string,
+	useSink: boolean,
+): Promise<void> => {
+	const interactionId = generateUuid()
+	const turn = beginTurn(domia.id, interactionId)
+	if (useSink) {
+		const sink = getSatelliteSinkFor(domia.domiaKey)
+		if (sink) registerStreamingSink(interactionId, sink)
+	}
+	try {
+		await playStreamedAudio(
+			{ domia, features },
+			ttsAdapterToPcmChunks(domia, tts.adapter, text),
+			{
+				interactionId,
+				originDomiaKey: domia.domiaKey,
+				aborted: () => turn.aborted(),
+			},
+			{
+				sampleRate: tts.adapter.capabilities.sampleRate,
+				channels: tts.adapter.capabilities.channels,
+			},
+		)
+	} finally {
+		if (useSink) clearStreamingSink(interactionId)
+		turn.end()
+	}
+}
 
 export const speak = async (
 	domia: DomiaType,
@@ -27,36 +102,28 @@ export const speak = async (
 	const tts = features.tts
 	if (!tts) return { delivered: false, target: "none" }
 
+	const announcer = getSatelliteAnnouncerFor(domia.domiaKey)
 	const sink = getSatelliteSinkFor(domia.domiaKey)
-	const target: SpeakResultType["target"] = sink
-		? "satellite"
-		: features.canPlayback
-			? "local"
-			: "none"
-	if (target === "none") return { delivered: false, target }
+	let delivered = false
 
-	const interactionId = generateUuid()
-	const turn = beginTurn(domia.id, interactionId)
-	if (sink) registerStreamingSink(interactionId, sink)
-	try {
-		await playStreamedAudio(
-			{ domia, features },
-			ttsAdapterToPcmChunks(domia, tts.adapter, trimmed),
-			{
-				interactionId,
-				originDomiaKey: domia.domiaKey,
-				aborted: () => turn.aborted(),
-			},
-			{
-				sampleRate: tts.adapter.capabilities.sampleRate,
-				channels: tts.adapter.capabilities.channels,
-			},
-		)
-		return { delivered: true, target }
-	} finally {
-		if (sink) clearStreamingSink(interactionId)
-		turn.end()
+	if (announcer) {
+		const url = await renderTtsToServedUrl(domia, tts, trimmed)
+		if (url) {
+			announcer(url)
+			delivered = true
+		}
 	}
+	if (sink) {
+		await streamTtsTo(domia, features, tts, trimmed, true)
+		delivered = true
+	}
+	if (delivered) return { delivered: true, target: "satellite" }
+
+	if (features.canPlayback) {
+		await streamTtsTo(domia, features, tts, trimmed, false)
+		return { delivered: true, target: "local" }
+	}
+	return { delivered: false, target: "none" }
 }
 
 export const speakActiveRoom = async (

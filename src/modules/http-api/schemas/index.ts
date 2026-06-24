@@ -16,6 +16,19 @@ export const postSatelliteBodySchema = z.object({
 	protocol: z.enum(SATELLITE_PROTOCOL_ENUM_VALUES).optional(),
 })
 
+export const postSatelliteWakeWordsBodySchema = z.object({
+	wakeWords: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+})
+
+export const postSatelliteNumberBodySchema = z.object({
+	entityId: z.string().trim().min(1).max(200),
+	value: z.number().finite(),
+})
+
+export const postSatelliteFollowUpBodySchema = z.object({
+	enabled: z.boolean(),
+})
+
 export const postChatBodySchema = z.object({
 	text: z
 		.string()

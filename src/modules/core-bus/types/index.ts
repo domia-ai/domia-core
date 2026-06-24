@@ -155,8 +155,12 @@ export type RequestVoiceReplyOptions = {
 	timeoutMs?: number
 	speak?: boolean
 	interactionId?: string
+	satelliteId?: string
+	satelliteProtocol?: SatelliteProtocolType
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
 }
+
+export type SatelliteAnnouncerType = (url: string) => void
 
 export type StreamingSinkFormatType = {
 	sampleRate: number
@@ -204,6 +208,21 @@ export type PresenceStatusType = "idle" | "listening" | "thinking" | "speaking"
 
 export type SatelliteProtocolType = "native" | "wyoming" | "esphome"
 
+export type SatelliteWakeWordType = {
+	id: string
+	wakeWord: string
+}
+
+export type SatelliteNumberEntityType = {
+	id: string
+	name: string
+	value: number | null
+	min: number | null
+	max: number | null
+	step: number | null
+	unit: string | null
+}
+
 export type SatellitePresenceType = {
 	satelliteId: string
 	protocol: SatelliteProtocolType
@@ -212,6 +231,37 @@ export type SatellitePresenceType = {
 	connectedAt: number | null
 	lastError: string | null
 	lastErrorAt: number | null
+	reconnectCount: number
+	micActive: boolean
+	sampleRate: number | null
+	lastTurnAt: number | null
+	lastPlaybackAt: number | null
+	availableWakeWords: SatelliteWakeWordType[]
+	activeWakeWords: string[]
+	numberEntities: SatelliteNumberEntityType[]
+}
+
+export type SatelliteMetaPatchType = Partial<
+	Pick<
+		SatellitePresenceType,
+		| "reconnectCount"
+		| "micActive"
+		| "sampleRate"
+		| "lastTurnAt"
+		| "lastPlaybackAt"
+		| "availableWakeWords"
+		| "activeWakeWords"
+		| "numberEntities"
+	>
+>
+
+export type SatelliteControlType = {
+	satelliteId: string
+	domiaKey: string
+	setWakeWords: (ids: string[]) => void
+	announce: (url: string) => void
+	setNumber?: (entityId: string, value: number) => void
+	setFollowUp?: (enabled: boolean) => void
 }
 
 export type PresenceEntryType = {

@@ -26,6 +26,17 @@ export type ToolDefinitionType = {
 	parameters: Record<string, unknown>
 }
 
+export type LlmUsageType = {
+	promptTokens?: number | null
+	completionTokens?: number | null
+	tokensPerSec?: number | null
+	ttftMs?: number | null
+	contextWindow?: number | null
+	finishReason?: string | null
+}
+
+export type LlmUsageSinkType = (usage: LlmUsageType) => void
+
 export type ToolCallOrReplyType =
 	| { kind: "reply"; text: string }
 	| { kind: "tool_calls"; calls: ToolCallType[] }
@@ -37,11 +48,16 @@ export type StreamReplyOrToolsType =
 export type LlmEngineAdapterType = {
 	id: LlmEngineEnumType
 	capabilities: LlmCapabilitiesType
-	run: (domia: DomiaType, promptContext: string) => Promise<string>
+	run: (
+		domia: DomiaType,
+		promptContext: string,
+		onUsage?: LlmUsageSinkType,
+	) => Promise<string>
 	runStream?: (
 		domia: DomiaType,
 		promptContext: string,
 		shouldAbort?: () => boolean,
+		onUsage?: LlmUsageSinkType,
 	) => AsyncIterable<string>
 	warmup?: (domia: DomiaType) => Promise<void>
 	runJson?: (
@@ -53,11 +69,13 @@ export type LlmEngineAdapterType = {
 		domia: DomiaType,
 		messages: ChatMessageType[],
 		tools: ToolDefinitionType[],
+		onUsage?: LlmUsageSinkType,
 	) => Promise<ToolCallOrReplyType>
 	runReplyStreamOrTools?: (
 		domia: DomiaType,
 		messages: ChatMessageType[],
 		tools: ToolDefinitionType[],
+		onUsage?: LlmUsageSinkType,
 	) => Promise<StreamReplyOrToolsType>
 	runIntent?: (
 		domia: DomiaType,

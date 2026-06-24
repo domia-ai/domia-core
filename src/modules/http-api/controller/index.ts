@@ -13,8 +13,13 @@ import {
 	reactivateDomia,
 	invalidateOwnDomia,
 	getRedactedSatellitesForDomia,
+	getActiveSatellites,
 	upsertSatellite,
 	deleteSatellite,
+	setSatelliteDesiredWakeWords,
+	setSatelliteDesiredNumber,
+	setSatelliteFollowUp,
+	getOwnDomia,
 } from "@/modules/core"
 import { publishIdentityState } from "@/modules/heartbeat-manager"
 import { discoverEsphome } from "@/modules/satellite-discovery"
@@ -67,6 +72,9 @@ import {
 	postImportMindBodySchema,
 	postIdentityBodySchema,
 	postSatelliteBodySchema,
+	postSatelliteWakeWordsBodySchema,
+	postSatelliteNumberBodySchema,
+	postSatelliteFollowUpBodySchema,
 	getSyncQuerySchema,
 	getAudioQuerySchema,
 } from "../schemas"
@@ -79,7 +87,10 @@ import {
 	speak,
 	speakActiveRoom,
 	speakBroadcast,
+	renderAnnouncementUrl,
+	getSatelliteControl,
 	getAllPresence,
+	getPresence,
 	startIntercom,
 	stopIntercom,
 	abortActiveTurn,
@@ -464,6 +475,14 @@ export const handlePostSatellite = async (
 		return reply.code(400).send({ error: "Invalid satellite body" })
 	}
 	const { satelliteId, name, host, port, encryptionKey, protocol } = parsed.data
+	const boundElsewhere = (await getActiveSatellites()).find(
+		(row) => row.satelliteId === satelliteId && row.domiaId !== domia.id,
+	)
+	if (boundElsewhere) {
+		return reply.code(409).send({
+			error: `satellite ${satelliteId} is already bound to another Domia (${boundElsewhere.domia.domiaKey})`,
+		})
+	}
 	const resolvedProtocol = protocol ?? DEFAULT_SATELLITE_PROTOCOL
 	await upsertSatellite(domia.id, {
 		id: generateUuid(),
@@ -501,6 +520,166 @@ export const handleDeleteSatellite = async (
 	invalidateOwnDomia(domiaKey)
 	requestRestart()
 	return { removed: true, restarting: true }
+}
+
+const SATELLITE_TEST_PHRASE =
+	"Hi, this is a test from Domia. If you can hear me, your speaker is working."
+
+export const handleSetSatelliteWakeWords = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	const parsed = postSatelliteWakeWordsBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid wake words body" })
+	}
+	const updated = await setSatelliteDesiredWakeWords(
+		domia.id,
+		satelliteId,
+		parsed.data.wakeWords,
+	)
+	if (updated.length === 0) {
+		return reply
+			.code(404)
+			.send({ error: `satellite not bound to ${domiaKey}: ${satelliteId}` })
+	}
+	invalidateOwnDomia(domiaKey)
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	control?.setWakeWords(parsed.data.wakeWords)
+	return { applied: true, live: !!control }
+}
+
+export const handleSetSatelliteNumber = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	const parsed = postSatelliteNumberBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid number body" })
+	}
+	const { entityId, value } = parsed.data
+	const entity = getPresence(domiaKey)
+		?.satellites.find((s) => s.satelliteId === satelliteId)
+		?.numberEntities.find((n) => n.id === entityId)
+	if (entity) {
+		if (
+			(entity.min != null && value < entity.min) ||
+			(entity.max != null && value > entity.max)
+		) {
+			return reply.code(400).send({
+				error: `value ${value} out of range [${entity.min}, ${entity.max}] for ${entityId}`,
+			})
+		}
+	} else {
+		httpServerLogger.warn("setting unvalidated satellite number (offline?)", {
+			domiaKey,
+			satelliteId,
+			entityId,
+		})
+	}
+	const updated = await setSatelliteDesiredNumber(
+		domia.id,
+		satelliteId,
+		entityId,
+		value,
+	)
+	if (updated.length === 0) {
+		return reply
+			.code(404)
+			.send({ error: `satellite not bound to ${domiaKey}: ${satelliteId}` })
+	}
+	invalidateOwnDomia(domiaKey)
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	control?.setNumber?.(entityId, value)
+	return { applied: true, live: !!control?.setNumber }
+}
+
+export const handleSetSatelliteFollowUp = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	const parsed = postSatelliteFollowUpBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid follow-up body" })
+	}
+	const updated = await setSatelliteFollowUp(
+		domia.id,
+		satelliteId,
+		parsed.data.enabled,
+	)
+	if (updated.length === 0) {
+		return reply
+			.code(404)
+			.send({ error: `satellite not bound to ${domiaKey}: ${satelliteId}` })
+	}
+	invalidateOwnDomia(domiaKey)
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	control?.setFollowUp?.(parsed.data.enabled)
+	return { applied: true, live: !!control?.setFollowUp }
+}
+
+export const handleTestSatelliteSpeaker = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getOwnDomia(domiaKey).catch(() => null)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	if (!control) {
+		return reply.code(409).send({ error: "satellite not connected" })
+	}
+	const url = await renderAnnouncementUrl(domia, SATELLITE_TEST_PHRASE)
+	if (!url) {
+		return reply.code(503).send({ error: "TTS unavailable" })
+	}
+	control.announce(url)
+	httpServerLogger.info(`🔊 /satellites/${satelliteId}/test-speaker`, {
+		domiaKey,
+		delivered: true,
+	})
+	return { delivered: true, target: "satellite" }
 }
 
 export const handleImportMind = async (

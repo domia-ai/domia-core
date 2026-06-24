@@ -48,6 +48,26 @@ const findDataOffset = (buf: Buffer): number => {
 	return WAV_HEADER_BYTES
 }
 
+export const getWavDurationMs = async (
+	filePath: string,
+): Promise<number | null> => {
+	try {
+		const buf = await readFile(filePath)
+		if (buf.length < WAV_HEADER_BYTES || buf.toString("ascii", 0, 4) !== "RIFF")
+			return null
+		const channels = buf.readUInt16LE(22)
+		const sampleRate = buf.readUInt32LE(24)
+		const bitsPerSample = buf.readUInt16LE(34)
+		const bytesPerSample = (channels * bitsPerSample) / 8
+		if (bytesPerSample <= 0 || sampleRate <= 0) return null
+		const dataBytes = buf.length - findDataOffset(buf)
+		if (dataBytes <= 0) return null
+		return Math.round((dataBytes / (sampleRate * bytesPerSample)) * 1000)
+	} catch {
+		return null
+	}
+}
+
 export const writeWavToTemp = async (
 	bytes: Uint8Array,
 	interactionId: string,

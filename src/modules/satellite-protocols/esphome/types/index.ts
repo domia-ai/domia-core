@@ -1,4 +1,10 @@
+import type { Entity } from "esphome-client"
+
 export type EsphomeModuleType = typeof import("esphome-client")
+
+export type NumberEntityInfoType = Extract<Entity, { type: "number" }> & {
+	id: string
+}
 
 export type EsphomeBindingType = {
 	satelliteId: string
@@ -6,6 +12,9 @@ export type EsphomeBindingType = {
 	host: string
 	port: number
 	encryptionKey: string | null
+	desiredWakeWords?: string[]
+	desiredNumbers?: Record<string, number>
+	followUpEnabled?: boolean
 }
 
 export type EsphomeSatelliteHandleType = {

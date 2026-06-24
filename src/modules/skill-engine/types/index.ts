@@ -1,4 +1,15 @@
-import type { SelectSkillProviderType, ToolFinalizeMapType } from "@/db"
+import type {
+	SelectSkillProviderType,
+	ToolFinalizeMapType,
+	SkillToolType,
+} from "@/db"
+
+export type ToolShortlistResultType = {
+	tools: SkillToolType[]
+	total: number
+	dropped: number
+	applied: boolean
+}
 
 export type SkillCallStatusType =
 	| "ok"

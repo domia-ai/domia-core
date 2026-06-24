@@ -289,6 +289,64 @@ const dbAdapter = {
 				),
 			)
 			.returning(),
+	setSatelliteDesiredWakeWords: (
+		domiaId: string,
+		satelliteId: string,
+		desiredWakeWords: string[],
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(satelliteConfig)
+			.set({ desiredWakeWords, updatedAt: new Date().toISOString() })
+			.where(
+				and(
+					eq(satelliteConfig.domiaId, domiaId),
+					eq(satelliteConfig.satelliteId, satelliteId),
+				),
+			)
+			.returning(),
+	setSatelliteDesiredNumber: async (
+		domiaId: string,
+		satelliteId: string,
+		entityId: string,
+		value: number,
+		client: DBClientOrTxType = dbClient,
+	) => {
+		const row = await client.query.satelliteConfig.findFirst({
+			where: and(
+				eq(satelliteConfig.domiaId, domiaId),
+				eq(satelliteConfig.satelliteId, satelliteId),
+			),
+		})
+		if (!row) return []
+		const desiredNumbers = { ...(row.desiredNumbers ?? {}), [entityId]: value }
+		return client
+			.update(satelliteConfig)
+			.set({ desiredNumbers, updatedAt: new Date().toISOString() })
+			.where(
+				and(
+					eq(satelliteConfig.domiaId, domiaId),
+					eq(satelliteConfig.satelliteId, satelliteId),
+				),
+			)
+			.returning()
+	},
+	setSatelliteFollowUp: (
+		domiaId: string,
+		satelliteId: string,
+		followUpEnabled: boolean,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(satelliteConfig)
+			.set({ followUpEnabled, updatedAt: new Date().toISOString() })
+			.where(
+				and(
+					eq(satelliteConfig.domiaId, domiaId),
+					eq(satelliteConfig.satelliteId, satelliteId),
+				),
+			)
+			.returning(),
 }
 
 export default dbAdapter

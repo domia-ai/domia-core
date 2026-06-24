@@ -116,6 +116,12 @@ export interface StageMetric {
   model?: string | undefined;
   engine?: string | undefined;
   voice?: string | undefined;
+  promptTokens?: number | undefined;
+  completionTokens?: number | undefined;
+  tokensPerSec?: number | undefined;
+  ttftMs?: number | undefined;
+  contextWindow?: number | undefined;
+  finishReason?: string | undefined;
 }
 
 export interface StageExecutionReport {
@@ -1895,7 +1901,20 @@ export const ReflectionAck: MessageFns<ReflectionAck> = {
 };
 
 function createBaseStageMetric(): StageMetric {
-  return { stage: "", executorDomiaKey: "", stageMs: 0, model: undefined, engine: undefined, voice: undefined };
+  return {
+    stage: "",
+    executorDomiaKey: "",
+    stageMs: 0,
+    model: undefined,
+    engine: undefined,
+    voice: undefined,
+    promptTokens: undefined,
+    completionTokens: undefined,
+    tokensPerSec: undefined,
+    ttftMs: undefined,
+    contextWindow: undefined,
+    finishReason: undefined,
+  };
 }
 
 export const StageMetric: MessageFns<StageMetric> = {
@@ -1917,6 +1936,24 @@ export const StageMetric: MessageFns<StageMetric> = {
     }
     if (message.voice !== undefined) {
       writer.uint32(50).string(message.voice);
+    }
+    if (message.promptTokens !== undefined) {
+      writer.uint32(56).uint32(message.promptTokens);
+    }
+    if (message.completionTokens !== undefined) {
+      writer.uint32(64).uint32(message.completionTokens);
+    }
+    if (message.tokensPerSec !== undefined) {
+      writer.uint32(73).double(message.tokensPerSec);
+    }
+    if (message.ttftMs !== undefined) {
+      writer.uint32(80).uint32(message.ttftMs);
+    }
+    if (message.contextWindow !== undefined) {
+      writer.uint32(88).uint32(message.contextWindow);
+    }
+    if (message.finishReason !== undefined) {
+      writer.uint32(98).string(message.finishReason);
     }
     return writer;
   },
@@ -1976,6 +2013,54 @@ export const StageMetric: MessageFns<StageMetric> = {
           message.voice = reader.string();
           continue;
         }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.promptTokens = reader.uint32();
+          continue;
+        }
+        case 8: {
+          if (tag !== 64) {
+            break;
+          }
+
+          message.completionTokens = reader.uint32();
+          continue;
+        }
+        case 9: {
+          if (tag !== 73) {
+            break;
+          }
+
+          message.tokensPerSec = reader.double();
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.ttftMs = reader.uint32();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.contextWindow = reader.uint32();
+          continue;
+        }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.finishReason = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2001,6 +2086,36 @@ export const StageMetric: MessageFns<StageMetric> = {
       model: isSet(object.model) ? globalThis.String(object.model) : undefined,
       engine: isSet(object.engine) ? globalThis.String(object.engine) : undefined,
       voice: isSet(object.voice) ? globalThis.String(object.voice) : undefined,
+      promptTokens: isSet(object.promptTokens)
+        ? globalThis.Number(object.promptTokens)
+        : isSet(object.prompt_tokens)
+        ? globalThis.Number(object.prompt_tokens)
+        : undefined,
+      completionTokens: isSet(object.completionTokens)
+        ? globalThis.Number(object.completionTokens)
+        : isSet(object.completion_tokens)
+        ? globalThis.Number(object.completion_tokens)
+        : undefined,
+      tokensPerSec: isSet(object.tokensPerSec)
+        ? globalThis.Number(object.tokensPerSec)
+        : isSet(object.tokens_per_sec)
+        ? globalThis.Number(object.tokens_per_sec)
+        : undefined,
+      ttftMs: isSet(object.ttftMs)
+        ? globalThis.Number(object.ttftMs)
+        : isSet(object.ttft_ms)
+        ? globalThis.Number(object.ttft_ms)
+        : undefined,
+      contextWindow: isSet(object.contextWindow)
+        ? globalThis.Number(object.contextWindow)
+        : isSet(object.context_window)
+        ? globalThis.Number(object.context_window)
+        : undefined,
+      finishReason: isSet(object.finishReason)
+        ? globalThis.String(object.finishReason)
+        : isSet(object.finish_reason)
+        ? globalThis.String(object.finish_reason)
+        : undefined,
     };
   },
 
@@ -2024,6 +2139,24 @@ export const StageMetric: MessageFns<StageMetric> = {
     if (message.voice !== undefined) {
       obj.voice = message.voice;
     }
+    if (message.promptTokens !== undefined) {
+      obj.promptTokens = Math.round(message.promptTokens);
+    }
+    if (message.completionTokens !== undefined) {
+      obj.completionTokens = Math.round(message.completionTokens);
+    }
+    if (message.tokensPerSec !== undefined) {
+      obj.tokensPerSec = message.tokensPerSec;
+    }
+    if (message.ttftMs !== undefined) {
+      obj.ttftMs = Math.round(message.ttftMs);
+    }
+    if (message.contextWindow !== undefined) {
+      obj.contextWindow = Math.round(message.contextWindow);
+    }
+    if (message.finishReason !== undefined) {
+      obj.finishReason = message.finishReason;
+    }
     return obj;
   },
 
@@ -2038,6 +2171,12 @@ export const StageMetric: MessageFns<StageMetric> = {
     message.model = object.model ?? undefined;
     message.engine = object.engine ?? undefined;
     message.voice = object.voice ?? undefined;
+    message.promptTokens = object.promptTokens ?? undefined;
+    message.completionTokens = object.completionTokens ?? undefined;
+    message.tokensPerSec = object.tokensPerSec ?? undefined;
+    message.ttftMs = object.ttftMs ?? undefined;
+    message.contextWindow = object.contextWindow ?? undefined;
+    message.finishReason = object.finishReason ?? undefined;
     return message;
   },
 };

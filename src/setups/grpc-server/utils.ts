@@ -27,7 +27,11 @@ import {
 import { reportStageExecutionToTarget } from "@/modules/grpc-client"
 import type { StageMetric } from "@/generated/proto/domia"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
-import { runLLM } from "@/modules/llm-engine"
+import {
+	runLLM,
+	type LlmUsageType,
+	type LlmUsageSinkType,
+} from "@/modules/llm-engine"
 import { runSTT } from "@/modules/stt-engine"
 import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 import {
@@ -188,10 +192,11 @@ export const pipelinedReplyChunks = async function* (
 	features: CoreBusFeaturesType,
 	onSentence: (sentence: string) => void,
 	options?: RunTtsOptionsType,
+	onUsage?: LlmUsageSinkType,
 ): AsyncIterable<Buffer> {
 	const llmRunStream = features.llm?.adapter.runStream
 	if (!llmRunStream) return
-	const tokens = llmRunStream(domia, promptContext)
+	const tokens = llmRunStream(domia, promptContext, undefined, onUsage)
 	const ttsQueue = new AsyncQueue<AsyncIterable<Buffer>>()
 	const queueDepth = pipelineDepthFromDomia(domia)
 	const eagerSlots = eagerTtsSlotsFromDomia(domia)
@@ -232,8 +237,9 @@ export const fullReplyChunks = async function* (
 	features: CoreBusFeaturesType,
 	onReply: (reply: string) => void,
 	options?: RunTtsOptionsType,
+	onUsage?: LlmUsageSinkType,
 ): AsyncIterable<Buffer> {
-	const reply = await runLLM(domia, promptContext)
+	const reply = await runLLM(domia, promptContext, onUsage)
 	onReply(reply)
 	yield* ttsTextToChunks(domia, reply, features, options)
 }
@@ -286,6 +292,10 @@ export const streamReplyAudioMessages = async function* (
 	let llmDoneAt: number | null = null
 	let sentenceCount = 0
 	let assembled = ""
+	const usageRef: { current: LlmUsageType | null } = { current: null }
+	const onUsage: LlmUsageSinkType = (u) => {
+		usageRef.current = u
+	}
 
 	grpcServerLogger.info(`📤 ${logCtx.label} ← "${transcript.slice(0, 80)}…"`, {
 		interactionId: logCtx.interactionId,
@@ -327,8 +337,16 @@ export const streamReplyAudioMessages = async function* (
 						features,
 						onSentence,
 						ttsOptions,
+						onUsage,
 					)
-				: fullReplyChunks(domia, promptContext, features, onReply, ttsOptions)
+				: fullReplyChunks(
+						domia,
+						promptContext,
+						features,
+						onReply,
+						ttsOptions,
+						onUsage,
+					)
 		}
 
 		for await (const chunk of audio) {
@@ -398,6 +416,12 @@ export const streamReplyAudioMessages = async function* (
 					stageMs: llmMs,
 					model: domia.llmModelConfig?.modelName,
 					engine: domia.llmModelConfig?.engine,
+					promptTokens: usageRef.current?.promptTokens ?? undefined,
+					completionTokens: usageRef.current?.completionTokens ?? undefined,
+					tokensPerSec: usageRef.current?.tokensPerSec ?? undefined,
+					ttftMs: usageRef.current?.ttftMs ?? undefined,
+					contextWindow: usageRef.current?.contextWindow ?? undefined,
+					finishReason: usageRef.current?.finishReason ?? undefined,
 				},
 				{
 					stage: "tts",

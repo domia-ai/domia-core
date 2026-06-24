@@ -8,9 +8,14 @@ import type {
 	ToolCallOrReplyType,
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
+	LlmUsageSinkType,
 } from "../types"
 
-export const runLLM = async (domia: DomiaType, promptContext: string) => {
+export const runLLM = async (
+	domia: DomiaType,
+	promptContext: string,
+	onUsage?: LlmUsageSinkType,
+) => {
 	const llmModelConfig = domia?.llmModelConfig
 	const engine = llmModelConfig?.engine
 
@@ -25,7 +30,7 @@ export const runLLM = async (domia: DomiaType, promptContext: string) => {
 
 	const handler = llmEngines[engine]
 
-	return await handler(domia, promptContext)
+	return await handler(domia, promptContext, onUsage)
 }
 
 export const warmupLLM = async (domia: DomiaType): Promise<void> => {
@@ -65,6 +70,7 @@ export const runLLMWithTools = async (
 	domia: DomiaType,
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
 ): Promise<ToolCallOrReplyType> => {
 	const engine = domia?.llmModelConfig?.engine
 
@@ -82,13 +88,14 @@ export const runLLMWithTools = async (
 			meta: { engine, reason: "no tool-calling handler" },
 		})
 	}
-	return await adapter.runWithTools(domia, messages, tools)
+	return await adapter.runWithTools(domia, messages, tools, onUsage)
 }
 
 export const runLLMReplyStreamOrTools = async (
 	domia: DomiaType,
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
 ): Promise<StreamReplyOrToolsType> => {
 	const engine = domia?.llmModelConfig?.engine
 
@@ -106,7 +113,7 @@ export const runLLMReplyStreamOrTools = async (
 			meta: { engine, reason: "no streaming tool-calling handler" },
 		})
 	}
-	return await adapter.runReplyStreamOrTools(domia, messages, tools)
+	return await adapter.runReplyStreamOrTools(domia, messages, tools, onUsage)
 }
 
 export const runLLMIntent = async (

@@ -348,6 +348,12 @@ export const DEFAULT_SATELLITE_PORT_BY_PROTOCOL: Record<string, number> = {
 export const DEFAULT_SATELLITE_ACTIVE = true
 export const DEFAULT_ESPHOME_DISCOVERY_MS = 4000
 export const DEFAULT_SATELLITE_RECONNECT_MS = 5000
+export const DEFAULT_SATELLITE_RECONNECT_MAX_MS = 60_000
+export const DEFAULT_SATELLITE_RECONNECT_JITTER = 0.3
+export const DEFAULT_SATELLITE_TURN_TIMEOUT_MS = 30_000
+export const DEFAULT_DESIRED_WAKE_WORDS: string[] = []
+export const DEFAULT_SATELLITE_DESIRED_NUMBERS: Record<string, number> = {}
+export const DEFAULT_SATELLITE_FOLLOW_UP = false
 
 export const SKILL_PROTOCOL_ENUM = {
 	MCP: "mcp",
@@ -399,6 +405,7 @@ export const DEFAULT_SKILL_MAX_RESULT_CHARS = 4000
 export const DEFAULT_SKILL_REFRESH_MS = 300_000
 export const DEFAULT_SKILL_TIMEOUT_MS = 8000
 export const DEFAULT_AGENT_MAX_STEPS = 5
+export const DEFAULT_TOOL_SHORTLIST_MAX = 8
 export const SKILL_TOOL_NAME_SEPARATOR = "__"
 export const DEFAULT_FINALIZE_ACK = "Done."
 export const DEFAULT_FINALIZE_ERROR = "Sorry, I couldn't do that."

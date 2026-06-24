@@ -6,6 +6,9 @@ import {
 	DEFAULT_SATELLITE_PROTOCOL,
 	DEFAULT_SATELLITE_PORT,
 	DEFAULT_SATELLITE_ACTIVE,
+	DEFAULT_DESIRED_WAKE_WORDS,
+	DEFAULT_SATELLITE_DESIRED_NUMBERS,
+	DEFAULT_SATELLITE_FOLLOW_UP,
 } from "@/db"
 
 export const baseSatelliteConfig = (
@@ -20,6 +23,9 @@ export const baseSatelliteConfig = (
 		port: DEFAULT_SATELLITE_PORT,
 		encryptionKey: faker.string.alphanumeric(44),
 		protocol: DEFAULT_SATELLITE_PROTOCOL,
+		desiredWakeWords: DEFAULT_DESIRED_WAKE_WORDS,
+		desiredNumbers: DEFAULT_SATELLITE_DESIRED_NUMBERS,
+		followUpEnabled: DEFAULT_SATELLITE_FOLLOW_UP,
 		isActive: DEFAULT_SATELLITE_ACTIVE,
 		createdAt: now(),
 		updatedAt: now(),

@@ -11,8 +11,35 @@ import type {
 	ToolCallOrReplyType,
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
+	LlmUsageType,
+	LlmUsageSinkType,
 } from "../../types"
-import type { OpenAiResolvedConfigType } from "./types"
+import type { OpenAiResolvedConfigType, LlamaTimingsType } from "./types"
+
+const openAiUsage = (
+	usage:
+		| { prompt_tokens?: number; completion_tokens?: number }
+		| null
+		| undefined,
+	finishReason: string | null | undefined,
+	timings: LlamaTimingsType | undefined,
+	contextWindow?: number,
+): LlmUsageType => ({
+	promptTokens: usage?.prompt_tokens ?? null,
+	completionTokens: usage?.completion_tokens ?? null,
+	tokensPerSec:
+		timings?.predicted_per_second != null
+			? Math.round(timings.predicted_per_second * 100) / 100
+			: null,
+	ttftMs: timings?.prompt_ms != null ? Math.round(timings.prompt_ms) : null,
+	contextWindow: contextWindow ?? null,
+	finishReason: finishReason ?? null,
+})
+
+const timingsOf = (raw: unknown): LlamaTimingsType | undefined =>
+	raw && typeof raw === "object" && "timings" in raw
+		? ((raw as { timings?: LlamaTimingsType }).timings ?? undefined)
+		: undefined
 
 const JSON_NUM_PREDICT = 192
 const INTENT_NUM_PREDICT = 48
@@ -145,6 +172,7 @@ const toOpenAiTools = (
 export const runOpenAiCompatible = async (
 	domia: DomiaType,
 	promptContext: string,
+	onUsage?: LlmUsageSinkType,
 ): Promise<string> => {
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
@@ -157,6 +185,14 @@ export const runOpenAiCompatible = async (
 			temperature: cfg.temperature,
 			max_tokens: cfg.maxTokens,
 		})
+		onUsage?.(
+			openAiUsage(
+				response.usage,
+				response.choices[0]?.finish_reason,
+				timingsOf(response),
+				domia.llmModelConfig?.contextWindow,
+			),
+		)
 		return response.choices[0]?.message?.content?.trim() || ""
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
@@ -172,12 +208,14 @@ const runOpenAiCompatibleStream = async function* (
 	domia: DomiaType,
 	promptContext: string,
 	shouldAbort?: () => boolean,
+	onUsage?: LlmUsageSinkType,
 ): AsyncIterable<string> {
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
 	const release = await acquireSlot(domia)
 	let abortStream: (() => void) | null = null
+	let finishReason: string | null = null
 	try {
 		if (shouldAbort?.()) return
 		const stream = await client.chat.completions.create({
@@ -186,6 +224,9 @@ const runOpenAiCompatibleStream = async function* (
 			temperature: cfg.temperature,
 			max_tokens: cfg.maxTokens,
 			stream: true,
+			...(domia.llmModelConfig?.streamUsage !== false
+				? { stream_options: { include_usage: true } }
+				: {}),
 		})
 		abortStream = () => stream.controller.abort()
 		for await (const chunk of stream) {
@@ -195,6 +236,17 @@ const runOpenAiCompatibleStream = async function* (
 			}
 			const token = chunk.choices[0]?.delta?.content
 			if (token) yield token
+			if (chunk.choices[0]?.finish_reason)
+				finishReason = chunk.choices[0].finish_reason
+			if (chunk.usage && onUsage)
+				onUsage(
+					openAiUsage(
+						chunk.usage,
+						finishReason,
+						timingsOf(chunk),
+						domia.llmModelConfig?.contextWindow,
+					),
+				)
 		}
 		abortStream = null
 	} catch (error) {
@@ -302,6 +354,7 @@ const runOpenAiCompatibleWithTools = async (
 	domia: DomiaType,
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
 ): Promise<ToolCallOrReplyType> => {
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
@@ -315,6 +368,14 @@ const runOpenAiCompatibleWithTools = async (
 			temperature: TOOL_CALL_TEMPERATURE,
 			max_tokens: TOOL_CALL_NUM_PREDICT,
 		})
+		onUsage?.(
+			openAiUsage(
+				response.usage,
+				response.choices[0]?.finish_reason,
+				timingsOf(response),
+				domia.llmModelConfig?.contextWindow,
+			),
+		)
 		const message = response.choices[0]?.message
 		const toolCalls = message?.tool_calls
 		if (toolCalls?.length) {
@@ -343,6 +404,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 	domia: DomiaType,
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
 ): Promise<StreamReplyOrToolsType> => {
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
@@ -362,6 +424,9 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 			temperature: TOOL_CALL_TEMPERATURE,
 			max_tokens: TOOL_CALL_NUM_PREDICT,
 			stream: true,
+			...(domia.llmModelConfig?.streamUsage !== false
+				? { stream_options: { include_usage: true } }
+				: {}),
 		})
 		const iter = stream[Symbol.asyncIterator]()
 		let first = await iter.next()
@@ -388,11 +453,25 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 				}
 			}
 			apply(firstDelta.tool_calls)
+			let toolFinishReason: string | null = first.done
+				? null
+				: (first.value.choices[0]?.finish_reason ?? null)
 			while (true) {
 				const next = await iter.next()
 				if (next.done) break
 				const deltas = next.value.choices[0]?.delta?.tool_calls
 				if (deltas?.length) apply(deltas)
+				if (next.value.choices[0]?.finish_reason)
+					toolFinishReason = next.value.choices[0].finish_reason
+				if (next.value.usage && onUsage)
+					onUsage(
+						openAiUsage(
+							next.value.usage,
+							toolFinishReason,
+							timingsOf(next.value),
+							domia.llmModelConfig?.contextWindow,
+						),
+					)
 			}
 			releaseOnce()
 			const calls: ToolCallType[] = [...acc.values()]
@@ -402,6 +481,9 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 		}
 
 		const firstContent = firstDelta?.content ?? ""
+		let finishReason: string | null = first.done
+			? null
+			: (first.value.choices[0]?.finish_reason ?? null)
 		const tokens = (async function* (): AsyncIterable<string> {
 			try {
 				if (firstContent) yield firstContent
@@ -410,6 +492,17 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 					if (next.done) break
 					const token = next.value.choices[0]?.delta?.content
 					if (token) yield token
+					if (next.value.choices[0]?.finish_reason)
+						finishReason = next.value.choices[0].finish_reason
+					if (next.value.usage && onUsage)
+						onUsage(
+							openAiUsage(
+								next.value.usage,
+								finishReason,
+								timingsOf(next.value),
+								domia.llmModelConfig?.contextWindow,
+							),
+						)
 				}
 			} finally {
 				try {

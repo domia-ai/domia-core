@@ -5,6 +5,7 @@ import type {
 	SatellitePresenceType,
 	PresenceStatusType,
 	SatelliteProtocolType,
+	SatelliteMetaPatchType,
 	PresenceListenerType,
 } from "../types"
 
@@ -72,9 +73,27 @@ const ensureSatellite = (
 		connectedAt: null,
 		lastError: null,
 		lastErrorAt: null,
+		reconnectCount: 0,
+		micActive: false,
+		sampleRate: null,
+		lastTurnAt: null,
+		lastPlaybackAt: null,
+		availableWakeWords: [],
+		activeWakeWords: [],
+		numberEntities: [],
 	}
 	entry.satellites.push(fresh)
 	return fresh
+}
+
+export const updateSatelliteMeta = (
+	domiaKey: string,
+	satelliteId: string,
+	protocol: SatelliteProtocolType,
+	patch: SatelliteMetaPatchType,
+): void => {
+	const sat = ensureSatellite(ensure(domiaKey), satelliteId, protocol)
+	Object.assign(sat, patch)
 }
 
 export const setSatelliteConnecting = (

@@ -3,11 +3,22 @@ import { join } from "path"
 
 import { type DomiaType, getOwnDomia, isHostedIdentity } from "@/modules/core"
 import {
+	INTERACTION_STATUS_ENUM,
+	DEFAULT_SATELLITE_TURN_TIMEOUT_MS,
+} from "@/db"
+import {
+	updateInteraction,
+	getInteractionById,
+} from "@/modules/session-manager"
+import {
 	requestVoiceReply,
 	registerStreamingSink,
 	clearStreamingSink,
 	registerSatelliteSink,
 	unregisterSatelliteSink,
+	registerSatelliteAnnouncer,
+	unregisterSatelliteAnnouncer,
+	updateSatelliteMeta,
 	setSatellitePresence,
 	clearSatellitePresence,
 	setPresenceStatus,
@@ -79,8 +90,16 @@ export const createSatelliteSession = (
 	const serverEndpointing = !!transport.serverEndpointing
 	let vad: VadWindowType | null = null
 	let endpointed = false
+	let micActiveFlag = false
 	const resetVad = (): void => {
 		vad = null
+	}
+	const setMicActive = (active: boolean): void => {
+		if (micActiveFlag === active || !registeredKey) return
+		micActiveFlag = active
+		updateSatelliteMeta(registeredKey, satelliteId, protocol, {
+			micActive: active,
+		})
 	}
 
 	let outputTail: Promise<void> = Promise.resolve()
@@ -139,6 +158,9 @@ export const createSatelliteSession = (
 	}
 
 	const connectionSink = makeSink()
+	const announceFn = transport.announce
+		? (url: string) => transport.announce?.(url)
+		: null
 
 	const resolveIdentity = async (
 		domiaKey?: string,
@@ -146,6 +168,28 @@ export const createSatelliteSession = (
 		if (!domiaKey) return isHostedIdentity(fallback.domiaKey) ? fallback : null
 		if (!isHostedIdentity(domiaKey)) return null
 		return (await getOwnDomia(domiaKey).catch(() => null)) ?? null
+	}
+
+	const persistTurnFailure = async (
+		interactionId: string,
+		err: unknown,
+	): Promise<void> => {
+		try {
+			const existing = await getInteractionById(interactionId)
+			if (existing?.status === INTERACTION_STATUS_ENUM.FAILED) return
+			const message = err instanceof Error ? err.message : String(err)
+			await updateInteraction({
+				id: interactionId,
+				status: INTERACTION_STATUS_ENUM.FAILED,
+				errorStep: message.includes("timeout") ? "timeout" : "satellite",
+				errorMessage: message,
+			})
+		} catch (persistErr) {
+			satelliteGatewayLogger.warn("failed to persist satellite turn failure", {
+				interactionId,
+				persistErr,
+			})
+		}
 	}
 
 	const handleUtterance = async (): Promise<void> => {
@@ -156,11 +200,18 @@ export const createSatelliteSession = (
 		if (pcm.length === 0) return
 		busy = true
 		if (serverEndpointing) endpointed = true
+		setMicActive(false)
+		if (registeredKey) {
+			updateSatelliteMeta(registeredKey, satelliteId, protocol, {
+				lastTurnAt: Date.now(),
+			})
+		}
 		setPresenceStatus(identity.domiaKey, "thinking", true)
 		const wav = wrapPcmToWav(pcm, sampleRate, channels, 16)
 		const path = join(RECORDINGS_DIR, `satellite-${generateUuid()}.wav`)
 		const interactionId = generateUuid()
 		activeInteractionId = interactionId
+		const turnStart = Date.now()
 		let framesSent = 0
 		const turnSink = urlPlayback
 			? makeCaptureSink()
@@ -173,8 +224,12 @@ export const createSatelliteSession = (
 			const result = await requestVoiceReply(identity, path, {
 				speak: true,
 				interactionId,
+				satelliteId,
+				satelliteProtocol: protocol,
+				timeoutMs: DEFAULT_SATELLITE_TURN_TIMEOUT_MS,
 			})
 			transport.sendTranscript(result.transcript)
+			let served = false
 			if (urlPlayback) {
 				if (result.ttsFilePath) {
 					registerAudioForServing(interactionId, result.ttsFilePath)
@@ -184,17 +239,35 @@ export const createSatelliteSession = (
 						buildAudioUrl(identity, interactionId),
 						interactionId,
 					)
+					served = true
 				}
 			} else if (framesSent === 0 && result.ttsFilePath) {
 				await sendViaSink(turnSink, result.ttsFilePath)
+				served = true
+			} else if (framesSent > 0) {
+				served = true
 			}
 			transport.sendReplyDone(result.reply, result.interactionId)
+			satelliteGatewayLogger.info("🛰️ satellite turn", {
+				satelliteId,
+				protocol,
+				domiaKey: identity.domiaKey,
+				interactionId,
+				transcriptChars: result.transcript.trim().length,
+				replyChars: result.reply.trim().length,
+				served,
+				turnMs: Date.now() - turnStart,
+			})
 		} catch (err) {
 			satelliteGatewayLogger.error("satellite turn failed", {
 				err,
 				satelliteId,
+				protocol,
 				domiaKey: identity.domiaKey,
+				interactionId,
+				turnMs: Date.now() - turnStart,
 			})
+			await persistTurnFailure(interactionId, err)
 			transport.sendError(String(err))
 		} finally {
 			clearStreamingSink(interactionId)
@@ -232,10 +305,15 @@ export const createSatelliteSession = (
 			helloReceived = true
 			chunks = []
 			bufferedBytes = 0
-			if (registeredKey) unregisterSatelliteSink(registeredKey, connectionSink)
+			if (registeredKey) {
+				unregisterSatelliteSink(registeredKey, connectionSink)
+				if (announceFn) unregisterSatelliteAnnouncer(registeredKey, announceFn)
+			}
 			registeredKey = identity.domiaKey
-			registerSatelliteSink(registeredKey, connectionSink)
+			if (announceFn) registerSatelliteAnnouncer(registeredKey, announceFn)
+			else registerSatelliteSink(registeredKey, connectionSink)
 			setSatellitePresence(registeredKey, satelliteId, protocol)
+			updateSatelliteMeta(registeredKey, satelliteId, protocol, { sampleRate })
 			satelliteGatewayLogger.info("🛰️ satellite connected", {
 				satelliteId,
 				domiaKey: identity.domiaKey,
@@ -291,6 +369,7 @@ export const createSatelliteSession = (
 				return
 			}
 			chunks.push(pcm)
+			setMicActive(true)
 
 			if (!serverEndpointing) return
 			if (!vad && identity.wakeWordConfig) {
@@ -319,6 +398,7 @@ export const createSatelliteSession = (
 			bufferedBytes = 0
 			resetVad()
 			endpointed = false
+			setMicActive(false)
 			if (activeInteractionId) abortActiveTurn(identity.id, "satellite-cancel")
 		},
 
@@ -328,6 +408,7 @@ export const createSatelliteSession = (
 			resetVad()
 			endpointed = false
 			busy = false
+			setMicActive(false)
 			if (activeInteractionId) {
 				abortActiveTurn(identity.id, "satellite-disconnect")
 				clearStreamingSink(activeInteractionId)
@@ -336,6 +417,7 @@ export const createSatelliteSession = (
 				void stopIntercom(registeredKey)
 				void stopIntercomTo(registeredKey)
 				unregisterSatelliteSink(registeredKey, connectionSink)
+				if (announceFn) unregisterSatelliteAnnouncer(registeredKey, announceFn)
 				clearSatellitePresence(registeredKey, satelliteId)
 			}
 			satelliteGatewayLogger.info("🛰️ satellite disconnected", { satelliteId })

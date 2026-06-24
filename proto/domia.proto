@@ -121,6 +121,12 @@ message StageMetric {
   optional string model = 4;
   optional string engine = 5;
   optional string voice = 6;
+  optional uint32 prompt_tokens = 7;
+  optional uint32 completion_tokens = 8;
+  optional double tokens_per_sec = 9;
+  optional uint32 ttft_ms = 10;
+  optional uint32 context_window = 11;
+  optional string finish_reason = 12;
 }
 
 message StageExecutionReport {

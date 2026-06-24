@@ -9,7 +9,9 @@ import {
 	type DomiaEventBusPayloadMapType,
 } from "@/buses"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
+import { getWavDurationMs } from "@/utils"
 import type { DomiaType } from "@/modules/core"
+import { reflectOnInteraction } from "@/modules/reflection"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
 import { prefetchMemoryBundle } from "./prefetch-memory"
 import { beginTurn } from "./turn-scope"
@@ -37,6 +39,8 @@ export const requestVoiceReply = async (
 		speak = true,
 		onStage,
 		interactionId: providedId,
+		satelliteId,
+		satelliteProtocol,
 	} = options
 
 	const absPath = path.resolve(audioPath)
@@ -48,6 +52,9 @@ export const requestVoiceReply = async (
 		inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
 		responseType: speak ? RESPONSE_TYPE_ENUM.VOICE : RESPONSE_TYPE_ENUM.TEXT,
 		inputAudioPath: absPath,
+		inputAudioMs: await getWavDurationMs(absPath),
+		satelliteId: satelliteId ?? null,
+		satelliteProtocol: satelliteProtocol ?? null,
 	})
 	if (!interactionId) {
 		throw new Error("requestVoiceReply: failed to create interaction")
@@ -147,6 +154,16 @@ export const requestVoiceReply = async (
 		cleanup()
 		turn.end()
 		setPresenceStatus(domia.domiaKey, "idle", true)
+	}
+
+	if (transcript && reply) {
+		void reflectOnInteraction(
+			domia,
+			transcript,
+			reply,
+			interactionId,
+			domia.domiaKey,
+		)
 	}
 
 	return { interactionId, transcript, reply, ttsFilePath }

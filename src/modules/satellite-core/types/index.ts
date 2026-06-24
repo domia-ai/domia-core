@@ -23,6 +23,7 @@ export type SatelliteTransportType = {
 	serverEndpointing?: boolean
 	notifySpeechEnd?: () => void
 	playAudioUrl?: (url: string, interactionId: string) => void
+	announce?: (url: string) => void
 	finishTurn?: () => void
 }
 
@@ -52,6 +53,8 @@ export type SatelliteProtocolAdapterType = {
 
 export type ReconnectSchedulerType = {
 	isClosed: () => boolean
+	attempts: () => number
+	reset: () => void
 	schedule: (fn: () => void) => void
 	close: (onClose?: () => void) => void
 }

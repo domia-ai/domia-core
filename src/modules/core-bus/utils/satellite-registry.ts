@@ -1,6 +1,67 @@
-import type { StreamingSinkType } from "../types"
+import type {
+	StreamingSinkType,
+	SatelliteAnnouncerType,
+	SatelliteControlType,
+} from "../types"
+
+const controls = new Map<string, SatelliteControlType>()
+
+const controlKey = (domiaKey: string, satelliteId: string): string =>
+	`${domiaKey}::${satelliteId}`
+
+export const registerSatelliteControl = (
+	control: SatelliteControlType,
+): void => {
+	controls.set(controlKey(control.domiaKey, control.satelliteId), control)
+}
+
+export const unregisterSatelliteControl = (
+	domiaKey: string,
+	satelliteId: string,
+): void => {
+	controls.delete(controlKey(domiaKey, satelliteId))
+}
+
+export const getSatelliteControl = (
+	domiaKey: string,
+	satelliteId: string,
+): SatelliteControlType | null =>
+	controls.get(controlKey(domiaKey, satelliteId)) ?? null
 
 const sinks = new Map<string, Set<StreamingSinkType>>()
+
+const announcers = new Map<string, Set<SatelliteAnnouncerType>>()
+
+export const registerSatelliteAnnouncer = (
+	domiaKey: string,
+	announcer: SatelliteAnnouncerType,
+): void => {
+	const set = announcers.get(domiaKey) ?? new Set<SatelliteAnnouncerType>()
+	set.add(announcer)
+	announcers.set(domiaKey, set)
+}
+
+export const unregisterSatelliteAnnouncer = (
+	domiaKey: string,
+	announcer: SatelliteAnnouncerType,
+): void => {
+	const set = announcers.get(domiaKey)
+	if (!set) return
+	set.delete(announcer)
+	if (set.size === 0) announcers.delete(domiaKey)
+}
+
+export const getSatelliteAnnouncerFor = (
+	domiaKey: string,
+): SatelliteAnnouncerType | null => {
+	const set = announcers.get(domiaKey)
+	if (!set || set.size === 0) return null
+	const targets = [...set]
+	if (targets.length === 1) return targets[0]
+	return (url) => {
+		for (const t of targets) t(url)
+	}
+}
 
 export const registerSatelliteSink = (
 	domiaKey: string,
@@ -21,7 +82,9 @@ export const unregisterSatelliteSink = (
 	if (set.size === 0) sinks.delete(domiaKey)
 }
 
-export const getSatelliteDomiaKeys = (): string[] => [...sinks.keys()]
+export const getSatelliteDomiaKeys = (): string[] => [
+	...new Set([...sinks.keys(), ...announcers.keys()]),
+]
 
 export const getSatelliteSinkFor = (
 	domiaKey: string,

@@ -156,3 +156,23 @@ export const upsertSatellite = (
 
 export const deleteSatellite = (domiaId: string, satelliteId: string) =>
 	dbAdapter.deleteSatellite(domiaId, satelliteId)
+
+export const setSatelliteDesiredWakeWords = (
+	domiaId: string,
+	satelliteId: string,
+	desiredWakeWords: string[],
+) =>
+	dbAdapter.setSatelliteDesiredWakeWords(domiaId, satelliteId, desiredWakeWords)
+
+export const setSatelliteDesiredNumber = (
+	domiaId: string,
+	satelliteId: string,
+	entityId: string,
+	value: number,
+) => dbAdapter.setSatelliteDesiredNumber(domiaId, satelliteId, entityId, value)
+
+export const setSatelliteFollowUp = (
+	domiaId: string,
+	satelliteId: string,
+	followUpEnabled: boolean,
+) => dbAdapter.setSatelliteFollowUp(domiaId, satelliteId, followUpEnabled)

@@ -154,6 +154,9 @@ import {
 	DEFAULT_SATELLITE_PROTOCOL,
 	DEFAULT_SATELLITE_PORT,
 	DEFAULT_SATELLITE_ACTIVE,
+	DEFAULT_DESIRED_WAKE_WORDS,
+	DEFAULT_SATELLITE_DESIRED_NUMBERS,
+	DEFAULT_SATELLITE_FOLLOW_UP,
 	SKILL_PROTOCOL_ENUM_VALUES,
 	MCP_TRANSPORT_ENUM_VALUES,
 	AGENT_PROMPT_MODE_ENUM_VALUES,
@@ -161,6 +164,7 @@ import {
 	SKILLS_ROUTING_ENUM_VALUES,
 	DEFAULT_SKILLS_ROUTING,
 	DEFAULT_AGENT_MAX_STEPS,
+	DEFAULT_TOOL_SHORTLIST_MAX,
 	DEFAULT_SKILL_PROTOCOL,
 	DEFAULT_MCP_TRANSPORT_TYPE,
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
@@ -563,6 +567,9 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	llmConcurrency: integer("llm_concurrency")
 		.notNull()
 		.default(DEFAULT_LLM_CONCURRENCY),
+	streamUsage: integer("stream_usage", { mode: "boolean" })
+		.notNull()
+		.default(true),
 	useCompactPrompt: integer("use_compact_prompt", { mode: "boolean" })
 		.notNull()
 		.default(false),
@@ -581,6 +588,9 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	agentMaxSteps: integer("agent_max_steps")
 		.notNull()
 		.default(DEFAULT_AGENT_MAX_STEPS),
+	toolShortlistMax: integer("tool_shortlist_max")
+		.notNull()
+		.default(DEFAULT_TOOL_SHORTLIST_MAX),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -823,6 +833,15 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 	sttMs: integer("stt_ms"),
 	sttQueueMs: integer("stt_queue_ms"),
 	llmMs: integer("llm_ms"),
+	llmPromptTokens: integer("llm_prompt_tokens"),
+	llmCompletionTokens: integer("llm_completion_tokens"),
+	llmTokensPerSec: real("llm_tokens_per_sec"),
+	llmTtftMs: integer("llm_ttft_ms"),
+	llmContextWindow: integer("llm_context_window"),
+	llmFinishReason: text("llm_finish_reason"),
+	toolCallCount: integer("tool_call_count"),
+	toolErrorCount: integer("tool_error_count"),
+	inputAudioMs: integer("input_audio_ms"),
 	ttsMs: integer("tts_ms"),
 	ttsQueueMs: integer("tts_queue_ms"),
 	ttfaMs: integer("ttfa_ms"),
@@ -840,6 +859,10 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 		.default(INTERACTION_STATUS_ENUM.OK),
 	errorStep: text("error_step"),
 	errorMessage: text("error_message"),
+	satelliteId: text("satellite_id"),
+	satelliteProtocol: text("satellite_protocol", {
+		enum: SATELLITE_PROTOCOL_ENUM_VALUES,
+	}),
 	domiaSnapshot: text("domia_snapshot", { mode: "json" }),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -876,6 +899,17 @@ export const satelliteConfig = sqliteTable(
 		protocol: text("protocol", { enum: SATELLITE_PROTOCOL_ENUM_VALUES })
 			.notNull()
 			.default(DEFAULT_SATELLITE_PROTOCOL),
+		desiredWakeWords: text("desired_wake_words", { mode: "json" })
+			.$type<string[]>()
+			.notNull()
+			.default(DEFAULT_DESIRED_WAKE_WORDS),
+		desiredNumbers: text("desired_numbers", { mode: "json" })
+			.$type<Record<string, number>>()
+			.notNull()
+			.default(DEFAULT_SATELLITE_DESIRED_NUMBERS),
+		followUpEnabled: integer("follow_up_enabled", { mode: "boolean" })
+			.notNull()
+			.default(DEFAULT_SATELLITE_FOLLOW_UP),
 		isActive: integer("is_active", { mode: "boolean" })
 			.notNull()
 			.default(DEFAULT_SATELLITE_ACTIVE),

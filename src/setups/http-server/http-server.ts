@@ -39,6 +39,10 @@ import {
 	handleGetSatellites,
 	handlePostSatellite,
 	handleDeleteSatellite,
+	handleSetSatelliteWakeWords,
+	handleSetSatelliteNumber,
+	handleSetSatelliteFollowUp,
+	handleTestSatelliteSpeaker,
 	handleGetSync,
 	type PostChatRouteType,
 	type GetAudioRouteType,
@@ -245,6 +249,49 @@ export const setupHttpServer = async ({
 		"/satellites/:satelliteId",
 		async (request, reply) =>
 			handleDeleteSatellite(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				reply,
+			),
+	)
+
+	fastify.patch<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/wake-words",
+		async (request, reply) =>
+			handleSetSatelliteWakeWords(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.body,
+				reply,
+			),
+	)
+
+	fastify.patch<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/numbers",
+		async (request, reply) =>
+			handleSetSatelliteNumber(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.body,
+				reply,
+			),
+	)
+
+	fastify.patch<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/follow-up",
+		async (request, reply) =>
+			handleSetSatelliteFollowUp(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.body,
+				reply,
+			),
+	)
+
+	fastify.post<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/test-speaker",
+		async (request, reply) =>
+			handleTestSatelliteSpeaker(
 				queryDomiaKey(request.query),
 				request.params.satelliteId,
 				reply,

@@ -15,7 +15,27 @@ import type {
 	ToolCallOrReplyType,
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
+	LlmUsageType,
+	LlmUsageSinkType,
 } from "../../types"
+import type { OllamaStatsType } from "./types"
+
+const ollamaUsage = (
+	r: OllamaStatsType,
+	contextWindow?: number,
+): LlmUsageType => ({
+	promptTokens: r.prompt_eval_count ?? null,
+	completionTokens: r.eval_count ?? null,
+	tokensPerSec:
+		r.eval_count && r.eval_duration
+			? Math.round((r.eval_count / (r.eval_duration / 1e9)) * 100) / 100
+			: null,
+	ttftMs: r.prompt_eval_duration
+		? Math.round(r.prompt_eval_duration / 1e6)
+		: null,
+	contextWindow: contextWindow ?? null,
+	finishReason: r.done_reason ?? null,
+})
 
 const clients = new Map<string, Ollama>()
 
@@ -65,6 +85,7 @@ const resolveOptions = (domia: DomiaType) => {
 export const runOllama = async (
 	domia: DomiaType,
 	promptContext: string,
+	onUsage?: LlmUsageSinkType,
 ): Promise<string> => {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
@@ -77,6 +98,7 @@ export const runOllama = async (
 			keep_alive: KEEP_ALIVE,
 			options: resolveOptions(domia),
 		})
+		onUsage?.(ollamaUsage(response, domia.llmModelConfig?.contextWindow))
 		return response.response?.trim() || ""
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
@@ -92,6 +114,7 @@ const runOllamaStream = async function* (
 	domia: DomiaType,
 	promptContext: string,
 	shouldAbort?: () => boolean,
+	onUsage?: LlmUsageSinkType,
 ): AsyncIterable<string> {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
@@ -113,6 +136,8 @@ const runOllamaStream = async function* (
 				return
 			}
 			if (chunk.response) yield chunk.response
+			if (chunk.done && onUsage)
+				onUsage(ollamaUsage(chunk, domia.llmModelConfig?.contextWindow))
 		}
 		abortStream = null
 	} catch (error) {
@@ -210,6 +235,7 @@ const runOllamaWithTools = async (
 	domia: DomiaType,
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
 ): Promise<ToolCallOrReplyType> => {
 	const modelName = requireToolModel(domia)
 	const release = await acquireSlot(domia)
@@ -227,6 +253,7 @@ const runOllamaWithTools = async (
 				num_predict: TOOL_CALL_NUM_PREDICT,
 			},
 		})
+		onUsage?.(ollamaUsage(response, domia.llmModelConfig?.contextWindow))
 		const toolCalls = response.message?.tool_calls
 		if (toolCalls?.length) {
 			const calls: ToolCallType[] = toolCalls.map((c) => ({
@@ -250,6 +277,7 @@ const runOllamaReplyStreamOrTools = async (
 	domia: DomiaType,
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
 ): Promise<StreamReplyOrToolsType> => {
 	const modelName = requireModel(domia)
 	const release = await acquireSlot(domia)
@@ -287,7 +315,14 @@ const runOllamaReplyStreamOrTools = async (
 				name: c.function.name,
 				arguments: normalizeArgs(c.function.arguments),
 			}))
-			stream.abort()
+			let last = first.value
+			while (true) {
+				const next = await iter.next()
+				if (next.done) break
+				last = next.value
+			}
+			if (onUsage)
+				onUsage(ollamaUsage(last, domia.llmModelConfig?.contextWindow))
 			releaseOnce()
 			return { kind: "tool_calls", calls }
 		}
@@ -300,6 +335,10 @@ const runOllamaReplyStreamOrTools = async (
 					const next = await iter.next()
 					if (next.done) break
 					if (next.value.message?.content) yield next.value.message.content
+					if (next.value.done && onUsage)
+						onUsage(
+							ollamaUsage(next.value, domia.llmModelConfig?.contextWindow),
+						)
 				}
 			} finally {
 				try {

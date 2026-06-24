@@ -23,6 +23,9 @@ import {
 	getStreamingSink,
 	isTurnAborted,
 	notifyTurnAborted,
+	recordLlmUsage,
+	takeLlmUsage,
+	usageCols,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -34,8 +37,10 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	INTERACTION_STATUS_ENUM,
 	RESPONSE_TYPE_ENUM,
+	DEFAULT_TOOL_SHORTLIST_MAX,
 	type SkillToolType,
 } from "@/db"
+import { shortlistTools } from "@/modules/skill-engine"
 import type { DomiaType } from "@/modules/core"
 import {
 	buildPromptContext,
@@ -49,6 +54,7 @@ import {
 	runLLM,
 	runLLMWithTools,
 	runLLMReplyStreamOrTools,
+	type LlmUsageType,
 } from "@/modules/llm-engine"
 import {
 	runAgentTurn,
@@ -268,6 +274,7 @@ const pipelineVoiceFromTokens = async (
 		ttsMs: Math.max(0, totalElapsed - llmElapsed),
 		llmModelUsed: executors.llmModelUsed,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		...usageCols(takeLlmUsage(session.interactionId)),
 		ttfaMs,
 		perceivedTtfaMs,
 		totalMs: pipelineElapsed(session.interactionId),
@@ -330,8 +337,11 @@ const tryLocalFullStreamVoice = async (
 		ctx,
 		session,
 		prestartedTokens ??
-			llm.adapter.runStream(domia, session.promptContext, () =>
-				isTurnAborted(domia.id, session.interactionId),
+			llm.adapter.runStream(
+				domia,
+				session.promptContext,
+				() => isTurnAborted(domia.id, session.interactionId),
+				(u) => recordLlmUsage(session.interactionId, u),
 			),
 		{
 			llmExecutorKey: domia.domiaKey,
@@ -346,7 +356,9 @@ const runLocalSyncLlm = async (
 ): Promise<void> => {
 	const startTime = Date.now()
 	const { reply } = ensureReplyOrFallback(
-		await runLLM(ctx.domia, session.promptContext),
+		await runLLM(ctx.domia, session.promptContext, (u) =>
+			recordLlmUsage(session.interactionId, u),
+		),
 	)
 	const llmElapsed = Date.now() - startTime
 	domiaBusLogger.info(`⏱️ LLM execution time: ${llmElapsed}ms`)
@@ -367,6 +379,7 @@ const runLocalSyncLlm = async (
 		llmResponse: reply,
 		llmExecutorKey: ctx.domia.domiaKey,
 		llmMs: llmElapsed,
+		...usageCols(takeLlmUsage(session.interactionId)),
 		llmModelUsed: ctx.domia.llmModelConfig?.modelName ?? null,
 		totalMs: pipelineElapsed(session.interactionId),
 	})
@@ -400,6 +413,24 @@ const cachedToolsOf = (domia: DomiaType): SkillToolType[] =>
 		.filter((s) => s.isActive)
 		.flatMap((s) => s.toolsCache ?? [])
 
+const shortlistedToolsOf = (
+	domia: DomiaType,
+	transcript: string,
+): SkillToolType[] => {
+	const result = shortlistTools(
+		transcript,
+		cachedToolsOf(domia),
+		domia.llmModelConfig?.toolShortlistMax ?? DEFAULT_TOOL_SHORTLIST_MAX,
+	)
+	if (result.applied) {
+		domiaBusLogger.info(
+			`🧰 tool shortlist ${result.tools.length}/${result.total} (dropped ${result.dropped})`,
+			{ domiaId: domia.id },
+		)
+	}
+	return result.tools
+}
+
 const withAgentSummary = (result: AgentResultType): unknown[] | null => {
 	if (!result.skillResponses.length) return null
 	return [
@@ -426,6 +457,17 @@ const agentTimingCols = (
 	agentToolMs: result.toolMs ?? null,
 	agentFinalizeMs: result.finalizeMs ?? null,
 })
+
+const toolCols = (
+	result: AgentResultType,
+): { toolCallCount: number | null; toolErrorCount: number | null } => {
+	const calls = result.toolNamesUsed.length
+	if (calls === 0) return { toolCallCount: null, toolErrorCount: null }
+	const errors = result.skillResponses.filter(
+		(r) => !!r && typeof r === "object" && (r as { isError?: boolean }).isError,
+	).length
+	return { toolCallCount: calls, toolErrorCount: errors }
+}
 
 const tryAgentTurn = async (
 	ctx: CoreBusContextType,
@@ -459,6 +501,7 @@ const tryAgentTurn = async (
 			skillPrompt: result.skillPrompt,
 			skillResponse: withAgentSummary(result),
 			...agentTimingCols(result),
+			...toolCols(result),
 		})
 		return pipelineVoiceFromTokens(ctx, session, result.replyStream, {
 			llmExecutorKey: executor.key,
@@ -480,6 +523,8 @@ const tryAgentTurn = async (
 		skillPrompt: result.skillPrompt,
 		skillResponse: withAgentSummary(result),
 		...agentTimingCols(result),
+		...toolCols(result),
+		...usageCols(takeLlmUsage(session.interactionId)),
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 
@@ -835,7 +880,7 @@ const handleSttDoneFlow = async (
 			}
 			try {
 				if (skillsEnabled(ctx)) {
-					const tools = cachedToolsOf(domia)
+					const tools = shortlistedToolsOf(domia, session.transcript)
 					if (tools.length > 0 && features.llm?.adapter.runWithTools) {
 						const intentStart = Date.now()
 						const decision = await classifyNeedsSkill(
@@ -858,12 +903,19 @@ const handleSttDoneFlow = async (
 							intentMs,
 						})
 						if (decision.needsSkill) {
+							const onUsage = (u: LlmUsageType) =>
+								recordLlmUsage(session.interactionId, u)
 							const inference: AgentInferenceType = (messages, toolDefs) =>
-								runLLMWithTools(domia, messages, toolDefs)
+								runLLMWithTools(domia, messages, toolDefs, onUsage)
 							const streamFinalize: AgentStreamInferenceType | undefined =
 								features.canSentencePipeline
 									? (messages, toolDefs) =>
-											runLLMReplyStreamOrTools(domia, messages, toolDefs)
+											runLLMReplyStreamOrTools(
+												domia,
+												messages,
+												toolDefs,
+												onUsage,
+											)
 									: undefined
 							if (
 								await tryAgentTurn(
@@ -941,7 +993,7 @@ const handleSttDoneFlow = async (
 		}
 
 		if (skillsEnabled(ctx)) {
-			const tools = cachedToolsOf(domia)
+			const tools = shortlistedToolsOf(domia, session.transcript)
 			if (tools.length > 0) {
 				const target = targets[0]
 				domiaBusLogger.info("🛰️ delegating agent inference to peer", {

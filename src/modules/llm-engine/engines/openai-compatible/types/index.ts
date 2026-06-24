@@ -4,3 +4,8 @@ export type OpenAiResolvedConfigType = {
 	temperature?: number
 	maxTokens?: number
 }
+
+export type LlamaTimingsType = {
+	predicted_per_second?: number
+	prompt_ms?: number
+}
