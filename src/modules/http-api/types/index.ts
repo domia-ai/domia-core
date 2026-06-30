@@ -4,6 +4,7 @@ import {
 	interactionSessionTrace,
 	emotionEvent,
 	memoryFact,
+	announcement,
 } from "@/db"
 import {
 	postChatBodySchema,
@@ -13,6 +14,15 @@ import {
 	getSyncQuerySchema,
 	getAudioQuerySchema,
 } from "../schemas"
+import type { SpeakResultType } from "@/modules/core-bus"
+
+export type PersistAnnouncementOptsType = {
+	broadcastId: string
+	text: string
+	kind: "text" | "audio"
+	delivery: "original" | "domia-voice"
+	result: SpeakResultType
+}
 
 export type PostChatBodyType = z.infer<typeof postChatBodySchema>
 
@@ -49,6 +59,7 @@ export type GetSyncResponseType = {
 	sessions: (typeof interactionSessionTrace.$inferSelect)[]
 	emotionEvents: (typeof emotionEvent.$inferSelect)[]
 	facts: (typeof memoryFact.$inferSelect)[]
+	announcements: (typeof announcement.$inferSelect)[]
 	nextCursor: string
 }
 

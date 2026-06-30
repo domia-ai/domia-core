@@ -13,14 +13,20 @@ import type {
 let cachedEngine: OfflineTtsInstance | null = null
 let cachedKey: string | null = null
 
-const resolvePaths = (modelDir: string): KokoroPathsType => {
+const resolveDataDir = (dir: string, configured: string | null): string =>
+	configured?.trim() || path.join(dir, "espeak-ng-data")
+
+const resolvePaths = (
+	modelDir: string,
+	espeakDataDir: string | null,
+): KokoroPathsType => {
 	const dir = path.resolve(modelDir)
 	return {
 		dir,
 		model: path.join(dir, "model.onnx"),
 		voices: path.join(dir, "voices.bin"),
 		tokens: path.join(dir, "tokens.txt"),
-		dataDir: path.join(dir, "espeak-ng-data"),
+		dataDir: resolveDataDir(dir, espeakDataDir),
 	}
 }
 
@@ -62,14 +68,17 @@ const buildConfig = (
 })
 
 const configKey = (config: TtsWorkerEngineConfigType): string =>
-	`${path.resolve(config.modelPath)}|${config.numThreads}|${config.provider}|${config.maxNumSentences}`
+	`${path.resolve(config.modelPath)}|${config.numThreads}|${config.provider}|${config.maxNumSentences}|${config.espeakDataDir ?? ""}`
 
 const getEngine = (
 	engineConfig: TtsWorkerEngineConfigType,
 ): OfflineTtsInstance => {
 	const key = configKey(engineConfig)
 	if (!cachedEngine || cachedKey !== key) {
-		const paths = resolvePaths(engineConfig.modelPath)
+		const paths = resolvePaths(
+			engineConfig.modelPath,
+			engineConfig.espeakDataDir,
+		)
 		validatePaths(paths)
 		ttsEngineLogger.info("🚀 Loading Kokoro TTS", {
 			modelDir: paths.dir,

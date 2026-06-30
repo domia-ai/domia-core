@@ -4,11 +4,13 @@ import {
 	dbClient,
 	interactionTrace,
 	interactionSessionTrace,
+	announcement,
 	type DBClientOrTxType,
 	type InsertInteractionTraceType,
 	type InsertInteractionSessionTraceType,
 	type UpdateInteractionTraceType,
 	type UpdateInteractionSessionTraceType,
+	type InsertAnnouncementType,
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 
@@ -101,6 +103,37 @@ const dbAdapter = {
 				updatedAt: DEFAULT_TIMESTAMP,
 			})
 			.where(eq(interactionSessionTrace.id, id)),
+	insertAnnouncement: (
+		data: InsertAnnouncementType,
+		client: DBClientOrTxType = dbClient,
+	) => client.insert(announcement).values(data),
+	getAnnouncementById: (id: string, client: DBClientOrTxType = dbClient) =>
+		client.query.announcement.findFirst({
+			where: eq(announcement.id, id),
+		}),
+	getAnnouncementsSince: (
+		domiaId: string,
+		since: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.announcement.findMany({
+			where: and(
+				eq(announcement.domiaId, domiaId),
+				gte(announcement.updatedAt, since),
+			),
+			orderBy: asc(announcement.updatedAt),
+			limit,
+		}),
+	getLastAnnouncementAt: (
+		domiaId: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.announcement.findFirst({
+			where: eq(announcement.domiaId, domiaId),
+			orderBy: desc(announcement.updatedAt),
+			columns: { updatedAt: true },
+		}),
 }
 
 export default dbAdapter

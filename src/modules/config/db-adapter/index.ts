@@ -1,5 +1,5 @@
 import type { MqttSectionType } from "../types"
-import { and, eq, getTableColumns, type Table } from "drizzle-orm"
+import { and, eq, sql, getTableColumns, type Table } from "drizzle-orm"
 import {
 	domia,
 	runtimeCapabilities,
@@ -41,6 +41,12 @@ const dbAdapter = {
 		fields: Partial<typeof domia.$inferInsert>,
 		tx: DBClientOrTxType,
 	) => tx.update(domia).set(stamp(domia, fields)).where(eq(domia.id, id)),
+
+	bumpConfigRevision: (id: string, tx: DBClientOrTxType) =>
+		tx
+			.update(domia)
+			.set({ configRevision: sql`${domia.configRevision} + 1` })
+			.where(eq(domia.id, id)),
 
 	materializeCapabilities: (
 		domiaId: string,

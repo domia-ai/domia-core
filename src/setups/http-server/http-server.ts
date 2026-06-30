@@ -2,7 +2,6 @@ import { setGrpcClientTunables } from "@/modules/grpc-client"
 import Fastify from "fastify"
 import { httpServerLogger } from "@/utils"
 import { env } from "@/config"
-import type { MqttClient } from "mqtt"
 import {
 	type DomiaType,
 	getOwnDomia,
@@ -18,6 +17,7 @@ import {
 	handlePostChat,
 	handlePostVoice,
 	handlePostSpeak,
+	handlePostAnnounceAudio,
 	handleGetPresence,
 	handlePostTurnCancel,
 	handlePostIntercom,
@@ -87,13 +87,7 @@ const queryDomiaKey = (query: unknown): string | undefined => {
 	return typeof key === "string" && key.length > 0 ? key : undefined
 }
 
-export const setupHttpServer = async ({
-	domia,
-	mqttClient,
-}: {
-	domia: DomiaType
-	mqttClient: MqttClient | null
-}) => {
+export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 	httpServerLogger.info("🚀 Starting HTTP server...")
 
 	const fastify = Fastify({
@@ -130,11 +124,18 @@ export const setupHttpServer = async ({
 		),
 	)
 
+	fastify.post("/announce-audio", async (request) =>
+		handlePostAnnounceAudio(
+			await liveDomia(domia, bodyDomiaKey(request.body)),
+			request.body,
+		),
+	)
+
 	fastify.post("/config/refresh", async () => {
 		invalidateOwnDomia()
 		const fresh = await liveDomia(domia)
 		setGrpcClientTunables(fresh)
-		void sendHeartbeat({ domia: fresh, mqttClient })
+		void sendHeartbeat({ domia: fresh })
 		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
 		return { refreshed: true }
 	})
@@ -167,7 +168,7 @@ export const setupHttpServer = async ({
 		const live = await liveDomia(domia, key)
 		const result = await handlePostConfig(live, request.body, reply)
 		const fresh = await liveDomia(domia, key)
-		void sendHeartbeat({ domia: fresh, mqttClient })
+		void sendHeartbeat({ domia: fresh })
 		return result
 	})
 
@@ -176,7 +177,7 @@ export const setupHttpServer = async ({
 	)
 
 	fastify.post("/admin/restart", async () => {
-		void sendHeartbeat({ domia: await liveDomia(domia), mqttClient })
+		void sendHeartbeat({ domia: await liveDomia(domia) })
 		return handleRestart()
 	})
 
@@ -202,7 +203,7 @@ export const setupHttpServer = async ({
 		async (request, reply) => {
 			const live = await liveDomia(domia, queryDomiaKey(request.query))
 			const result = await handleImportMind(live, request.body, reply)
-			void sendHeartbeat({ domia: live, mqttClient })
+			void sendHeartbeat({ domia: live })
 			return result
 		},
 	)
@@ -218,7 +219,7 @@ export const setupHttpServer = async ({
 				request.params.id,
 				reply,
 			)
-			void sendHeartbeat({ domia: live, mqttClient })
+			void sendHeartbeat({ domia: live })
 			return result
 		},
 	)

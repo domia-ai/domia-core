@@ -1,13 +1,14 @@
 import { createReadStream, existsSync } from "fs"
 import { ZodError } from "zod"
-import { writeFile } from "fs/promises"
+import { writeFile, mkdir, copyFile } from "fs/promises"
 import { join, resolve, sep } from "path"
-import { generateUuid } from "@/utils"
+import { generateUuid, writeWavToTemp } from "@/utils"
 import { DEFAULT_OLLAMA_HOST } from "@/db"
 import { env } from "@/config"
 import {
 	type DomiaType,
 	getActiveDomias,
+	getHostedDomias,
 	getDomia,
 	retireDomia,
 	reactivateDomia,
@@ -36,6 +37,9 @@ import {
 	getInteractionsSince,
 	getSessionsSince,
 	updateInteraction,
+	recordAnnouncement,
+	getAnnouncementById,
+	getAnnouncementsSince,
 } from "@/modules/session-manager"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
 import { getFactsSince } from "@/modules/memory"
@@ -45,11 +49,13 @@ import {
 	listTemplates,
 	activateTemplate,
 } from "@/modules/mind"
+import { serializeConfig, configHealth } from "@/modules/config"
+import { applyConfig, reloadSubsystem } from "@/modules/config-apply"
 import {
-	serializeConfig,
-	importConfigAndRestart,
-	configHealth,
-} from "@/modules/config"
+	bootHostedIdentity,
+	teardownHostedIdentity,
+} from "@/setups/hosted-identities"
+import { reloadSatelliteClientsForDomia } from "@/setups/satellite-clients"
 import { listModels, startInstall, getModelJob } from "@/modules/model-manager"
 import type {
 	PostChatBodyType,
@@ -63,10 +69,12 @@ import type {
 	PostSpeakBodyType,
 	PostSpeakResponseType,
 	PostImportMindBodyType,
+	PersistAnnouncementOptsType,
 } from "../types"
 import {
 	postChatBodySchema,
 	postVoiceBodySchema,
+	postAnnounceAudioBodySchema,
 	postSpeakBodySchema,
 	postIntercomBodySchema,
 	postImportMindBodySchema,
@@ -87,16 +95,22 @@ import {
 	speak,
 	speakActiveRoom,
 	speakBroadcast,
+	announceAudio,
 	renderAnnouncementUrl,
 	getSatelliteControl,
+	canDeliverIntercom,
+	canDeliverBroadcast,
 	getAllPresence,
 	getPresence,
-	startIntercom,
+	startDuplexIntercom,
 	stopIntercom,
+	stopIntercomTo,
 	abortActiveTurn,
 	type RequestVoiceReplyStage,
 	type SpeakBroadcastResultType,
+	type SpeakResultType,
 } from "@/modules/core-bus"
+import { runSTT } from "@/modules/stt-engine"
 import { httpServerLogger } from "@/utils"
 import type { FastifyRequest, FastifyReply } from "fastify"
 
@@ -114,8 +128,15 @@ export const handleGetAudio = async (
 ) => {
 	const { interactionId } = request.params
 	const { kind } = getAudioQuerySchema.parse(request.query)
-	let filePath = kind === "tts" ? getAudioFilePath(interactionId) : null
-	if (!filePath) {
+	let filePath =
+		kind === "tts" || kind === "announce"
+			? getAudioFilePath(interactionId)
+			: null
+	if (!filePath && kind === "announce") {
+		const row = await getAnnouncementById(interactionId)
+		filePath = row?.audioPath ?? null
+	}
+	if (!filePath && kind !== "announce") {
 		const row = await getInteractionById(interactionId)
 		filePath =
 			kind === "input"
@@ -232,26 +253,136 @@ export const handlePostVoice = async (
 	}
 }
 
+const persistAnnouncement = async (
+	domia: DomiaType,
+	opts: PersistAnnouncementOptsType,
+): Promise<void> => {
+	try {
+		const id = opts.result.audioId ?? generateUuid()
+		let audioPath: string | null = null
+		if (opts.result.audioPath) {
+			try {
+				await mkdir(RECORDINGS_DIR, { recursive: true })
+				const stablePath = join(RECORDINGS_DIR, `announce-${id}.wav`)
+				await copyFile(opts.result.audioPath, stablePath)
+				audioPath = stablePath
+			} catch {
+				audioPath = null
+			}
+		}
+		await recordAnnouncement({
+			id,
+			domiaId: domia.id,
+			broadcastId: opts.broadcastId,
+			text: opts.text,
+			kind: opts.kind,
+			delivery: opts.delivery,
+			target: opts.result.target,
+			delivered: opts.result.delivered,
+			audioPath,
+		})
+	} catch (err) {
+		httpServerLogger.warn("failed to record announcement", {
+			domiaKey: domia.domiaKey,
+			err,
+		})
+	}
+}
+
+export const handlePostAnnounceAudio = async (
+	domia: DomiaType,
+	body: unknown,
+) => {
+	const { audioBase64, mode, broadcastId } =
+		postAnnounceAudioBodySchema.parse(body)
+	const wav = Buffer.from(audioBase64, "base64")
+	const bId = broadcastId ?? generateUuid()
+
+	if (mode === "transcribe") {
+		const filePath = await writeWavToTemp(wav, generateUuid(), "announce")
+		const transcript = await runSTT(domia, filePath)
+		const result = await speak(domia, transcript)
+		await persistAnnouncement(domia, {
+			broadcastId: bId,
+			text: transcript,
+			kind: "audio",
+			delivery: "domia-voice",
+			result,
+		})
+		httpServerLogger.info(`📢 /announce-audio transcribe → ${result.target}`, {
+			domiaKey: domia.domiaKey,
+		})
+		return { mode, transcript, ...result }
+	}
+
+	const result = await announceAudio(domia, wav)
+	await persistAnnouncement(domia, {
+		broadcastId: bId,
+		text: "",
+		kind: "audio",
+		delivery: "original",
+		result,
+	})
+	httpServerLogger.info(`📢 /announce-audio voice → ${result.target}`, {
+		domiaKey: domia.domiaKey,
+	})
+	return { mode, ...result }
+}
+
 export const handlePostSpeak = async (
 	domia: DomiaType,
 	body: PostSpeakBodyType,
 ): Promise<PostSpeakResponseType | SpeakBroadcastResultType> => {
-	const { text, broadcast, active } = postSpeakBodySchema.parse(body)
+	const { text, broadcast, active, broadcastId } =
+		postSpeakBodySchema.parse(body)
 	if (broadcast) {
-		const result = await speakBroadcast(text)
-		httpServerLogger.info(`📢 /speak broadcast → ${result.delivered.length}`, {
-			delivered: result.delivered,
+		const items = await speakBroadcast(text)
+		const bId = broadcastId ?? generateUuid()
+		for (const item of items) {
+			await persistAnnouncement(item.domia, {
+				broadcastId: bId,
+				text,
+				kind: "text",
+				delivery: "domia-voice",
+				result: item.result,
+			})
+		}
+		const delivered = items
+			.filter((i) => i.result.delivered)
+			.map((i) => i.domia.domiaKey)
+		httpServerLogger.info(`📢 /speak broadcast → ${delivered.length}`, {
+			delivered,
 		})
-		return result
+		return { delivered }
 	}
 	if (active) {
-		const result = await speakActiveRoom(text)
+		const item = await speakActiveRoom(text)
+		const result: SpeakResultType = item?.result ?? {
+			delivered: false,
+			target: "none",
+		}
+		if (item) {
+			await persistAnnouncement(item.domia, {
+				broadcastId: broadcastId ?? generateUuid(),
+				text,
+				kind: "text",
+				delivery: "domia-voice",
+				result: item.result,
+			})
+		}
 		httpServerLogger.info(`📢 /speak active → ${result.target}`, {
 			delivered: result.delivered,
 		})
 		return result
 	}
 	const result = await speak(domia, text)
+	await persistAnnouncement(domia, {
+		broadcastId: broadcastId ?? generateUuid(),
+		text,
+		kind: "text",
+		delivery: "domia-voice",
+		result,
+	})
 	httpServerLogger.info(`📢 /speak → ${result.target}`, {
 		domiaKey: domia.domiaKey,
 		delivered: result.delivered,
@@ -267,17 +398,35 @@ export const handlePostTurnCancel = (domia: DomiaType) => {
 	return { aborted }
 }
 
-export const handleGetPresence = () => {
-	return { presence: getAllPresence() }
+export const handleGetPresence = async () => {
+	const byKey = new Map(getAllPresence().map((e) => [e.domiaKey, e]))
+	const hosted = await getHostedDomias()
+	const presence = await Promise.all(
+		hosted.map(async ({ domiaKey }) => {
+			const entry = byKey.get(domiaKey) ?? {
+				domiaKey,
+				status: "idle" as const,
+				lastActiveAt: null,
+				satellites: [],
+			}
+			return {
+				...entry,
+				canIntercom: await canDeliverIntercom(domiaKey),
+				canBroadcast: await canDeliverBroadcast(domiaKey),
+			}
+		}),
+	)
+	return { presence }
 }
 
 export const handlePostIntercom = async (body: unknown) => {
 	const { from, to, stop } = postIntercomBodySchema.parse(body)
 	if (stop || !to) {
 		const stopped = await stopIntercom(from)
+		await stopIntercomTo(from)
 		return { intercom: "stopped" as const, from, stopped }
 	}
-	const started = await startIntercom(from, to, {
+	const started = await startDuplexIntercom(from, to, {
 		sampleRate: 16000,
 		channels: 1,
 	})
@@ -302,7 +451,7 @@ export const handlePostConfig = async (
 	reply: FastifyReply,
 ) => {
 	try {
-		return await importConfigAndRestart(domia, body)
+		return await applyConfig(domia, body)
 	} catch (err) {
 		httpServerLogger.error("Import config failed", { domiaId: domia.id, err })
 		if (err instanceof ZodError)
@@ -391,11 +540,11 @@ export const handlePostIdentity = async (
 		if (!existing.isActive || !existing.isHosted) {
 			await reactivateDomia(key)
 			invalidateOwnDomia(key)
+			const booted = await bootHostedIdentity(key)
+			if (booted) await reloadSatelliteClientsForDomia(booted)
 			await publishIdentityState(key)
-			requestRestart()
 			return {
 				identity: { domiaKey: key, name: existing.name },
-				restarting: true,
 				restored: true,
 			}
 		}
@@ -408,8 +557,9 @@ export const handlePostIdentity = async (
 		{ ...DEFAULT_CONFIG_VALUES, name, domiaKey: key },
 		{ isHosted: true },
 	)
-	requestRestart()
-	return { identity: { domiaKey: key, name }, restarting: true }
+	await bootHostedIdentity(key)
+	await publishIdentityState(key)
+	return { identity: { domiaKey: key, name } }
 }
 
 export const handleDeleteIdentity = async (
@@ -428,8 +578,8 @@ export const handleDeleteIdentity = async (
 	await retireDomia(domiaKey)
 	invalidateOwnDomia(domiaKey)
 	await publishIdentityState(domiaKey)
-	requestRestart()
-	return { removed: true, restarting: true }
+	await teardownHostedIdentity(domiaKey)
+	return { removed: true }
 }
 
 export const handleDiscoverSatellites = async () => ({
@@ -497,8 +647,8 @@ export const handlePostSatellite = async (
 		protocol: resolvedProtocol,
 	})
 	invalidateOwnDomia(domiaKey)
-	requestRestart()
-	return { bound: true, restarting: true }
+	const apply = await reloadSubsystem("satellites", domiaKey)
+	return { bound: true, apply }
 }
 
 export const handleDeleteSatellite = async (
@@ -518,8 +668,8 @@ export const handleDeleteSatellite = async (
 	}
 	await deleteSatellite(domia.id, satelliteId)
 	invalidateOwnDomia(domiaKey)
-	requestRestart()
-	return { removed: true, restarting: true }
+	const apply = await reloadSubsystem("satellites", domiaKey)
+	return { removed: true, apply }
 }
 
 const SATELLITE_TEST_PHRASE =
@@ -723,22 +873,51 @@ export const handleGetSync = async (
 	const { since, limit } = getSyncQuerySchema.parse(query)
 	const domiaId = domia.id
 
-	const [interactions, sessions, emotionEvents, facts] = await Promise.all([
-		getInteractionsSince(domiaId, since, limit),
-		getSessionsSince(domiaId, since, limit),
-		getEmotionEventsSince(domiaId, since, limit),
-		getFactsSince(domiaId, since, limit),
-	])
+	const [interactions, sessions, emotionEvents, facts, announcements] =
+		await Promise.all([
+			getInteractionsSince(domiaId, since, limit),
+			getSessionsSince(domiaId, since, limit),
+			getEmotionEventsSince(domiaId, since, limit),
+			getFactsSince(domiaId, since, limit),
+			getAnnouncementsSince(domiaId, since, limit),
+		])
 
-	const stamps = [
-		...interactions.map((r) => r.updatedAt),
-		...emotionEvents.map((r) => r.createdAt),
-		...facts.map((r) => r.updatedAt),
-		...sessions.map((r) => r.updatedAt),
-	].filter((s): s is string => Boolean(s))
-	const nextCursor = stamps.length
-		? stamps.reduce((a, b) => (a > b ? a : b))
-		: since
+	const maxTs = (stamps: (string | null)[]): string =>
+		stamps.reduce<string>((m, s) => (s && s > m ? s : m), "")
 
-	return { interactions, sessions, emotionEvents, facts, nextCursor }
+	const streams = [
+		{
+			max: maxTs(interactions.map((r) => r.updatedAt)),
+			full: interactions.length >= limit,
+		},
+		{
+			max: maxTs(sessions.map((r) => r.updatedAt)),
+			full: sessions.length >= limit,
+		},
+		{
+			max: maxTs(emotionEvents.map((r) => r.createdAt)),
+			full: emotionEvents.length >= limit,
+		},
+		{ max: maxTs(facts.map((r) => r.updatedAt)), full: facts.length >= limit },
+		{
+			max: maxTs(announcements.map((r) => r.updatedAt)),
+			full: announcements.length >= limit,
+		},
+	]
+	const fullMaxes = streams.filter((s) => s.full && s.max).map((s) => s.max)
+	const allMaxes = streams.map((s) => s.max).filter(Boolean)
+	const nextCursor = fullMaxes.length
+		? fullMaxes.reduce((a, b) => (a < b ? a : b))
+		: allMaxes.length
+			? allMaxes.reduce((a, b) => (a > b ? a : b))
+			: since
+
+	return {
+		interactions,
+		sessions,
+		emotionEvents,
+		facts,
+		announcements,
+		nextCursor,
+	}
 }

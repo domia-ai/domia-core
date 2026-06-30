@@ -64,6 +64,8 @@ export const createVadWindow = (
 		threshold: config.vadThreshold,
 		minSilenceS: config.vadMinSilenceS,
 		endOfSpeechMs: config.vadEndOfSpeechMs,
+		numThreads: config.numThreads,
+		provider: config.provider,
 		...tuningOverrides,
 	})
 	const windowBytes = sileroVadEngine.windowSize * 2

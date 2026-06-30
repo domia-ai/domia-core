@@ -198,10 +198,23 @@ export type IntercomLinkType = {
 export type SpeakResultType = {
 	delivered: boolean
 	target: "satellite" | "local" | "none"
+	audioId?: string
+	audioPath?: string
 }
 
 export type SpeakBroadcastResultType = {
 	delivered: string[]
+}
+
+export type SpokenDomiaResultType = {
+	domia: DomiaType
+	result: SpeakResultType
+}
+
+export type RenderedTtsType = {
+	url: string | null
+	id: string
+	filePath: string
 }
 
 export type PresenceStatusType = "idle" | "listening" | "thinking" | "speaking"
@@ -223,6 +236,29 @@ export type SatelliteNumberEntityType = {
 	unit: string | null
 }
 
+export type SatelliteCapabilitiesType = {
+	canHear: boolean
+	canSpeak: boolean
+	canAnnounce: boolean
+	canIntercom: boolean
+	canFollowUp: boolean
+}
+
+export type SatelliteEventKindType =
+	| "wake"
+	| "audio"
+	| "playback"
+	| "announce"
+	| "reconnect"
+	| "error"
+
+export type SatelliteEventType = {
+	id: string
+	kind: SatelliteEventKindType
+	detail: string
+	at: number
+}
+
 export type SatellitePresenceType = {
 	satelliteId: string
 	protocol: SatelliteProtocolType
@@ -239,6 +275,9 @@ export type SatellitePresenceType = {
 	availableWakeWords: SatelliteWakeWordType[]
 	activeWakeWords: string[]
 	numberEntities: SatelliteNumberEntityType[]
+	capabilities: SatelliteCapabilitiesType
+	firmwareVersion: string | null
+	recentEvents: SatelliteEventType[]
 }
 
 export type SatelliteMetaPatchType = Partial<
@@ -252,8 +291,14 @@ export type SatelliteMetaPatchType = Partial<
 		| "availableWakeWords"
 		| "activeWakeWords"
 		| "numberEntities"
+		| "firmwareVersion"
 	>
 >
+
+export type SetSatellitePresenceMetaType = {
+	capabilities?: SatelliteCapabilitiesType
+	connectionId?: string
+}
 
 export type SatelliteControlType = {
 	satelliteId: string

@@ -1,4 +1,5 @@
-import { getSatelliteSinkFor } from "./satellite-registry"
+import { domiaBusLogger } from "@/utils"
+import { resolveIntercomSink } from "./local-playback-sink"
 import type { StreamingSinkFormatType, IntercomLinkType } from "../types"
 
 const links = new Map<string, IntercomLinkType>()
@@ -9,10 +10,29 @@ export const startIntercom = async (
 	format: StreamingSinkFormatType,
 ): Promise<boolean> => {
 	if (from === to || links.has(from)) return false
-	const sink = getSatelliteSinkFor(to)
-	if (!sink) return false
+	const sink = await resolveIntercomSink(to)
+	if (!sink) {
+		domiaBusLogger.warn(`🎙️ intercom ${from}→${to}: no sink resolved`)
+		return false
+	}
 	await sink.begin?.(format)
 	links.set(from, { to, sink })
+	domiaBusLogger.info(`🎙️ intercom link ${from}→${to} started`)
+	return true
+}
+
+export const startDuplexIntercom = async (
+	a: string,
+	b: string,
+	format: StreamingSinkFormatType,
+): Promise<boolean> => {
+	const forward = await startIntercom(a, b, format)
+	if (!forward) return false
+	const back = await startIntercom(b, a, format)
+	if (!back) {
+		await stopIntercom(a)
+		return false
+	}
 	return true
 }
 

@@ -365,6 +365,18 @@ export const routeReflectionResult = async (
 	}
 }
 
+const reflectedInteractions = new Map<string, number>()
+const REFLECTION_DEDUP_TTL_MS = 5 * 60 * 1000
+
+const claimReflection = (interactionId: string): boolean => {
+	const now = Date.now()
+	for (const [id, ts] of reflectedInteractions)
+		if (now - ts > REFLECTION_DEDUP_TTL_MS) reflectedInteractions.delete(id)
+	if (reflectedInteractions.has(interactionId)) return false
+	reflectedInteractions.set(interactionId, now)
+	return true
+}
+
 export const reflectOnInteraction = async (
 	domia: DomiaType,
 	userText: string,
@@ -374,6 +386,12 @@ export const reflectOnInteraction = async (
 ): Promise<void> => {
 	const flags = flagsForDomia(domia)
 	if (!flags.emotion && !flags.facts) return
+	if (interactionId && !claimReflection(interactionId)) {
+		reflectionLogger.info("🪞 reflection skipped — already captured", {
+			interactionId,
+		})
+		return
+	}
 	const isRemote = !!originDomiaKey && originDomiaKey !== domia.domiaKey
 	const trajectory =
 		flags.emotion && !isRemote ? await getRecentTrajectory(domia.id) : []

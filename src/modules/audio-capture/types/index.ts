@@ -5,6 +5,10 @@ export type CaptureCallbacksType = {
 	onError?: (error: Error) => void | Promise<void>
 }
 
+export type CaptureHandleType = {
+	stop: () => void
+}
+
 export type StartAudioStreamResultType = {
 	chunks: AsyncIterable<Buffer>
 	filePathPromise: Promise<string>

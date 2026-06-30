@@ -7,12 +7,15 @@ export type McpSetupHandleType = {
 	stop: () => Promise<void>
 }
 
+const skillHandles = new Map<string, McpSetupHandleType>()
+
 export const setupSkills = async (
 	domia: DomiaType,
 ): Promise<McpSetupHandleType | null> => {
 	const skillsOn = domia.moduleSettings?.skillsEngine === true
 	const servers = (domia.skillProviders ?? []).filter((s) => s.isActive)
 	if (!skillsOn || servers.length === 0) {
+		skillHandles.delete(domia.domiaKey)
 		skillEngineLogger.info("🧩 Skills disabled — no providers connected")
 		return null
 	}
@@ -35,10 +38,23 @@ export const setupSkills = async (
 	}, DEFAULT_SKILL_REFRESH_MS)
 	if (typeof interval.unref === "function") interval.unref()
 
-	return {
+	const handle: McpSetupHandleType = {
 		stop: async () => {
 			clearInterval(interval)
 			await disconnectAll()
 		},
 	}
+	skillHandles.set(domia.domiaKey, handle)
+	return handle
+}
+
+export const stopSkills = async (domiaKey: string): Promise<void> => {
+	const handle = skillHandles.get(domiaKey)
+	skillHandles.delete(domiaKey)
+	if (handle) await handle.stop()
+}
+
+export const reloadSkills = async (domia: DomiaType): Promise<void> => {
+	await stopSkills(domia.domiaKey)
+	await setupSkills(domia)
 }

@@ -223,6 +223,13 @@ export type UpdateMemoryFactType = Partial<Omit<InsertMemoryFactType, "id">> & {
 	id: string
 }
 
+export type SelectAnnouncementType = InferSelectModel<
+	typeof schema.announcement
+>
+export type InsertAnnouncementType = InferInsertModel<
+	typeof schema.announcement
+>
+
 export type WithParsedDatesType<T> = Omit<T, "createdAt" | "updatedAt"> & {
 	createdAt: Date | null
 	updatedAt: Date | null

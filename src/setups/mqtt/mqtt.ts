@@ -3,11 +3,17 @@ import mqtt from "mqtt"
 import { mqttLogger, localMqttLogger } from "@/utils"
 import { env } from "@/config"
 import { MQTT_TYPE_ENUM } from "@/db"
+import { type DomiaType, getNodeId } from "@/modules/core"
+import {
+	setLocalMqttClient,
+	getLocalMqttClient,
+} from "@/modules/heartbeat-manager"
 import type { SetupMqttArgsType } from "./types"
 import { MQTT_EVENT_ENUM } from "./constants"
 import { handleMqttMessage } from "@/modules/mqtt-event-handler"
 
 const ROOT = env.MQTT_TOPIC_ROOT
+const MQTT_CONNECT_TIMEOUT_MS = 5_000
 
 export const setupMqtt = ({
 	domia,
@@ -88,4 +94,39 @@ export const setupMqtt = ({
 	})
 
 	return client
+}
+
+export const reloadMqtt = async (domia: DomiaType): Promise<void> => {
+	const nodeId = await getNodeId().catch(() => null)
+	const next = setupMqtt({ domia, config: domia.localMqttConfig, nodeId })
+	if (!next) {
+		getLocalMqttClient()?.end()
+		setLocalMqttClient(null)
+		return
+	}
+	await new Promise<void>((resolve, reject) => {
+		let settled = false
+		const onConnect = (): void => finish()
+		const onError = (err: Error): void => finish(err)
+		const timer = setTimeout(
+			() => finish(new Error("MQTT connect timeout")),
+			MQTT_CONNECT_TIMEOUT_MS,
+		)
+		const finish = (err?: Error): void => {
+			if (settled) return
+			settled = true
+			clearTimeout(timer)
+			next.removeListener("connect", onConnect)
+			next.removeListener("error", onError)
+			if (err) {
+				next.end()
+				reject(err)
+			} else resolve()
+		}
+		next.once("connect", onConnect)
+		next.on("error", onError)
+	})
+	const old = getLocalMqttClient()
+	setLocalMqttClient(next)
+	old?.end()
 }

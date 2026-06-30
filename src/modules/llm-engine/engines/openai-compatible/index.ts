@@ -50,6 +50,8 @@ const NO_AUTH = "noauth"
 const llmSemaphore = createAsyncSemaphore(1)
 const clients = new Map<string, OpenAI>()
 
+export const clearOpenAiClients = (): void => clients.clear()
+
 const acquireSlot = (domia: DomiaType): Promise<() => void> => {
 	llmSemaphore.setLimit(
 		domia?.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,

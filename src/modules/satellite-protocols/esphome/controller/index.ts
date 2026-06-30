@@ -167,6 +167,14 @@ export const connectEsphomeSatellite = (
 			void session.onHello({ domiaKey, satelliteId: binding.satelliteId })
 		})
 
+		esp.on("deviceInfo", (info) => {
+			const version = info.esphomeVersion ?? info.projectVersion ?? null
+			if (!version) return
+			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+				firmwareVersion: version,
+			})
+		})
+
 		esp.on("voiceAssistantConfiguration", (config) => {
 			const available: SatelliteWakeWordType[] = config.availableWakeWords.map(
 				(w) => ({ id: w.id, wakeWord: w.wakeWord }),

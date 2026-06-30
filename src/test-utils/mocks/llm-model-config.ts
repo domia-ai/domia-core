@@ -8,6 +8,7 @@ import {
 	DEFAULT_LLM_MODEL_TEMPERATURE,
 	DEFAULT_LLM_CONCURRENCY,
 	DEFAULT_OLLAMA_HOST,
+	DEFAULT_OLLAMA_KEEP_ALIVE_MS,
 	LLM_ENGINE_ENUM,
 } from "@/db/constants"
 import { type SelectLlmModelConfigType } from "@/db"
@@ -29,6 +30,7 @@ export const baseLlmModelConfig = (
 		contextWindow: DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
 		numPredict: DEFAULT_LLM_MODEL_NUM_PREDICT,
 		llmConcurrency: DEFAULT_LLM_CONCURRENCY,
+		keepAliveMs: DEFAULT_OLLAMA_KEEP_ALIVE_MS,
 		streamUsage: true,
 		useCompactPrompt: false,
 		agentPromptMode: "compact",

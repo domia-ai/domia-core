@@ -29,7 +29,10 @@ const parseControl = (data: RawData): SatelliteControlType | null => {
 	}
 }
 
-const wsTransport = (ws: WebSocket): SatelliteTransportType => ({
+const wsTransport = (
+	ws: WebSocket,
+	serverEndpointing: boolean,
+): SatelliteTransportType => ({
 	sendReady: (domiaKey, name) => send(ws, { type: "ready", domiaKey, name }),
 	sendTranscript: (text) => send(ws, { type: "transcript", text }),
 	sendReplyDone: (reply, interactionId) =>
@@ -46,7 +49,12 @@ const wsTransport = (ws: WebSocket): SatelliteTransportType => ({
 	},
 	endAudio: () => send(ws, { type: "audio_stream_end" }),
 	close: () => ws.close(),
+	serverEndpointing,
+	notifySpeechEnd: () => send(ws, { type: "speech_end" }),
 })
+
+const isLiveRequest = (url: string | undefined): boolean =>
+	new URL(url ?? "/", "http://satellite").searchParams.get("live") === "1"
 
 export const setupSatelliteGateway = (
 	server: Server,
@@ -54,10 +62,10 @@ export const setupSatelliteGateway = (
 ): SatelliteGatewayHandleType => {
 	const wss = new WebSocketServer({ server, path: "/satellite" })
 
-	wss.on("connection", (ws) => {
+	wss.on("connection", (ws, request) => {
 		const session = createSatelliteSession({
 			fallback,
-			transport: wsTransport(ws),
+			transport: wsTransport(ws, isLiveRequest(request.url)),
 			protocol: "native",
 		})
 

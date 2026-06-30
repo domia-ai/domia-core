@@ -1,7 +1,11 @@
 import { type DomiaType } from "@/modules/core"
 import { generateUuid } from "@/utils"
 
-import { DBClientOrTxType, UpdateInteractionTraceType } from "@/db"
+import {
+	DBClientOrTxType,
+	UpdateInteractionTraceType,
+	type InsertAnnouncementType,
+} from "@/db"
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import dbAdapter from "../db-adapter"
 import { RECENT_TURNS_WINDOW, RECENT_TURNS_MAX_AGE_MS } from "../constants"
@@ -36,8 +40,25 @@ export const getSessionsSince = (
 	limit: number,
 ) => dbAdapter.getSessionsSince(domiaId, since, limit)
 
+export const recordAnnouncement = (data: InsertAnnouncementType) =>
+	dbAdapter.insertAnnouncement(data)
+
+export const getAnnouncementById = (id: string) =>
+	dbAdapter.getAnnouncementById(id)
+
+export const getAnnouncementsSince = (
+	domiaId: string,
+	since: string,
+	limit: number,
+) => dbAdapter.getAnnouncementsSince(domiaId, since, limit)
+
 export const getLastInteractionAt = async (domiaId: string) => {
 	const row = await dbAdapter.getLastInteractionAt(domiaId)
+	return row?.updatedAt ?? null
+}
+
+export const getLastAnnouncementAt = async (domiaId: string) => {
+	const row = await dbAdapter.getLastAnnouncementAt(domiaId)
 	return row?.updatedAt ?? null
 }
 

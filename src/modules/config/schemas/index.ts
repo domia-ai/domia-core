@@ -40,6 +40,8 @@ export const configBundleSchema = z
 				grpcPort: true,
 				isActive: true,
 				isHosted: true,
+				configRevision: true,
+				configReloadDrainMs: true,
 			})
 			.strict()
 			.nullish(),

@@ -6,7 +6,6 @@ import { getOwnDomia } from "@/modules/core"
 export const setupHeartbeat = ({
 	domia,
 	intervalSeconds = 30,
-	mqttClient,
 }: SetupHeartbeatArgsType) => {
 	const domiaKey = domia.domiaKey
 	heartbeatLogger.info(`💓 Starting heartbeat loop for ${domiaKey}`)
@@ -15,7 +14,7 @@ export const setupHeartbeat = ({
 		void (async () => {
 			const live = (await getOwnDomia(domiaKey).catch(() => null)) ?? domia
 			heartbeatLogger.info(`💓 Sending heartbeat for ${domiaKey}`)
-			await sendHeartbeat({ domia: live, mqttClient })
+			await sendHeartbeat({ domia: live })
 		})()
 	}, intervalSeconds * 1000)
 }

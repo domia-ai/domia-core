@@ -16,20 +16,25 @@ import {
 	normalizeTtsConfig,
 } from "../utils"
 
+const VIRTUAL_IFACE =
+	/^(utun|tun|tap|ppp|bridge|vmnet|vnic|llw|awdl|gif|stf|ipsec|docker|veth|wg)/i
+
+const isPrivateIpv4 = (ip: string): boolean =>
+	/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)
+
 export const getLocalIp = (): string | null => {
-	const interfaces = os.networkInterfaces()
-
-	for (const iface of Object.values(interfaces)) {
-		if (!iface) continue
-
-		for (const config of iface) {
-			if (config.family === "IPv4" && !config.internal) {
-				return config.address
-			}
+	const candidates: { name: string; address: string }[] = []
+	for (const [name, iface] of Object.entries(os.networkInterfaces())) {
+		for (const config of iface ?? []) {
+			if (config.family === "IPv4" && !config.internal)
+				candidates.push({ name, address: config.address })
 		}
 	}
-
-	return null
+	if (candidates.length === 0) return null
+	const physical = candidates.filter((c) => !VIRTUAL_IFACE.test(c.name))
+	const pool = physical.length > 0 ? physical : candidates
+	const privateLan = pool.find((c) => isPrivateIpv4(c.address))
+	return (privateLan ?? pool[0]).address
 }
 
 export const refreshDomiaLocalIp = (domia: DomiaType): DomiaType => {

@@ -7,6 +7,7 @@ import {
 	LLM_ENGINE_ENUM,
 	DEFAULT_LLM_CONCURRENCY,
 	DEFAULT_OLLAMA_HOST,
+	DEFAULT_OLLAMA_KEEP_ALIVE_MS,
 } from "@/db"
 import type {
 	ChatMessageType,
@@ -39,6 +40,8 @@ const ollamaUsage = (
 
 const clients = new Map<string, Ollama>()
 
+export const clearOllamaClients = (): void => clients.clear()
+
 const getClient = (domia: DomiaType): Ollama => {
 	const host = domia.llmModelConfig?.baseUrl?.trim() || DEFAULT_OLLAMA_HOST
 	const existing = clients.get(host)
@@ -48,7 +51,11 @@ const getClient = (domia: DomiaType): Ollama => {
 	return client
 }
 
-const KEEP_ALIVE = -1
+const resolveKeepAlive = (domia: DomiaType): number => {
+	const ms = domia.llmModelConfig?.keepAliveMs ?? DEFAULT_OLLAMA_KEEP_ALIVE_MS
+	return ms < 0 ? -1 : Math.round(ms / 1000)
+}
+
 const JSON_NUM_PREDICT = 192
 const TOOL_CALL_TEMPERATURE = 0.2
 const TOOL_CALL_NUM_PREDICT = 512
@@ -95,7 +102,7 @@ export const runOllama = async (
 			model: modelName,
 			prompt: promptContext,
 			stream: false,
-			keep_alive: KEEP_ALIVE,
+			keep_alive: resolveKeepAlive(domia),
 			options: resolveOptions(domia),
 		})
 		onUsage?.(ollamaUsage(response, domia.llmModelConfig?.contextWindow))
@@ -126,7 +133,7 @@ const runOllamaStream = async function* (
 			model: modelName,
 			prompt: promptContext,
 			stream: true,
-			keep_alive: KEEP_ALIVE,
+			keep_alive: resolveKeepAlive(domia),
 			options: resolveOptions(domia),
 		})
 		abortStream = () => stream.abort()
@@ -169,7 +176,7 @@ const runOllamaJson = async (
 			model: modelName,
 			prompt: promptContext,
 			stream: true,
-			keep_alive: KEEP_ALIVE,
+			keep_alive: resolveKeepAlive(domia),
 			format: "json",
 			options: { ...resolveOptions(domia), num_predict: JSON_NUM_PREDICT },
 		})
@@ -246,7 +253,7 @@ const runOllamaWithTools = async (
 			messages: toOllamaMessages(messages),
 			tools: toOllamaTools(tools),
 			stream: false,
-			keep_alive: KEEP_ALIVE,
+			keep_alive: resolveKeepAlive(domia),
 			options: {
 				...resolveOptions(domia),
 				temperature: TOOL_CALL_TEMPERATURE,
@@ -294,7 +301,7 @@ const runOllamaReplyStreamOrTools = async (
 			messages: toOllamaMessages(messages),
 			tools: toOllamaTools(tools),
 			stream: true,
-			keep_alive: KEEP_ALIVE,
+			keep_alive: resolveKeepAlive(domia),
 			options: {
 				...resolveOptions(domia),
 				temperature: TOOL_CALL_TEMPERATURE,
@@ -373,7 +380,7 @@ const runOllamaIntent = async (
 			model: modelName,
 			prompt,
 			stream: false,
-			keep_alive: KEEP_ALIVE,
+			keep_alive: resolveKeepAlive(domia),
 			format: "json",
 			options: { temperature: 0, num_predict: INTENT_NUM_PREDICT },
 		})
@@ -389,6 +396,7 @@ const runOllamaIntent = async (
 }
 
 const warmupModel = async (
+	domia: DomiaType,
 	client: Ollama,
 	modelName: string,
 ): Promise<void> => {
@@ -396,7 +404,7 @@ const warmupModel = async (
 		model: modelName,
 		prompt: "Hi",
 		stream: false,
-		keep_alive: KEEP_ALIVE,
+		keep_alive: resolveKeepAlive(domia),
 		options: { num_predict: 1 },
 	})
 }
@@ -410,7 +418,7 @@ const warmupOllama = async (domia: DomiaType): Promise<void> => {
 		(m): m is string => Boolean(m),
 	)
 	for (const model of models) {
-		await warmupModel(client, model)
+		await warmupModel(domia, client, model)
 	}
 }
 

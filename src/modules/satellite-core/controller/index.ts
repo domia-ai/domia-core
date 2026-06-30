@@ -85,6 +85,7 @@ export const createSatelliteSession = (
 	let busy = false
 	let activeInteractionId: string | null = null
 	let registeredKey: string | null = null
+	const connectionId = generateUuid()
 
 	const urlPlayback = !!transport.playAudioUrl
 	const serverEndpointing = !!transport.serverEndpointing
@@ -234,11 +235,11 @@ export const createSatelliteSession = (
 				if (result.ttsFilePath) {
 					registerAudioForServing(interactionId, result.ttsFilePath)
 				}
-				if (getAudioFilePath(interactionId)) {
-					transport.playAudioUrl?.(
-						buildAudioUrl(identity, interactionId),
-						interactionId,
-					)
+				const audioUrl = getAudioFilePath(interactionId)
+					? buildAudioUrl(identity, interactionId)
+					: null
+				if (audioUrl) {
+					transport.playAudioUrl?.(audioUrl, interactionId)
 					served = true
 				}
 			} else if (framesSent === 0 && result.ttsFilePath) {
@@ -312,7 +313,16 @@ export const createSatelliteSession = (
 			registeredKey = identity.domiaKey
 			if (announceFn) registerSatelliteAnnouncer(registeredKey, announceFn)
 			else registerSatelliteSink(registeredKey, connectionSink)
-			setSatellitePresence(registeredKey, satelliteId, protocol)
+			setSatellitePresence(registeredKey, satelliteId, protocol, {
+				capabilities: {
+					canHear: true,
+					canSpeak: true,
+					canAnnounce: true,
+					canIntercom: !announceFn,
+					canFollowUp: protocol === "esphome",
+				},
+				connectionId,
+			})
 			updateSatelliteMeta(registeredKey, satelliteId, protocol, { sampleRate })
 			satelliteGatewayLogger.info("🛰️ satellite connected", {
 				satelliteId,
@@ -418,7 +428,7 @@ export const createSatelliteSession = (
 				void stopIntercomTo(registeredKey)
 				unregisterSatelliteSink(registeredKey, connectionSink)
 				if (announceFn) unregisterSatelliteAnnouncer(registeredKey, announceFn)
-				clearSatellitePresence(registeredKey, satelliteId)
+				clearSatellitePresence(registeredKey, satelliteId, connectionId)
 			}
 			satelliteGatewayLogger.info("🛰️ satellite disconnected", { satelliteId })
 		},

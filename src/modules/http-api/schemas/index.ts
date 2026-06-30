@@ -47,6 +47,13 @@ export const postVoiceBodySchema = z
 		message: "Body must include a non-empty 'filePath' or 'audioBase64'.",
 	})
 
+export const postAnnounceAudioBodySchema = z.object({
+	domiaKey: z.string().trim().min(1).optional(),
+	audioBase64: z.string().min(1),
+	mode: z.enum(["voice", "transcribe"]).optional().default("voice"),
+	broadcastId: z.string().trim().min(1).optional(),
+})
+
 export const postSpeakBodySchema = z.object({
 	domiaKey: z.string().trim().min(1).optional(),
 	broadcast: z.boolean().optional().default(false),
@@ -55,6 +62,7 @@ export const postSpeakBodySchema = z.object({
 		.string()
 		.min(1, "Body must include a non-empty 'text' string.")
 		.trim(),
+	broadcastId: z.string().trim().min(1).optional(),
 })
 
 export const postIntercomBodySchema = z.object({
@@ -73,5 +81,5 @@ export const getSyncQuerySchema = z.object({
 })
 
 export const getAudioQuerySchema = z.object({
-	kind: z.enum(["input", "tts"]).default("tts"),
+	kind: z.enum(["input", "tts", "announce"]).default("tts"),
 })

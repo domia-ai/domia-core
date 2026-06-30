@@ -65,6 +65,7 @@ export type TtsWorkerEngineConfigType = {
 	numThreads: number
 	provider: string
 	maxNumSentences: number
+	espeakDataDir: string | null
 }
 
 export type TtsWorkerJobType = {

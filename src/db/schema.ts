@@ -67,6 +67,7 @@ import {
 	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
 	DEFAULT_GRPC_STREAM_DEADLINE_MS,
 	DEFAULT_PEER_STALE_AFTER_MS,
+	DEFAULT_CONFIG_RELOAD_DRAIN_MS,
 	DEFAULT_STT_POOL_EXECUTION_TIMEOUT_MS,
 	DEFAULT_TTS_POOL_EXECUTION_TIMEOUT_MS,
 	DEFAULT_MQTT_HOST,
@@ -116,6 +117,7 @@ import {
 	INTERACTION_STATUS_ENUM,
 	DEFAULT_LLM_MODEL_NAME,
 	DEFAULT_OLLAMA_HOST,
+	DEFAULT_OLLAMA_KEEP_ALIVE_MS,
 	DEFAULT_TTS_VOICE_NAME,
 	DEFAULT_TTS_MODEL_PATH,
 	DEFAULT_TTS_NUM_THREADS,
@@ -170,6 +172,10 @@ import {
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
 	DEFAULT_SKILL_TIMEOUT_MS,
 	DEFAULT_SKILLS_ENGINE,
+	ANNOUNCEMENT_KIND_ENUM,
+	ANNOUNCEMENT_KIND_ENUM_VALUES,
+	ANNOUNCEMENT_DELIVERY_ENUM,
+	ANNOUNCEMENT_DELIVERY_ENUM_VALUES,
 } from "./constants"
 
 export const DEFAULT_TIMESTAMP = sql`CURRENT_TIMESTAMP`
@@ -227,6 +233,10 @@ export const domia = sqliteTable("domia", {
 	peerStaleAfterMs: integer("peer_stale_after_ms")
 		.notNull()
 		.default(DEFAULT_PEER_STALE_AFTER_MS),
+	configRevision: integer("config_revision").notNull().default(0),
+	configReloadDrainMs: integer("config_reload_drain_ms")
+		.notNull()
+		.default(DEFAULT_CONFIG_RELOAD_DRAIN_MS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -567,6 +577,9 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	llmConcurrency: integer("llm_concurrency")
 		.notNull()
 		.default(DEFAULT_LLM_CONCURRENCY),
+	keepAliveMs: integer("keep_alive_ms")
+		.notNull()
+		.default(DEFAULT_OLLAMA_KEEP_ALIVE_MS),
 	streamUsage: integer("stream_usage", { mode: "boolean" })
 		.notNull()
 		.default(true),
@@ -610,6 +623,7 @@ export const ttsConfig = sqliteTable("tts_config", {
 	voiceName: text("voice_name").notNull().default(DEFAULT_TTS_VOICE_NAME),
 	language: text("language").notNull().default(DEFAULT_LANGUAGE),
 	modelPath: text("model_path").notNull().default(DEFAULT_TTS_MODEL_PATH),
+	espeakNgDataPath: text("espeak_ng_data_path"),
 	quantization: text("quantization"),
 	pitch: real("pitch").notNull().default(1),
 	speed: real("speed").notNull().default(DEFAULT_TTS_SPEED),
@@ -864,6 +878,26 @@ export const interactionTrace = sqliteTable("interaction_trace", {
 		enum: SATELLITE_PROTOCOL_ENUM_VALUES,
 	}),
 	domiaSnapshot: text("domia_snapshot", { mode: "json" }),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+})
+
+export const announcement = sqliteTable("announcement", {
+	id: text("id").primaryKey(),
+	domiaId: text("domia_id")
+		.notNull()
+		.references(() => domia.id),
+	broadcastId: text("broadcast_id").notNull(),
+	text: text("text").notNull().default(""),
+	kind: text("kind", { enum: ANNOUNCEMENT_KIND_ENUM_VALUES })
+		.notNull()
+		.default(ANNOUNCEMENT_KIND_ENUM.TEXT),
+	delivery: text("delivery", { enum: ANNOUNCEMENT_DELIVERY_ENUM_VALUES })
+		.notNull()
+		.default(ANNOUNCEMENT_DELIVERY_ENUM.DOMIA_VOICE),
+	target: text("target"),
+	delivered: integer("delivered", { mode: "boolean" }).notNull().default(false),
+	audioPath: text("audio_path"),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })

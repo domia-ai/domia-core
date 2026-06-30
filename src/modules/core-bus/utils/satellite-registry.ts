@@ -82,10 +82,6 @@ export const unregisterSatelliteSink = (
 	if (set.size === 0) sinks.delete(domiaKey)
 }
 
-export const getSatelliteDomiaKeys = (): string[] => [
-	...new Set([...sinks.keys(), ...announcers.keys()]),
-]
-
 export const getSatelliteSinkFor = (
 	domiaKey: string,
 ): StreamingSinkType | null => {

@@ -3,6 +3,7 @@ import fs from "fs"
 import path from "path"
 
 import { type DomiaType } from "@/modules/core"
+import { getIntercom } from "@/modules/core-bus/utils/intercom-registry"
 import {
 	audioCaptureLogger,
 	domiaError,
@@ -137,6 +138,8 @@ export const runKws = async (
 	const targetBytes = CHUNK_SAMPLES * 2
 
 	recProc.stdout.on("data", (data: Buffer) => {
+		const intercom = getIntercom(domia.domiaKey)
+		if (intercom) void intercom.sink.write(data)
 		leftover = Buffer.concat([leftover, data])
 		while (leftover.length >= targetBytes) {
 			const chunk = leftover.subarray(0, targetBytes)
@@ -176,4 +179,14 @@ export const runKws = async (
 	recProc.on("close", (code) => {
 		audioCaptureLogger.info(`[kws] rec process terminated code=${code}`)
 	})
+
+	return {
+		stop: () => {
+			try {
+				recProc.kill()
+			} catch {
+				/* already gone */
+			}
+		},
+	}
 }

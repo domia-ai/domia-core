@@ -29,3 +29,12 @@ export const getSttPool = (
 	}
 	return sttPool
 }
+
+export const sttPoolBusy = (): boolean =>
+	sttPool !== null && (sttPool.busyWorkers() > 0 || sttPool.queuedJobs() > 0)
+
+export const reloadSttPool = async (): Promise<void> => {
+	const old = sttPool
+	sttPool = null
+	if (old) await old.shutdown()
+}

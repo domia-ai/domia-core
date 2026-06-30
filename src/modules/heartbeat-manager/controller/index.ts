@@ -7,7 +7,10 @@ import { heartbeatLogger } from "@/utils"
 import { env } from "@/config"
 import { isHostedIdentity, getDomia, getNodeId } from "@/modules/core"
 import { getLocalIp, upsertDomiaFromNetwork } from "@/modules/network-sync"
-import { getLastInteractionAt } from "@/modules/session-manager"
+import {
+	getLastInteractionAt,
+	getLastAnnouncementAt,
+} from "@/modules/session-manager"
 import { getLastEmotionEventAt } from "@/modules/emotion-engine"
 import { getLastFactAt } from "@/modules/memory"
 
@@ -17,30 +20,32 @@ export const setLocalMqttClient = (client: MqttClient | null): void => {
 	localMqttClient = client
 }
 
+export const getLocalMqttClient = (): MqttClient | null => localMqttClient
+
 export const publishIdentityState = async (domiaKey: string): Promise<void> => {
 	const domia = await getDomia(domiaKey).catch(() => null)
 	if (!domia) return
-	await sendHeartbeat({ domia, mqttClient: localMqttClient })
+	await sendHeartbeat({ domia })
 }
 
-export const sendHeartbeat = async ({
-	domia,
-	mqttClient,
-}: SendHeartbeatArgsType) => {
+export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 	try {
 		const domiaKey = domia?.domiaKey
 		const topic = `${env.MQTT_TOPIC_ROOT}/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.HEARTBEAT}`
 		heartbeatLogger.debug(`💓 Heartbeat sent for ${domiaKey}`)
+		const client = localMqttClient
 		const localIp = getLocalIp()
 		const grpcPort = Number(env.GRPC_PORT)
 		const httpPort = Number(env.HTTP_SERVER_PORT)
-		const [interactionAt, emotionAt, factAt] = await Promise.all([
-			getLastInteractionAt(domia.id),
-			getLastEmotionEventAt(domia.id),
-			getLastFactAt(domia.id),
-		])
-		const stamps = [interactionAt, emotionAt, factAt].filter((s): s is string =>
-			Boolean(s),
+		const [interactionAt, emotionAt, factAt, announcementAt] =
+			await Promise.all([
+				getLastInteractionAt(domia.id),
+				getLastEmotionEventAt(domia.id),
+				getLastFactAt(domia.id),
+				getLastAnnouncementAt(domia.id),
+			])
+		const stamps = [interactionAt, emotionAt, factAt, announcementAt].filter(
+			(s): s is string => Boolean(s),
 		)
 		const lastInteractionAt = stamps.length
 			? stamps.reduce((a, b) => (a > b ? a : b))
@@ -63,7 +68,7 @@ export const sendHeartbeat = async ({
 				...p,
 				auth: p.auth?.kind ? { kind: p.auth.kind } : null,
 			}))
-		mqttClient?.publish(topic, JSON.stringify(payload))
+		client?.publish(topic, JSON.stringify(payload))
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })
 	}

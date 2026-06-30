@@ -18,4 +18,6 @@ export type VadTuningType = {
 	threshold: number
 	minSilenceS: number
 	endOfSpeechMs: number
+	numThreads: number
+	provider: string
 }

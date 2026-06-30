@@ -16,6 +16,7 @@ import {
 	DEFAULT_GRPC_STREAM_IDLE_TIMEOUT_MS,
 	DEFAULT_GRPC_STREAM_DEADLINE_MS,
 	DEFAULT_PEER_STALE_AFTER_MS,
+	DEFAULT_CONFIG_RELOAD_DRAIN_MS,
 	DEFAULT_IS_HOSTED,
 	type InsertSatelliteConfigType,
 	type SelectSatelliteConfigType,
@@ -75,6 +76,9 @@ export const transformDomia = (
 		grpcStreamDeadlineMs:
 			domia?.grpcStreamDeadlineMs ?? DEFAULT_GRPC_STREAM_DEADLINE_MS,
 		peerStaleAfterMs: domia?.peerStaleAfterMs ?? DEFAULT_PEER_STALE_AFTER_MS,
+		configRevision: domia?.configRevision ?? 0,
+		configReloadDrainMs:
+			domia?.configReloadDrainMs ?? DEFAULT_CONFIG_RELOAD_DRAIN_MS,
 		createdAt: domia?.createdAt,
 		updatedAt: domia?.updatedAt,
 		runtimeCapabilities,

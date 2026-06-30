@@ -16,6 +16,7 @@ import {
 	tryBeginRecording,
 	endRecording,
 	abortActiveTurn,
+	getIntercom,
 } from "../utils"
 import { runSpeculativeTurn } from "./speculative-turn"
 import type { CoreBusContextType } from "../types"
@@ -26,6 +27,11 @@ export const handleWakeDetected = async (
 	const { domia, features } = ctx
 	const { capabilities, stt, canStreamStt } = features
 	const domiaId = domia.id
+
+	if (getIntercom(domia.domiaKey)) {
+		domiaBusLogger.info(`🎙️ wake ignored — intercom active`, { domiaId })
+		return
+	}
 
 	domiaBusLogger.info(`🎧 WAKE_DETECTED received`, { domiaId })
 	if (!capabilities.record) return

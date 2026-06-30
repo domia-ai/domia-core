@@ -1,4 +1,8 @@
-import { subscribeToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
+import {
+	subscribeToDomiaBus,
+	clearDomiaBusSubscribers,
+	DOMIA_EVENT_BUS_ENUM,
+} from "@/buses"
 import { domiaBusLogger } from "@/utils"
 import { resolveLiveDomia } from "@/setups/live-domia"
 import {
@@ -96,4 +100,9 @@ export const setupCoreBus = ({
 		DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED,
 		onEvent(handleInteractionFailed),
 	)
+}
+
+export const teardownCoreBus = (domiaId: string): void => {
+	for (const event of Object.values(DOMIA_EVENT_BUS_ENUM))
+		clearDomiaBusSubscribers(domiaId, event)
 }

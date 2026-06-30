@@ -22,6 +22,8 @@ export const baseDomia: SelectDomiaType = {
 	grpcStreamIdleTimeoutMs: 15_000,
 	grpcStreamDeadlineMs: 60_000,
 	peerStaleAfterMs: 90_000,
+	configRevision: 0,
+	configReloadDrainMs: 5_000,
 	localIp: `192.168.${faker.number.int(255)}.${faker.number.int({ min: 1, max: 254 })}`,
 	grpcPort: 5052,
 	createdAt: now(),

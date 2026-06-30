@@ -1,10 +1,12 @@
 import { existsSync, readdirSync } from "fs"
 import { resolve } from "path"
-import { startCapture } from "@/modules/audio-capture"
+import { startCapture, type CaptureHandleType } from "@/modules/audio-capture"
 import { DOMIA_EVENT_BUS_ENUM, publishToDomiaBus } from "@/buses"
 import { type DomiaType } from "@/modules/core"
 import { setBootStatus } from "@/modules/runtime-control"
 import { appLogger } from "@/utils"
+
+const voiceHandles = new Map<string, CaptureHandleType>()
 
 const dirInstalled = (path: string | null | undefined): boolean => {
 	if (!path) return false
@@ -36,8 +38,10 @@ const missingVoiceResources = (domia: DomiaType): string[] => {
 	return missing
 }
 
-const startVoiceListener = async (domia: DomiaType) => {
-	await startCapture(domia, {
+const startVoiceListener = async (
+	domia: DomiaType,
+): Promise<CaptureHandleType> =>
+	startCapture(domia, {
 		onWake: () =>
 			publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED),
 		onRecordingEnd: (filePath) =>
@@ -48,7 +52,6 @@ const startVoiceListener = async (domia: DomiaType) => {
 		onError: (error) =>
 			publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR, { error }),
 	})
-}
 
 export const setupVoiceListener = async (
 	domia: DomiaType,
@@ -73,7 +76,18 @@ export const setupVoiceListener = async (
 		return
 	}
 
-	await startVoiceListener(domia)
+	const handle = await startVoiceListener(domia)
+	voiceHandles.set(domia.domiaKey, handle)
 	appLogger.info(`🤖 Running voice listener: ${domia.name}`)
 	setBootStatus({ missingBinaries, voice: "ok", voiceMissing: [] })
+}
+
+export const stopVoiceListener = (domiaKey: string): void => {
+	voiceHandles.get(domiaKey)?.stop()
+	voiceHandles.delete(domiaKey)
+}
+
+export const reloadVoiceListener = async (domia: DomiaType): Promise<void> => {
+	stopVoiceListener(domia.domiaKey)
+	await setupVoiceListener(domia)
 }

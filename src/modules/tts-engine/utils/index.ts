@@ -73,3 +73,12 @@ export const getTtsPool = (
 	}
 	return ttsPool
 }
+
+export const ttsPoolBusy = (): boolean =>
+	ttsPool !== null && (ttsPool.busyWorkers() > 0 || ttsPool.queuedJobs() > 0)
+
+export const reloadTtsPool = async (): Promise<void> => {
+	const old = ttsPool
+	ttsPool = null
+	if (old) await old.shutdown()
+}

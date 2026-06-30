@@ -8,47 +8,47 @@ import { connectEsphomeSatellite } from "@/modules/satellite-protocols/esphome"
 import { connectWyomingSatellite } from "@/modules/satellite-protocols/wyoming"
 import { SATELLITE_PROTOCOL_ENUM } from "@/db"
 
-export const setupSatelliteClients = async ({
-	fallback,
-}: {
-	fallback: DomiaType
-}): Promise<void> => {
+type SatelliteHandleType = { close: () => void; domiaId: string }
+
+const satelliteHandles = new Map<string, SatelliteHandleType>()
+
+const connectBindings = async (
+	fallback: DomiaType,
+	filter?: (domiaId: string) => boolean,
+): Promise<void> => {
 	const rows = await getActiveSatellites()
 	const bindings = rows.filter(
-		(row) => row.domia.isActive && isHostedIdentity(row.domia.domiaKey),
+		(row) =>
+			row.domia.isActive &&
+			isHostedIdentity(row.domia.domiaKey) &&
+			(!filter || filter(row.domiaId)),
 	)
-	if (bindings.length === 0) return
-
-	const handles: { close: () => void }[] = []
 	for (const row of bindings) {
+		let close: (() => void) | null = null
 		switch (row.protocol) {
 			case SATELLITE_PROTOCOL_ENUM.ESPHOME:
-				handles.push(
-					connectEsphomeSatellite(
-						{
-							satelliteId: row.satelliteId,
-							name: row.name,
-							host: row.host,
-							port: row.port,
-							encryptionKey: row.encryptionKey,
-							desiredWakeWords: row.desiredWakeWords ?? [],
-							desiredNumbers: row.desiredNumbers ?? {},
-							followUpEnabled: row.followUpEnabled ?? false,
-						},
-						fallback,
-						row.domia.domiaKey,
-					),
-				)
+				close = connectEsphomeSatellite(
+					{
+						satelliteId: row.satelliteId,
+						name: row.name,
+						host: row.host,
+						port: row.port,
+						encryptionKey: row.encryptionKey,
+						desiredWakeWords: row.desiredWakeWords ?? [],
+						desiredNumbers: row.desiredNumbers ?? {},
+						followUpEnabled: row.followUpEnabled ?? false,
+					},
+					fallback,
+					row.domia.domiaKey,
+				).close
 				break
 			case SATELLITE_PROTOCOL_ENUM.WYOMING:
-				handles.push(
-					connectWyomingSatellite(
-						`${row.host}:${row.port}`,
-						fallback,
-						row.domia.domiaKey,
-						row.satelliteId,
-					),
-				)
+				close = connectWyomingSatellite(
+					`${row.host}:${row.port}`,
+					fallback,
+					row.domia.domiaKey,
+					row.satelliteId,
+				).close
 				break
 			case SATELLITE_PROTOCOL_ENUM.NATIVE:
 				break
@@ -58,16 +58,38 @@ export const setupSatelliteClients = async ({
 					protocol: row.protocol,
 				})
 		}
+		if (close)
+			satelliteHandles.set(row.satelliteId, { close, domiaId: row.domiaId })
 	}
-
 	satelliteGatewayLogger.success(
-		`🛰️ satellite clients → ${handles.length} connected`,
+		`🛰️ satellite clients → ${satelliteHandles.size} connected`,
 	)
+}
 
-	const cleanup = (): void => {
-		for (const handle of handles) handle.close()
+const closeSatellites = (filter?: (domiaId: string) => boolean): void => {
+	for (const [satelliteId, handle] of satelliteHandles) {
+		if (filter && !filter(handle.domiaId)) continue
+		handle.close()
+		satelliteHandles.delete(satelliteId)
 	}
-	process.once("SIGINT", cleanup)
-	process.once("SIGTERM", cleanup)
-	process.once("exit", cleanup)
+}
+
+export const setupSatelliteClients = async ({
+	fallback,
+}: {
+	fallback: DomiaType
+}): Promise<void> => {
+	await connectBindings(fallback)
+	const closeAll = (): void => closeSatellites()
+	process.once("SIGINT", closeAll)
+	process.once("SIGTERM", closeAll)
+	process.once("exit", closeAll)
+}
+
+export const reloadSatelliteClientsForDomia = async (
+	domia: DomiaType,
+): Promise<void> => {
+	const sameDomia = (domiaId: string): boolean => domiaId === domia.id
+	closeSatellites(sameDomia)
+	await connectBindings(domia, sameDomia)
 }

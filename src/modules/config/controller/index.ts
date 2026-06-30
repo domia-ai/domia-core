@@ -3,7 +3,7 @@ import { resolve } from "path"
 import { dbClient } from "@/db"
 import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
-import { getBootStatus, requestRestart } from "@/modules/runtime-control"
+import { getBootStatus } from "@/modules/runtime-control"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { resolveSkillAdapter } from "@/modules/skill-engine"
 import { configEngineLogger } from "@/utils"
@@ -250,19 +250,11 @@ export const persistConfig = async (
 			dbAdapter.replaceSkillProviders(domia.id, bundle.skillProviders, tx)
 		if (bundle.delegations)
 			dbAdapter.replaceDelegations(domia.id, bundle.delegations, tx)
+		dbAdapter.bumpConfigRevision(domia.id, tx).run()
 	})
 	invalidateOwnDomia(domia.domiaKey)
 	const fresh = (await getOwnDomia(domia.domiaKey)) ?? domia
 	setGrpcClientTunables(fresh)
 	configEngineLogger.info("📥 config persisted", { domiaId: domia.id })
 	return { config: serializeConfig(fresh) }
-}
-
-export const importConfigAndRestart = async (
-	domia: DomiaType,
-	input: unknown,
-): Promise<{ config: ConfigSnapshotType }> => {
-	const result = await persistConfig(domia, input)
-	requestRestart()
-	return result
 }

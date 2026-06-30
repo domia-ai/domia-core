@@ -1,4 +1,4 @@
-export { getSttPool } from "./pool"
+export { getSttPool, reloadSttPool, sttPoolBusy } from "./pool"
 export {
 	runSttPooled,
 	runSttStreamPooled,

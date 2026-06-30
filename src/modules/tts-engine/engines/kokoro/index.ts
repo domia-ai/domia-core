@@ -72,6 +72,7 @@ const engineConfigOf = (
 	numThreads: ttsConfig.numThreads,
 	provider: ttsConfig.provider,
 	maxNumSentences: ttsConfig.maxNumSentences,
+	espeakDataDir: ttsConfig.espeakNgDataPath ?? null,
 })
 
 const jobOf = (

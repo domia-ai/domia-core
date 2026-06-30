@@ -35,6 +35,7 @@ export const baseTtsConfig = (domiaId?: string): SelectTtsConfigType => {
 		voiceName: DEFAULT_TTS_VOICE_NAME,
 		language: DEFAULT_LANGUAGE,
 		modelPath: DEFAULT_TTS_MODEL_PATH,
+		espeakNgDataPath: null,
 		quantization: null,
 		pitch: faker.number.float({ min: 0.8, max: 1.2 }),
 		speed: DEFAULT_TTS_SPEED,

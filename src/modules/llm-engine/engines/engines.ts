@@ -1,8 +1,13 @@
 import { type LlmEngineEnumType, LLM_ENGINE_ENUM } from "@/db"
 
-import { ollamaEngine } from "./ollama"
-import { openAiCompatibleEngine } from "./openai-compatible"
+import { ollamaEngine, clearOllamaClients } from "./ollama"
+import { openAiCompatibleEngine, clearOpenAiClients } from "./openai-compatible"
 import type { LlmEngineAdapterType } from "../types"
+
+export const clearLlmClientCache = (): void => {
+	clearOllamaClients()
+	clearOpenAiClients()
+}
 
 export const llmEngineRegistry: Record<
 	LlmEngineEnumType,

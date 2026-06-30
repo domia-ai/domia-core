@@ -14,6 +14,7 @@ import {
 	setupGrpcServer,
 	setupSatelliteClients,
 	bootHostedIdentities,
+	setupConfigReloaders,
 } from "./setups"
 
 process.on("uncaughtException", (err) => {
@@ -33,6 +34,7 @@ async function main() {
 	const ownDomia = await initialize(undefined, { isHosted: true })
 	setGrpcClientTunables(ownDomia)
 	setupTempSweeper()
+	setupConfigReloaders()
 
 	if (!ownDomia?.runtimeCapabilities) {
 		appLogger.error(getErrorMessage(CORE_ERRORS.MISSING_CAPABILITIES))
@@ -52,9 +54,9 @@ async function main() {
 	})
 	setLocalMqttClient(localMqttClient)
 
-	await bootHostedIdentities({ mqttClient: localMqttClient })
+	await bootHostedIdentities()
 
-	setupHttpServer({ domia: ownDomia, mqttClient: localMqttClient })
+	setupHttpServer({ domia: ownDomia })
 	await setupGrpcServer({ domia: ownDomia, capabilities: runtimeCapabilities })
 	await setupSatelliteClients({ fallback: ownDomia })
 

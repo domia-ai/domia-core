@@ -33,7 +33,8 @@ const buildConfig = (modelPath: string, tuning: VadTuningType) => {
 		},
 		sampleRate: SAMPLE_RATE,
 		debug: false,
-		numThreads: 1,
+		numThreads: tuning.numThreads,
+		provider: tuning.provider,
 	}
 }
 
