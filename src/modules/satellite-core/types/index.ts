@@ -25,6 +25,7 @@ export type SatelliteTransportType = {
 	playAudioUrl?: (url: string, interactionId: string) => void
 	announce?: (url: string) => void
 	finishTurn?: () => void
+	followUp?: boolean
 }
 
 export type SatelliteSessionDepsType = {

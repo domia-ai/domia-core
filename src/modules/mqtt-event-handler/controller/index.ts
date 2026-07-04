@@ -3,6 +3,7 @@ import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
 import { type DomiaType, invalidateOwnDomia, getOwnDomia } from "@/modules/core"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
+import { markPeerOfflineByNodeId } from "@/modules/network-sync"
 
 export const isMqttEvent = (value: string): value is MQTT_EVENT_ENUM => {
 	return Object.values(MQTT_EVENT_ENUM).includes(value as MQTT_EVENT_ENUM)
@@ -47,6 +48,12 @@ export const handleMqttMessage = ({
 					.then((fresh) => fresh && setGrpcClientTunables(fresh))
 					.catch(() => undefined)
 				logger.info(`🔄 config cache invalidated via MQTT [${domiaKey}]`)
+				break
+			}
+			case MQTT_EVENT_ENUM.OFFLINE: {
+				const nodeId =
+					typeof payload?.nodeId === "string" ? payload.nodeId : domiaKey
+				if (nodeId) markPeerOfflineByNodeId(nodeId)
 				break
 			}
 			default:

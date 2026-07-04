@@ -1,7 +1,11 @@
 import { DEFAULT_SKILL_REFRESH_MS } from "@/db"
 import { skillEngineLogger } from "@/utils"
 import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
-import { connectAll, listTools, disconnectAll } from "@/modules/skill-engine"
+import {
+	connectAll,
+	listTools,
+	disconnectProviders,
+} from "@/modules/skill-engine"
 
 export type McpSetupHandleType = {
 	stop: () => Promise<void>
@@ -25,23 +29,24 @@ export const setupSkills = async (
 	})
 	await connectAll(domia)
 	const tools = await listTools(domia)
-	invalidateOwnDomia()
+	invalidateOwnDomia(domia.domiaKey)
 	skillEngineLogger.info("🧩 Skill tools available", { count: tools.length })
 
 	const interval = setInterval(() => {
 		void connectAll(domia)
 			.then(() => listTools(domia))
-			.then(() => invalidateOwnDomia())
+			.then(() => invalidateOwnDomia(domia.domiaKey))
 			.catch((err) =>
 				skillEngineLogger.warn("skill refresh/reconnect failed", { err }),
 			)
 	}, DEFAULT_SKILL_REFRESH_MS)
 	if (typeof interval.unref === "function") interval.unref()
 
+	const providerIds = servers.map((s) => s.id)
 	const handle: McpSetupHandleType = {
 		stop: async () => {
 			clearInterval(interval)
-			await disconnectAll()
+			await disconnectProviders(providerIds)
 		},
 	}
 	skillHandles.set(domia.domiaKey, handle)

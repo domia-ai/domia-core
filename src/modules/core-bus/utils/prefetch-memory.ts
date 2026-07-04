@@ -16,7 +16,9 @@ const loadMemoryBundle = async (
 	interactionId: string,
 ): Promise<MemoryBundleType> => {
 	const [recentTurns, knownFacts, userMoodTrend] = await Promise.all([
-		getRecentTurns(domia, interactionId) as Promise<RecentTurnType[]>,
+		domia.moduleSettings?.memoryEngine !== false
+			? (getRecentTurns(domia, interactionId) as Promise<RecentTurnType[]>)
+			: Promise.resolve([] as RecentTurnType[]),
 		domia.moduleSettings?.factRecall !== false
 			? getFactStrings(domia)
 			: Promise.resolve([] as string[]),

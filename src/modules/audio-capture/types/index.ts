@@ -32,6 +32,13 @@ export type SpeculativeCaptureResultType = {
 	filePathPromise: Promise<string>
 	speechEndAt: () => number | null
 	stop: () => void
+	setDebounceMs?: (ms: number) => void
+}
+
+export type FollowUpSpeculativeCaptureType = {
+	speechStarted: Promise<boolean>
+	attach: (hooks: SpeculativeCaptureHooksType) => SpeculativeCaptureResultType
+	stop: () => void
 }
 
 export type KwsPathsType = {
@@ -57,4 +64,23 @@ export type CaptureFormatType = {
 	sampleRate: number
 	channels: number
 	bitsPerSample: number
+}
+
+export type MicTapListenerType = (chunk: Buffer) => void
+
+export type MicTapRingEntryType = { at: number; chunk: Buffer }
+
+export type MicTapStateType = {
+	listeners: Set<MicTapListenerType>
+	ring: MicTapRingEntryType[]
+	ringBytes: number
+	lastChunkAt: number
+	format: CaptureFormatType | null
+}
+
+export type MicSourceType = {
+	onData: (handler: (chunk: Buffer) => void) => void
+	stop: (reason: string) => void
+	closed: Promise<void>
+	viaTap: boolean
 }

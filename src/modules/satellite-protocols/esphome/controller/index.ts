@@ -60,6 +60,8 @@ export const connectEsphomeSatellite = (
 	let lastTranscriptChars = 0
 	const shouldFollowUp = () => followUpEnabled && lastTranscriptChars > 0
 	let numberEntities: SatelliteNumberEntityType[] = []
+	let mediaPlayerId: string | null = null
+	let desiredVolume = binding.desiredVolume ?? null
 	const idByKey = new Map<number, string>()
 	const publishNumbers = () =>
 		updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
@@ -68,8 +70,20 @@ export const connectEsphomeSatellite = (
 
 	const open = async (): Promise<void> => {
 		if (scheduler.isClosed()) return
-		const { EspHomeClient, VoiceAssistantSubscribeFlag, VoiceAssistantEvent } =
-			esphomeOverride ?? (await getEsphome())
+		const {
+			EspHomeClient,
+			VoiceAssistantSubscribeFlag,
+			VoiceAssistantEvent,
+			VoiceAssistantTimerEvent,
+			MediaPlayerCommand,
+		} = esphomeOverride ?? (await getEsphome())
+
+		const TIMER_EVENT_TO_ESPHOME = {
+			started: VoiceAssistantTimerEvent.STARTED,
+			updated: VoiceAssistantTimerEvent.UPDATED,
+			cancelled: VoiceAssistantTimerEvent.CANCELLED,
+			finished: VoiceAssistantTimerEvent.FINISHED,
+		}
 		if (scheduler.isClosed()) return
 
 		const phaseForStatus: Record<PresenceStatusType, number> = {
@@ -117,6 +131,7 @@ export const connectEsphomeSatellite = (
 				// RUN_END cancels an in-flight startConversation re-arm; skip on follow-up
 				if (!shouldFollowUp()) event(VoiceAssistantEvent.RUN_END)
 			},
+			followUp: true,
 		}
 
 		const session = createSatelliteSession({
@@ -159,6 +174,24 @@ export const connectEsphomeSatellite = (
 						publishNumbers()
 					}
 				},
+				setVolume: (volume) => {
+					const clamped = Math.min(1, Math.max(0, volume))
+					desiredVolume = clamped
+					if (mediaPlayerId)
+						esp.sendMediaPlayerCommand(mediaPlayerId, { volume: clamped })
+					updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+						volume: clamped,
+					})
+				},
+				sendTimerEvent: (evt) =>
+					esp.sendVoiceAssistantTimerEvent({
+						eventType: TIMER_EVENT_TO_ESPHOME[evt.eventType],
+						timerId: evt.timerId,
+						name: evt.name,
+						totalSeconds: evt.totalSeconds,
+						secondsLeft: evt.secondsLeft,
+						isActive: evt.isActive,
+					}),
 				setFollowUp: (enabled) => {
 					followUpEnabled = enabled
 				},
@@ -196,7 +229,12 @@ export const connectEsphomeSatellite = (
 		})
 
 		esp.on("entities", () => {
-			const nums = esp.getEntitiesWithIds().filter(isNumberEntity)
+			const withIds = esp.getEntitiesWithIds()
+			const mp = withIds.find((e) => e.type === "media_player")
+			mediaPlayerId = mp?.id ?? null
+			if (mediaPlayerId && desiredVolume !== null)
+				esp.sendMediaPlayerCommand(mediaPlayerId, { volume: desiredVolume })
+			const nums = withIds.filter(isNumberEntity)
 			idByKey.clear()
 			numberEntities = nums.map((e) => {
 				idByKey.set(e.key, e.id)
@@ -227,6 +265,13 @@ export const connectEsphomeSatellite = (
 			publishNumbers()
 		})
 
+		esp.on("telemetry", (evt: { type?: string; volume?: number }) => {
+			if (evt.type !== "media_player" || typeof evt.volume !== "number") return
+			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+				volume: evt.volume,
+			})
+		})
+
 		esp.on("voiceAssistantAnnounceFinished", () => {
 			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
 				lastPlaybackAt: Date.now(),
@@ -236,6 +281,10 @@ export const connectEsphomeSatellite = (
 		esp.on("voiceAssistantRequest", (req: { start?: boolean }) => {
 			if (req.start) {
 				lastTranscriptChars = 0
+				if (mediaPlayerId)
+					esp.sendMediaPlayerCommand(mediaPlayerId, {
+						command: MediaPlayerCommand.STOP,
+					})
 				esp.sendVoiceAssistantResponse(0, false)
 				event(VoiceAssistantEvent.RUN_START)
 				setPresenceStatus(presenceKey, "listening")

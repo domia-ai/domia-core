@@ -7,6 +7,7 @@ import { getOwnDomia, isHostedIdentity } from "@/modules/core"
 import { speak as speakOnDomia } from "@/modules/core-bus"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
 import { closeAllChannels, setLocalService } from "@/modules/grpc-client"
+import { registerShutdownTask } from "@/setups/shutdown"
 import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
 import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
@@ -583,8 +584,7 @@ export const setupGrpcServer = async ({
 		closeAllChannels()
 		server = null
 	}
-	process.once("SIGINT", cleanup)
-	process.once("SIGTERM", cleanup)
+	registerShutdownTask("grpc-server", cleanup)
 	process.once("exit", () => {
 		void cleanup()
 	})

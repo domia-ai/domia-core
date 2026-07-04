@@ -11,13 +11,12 @@ import {
 } from "../constants"
 import type {
 	BuildPromptContextOptionsType,
+	EmotionEntryType,
 	PersonaContextType,
 	RecentTurnType,
 } from "../types"
 
 const EMOTION_NOISE_THRESHOLD = 0.2
-
-type EmotionEntry = [string, number]
 
 export const personaContextFromDomia = (
 	domia: DomiaType,
@@ -63,6 +62,7 @@ export const personaContextFromDomia = (
 					memoryEngine: ms.memoryEngine,
 					factCapture: ms.factCapture,
 					factRecall: ms.factRecall,
+					environmentTimeEnabled: ms.environmentTimeEnabled,
 				}
 			: null,
 		useCompactPrompt: domia?.llmModelConfig?.useCompactPrompt ?? false,
@@ -167,7 +167,7 @@ const behavioralGuidanceFor = (dominant: string): string => {
 const renderEmotionalState = (persona: PersonaContextType): string => {
 	const state = persona.emotionState
 	if (!state) return ""
-	const entries: EmotionEntry[] = [
+	const entries: EmotionEntryType[] = [
 		["joy", state.joy ?? 0],
 		["sadness", state.sadness ?? 0],
 		["anger", state.anger ?? 0],
@@ -218,6 +218,81 @@ const renderCharacter = (persona: PersonaContextType, name: string): string => {
 	}
 	if (parts.length === 0) return ""
 	return `${name} ${parts.join(", ")}.`
+}
+
+const NOW_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
+	weekday: "long",
+	year: "numeric",
+	month: "long",
+	day: "numeric",
+})
+
+const ONES_WORDS = [
+	"twelve",
+	"one",
+	"two",
+	"three",
+	"four",
+	"five",
+	"six",
+	"seven",
+	"eight",
+	"nine",
+	"ten",
+	"eleven",
+]
+
+const MINUTE_WORDS = [
+	"",
+	"one",
+	"two",
+	"three",
+	"four",
+	"five",
+	"six",
+	"seven",
+	"eight",
+	"nine",
+	"ten",
+	"eleven",
+	"twelve",
+	"thirteen",
+	"fourteen",
+	"fifteen",
+	"sixteen",
+	"seventeen",
+	"eighteen",
+	"nineteen",
+]
+
+const TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty"]
+
+const minuteToWords = (m: number): string => {
+	if (m < 20) return MINUTE_WORDS[m]
+	const tens = TENS_WORDS[Math.floor(m / 10)]
+	const ones = m % 10
+	return ones === 0 ? tens : `${tens}-${MINUTE_WORDS[ones]}`
+}
+
+const spokenTime = (d: Date): string => {
+	const hour = ONES_WORDS[d.getHours() % 12]
+	const minutes = d.getMinutes()
+	const period =
+		d.getHours() < 12
+			? "in the morning"
+			: d.getHours() < 18
+				? "in the afternoon"
+				: "in the evening"
+	if (minutes === 0) return `${hour} o'clock ${period}`
+	if (minutes < 10) return `${hour} oh ${minuteToWords(minutes)} ${period}`
+	return `${hour} ${minuteToWords(minutes)} ${period}`
+}
+
+const renderNow = (): string => {
+	const d = new Date()
+	return `Today is ${NOW_DATE_FORMAT.format(d)}.
+If asked the time, reply exactly: "It's ${spokenTime(d)}."
+If asked the day or date, use the date above.`
 }
 
 const renderRecentTurns = (turns: RecentTurnType[]): string => {
@@ -271,6 +346,10 @@ export const buildPromptFromPersona = (
 	if (moduleSettings?.emotionEngine !== false) {
 		const mood = renderEmotionalState(persona)
 		if (mood) sections.push(["CURRENT MOOD", mood])
+		sections.push([
+			"EXPRESSION",
+			`When a feeling is genuinely strong, you may tag it inline once as [EMOTION:axis] right before the sentence it colors (axes: joy, sadness, anger, fear, trust, disgust, anticipation, surprise). The tag is silent — never read it aloud, never mention it. Most replies need no tag.`,
+		])
 	}
 
 	const userMoodTrend = persona.userMoodTrend ?? options?.userMoodTrend
@@ -290,6 +369,10 @@ export const buildPromptFromPersona = (
 	if (moduleSettings?.memoryEngine !== false && recentTurns?.length) {
 		const turns = renderRecentTurns(recentTurns)
 		if (turns) sections.push(["RECENT TURNS", turns])
+	}
+
+	if (moduleSettings?.environmentTimeEnabled !== false) {
+		sections.push(["NOW", renderNow()])
 	}
 
 	if (!options?.omitUserInput) {

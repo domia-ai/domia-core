@@ -30,6 +30,7 @@ const personaModulesSchema = z
 		memoryEngine: z.boolean(),
 		factCapture: z.boolean(),
 		factRecall: z.boolean(),
+		environmentTimeEnabled: z.boolean(),
 	})
 	.partial()
 

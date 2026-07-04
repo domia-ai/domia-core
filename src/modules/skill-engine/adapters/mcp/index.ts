@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
+import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js"
 
 import { MCP_TRANSPORT_ENUM, SKILL_PROTOCOL_ENUM } from "@/db"
 import type { SelectSkillProviderType } from "@/db"
@@ -52,11 +53,13 @@ const connect = async (
 	const callTool = async (
 		rawName: string,
 		args: Record<string, unknown>,
+		signal?: AbortSignal,
 	): Promise<SkillCallResultType> => {
+		const requestOptions: RequestOptions = { timeout: cfg.timeout, signal }
 		const res = await client.callTool(
 			{ name: rawName, arguments: args },
 			undefined,
-			{ timeout: cfg.timeout },
+			requestOptions,
 		)
 		const text = (res.content ?? [])
 			.filter((p) => p.type === "text" && typeof p.text === "string")

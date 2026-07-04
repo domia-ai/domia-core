@@ -29,6 +29,15 @@ export const postSatelliteFollowUpBodySchema = z.object({
 	enabled: z.boolean(),
 })
 
+export const postSatelliteVolumeBodySchema = z.object({
+	volume: z.number().min(0).max(1),
+})
+
+export const postSatelliteTimerBodySchema = z.object({
+	name: z.string().trim().min(1).max(120).optional(),
+	seconds: z.number().int().positive().max(86400),
+})
+
 export const postChatBodySchema = z.object({
 	text: z
 		.string()

@@ -1,7 +1,7 @@
 export { getSttPool, reloadSttPool, sttPoolBusy } from "./pool"
 export {
 	runSttPooled,
-	runSttStreamPooled,
+	collectStreamAndTranscribePooled,
 	runSttPcmPooled,
 	createSttSessionPooled,
 } from "./pooled"

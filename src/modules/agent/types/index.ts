@@ -18,6 +18,10 @@ export type AgentStreamInferenceType = (
 export type AgentTurnOptionsType = {
 	voice?: boolean
 	streamFinalize?: AgentStreamInferenceType
+	onSlowTool?: () => void
+	slowToolAfterMs?: number
+	allowAsyncTools?: boolean
+	signal?: AbortSignal
 }
 
 export type AgentFinalizeModeType = "agent_loop" | "template" | "streamed"
@@ -34,4 +38,11 @@ export type AgentResultType = {
 	toolMs: number
 	finalizeMs: number
 	finalizeMode: AgentFinalizeModeType
+	pendingTools?: Promise<AsyncToolOutcomeType>[]
+}
+
+export type AsyncToolOutcomeType = {
+	tool: string
+	ok: boolean
+	doneText: string
 }

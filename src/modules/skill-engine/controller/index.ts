@@ -95,6 +95,17 @@ export const disconnectAll = async (): Promise<void> => {
 	await Promise.allSettled(all.map((c) => c.handle.close()))
 }
 
+export const disconnectProviders = async (ids: string[]): Promise<void> => {
+	const closing: Promise<unknown>[] = []
+	for (const id of ids) {
+		const conn = connections.get(id)
+		if (!conn) continue
+		connections.delete(id)
+		closing.push(conn.handle.close())
+	}
+	await Promise.allSettled(closing)
+}
+
 const resolveParamAllow = (
 	config: unknown,
 ): Record<string, string[]> | null => {
@@ -118,10 +129,12 @@ const resolveToolPolicy = (config: unknown): SkillToolPolicyType | null => {
 const toFinalizeRule = (v: unknown): ToolFinalizeRuleType | null => {
 	if (!v || typeof v !== "object") return null
 	const o = v as Record<string, unknown>
-	if (o.mode !== "agent_loop" && o.mode !== "template") return null
+	if (o.mode !== "agent_loop" && o.mode !== "template" && o.mode !== "async")
+		return null
 	const rule: ToolFinalizeRuleType = { mode: o.mode }
 	if (typeof o.ack === "string") rule.ack = o.ack
 	if (typeof o.error === "string") rule.error = o.error
+	if (typeof o.done === "string") rule.done = o.done
 	return rule
 }
 
@@ -225,6 +238,7 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 export const callTool = async (
 	namespacedName: string,
 	args: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<SkillCallResultType> => {
 	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
@@ -265,7 +279,7 @@ export const callTool = async (
 		}
 	}
 	try {
-		const res = await conn.handle.callTool(rawName, args)
+		const res = await conn.handle.callTool(rawName, args, signal)
 		const truncated =
 			res.text.length > conn.maxResultChars
 				? `${res.text.slice(0, conn.maxResultChars)}…[truncated]`

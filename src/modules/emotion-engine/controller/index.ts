@@ -1,6 +1,5 @@
 import { dbClient } from "@/db"
-import { env } from "@/config"
-import { emotionEngineLogger, generateUuid } from "@/utils"
+import { emotionEngineLogger, generateUuid, parseDbTimestamp } from "@/utils"
 import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
 import { type PersonaContextType } from "@/modules/prompt-context-builder"
 
@@ -27,6 +26,8 @@ import {
 	EMOTION_DECAY_HALF_LIFE_MS,
 	EMOTION_APPRAISAL_MAX_DELTA,
 	EMOTION_TRAJECTORY_WINDOW,
+	EMOTION_TAG_DELTA,
+	EMOTION_TAG_AXES,
 } from "../constants"
 import dbAdapter from "../db-adapter"
 
@@ -53,9 +54,9 @@ const applyInMemory = (domia: DomiaType, vector: EmotionType): void => {
 }
 
 const elapsedSinceUpdate = (domia: DomiaType): number => {
-	const updatedAt = domia?.emotionState?.updatedAt
-	const last = updatedAt ? Date.parse(updatedAt) : Date.now()
-	return Date.now() - last
+	const parsed = parseDbTimestamp(domia?.emotionState?.updatedAt)
+	const last = Number.isNaN(parsed) ? Date.now() : parsed
+	return Math.max(0, Date.now() - last)
 }
 
 const moodFromPersona = (persona: PersonaContextType): EmotionType =>
@@ -194,7 +195,7 @@ export const applyMoodDelta = (
 			.run()
 	})
 	applyInMemory(origin, next)
-	if (origin?.domiaKey === env.DOMIA_KEY) invalidateOwnDomia()
+	if (origin?.domiaKey) invalidateOwnDomia(origin.domiaKey)
 	emotionEngineLogger.info("Mood delta applied", {
 		domiaId: origin?.id,
 		cause,
@@ -202,4 +203,22 @@ export const applyMoodDelta = (
 		from: current,
 		to: next,
 	})
+}
+
+export const applyExpressedEmotionTags = (
+	origin: DomiaType,
+	tags: string[],
+): void => {
+	if (origin?.moduleSettings?.emotionEngine === false) return
+	const delta: EmotionPartialType = {}
+	for (const tag of tags) {
+		const axis = EMOTION_TAG_AXES.find((a) => a === tag.toLowerCase())
+		if (!axis) continue
+		delta[axis] = Math.min(
+			EMOTION_APPRAISAL_MAX_DELTA,
+			(delta[axis] ?? 0) + EMOTION_TAG_DELTA,
+		)
+	}
+	if (Object.keys(delta).length === 0) return
+	applyMoodDelta(origin, delta, "expressed")
 }

@@ -53,7 +53,7 @@
 		"engine": "KOKORO",
 		"voiceName": "af_heart",
 		"language": "en",
-		"modelPath": "data/models/kokoro-en-v0_19",
+		"modelPath": "data/models/kokoro-multi-lang-v1_0",
 		"quantization": null,
 		"pitch": 1,
 		"speed": 1,

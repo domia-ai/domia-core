@@ -5,6 +5,8 @@ import { setGrpcClientTunables } from "./modules/grpc-client"
 import { isHostedIdentity, getNodeId } from "./modules/core"
 import { setLocalMqttClient } from "./modules/heartbeat-manager"
 import { setupTempSweeper } from "./setups/temp-sweeper"
+import { setupRetention } from "./setups/retention"
+import { setupShutdown } from "./setups/shutdown"
 import {
 	setupVoiceListener,
 	setupMqtt,
@@ -31,9 +33,11 @@ process.on("unhandledRejection", (reason) => {
 
 async function main() {
 	appLogger.info("Initialize Domia with default config")
+	setupShutdown()
 	const ownDomia = await initialize(undefined, { isHosted: true })
 	setGrpcClientTunables(ownDomia)
 	setupTempSweeper()
+	setupRetention()
 	setupConfigReloaders()
 
 	if (!ownDomia?.runtimeCapabilities) {

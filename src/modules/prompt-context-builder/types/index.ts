@@ -17,3 +17,5 @@ export type BuildPromptContextOptionsType = {
 }
 
 export type PersonaContextType = z.infer<typeof personaContextSchema>
+
+export type EmotionEntryType = [string, number]

@@ -5,15 +5,19 @@ import path from "path"
 import { DEFAULT_TMP_AUDIO_TTL_MS, DEFAULT_TMP_SWEEP_INTERVAL_MS } from "@/db"
 import { appLogger } from "@/utils"
 
-const SWEEP_DIRS = [
-	path.resolve("tmp/recordings"),
-	path.resolve("tmp/tts-output"),
-	os.tmpdir(),
-]
-
 const TMP_WAV_PATTERN = /^(domia-|voice-|stt-upload-|domia-tts-stream-).*\.wav$/
 
-const sweepDir = async (dir: string, maxAgeMs: number): Promise<number> => {
+const SWEEP_TARGETS = [
+	{ dir: path.resolve("tmp/recordings"), pattern: /\.wav$/ },
+	{ dir: path.resolve("tmp/tts-output"), pattern: /\.wav$/ },
+	{ dir: os.tmpdir(), pattern: TMP_WAV_PATTERN },
+]
+
+const sweepDir = async (
+	dir: string,
+	pattern: RegExp,
+	maxAgeMs: number,
+): Promise<number> => {
 	let removed = 0
 	let entries: string[]
 	try {
@@ -23,7 +27,7 @@ const sweepDir = async (dir: string, maxAgeMs: number): Promise<number> => {
 	}
 	const cutoff = Date.now() - maxAgeMs
 	for (const entry of entries) {
-		if (!TMP_WAV_PATTERN.test(entry)) continue
+		if (!pattern.test(entry)) continue
 		const filePath = path.join(dir, entry)
 		try {
 			const info = await stat(filePath)
@@ -41,8 +45,12 @@ const sweepDir = async (dir: string, maxAgeMs: number): Promise<number> => {
 export const setupTempSweeper = (): void => {
 	const sweep = async (): Promise<void> => {
 		let total = 0
-		for (const dir of SWEEP_DIRS) {
-			total += await sweepDir(dir, DEFAULT_TMP_AUDIO_TTL_MS)
+		for (const target of SWEEP_TARGETS) {
+			total += await sweepDir(
+				target.dir,
+				target.pattern,
+				DEFAULT_TMP_AUDIO_TTL_MS,
+			)
 		}
 		if (total > 0) {
 			appLogger.info(`🧹 temp sweeper removed ${total} stale audio file(s)`)

@@ -28,17 +28,6 @@ export const AUDIO_ERRORS = {
 	},
 } as const
 
-export const CHARACTER_ERRORS = {
-	PROFILE_NOT_FOUND: {
-		code: "CHARACTER/PROFILE_NOT_FOUND",
-		message: "Character profile is missing for this Domia.",
-	},
-	INVALID_PROFILE: {
-		code: "CHARACTER/INVALID_PROFILE",
-		message: "Character profile data is incomplete or malformed.",
-	},
-} as const
-
 export const EMOTION_ERRORS = {
 	EMOTION_STATE_NOT_FOUND: {
 		code: "EMOTION/STATE_NOT_FOUND",
@@ -123,7 +112,6 @@ export const DB_ERRORS = {
 export const ERROR_CODES = {
 	core: CORE_ERRORS,
 	audio: AUDIO_ERRORS,
-	"character-engine": CHARACTER_ERRORS,
 	"emotion-engine": EMOTION_ERRORS,
 	"tts-engine": TTS_ERRORS,
 	"llm-engine": LLM_ERRORS,

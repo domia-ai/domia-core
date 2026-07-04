@@ -10,6 +10,7 @@ export type DomiaEventBusPayloadMapType = {
 		audioUrl?: string
 		originDomiaKey?: string
 		interactionId?: string
+		responseType?: string
 		speechEndAt?: number
 		liveVoice?: boolean
 		traceId?: string
@@ -24,6 +25,8 @@ export type DomiaEventBusPayloadMapType = {
 		prestartedPrompt?: string
 		prestartedExecutorKey?: string
 		prestartedRelease?: () => void
+		prestartedFirstUnitText?: string
+		prestartedFirstUnitPcm?: Promise<Buffer | null>
 		speechEndAt?: number
 		liveVoice?: boolean
 		traceId?: string

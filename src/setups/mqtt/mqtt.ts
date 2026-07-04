@@ -82,6 +82,9 @@ export const setupMqtt = ({
 	const configChangedTopic = `${ROOT}/${domiaKey}/${type}/${MQTT_EVENT_ENUM.CONFIG_CHANGED}`
 	client.subscribe(configChangedTopic)
 
+	const offlineTopic = `${ROOT}/+/${type}/${MQTT_EVENT_ENUM.OFFLINE}`
+	client.subscribe(offlineTopic)
+
 	logger.success("✅ MQTT setup completed successfully")
 
 	client.on("message", (topic, message) => {

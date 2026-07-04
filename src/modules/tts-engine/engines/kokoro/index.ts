@@ -8,6 +8,7 @@ import {
 	TTS_ERRORS,
 	domiaError,
 	wrapPcmToWav,
+	applyEdgeFade,
 } from "@/utils"
 import { type SelectTtsConfigType, TTS_ENGINE_ENUM } from "@/db"
 import { splitTextIntoSentences } from "@/modules/core-bus/utils/sentence-buffer"
@@ -25,18 +26,60 @@ import type {
 const KOKORO_SAMPLE_RATE = 24000
 
 const KOKORO_VOICE_TO_SID: Record<string, number> = {
-	af: 0,
-	af_heart: 0,
-	af_bella: 1,
-	af_nicole: 2,
-	af_sarah: 3,
-	af_sky: 4,
-	am_adam: 5,
-	am_michael: 6,
-	bf_emma: 7,
-	bf_isabella: 8,
-	bm_george: 9,
-	bm_lewis: 10,
+	af_alloy: 0,
+	af_aoede: 1,
+	af_bella: 2,
+	af_heart: 3,
+	af: 3,
+	af_jessica: 4,
+	af_kore: 5,
+	af_nicole: 6,
+	af_nova: 7,
+	af_river: 8,
+	af_sarah: 9,
+	af_sky: 10,
+	am_adam: 11,
+	am_echo: 12,
+	am_eric: 13,
+	am_fenrir: 14,
+	am_liam: 15,
+	am_michael: 16,
+	am_onyx: 17,
+	am_puck: 18,
+	am_santa: 19,
+	bf_alice: 20,
+	bf_emma: 21,
+	bf_isabella: 22,
+	bf_lily: 23,
+	bm_daniel: 24,
+	bm_fable: 25,
+	bm_george: 26,
+	bm_lewis: 27,
+	ef_dora: 28,
+	em_alex: 29,
+	ff_siwis: 30,
+	hf_alpha: 31,
+	hf_beta: 32,
+	hm_omega: 33,
+	hm_psi: 34,
+	if_sara: 35,
+	im_nicola: 36,
+	jf_alpha: 37,
+	jf_gongitsune: 38,
+	jf_nezumi: 39,
+	jf_tebukuro: 40,
+	jm_kumo: 41,
+	pf_dora: 42,
+	pm_alex: 43,
+	pm_santa: 44,
+	zf_xiaobei: 45,
+	zf_xiaoni: 46,
+	zf_xiaoxiao: 47,
+	zf_xiaoyi: 48,
+	zm_yunjian: 49,
+	zm_yunxi: 50,
+	zm_yunxia: 51,
+	zm_yunyang: 52,
 }
 
 const resolveSid = (voiceName: string | null | undefined): number => {
@@ -94,7 +137,7 @@ export const runKokoro = async (
 	options?: RunTtsOptionsType,
 ): Promise<RunTtsResultType> => {
 	const ttsConfig = requireTtsConfig(domia)
-	const voice = resolveTtsVoice(options?.voice, ttsConfig)
+	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const voiceName = voice.voiceName
 	const sid = resolveSid(voiceName)
 	const outputDir = path.resolve("tmp/tts-output")
@@ -110,7 +153,7 @@ export const runKokoro = async (
 				jobOf(ttsConfig, sentence, voice, sid),
 			)
 			if (result.pcm && result.pcm.length > 0) {
-				parts.push(result.pcm)
+				parts.push(applyEdgeFade(result.pcm, result.sampleRate))
 				sampleRate = result.sampleRate
 			}
 		}
@@ -147,14 +190,15 @@ const runKokoroStream = async function* (
 	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
 	const ttsConfig = requireTtsConfig(domia)
-	const voice = resolveTtsVoice(options?.voice, ttsConfig)
+	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = resolveSid(voice.voiceName)
 	const pool = getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, voice, sid),
 		)
-		if (result.pcm && result.pcm.length > 0) yield result.pcm
+		if (result.pcm && result.pcm.length > 0)
+			yield applyEdgeFade(result.pcm, kokoroEngine.capabilities.sampleRate)
 	}
 }
 

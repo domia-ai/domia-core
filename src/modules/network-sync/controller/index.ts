@@ -64,6 +64,16 @@ export const refreshDomiaLocalIp = (domia: DomiaType): DomiaType => {
 	return refreshed
 }
 
+export const markPeerOfflineByNodeId = (nodeId: string): number => {
+	const changed = dbAdapter.markPeerOffline(nodeId)
+	if (changed > 0) {
+		networkSyncLogger.info(
+			`⚰️ peer node ${nodeId} offline (LWT) — ${changed} identity row(s) marked stale`,
+		)
+	}
+	return changed
+}
+
 export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 	const domiaId = domia?.id
 	const domiaKey = domia?.domiaKey

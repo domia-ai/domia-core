@@ -4,6 +4,7 @@ import {
 	isHostedIdentity,
 } from "@/modules/core"
 import { satelliteGatewayLogger } from "@/utils"
+import { registerShutdownTask } from "@/setups/shutdown"
 import { connectEsphomeSatellite } from "@/modules/satellite-protocols/esphome"
 import { connectWyomingSatellite } from "@/modules/satellite-protocols/wyoming"
 import { SATELLITE_PROTOCOL_ENUM } from "@/db"
@@ -36,6 +37,7 @@ const connectBindings = async (
 						encryptionKey: row.encryptionKey,
 						desiredWakeWords: row.desiredWakeWords ?? [],
 						desiredNumbers: row.desiredNumbers ?? {},
+						desiredVolume: row.desiredVolume ?? null,
 						followUpEnabled: row.followUpEnabled ?? false,
 					},
 					fallback,
@@ -81,8 +83,7 @@ export const setupSatelliteClients = async ({
 }): Promise<void> => {
 	await connectBindings(fallback)
 	const closeAll = (): void => closeSatellites()
-	process.once("SIGINT", closeAll)
-	process.once("SIGTERM", closeAll)
+	registerShutdownTask("satellite-clients", closeAll)
 	process.once("exit", closeAll)
 }
 

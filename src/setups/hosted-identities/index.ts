@@ -1,4 +1,4 @@
-import { appLogger } from "@/utils"
+import { appLogger, createKeyedMutex } from "@/utils"
 import {
 	type DomiaType,
 	getDomia,
@@ -18,12 +18,16 @@ import { reloadSatelliteClientsForDomia } from "@/setups/satellite-clients"
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
 
 const heartbeatHandles = new Map<string, ReturnType<typeof setInterval>>()
+const identityMutex = createKeyedMutex()
 
-export const bootHostedIdentity = async (
+export const bootHostedIdentity = (key: string): Promise<DomiaType | null> =>
+	identityMutex(key, () => bootHostedIdentityLocked(key))
+
+const bootHostedIdentityLocked = async (
 	key: string,
 ): Promise<DomiaType | null> => {
 	if (heartbeatHandles.has(key) || isHostedIdentity(key))
-		await teardownHostedIdentity(key)
+		await teardownHostedIdentityLocked(key)
 	let domia = await getDomia(key)
 	if (!domia?.runtimeCapabilities) {
 		appLogger.info(`🌱 seeding neutral hosted identity ${key}`)
@@ -54,16 +58,19 @@ export const bootHostedIdentity = async (
 	return domia
 }
 
-export const teardownHostedIdentity = async (key: string): Promise<void> => {
+export const teardownHostedIdentity = (key: string): Promise<void> =>
+	identityMutex(key, () => teardownHostedIdentityLocked(key))
+
+const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 	const domia = await getDomia(key).catch(() => null)
+	unregisterHostedIdentity(key)
 	if (domia) abortActiveTurn(domia.id, "identity-teardown")
 	const handle = heartbeatHandles.get(key)
 	if (handle) clearInterval(handle)
 	heartbeatHandles.delete(key)
-	if (domia) teardownCoreBus(domia.id)
 	await stopSkills(key)
 	stopVoiceListener(key)
-	unregisterHostedIdentity(key)
+	if (domia) teardownCoreBus(domia.id)
 	if (domia) await reloadSatelliteClientsForDomia(domia)
 	appLogger.info(`🪫 stopped hosting identity ${key}`)
 }

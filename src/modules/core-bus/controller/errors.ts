@@ -1,7 +1,10 @@
-import { domiaBusLogger, toError } from "@/utils"
-import { notifyInteractionFailed, rejectPending } from "../utils"
-import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
-import { updateInteraction } from "@/modules/session-manager"
+import { domiaBusLogger } from "@/utils"
+import {
+	notifyInteractionFailed,
+	failInteraction,
+	persistTerminal,
+} from "../utils"
+import { INTERACTION_STATUS_ENUM } from "@/db"
 import { playFeedbackSound } from "@/modules/feedback-sounds"
 import type {
 	AudioErrorPayloadType,
@@ -48,20 +51,15 @@ export const handleInteractionFailed = (
 		error: payload.error,
 	})
 	if (payload.interactionId) {
-		void updateInteraction({
-			id: payload.interactionId,
-			status: INTERACTION_STATUS_ENUM.FAILED,
-			errorStep: payload.step ?? null,
-			errorMessage: payload.error,
-		}).catch((err) =>
-			domiaBusLogger.warn("⚠️ failed to persist interaction failure", {
-				interactionId: payload.interactionId,
-				err,
-			}),
+		void persistTerminal(
+			payload.interactionId,
+			INTERACTION_STATUS_ENUM.FAILED,
+			{
+				errorStep: payload.step,
+				errorMessage: payload.error,
+			},
 		)
 	}
-	if (payload.responseType === RESPONSE_TYPE_ENUM.TEXT) {
-		rejectPending(payload.interactionId, toError(payload.error))
-	}
+	failInteraction(payload.interactionId, payload.error, payload.step)
 	if (payload.liveVoice) playFeedbackSound(ctx.domia, "error")
 }

@@ -1,10 +1,15 @@
-import { type PlaybackStatusType } from "@/buses"
+import type { DomiaEventBusPayloadMapType, DOMIA_EVENT_BUS_ENUM } from "@/buses"
+import { INTERACTION_STATUS_ENUM_VALUES } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
 import type { SttEngineAdapterType } from "@/modules/stt-engine"
 import type { TtsEngineAdapterType } from "@/modules/tts-engine"
 import type { LlmEngineAdapterType } from "@/modules/llm-engine"
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
+import type {
+	SpeculativeCaptureHooksType,
+	SpeculativeCaptureResultType,
+} from "@/modules/audio-capture"
 
 export type ResolvedSttEngineType = {
 	adapter: SttEngineAdapterType
@@ -41,73 +46,26 @@ export type CoreBusContextType = {
 	features: CoreBusFeaturesType
 }
 
-export type AudioReadyPayloadType = {
-	speechEndAt?: number
-	liveVoice?: boolean
-	filePath?: string
-	audioUrl?: string
-	originDomiaKey?: string
-	interactionId?: string
-	traceId?: string
-}
+export type AudioReadyPayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.AUDIO_READY]
 
-export type SttDonePayloadType = {
-	transcript: string
-	interactionId?: string
-	originDomiaKey?: string
-	responseType?: string
-	alreadyHandled?: boolean
-	prestartedTokens?: AsyncIterable<string>
-	prestartedPrompt?: string
-	prestartedExecutorKey?: string
-	prestartedRelease?: () => void
-	speechEndAt?: number
-	liveVoice?: boolean
-	traceId?: string
-}
+export type SttDonePayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.STT_DONE]
 
-export type LlmDonePayloadType = {
-	reply: string
-	transcript?: string
-	interactionId?: string
-	originDomiaKey?: string
-	responseType?: string
-	alreadyStreamed?: boolean
-	speechEndAt?: number
-	liveVoice?: boolean
-	traceId?: string
-}
+export type LlmDonePayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.LLM_DONE]
 
-export type TtsDonePayloadType = {
-	filePath?: string
-	reply?: string
-	transcript?: string
-	interactionId?: string
-	originDomiaKey?: string
-	audioUrl?: string
-	liveVoice?: boolean
-	traceId?: string
-}
+export type TtsDonePayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.TTS_DONE]
 
-export type AudioErrorPayloadType = {
-	error: Error
-}
+export type AudioErrorPayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR]
 
-export type CapabilityMissingPayloadType = {
-	capability: string
-	interactionId?: string
-	originDomiaKey?: string
-	responseType?: string
-}
+export type CapabilityMissingPayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING]
 
-export type InteractionFailedPayloadType = {
-	interactionId: string
-	originDomiaKey?: string
-	responseType?: string
-	error: string
-	step?: string
-	liveVoice?: boolean
-}
+export type InteractionFailedPayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED]
 
 export type NotifyInteractionFailedArgsType = {
 	interactionId: string
@@ -136,20 +94,11 @@ export type ServeEntryType = {
 
 export type RequestVoiceReplyStage = "stt" | "llm" | "tts" | "firstAudioChunk"
 
-export type PlaybackStartedPayloadType = {
-	interactionId?: string
-	originDomiaKey?: string
-	traceId?: string
-}
+export type PlaybackStartedPayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED]
 
-export type PlaybackFinishedPayloadType = {
-	interactionId?: string
-	originDomiaKey?: string
-	status?: PlaybackStatusType
-	playedLocally?: boolean
-	liveVoice?: boolean
-	traceId?: string
-}
+export type PlaybackFinishedPayloadType =
+	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED]
 
 export type RequestVoiceReplyOptions = {
 	timeoutMs?: number
@@ -275,6 +224,7 @@ export type SatellitePresenceType = {
 	availableWakeWords: SatelliteWakeWordType[]
 	activeWakeWords: string[]
 	numberEntities: SatelliteNumberEntityType[]
+	volume: number | null
 	capabilities: SatelliteCapabilitiesType
 	firmwareVersion: string | null
 	recentEvents: SatelliteEventType[]
@@ -291,6 +241,7 @@ export type SatelliteMetaPatchType = Partial<
 		| "availableWakeWords"
 		| "activeWakeWords"
 		| "numberEntities"
+		| "volume"
 		| "firmwareVersion"
 	>
 >
@@ -300,13 +251,67 @@ export type SetSatellitePresenceMetaType = {
 	connectionId?: string
 }
 
+export type SatelliteTimerEventType = {
+	eventType: "started" | "updated" | "cancelled" | "finished"
+	timerId: string
+	name: string
+	totalSeconds: number
+	secondsLeft: number
+	isActive: boolean
+}
+
+export type TimerIntentType = {
+	seconds: number
+	label: string
+}
+
+export type FastIntentContextType = {
+	domia: DomiaType
+	interactionId: string
+	originDomiaKey: string
+	satelliteId: string | undefined
+	transcript: string
+}
+
+export type FastIntentType = {
+	name: string
+	match: (text: string) => Record<string, unknown> | null
+	handle: (
+		params: Record<string, unknown>,
+		ctx: FastIntentContextType,
+	) => string | null
+}
+
+export type FastIntentResultType = {
+	name: string
+	confirm: string
+}
+
+export type StreamingAudioType = {
+	queue: import("../utils/sentence-buffer").AsyncQueue<Buffer>
+	sampleRate: number
+	channels: number
+}
+
+export type ActiveTimerType = {
+	timerId: string
+	domiaKey: string
+	satelliteId: string
+	name: string
+	totalSeconds: number
+	startedAt: number
+	handle: ReturnType<typeof setTimeout>
+}
+
 export type SatelliteControlType = {
 	satelliteId: string
 	domiaKey: string
 	setWakeWords: (ids: string[]) => void
 	announce: (url: string) => void
 	setNumber?: (entityId: string, value: number) => void
+	setVolume?: (volume: number) => void
 	setFollowUp?: (enabled: boolean) => void
+	sendTimerEvent?: (event: SatelliteTimerEventType) => void
 }
 
 export type PresenceEntryType = {
@@ -330,6 +335,52 @@ export type RequestTextReplyResult = {
 	reply: string
 }
 
+export type InteractionStatusType =
+	(typeof INTERACTION_STATUS_ENUM_VALUES)[number]
+
+export type InteractionInputModeType = "audio" | "transcript" | "text"
+
+export type InteractionAudioDeliveryType =
+	| "local-playback"
+	| "streaming-sink"
+	| "audio-url"
+	| "none"
+
+export type InteractionTimingsType = {
+	createdAt: number
+	inputStartedAt?: number
+	speechEndAt?: number
+	firstAudioAt?: number
+	completedAt?: number
+}
+
+export type InteractionCompletionResultType = {
+	transcript: string
+	reply: string
+	ttsFilePath?: string
+	audioUrl?: string
+	interrupted: boolean
+}
+
+export type InteractionRuntimeType = {
+	interactionId: string
+	originDomiaKey?: string
+	inputMode: InteractionInputModeType
+	responseType: "voice" | "text"
+	audioDelivery: InteractionAudioDeliveryType
+	satelliteId?: string
+	liveVoice?: boolean
+	wantsCompletion?: boolean
+	wantsTranscript?: boolean
+	wantsReplyText?: boolean
+	timings: InteractionTimingsType
+	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
+	onTranscript?: (text: string) => void
+	onReply?: (reply: string) => void
+	onComplete?: (result: InteractionCompletionResultType) => void
+	onError?: (error: string, step?: string) => void
+}
+
 export type RequestTextToVoiceReplyResult = {
 	interactionId: string
 	reply: string
@@ -339,6 +390,7 @@ export type RequestTextToVoiceReplyResult = {
 export type TokenQueueType = {
 	push: (token: string) => void
 	close: () => void
+	isClosed: () => boolean
 	iter: () => AsyncIterable<string>
 }
 
@@ -346,15 +398,28 @@ export type SpeculationType = {
 	generation: number
 	cancelled: boolean
 	started: boolean
+	handedOff: boolean
 	queue: TokenQueueType
+	outQueue: TokenQueueType | null
+	firstUnitText: string | null
+	firstUnitPcm: Promise<Buffer | null> | null
 	prompt: string | null
 	executorKey: string | null
 	ready: Promise<string | null>
 }
 
+export type PipelinePrefixType = {
+	text: string
+	pcm: Promise<Buffer | null>
+}
+
 export type SpeculativeTurnArgsType = {
 	interactionId: string
 	release: () => void
+	replaySinceTs?: number
+	captureFactory?: (
+		hooks: SpeculativeCaptureHooksType,
+	) => SpeculativeCaptureResultType
 }
 
 export type PlaybackOutcomeType = {
@@ -393,8 +458,7 @@ export type LlmFlowSessionType = {
 	responseType: string | undefined
 }
 
-export type PendingEntryType = {
-	resolve: (reply: string) => void
-	reject: (err: Error) => void
-	timeoutId: ReturnType<typeof setTimeout>
+export type ExtractedEmotionTagsType = {
+	tags: string[]
+	clean: string
 }

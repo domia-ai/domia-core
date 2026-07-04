@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 
 import { networkSyncLogger } from "@/utils"
 import {
@@ -7,6 +7,8 @@ import {
 	moduleSettings,
 	characterProfile,
 	emotionState,
+	emotionEvent,
+	memoryFact,
 	wakeWordConfig,
 	sttConfig,
 	llmModelConfig,
@@ -16,6 +18,10 @@ import {
 	mqttConfig,
 	runtimeCapabilities,
 	capabilityDelegation,
+	satelliteConfig,
+	interactionTrace,
+	interactionSessionTrace,
+	announcement,
 	type InsertDomiaType,
 	type DBClientOrTxType,
 	type InsertModuleSettingsType,
@@ -46,6 +52,10 @@ const PEER_CHILD_TABLES = [
 	audioPlaybackConfig,
 	mqttConfig,
 	capabilityDelegation,
+	emotionEvent,
+	memoryFact,
+	announcement,
+	satelliteConfig,
 ] as const
 
 const dbAdapter = {
@@ -67,10 +77,34 @@ const dbAdapter = {
 			)
 			return
 		}
+		client
+			.update(capabilityDelegation)
+			.set({ delegateToDomiaId: null })
+			.where(eq(capabilityDelegation.delegateToDomiaId, existing.id))
+			.run()
+		client
+			.delete(interactionTrace)
+			.where(eq(interactionTrace.domiaId, existing.id))
+			.run()
+		client
+			.delete(interactionSessionTrace)
+			.where(eq(interactionSessionTrace.domiaId, existing.id))
+			.run()
 		for (const table of PEER_CHILD_TABLES) {
 			client.delete(table).where(eq(table.domiaId, existing.id)).run()
 		}
 		client.delete(domia).where(eq(domia.id, existing.id)).run()
+	},
+	markPeerOffline: (
+		nodeId: string,
+		client: DBClientOrTxType = dbClient,
+	): number => {
+		const res = client
+			.update(domia)
+			.set({ lastSeenAt: 0 })
+			.where(and(eq(domia.peerNodeId, nodeId), eq(domia.isHosted, false)))
+			.run()
+		return res.changes ?? 0
 	},
 	upsertDomia: (data: InsertDomiaType, client: DBClientOrTxType = dbClient) =>
 		client

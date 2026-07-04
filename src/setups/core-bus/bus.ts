@@ -11,6 +11,7 @@ import {
 	handleSttDone,
 	handleLlmDone,
 	handleTtsDone,
+	handlePlaybackStarted,
 	handlePlaybackFinished,
 	handleAudioError,
 	handleCapabilityMissing,
@@ -79,6 +80,11 @@ export const setupCoreBus = ({
 		domiaId,
 		DOMIA_EVENT_BUS_ENUM.TTS_DONE,
 		onEvent(handleTtsDone),
+	)
+	subscribeToDomiaBus(
+		domiaId,
+		DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED,
+		onEvent(handlePlaybackStarted),
 	)
 	subscribeToDomiaBus(
 		domiaId,

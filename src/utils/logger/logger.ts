@@ -9,16 +9,25 @@ import { getTraceContext } from "./context"
 import type { LogLevelType, LogPrefixType } from "./types"
 
 const isDevelopment = env.NODE_ENV !== "production"
-const isJsonMode = process.env.DOMIA_LOG_FORMAT === "json"
+const isJsonMode = env.DOMIA_LOG_FORMAT === "json"
+
+const MAX_LOG_BYTES = 10 * 1024 * 1024
+const ROTATED_KEEP = 2
 
 let fileStream: fs.WriteStream | null = null
+let bytesWritten = 0
+
+const openStream = (file: string): void => {
+	fs.mkdirSync(path.dirname(file), { recursive: true })
+	bytesWritten = fs.existsSync(file) ? fs.statSync(file).size : 0
+	fileStream = fs.createWriteStream(file, { flags: "a" })
+}
 
 const getFileStream = (): fs.WriteStream | null => {
 	if (!env.DOMIA_LOG_FILE) return null
 	if (fileStream) return fileStream
 	try {
-		fs.mkdirSync(path.dirname(env.DOMIA_LOG_FILE), { recursive: true })
-		fileStream = fs.createWriteStream(env.DOMIA_LOG_FILE, { flags: "a" })
+		openStream(env.DOMIA_LOG_FILE)
 		const close = () => {
 			fileStream?.end()
 			fileStream = null
@@ -30,6 +39,25 @@ const getFileStream = (): fs.WriteStream | null => {
 		fileStream = null
 	}
 	return fileStream
+}
+
+const rotateIfNeeded = (): void => {
+	const file = env.DOMIA_LOG_FILE
+	if (!file || bytesWritten < MAX_LOG_BYTES) return
+	try {
+		fileStream?.end()
+		fileStream = null
+		for (let i = ROTATED_KEEP - 1; i >= 1; i--) {
+			const from = `${file}.${i}`
+			const to = `${file}.${i + 1}`
+			if (fs.existsSync(from)) fs.renameSync(from, to)
+		}
+		if (fs.existsSync(file)) fs.renameSync(file, `${file}.1`)
+		openStream(file)
+	} catch {
+		fileStream = null
+		bytesWritten = 0
+	}
 }
 
 const buildJsonEntry = (
@@ -55,10 +83,13 @@ const buildJsonEntry = (
 const writeToFile = (entry: Record<string, unknown>): void => {
 	const stream = getFileStream()
 	if (!stream) return
+	const line = JSON.stringify(entry) + "\n"
 	try {
-		stream.write(JSON.stringify(entry) + "\n")
-	} catch {
-		return
+		stream.write(line)
+		bytesWritten += Buffer.byteLength(line)
+		rotateIfNeeded()
+	} catch (err) {
+		process.stderr.write(`[logger] file write failed: ${String(err)}\n`)
 	}
 }
 

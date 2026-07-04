@@ -37,6 +37,7 @@ export type SkillConnHandleType = {
 	callTool: (
 		rawName: string,
 		args: Record<string, unknown>,
+		signal?: AbortSignal,
 	) => Promise<SkillCallResultType>
 	close: () => Promise<void>
 }

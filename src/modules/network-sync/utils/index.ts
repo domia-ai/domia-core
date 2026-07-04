@@ -24,6 +24,7 @@ export const normalizeDomia = (domia: DomiaType): InsertDomiaType => {
 		ownConfigTtlMs: domia?.ownConfigTtlMs,
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
+		peerNodeId: (domia as { nodeId?: string | null })?.nodeId ?? null,
 	}
 }
 

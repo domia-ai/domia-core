@@ -33,6 +33,7 @@ export const handleWakeDetected = async (
 		return
 	}
 
+	const wakeAt = Date.now()
 	domiaBusLogger.info(`🎧 WAKE_DETECTED received`, { domiaId })
 	if (!capabilities.record) return
 
@@ -104,7 +105,11 @@ export const handleWakeDetected = async (
 					}
 					prefetchMemoryBundle(domia, interactionId)
 					setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
-					await runSpeculativeTurn(ctx, { interactionId, release })
+					await runSpeculativeTurn(ctx, {
+						interactionId,
+						release,
+						replaySinceTs: wakeAt,
+					})
 				} catch (err) {
 					release()
 					throw err

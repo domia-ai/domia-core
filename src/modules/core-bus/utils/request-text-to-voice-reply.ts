@@ -1,23 +1,20 @@
-import {
-	publishToDomiaBus,
-	subscribeToDomiaBus,
-	unsubscribeFromDomiaBus,
-	DOMIA_EVENT_BUS_ENUM,
-	type DomiaEventBusPayloadMapType,
-} from "@/buses"
+import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
 import { beginTurn } from "./turn-scope"
 import { setPresenceStatus } from "./presence-registry"
+import {
+	registerInteractionRuntime,
+	awaitInteractionResult,
+	clearInteraction,
+	INTERACTION_COMPLETION_TIMEOUT,
+} from "./interaction-runtime"
+import { persistInteractionTimeout } from "./helpers"
 import type {
-	LlmDonePayloadType,
-	TtsDonePayloadType,
-	InteractionFailedPayloadType,
-	PlaybackStartedPayloadType,
-	PlaybackFinishedPayloadType,
 	RequestVoiceReplyOptions,
 	RequestTextToVoiceReplyResult,
+	InteractionCompletionResultType,
 } from "../types"
 
 const DEFAULT_TIMEOUT_MS = 60_000
@@ -40,90 +37,43 @@ export const requestTextToVoiceReply = async (
 	const domiaId = domia.id
 	const turn = beginTurn(domiaId, interactionId)
 	setPresenceStatus(domia.domiaKey, "thinking", true)
-	const t0 = Date.now()
-	let reply = ""
-	let ttsFilePath: string | undefined
-	const subs: {
-		event: DOMIA_EVENT_BUS_ENUM
-		fn: (p: unknown) => void
-	}[] = []
 
-	const sub = <E extends DOMIA_EVENT_BUS_ENUM>(
-		event: E,
-		fn: (p: DomiaEventBusPayloadMapType[E]) => void,
-	) => {
-		subs.push({ event, fn: fn as (p: unknown) => void })
-		subscribeToDomiaBus(domiaId, event, fn)
-	}
+	registerInteractionRuntime({
+		interactionId,
+		originDomiaKey: domia.domiaKey,
+		inputMode: "text",
+		responseType: "voice",
+		audioDelivery: "local-playback",
+		wantsCompletion: true,
+		onStage,
+		timings: { createdAt: Date.now() },
+	})
+	const completion = awaitInteractionResult(interactionId, timeoutMs)
+	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+		transcript: text,
+		interactionId,
+		originDomiaKey: domia.domiaKey,
+		responseType: RESPONSE_TYPE_ENUM.VOICE,
+	})
 
-	const cleanup = () => {
-		for (const { event, fn } of subs) {
-			unsubscribeFromDomiaBus(domiaId, event, fn)
-		}
-	}
-
+	let result: InteractionCompletionResultType
 	try {
-		await new Promise<void>((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				turn.abort("timeout")
-				reject(
-					new Error(`requestTextToVoiceReply: timeout after ${timeoutMs}ms`),
-				)
-			}, timeoutMs)
-
-			sub(DOMIA_EVENT_BUS_ENUM.LLM_DONE, (p: LlmDonePayloadType) => {
-				if (p.interactionId !== interactionId) return
-				reply = p.reply
-				onStage?.("llm", Date.now() - t0)
-			})
-			sub(DOMIA_EVENT_BUS_ENUM.TTS_DONE, (p: TtsDonePayloadType) => {
-				if (p.interactionId !== interactionId) return
-				ttsFilePath = p.filePath
-				onStage?.("tts", Date.now() - t0)
-				clearTimeout(timeout)
-				resolve()
-			})
-			sub(
-				DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED,
-				(p: PlaybackStartedPayloadType) => {
-					if (p.interactionId !== interactionId) return
-					setPresenceStatus(domia.domiaKey, "speaking")
-					onStage?.("firstAudioChunk", Date.now() - t0)
-				},
-			)
-			sub(
-				DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED,
-				(p: PlaybackFinishedPayloadType) => {
-					if (p.interactionId !== interactionId) return
-					clearTimeout(timeout)
-					resolve()
-				},
-			)
-			sub(
-				DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED,
-				(p: InteractionFailedPayloadType) => {
-					if (p.interactionId !== interactionId) return
-					clearTimeout(timeout)
-					reject(
-						new Error(
-							`requestTextToVoiceReply: failed at ${p.step ?? "unknown"}: ${p.error}`,
-						),
-					)
-				},
-			)
-
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
-				transcript: text,
-				interactionId,
-				originDomiaKey: domia.domiaKey,
-				responseType: RESPONSE_TYPE_ENUM.VOICE,
-			})
-		})
+		result = await completion
+	} catch (err) {
+		const timedOut =
+			err instanceof Error && err.message === INTERACTION_COMPLETION_TIMEOUT
+		turn.abort(timedOut ? "timeout" : "error")
+		if (timedOut) persistInteractionTimeout(interactionId)
+		throw err
 	} finally {
-		cleanup()
 		turn.end()
 		setPresenceStatus(domia.domiaKey, "idle", true)
+		clearInteraction(interactionId)
 	}
 
-	return { interactionId, reply, ttsFilePath }
+	return {
+		interactionId,
+		reply: result.reply,
+		ttsFilePath: result.ttsFilePath,
+	}
 }

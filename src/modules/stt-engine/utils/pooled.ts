@@ -175,7 +175,7 @@ export const runSttPcmPooled = async (
 	return result.text
 }
 
-export const runSttStreamPooled = async (
+export const collectStreamAndTranscribePooled = async (
 	domia: DomiaType,
 	audioStream: AsyncIterable<Buffer>,
 ): Promise<string> => {

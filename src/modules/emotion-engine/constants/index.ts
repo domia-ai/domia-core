@@ -109,3 +109,26 @@ export const EMOTION_DECAY_HALF_LIFE_MS: Record<keyof EmotionType, number> = {
 }
 export const EMOTION_APPRAISAL_MAX_DELTA = 0.3
 export const EMOTION_TRAJECTORY_WINDOW = 5
+export const EMOTION_TAG_DELTA = 0.08
+export const EMOTION_TAG_AXES: readonly (keyof EmotionType)[] = [
+	"joy",
+	"sadness",
+	"anger",
+	"fear",
+	"trust",
+	"disgust",
+	"anticipation",
+	"surprise",
+]
+
+export const PROSODY_SPEED_AROUSAL_GAIN = 0.1
+export const PROSODY_SPEED_MIN = 0.9
+export const PROSODY_SPEED_MAX = 1.12
+export const PROSODY_PITCH_VALENCE_GAIN = 0.05
+export const PROSODY_PITCH_AROUSAL_GAIN = 0.03
+export const PROSODY_PITCH_MIN = 0.92
+export const PROSODY_PITCH_MAX = 1.1
+export const PROSODY_SILENCE_AROUSAL_GAIN = 0.2
+export const PROSODY_SILENCE_SADNESS_GAIN = 0.15
+export const PROSODY_SILENCE_MIN = 0.7
+export const PROSODY_SILENCE_MAX = 1.4

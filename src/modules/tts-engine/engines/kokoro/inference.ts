@@ -21,12 +21,22 @@ const resolvePaths = (
 	espeakDataDir: string | null,
 ): KokoroPathsType => {
 	const dir = path.resolve(modelDir)
+	const dictDir = path.join(dir, "dict")
+	const lexicons = fs.existsSync(dir)
+		? fs
+				.readdirSync(dir)
+				.filter((f) => /^lexicon-.*\.txt$/.test(f))
+				.sort()
+				.map((f) => path.join(dir, f))
+		: []
 	return {
 		dir,
 		model: path.join(dir, "model.onnx"),
 		voices: path.join(dir, "voices.bin"),
 		tokens: path.join(dir, "tokens.txt"),
 		dataDir: resolveDataDir(dir, espeakDataDir),
+		dictDir: fs.existsSync(dictDir) ? dictDir : null,
+		lexicon: lexicons.length > 0 ? lexicons.join(",") : null,
 	}
 }
 
@@ -59,6 +69,8 @@ const buildConfig = (
 			voices: paths.voices,
 			tokens: paths.tokens,
 			dataDir: paths.dataDir,
+			...(paths.dictDir ? { dictDir: paths.dictDir } : {}),
+			...(paths.lexicon ? { lexicon: paths.lexicon } : {}),
 		},
 		debug: false,
 		numThreads: engineConfig.numThreads,
@@ -111,7 +123,7 @@ const resolveValidSid = (sid: number, numSpeakers: number): number => {
 	return 0
 }
 
-export const synthesizeKokoroSamples = (
+const synthesizeKokoroSamples = (
 	engineConfig: TtsWorkerEngineConfigType,
 	params: { text: string; sid: number; speed: number; silenceScale: number },
 ): { samples: Float32Array; sampleRate: number } => {

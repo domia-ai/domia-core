@@ -1,10 +1,52 @@
-import { SKILLS_ROUTING_ENUM, DEFAULT_INTENT_MODEL } from "@/db"
+import {
+	SKILLS_ROUTING_ENUM,
+	DEFAULT_INTENT_MODEL,
+	DEFAULT_INTENT_EMBED_THRESHOLD,
+} from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { runLLMIntent } from "@/modules/llm-engine"
 import { intentRouterLogger } from "@/utils"
 
 import { INTENT_SYSTEM } from "../constants"
+import { cosine, embedTexts, keyphraseHit, toolEmbeddings } from "../utils"
 import type { IntentDecisionType, IntentToolHintType } from "../types"
+
+const EMBED_AMBIGUITY_BAND = 0.06
+
+const classifyByEmbedding = async (
+	domia: DomiaType,
+	transcript: string,
+	tools: IntentToolHintType[],
+): Promise<IntentDecisionType | "ambiguous" | null> => {
+	const hit = keyphraseHit(transcript, tools)
+	if (hit) return { needsSkill: true, reason: `keyphrase:${hit}` }
+	const started = Date.now()
+	const [toolVecs, queryVecs] = await Promise.all([
+		toolEmbeddings(domia, tools),
+		embedTexts(domia, [transcript]),
+	])
+	const query = queryVecs?.[0]
+	if (!toolVecs || !query) return null
+	let best = 0
+	for (const vec of toolVecs) best = Math.max(best, cosine(query, vec))
+	const threshold =
+		domia.llmModelConfig?.intentEmbedThreshold ?? DEFAULT_INTENT_EMBED_THRESHOLD
+	const verdict =
+		best >= threshold
+			? "skill"
+			: best >= threshold - EMBED_AMBIGUITY_BAND
+				? "ambiguous"
+				: "chat"
+	intentRouterLogger.info(
+		`intent embedding gate: sim=${best.toFixed(3)} thr=${threshold} → ${verdict} (${Date.now() - started}ms)`,
+		{ domiaId: domia.id },
+	)
+	if (verdict === "ambiguous") return "ambiguous"
+	return {
+		needsSkill: verdict === "skill",
+		reason: `embedding:${best.toFixed(2)}`,
+	}
+}
 
 const buildPrompt = (
 	transcript: string,
@@ -47,6 +89,16 @@ export const classifyNeedsSkill = async (
 	const routing = domia.llmModelConfig?.skillsRouting
 	if (routing === SKILLS_ROUTING_ENUM.ALWAYS_AGENT)
 		return { needsSkill: true, reason: "always-agent" }
+	if (routing === SKILLS_ROUTING_ENUM.EMBEDDING_GATE) {
+		const decided = await classifyByEmbedding(domia, transcript, tools)
+		if (decided && decided !== "ambiguous") return decided
+		if (decided === null) {
+			intentRouterLogger.warn(
+				"embedding gate unavailable — falling back to LLM classifier",
+				{ domiaId: domia.id },
+			)
+		}
+	}
 	if (!opts.canRunLlm) return { needsSkill: true, reason: "no-local-llm" }
 
 	const model =

@@ -3,6 +3,7 @@ import { type DomiaType } from "@/modules/core"
 import { domiaError, LLM_ERRORS, ttsEngineLogger } from "@/utils"
 
 import { ttsEngines } from "../engines"
+import { sanitizeForSpeech } from "../utils"
 import type { RunTtsOptionsType } from "../types"
 
 export const runTTS = async (
@@ -24,5 +25,9 @@ export const runTTS = async (
 
 	const handler = ttsEngines[engine]
 
-	return await handler(domia, text, options)
+	const speech = sanitizeForSpeech(text)
+	if (!speech) {
+		throw new Error("runTTS: empty text after sanitize — nothing to speak")
+	}
+	return await handler(domia, speech, options)
 }

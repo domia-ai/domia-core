@@ -74,3 +74,5 @@ export const getEmotionVectorFromEmotionState = (
 		surprise: state.surprise ?? 0,
 	})
 }
+
+export { moodToProsody, applyMoodToVoice } from "./prosody"

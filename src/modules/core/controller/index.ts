@@ -69,6 +69,7 @@ export const transformDomia = (
 		localIp: domia?.localIp,
 		grpcPort: domia?.grpcPort,
 		lastSeenAt: domia?.lastSeenAt ?? null,
+		peerNodeId: domia?.peerNodeId ?? null,
 		grpcUnaryDeadlineMs:
 			domia?.grpcUnaryDeadlineMs ?? DEFAULT_GRPC_UNARY_DEADLINE_MS,
 		grpcStreamIdleTimeoutMs:
@@ -180,3 +181,9 @@ export const setSatelliteFollowUp = (
 	satelliteId: string,
 	followUpEnabled: boolean,
 ) => dbAdapter.setSatelliteFollowUp(domiaId, satelliteId, followUpEnabled)
+
+export const setSatelliteDesiredVolume = (
+	domiaId: string,
+	satelliteId: string,
+	desiredVolume: number,
+) => dbAdapter.setSatelliteDesiredVolume(domiaId, satelliteId, desiredVolume)

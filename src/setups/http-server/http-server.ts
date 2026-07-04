@@ -25,6 +25,7 @@ import {
 	handleGetConfig,
 	handlePostConfig,
 	handleGetConfigHealth,
+	handleGetLatencyStats,
 	handleRestart,
 	handleGetModels,
 	handlePostModelInstall,
@@ -42,6 +43,10 @@ import {
 	handleSetSatelliteWakeWords,
 	handleSetSatelliteNumber,
 	handleSetSatelliteFollowUp,
+	handleSetSatelliteVolume,
+	handleStartSatelliteTimer,
+	handleCancelSatelliteTimer,
+	handleListSatelliteTimers,
 	handleTestSatelliteSpeaker,
 	handleGetSync,
 	type PostChatRouteType,
@@ -176,6 +181,10 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		handleGetConfigHealth(await liveDomia(domia, queryDomiaKey(request.query))),
 	)
 
+	fastify.get("/stats/latency", async (request) =>
+		handleGetLatencyStats(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
+
 	fastify.post("/admin/restart", async () => {
 		void sendHeartbeat({ domia: await liveDomia(domia) })
 		return handleRestart()
@@ -285,6 +294,49 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 				queryDomiaKey(request.query),
 				request.params.satelliteId,
 				request.body,
+				reply,
+			),
+	)
+
+	fastify.patch<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/volume",
+		async (request, reply) =>
+			handleSetSatelliteVolume(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.body,
+				reply,
+			),
+	)
+
+	fastify.post<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/timers",
+		async (request, reply) =>
+			handleStartSatelliteTimer(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.body,
+				reply,
+			),
+	)
+
+	fastify.get<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/timers",
+		async (request, reply) =>
+			handleListSatelliteTimers(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				reply,
+			),
+	)
+
+	fastify.delete<{ Params: { satelliteId: string; timerId: string } }>(
+		"/satellites/:satelliteId/timers/:timerId",
+		async (request, reply) =>
+			handleCancelSatelliteTimer(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.params.timerId,
 				reply,
 			),
 	)

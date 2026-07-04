@@ -15,7 +15,16 @@ sqlite.pragma("journal_mode = WAL")
 sqlite.pragma("synchronous = NORMAL")
 sqlite.pragma("cache_size = -64000")
 sqlite.pragma("temp_store = MEMORY")
+sqlite.pragma("busy_timeout = 5000")
 
 export const dbClient = drizzle(sqlite, { schema })
+
+export const closeDb = (): void => {
+	try {
+		sqlite.close()
+	} catch {
+		/* */
+	}
+}
 
 export default dbClient

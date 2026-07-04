@@ -131,6 +131,28 @@ const buildMoonshine = (config: SttWorkerEngineConfigType) => {
 	})
 }
 
+const buildParakeet = (config: SttWorkerEngineConfigType) => {
+	const dir = path.resolve(config.modelPath)
+	if (!fs.existsSync(dir)) missing(dir)
+	const q = resolveQuantization(config.quantization)
+	const encoder = findOnnxFile({ dir, prefix: "encoder", quantization: q })
+	const decoder = findOnnxFile({ dir, prefix: "decoder", quantization: q })
+	const joiner = findOnnxFile({ dir, prefix: "joiner", quantization: q })
+	const tokens = path.join(dir, "tokens.txt")
+	if (!encoder || !decoder || !joiner || !fs.existsSync(tokens)) missing(dir)
+	return createOfflineRecognizer({
+		featConfig: FEAT,
+		modelConfig: {
+			transducer: { encoder, decoder, joiner },
+			tokens,
+			modelType: "nemo_transducer",
+			numThreads: config.numThreads,
+			provider: config.provider,
+			debug: 0,
+		},
+	})
+}
+
 const configKey = (config: SttWorkerEngineConfigType): string =>
 	[
 		config.engine,
@@ -159,6 +181,8 @@ const getRecognizer = (
 		cached = { online: true, rec: buildZipformer(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.WHISPER) {
 		cached = { online: false, rec: buildWhisper(config) }
+	} else if (config.engine === STT_ENGINE_ENUM.PARAKEET) {
+		cached = { online: false, rec: buildParakeet(config) }
 	} else {
 		cached = { online: false, rec: buildMoonshine(config) }
 	}

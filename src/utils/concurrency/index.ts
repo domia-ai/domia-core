@@ -26,6 +26,23 @@ export const withTimeout = <T>(
 		}),
 	])
 
+export const createKeyedMutex = (): (<T>(
+	key: string,
+	fn: () => Promise<T>,
+) => Promise<T>) => {
+	const mutexes = new Map<string, ReturnType<typeof createAsyncSemaphore>>()
+	return async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+		const mutex = mutexes.get(key) ?? createAsyncSemaphore(1)
+		mutexes.set(key, mutex)
+		const release = await mutex.acquire()
+		try {
+			return await fn()
+		} finally {
+			release()
+		}
+	}
+}
+
 const SEMAPHORE_BUSY_CODE = "SEMAPHORE_BUSY"
 
 export const semaphoreBusyError = (

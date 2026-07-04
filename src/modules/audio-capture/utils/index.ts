@@ -6,11 +6,19 @@ import { join } from "path"
 
 import { sileroVadEngine, type VadTuningType } from "@/modules/vad"
 import { audioCaptureLogger, generateUuid, wrapPcmToWav } from "@/utils"
+import type { DomiaType } from "@/modules/core"
 import { RECORDINGS_DIR } from "../constants"
-import type { CaptureFormatType, StopSoxType, VadWindowType } from "../types"
+import type {
+	CaptureFormatType,
+	StopSoxType,
+	VadWindowType,
+	MicSourceType,
+} from "../types"
+import { micTapAvailable, tapMicStream } from "./mic-tap"
 
 const STDERR_NOISE_PATTERN = /can't set sample rate/
 const INT16_MAX = 32768
+const STOP_KILL_GRACE_MS = 2000
 
 export const int16BufferToFloat32 = (chunk: Buffer): Float32Array => {
 	const samples = new Float32Array(chunk.length / 2)
@@ -97,6 +105,16 @@ export const createStopSox = (
 		stopped = true
 		audioCaptureLogger.info(`[🎙️] Stopping ${context} (${reason})`)
 		proc.kill("SIGTERM")
+		const killTimer = setTimeout(() => {
+			if (proc.exitCode === null && proc.signalCode === null) {
+				try {
+					proc.kill("SIGKILL")
+				} catch {
+					/* */
+				}
+			}
+		}, STOP_KILL_GRACE_MS)
+		killTimer.unref()
 	}
 }
 
@@ -113,4 +131,55 @@ export const writePcmAsWav = async (
 	)
 	await writeFile(outputPath, wav)
 	audioCaptureLogger.info(`[🎙️] Saved ${pcm.length} bytes to ${outputPath}`)
+}
+
+export {
+	publishMicChunk,
+	setMicTapFormat,
+	micTapAvailable,
+	tapMicStream,
+} from "./mic-tap"
+
+export const openMicSource = (
+	domia: DomiaType,
+	config: SelectWakeWordConfigType,
+	label: string,
+	replaySinceTs?: number,
+): MicSourceType => {
+	if (config.sharedMicStreamEnabled && micTapAvailable(domia.id, config)) {
+		let unsubscribe: (() => void) | null = null
+		let resolveClosed: () => void = () => undefined
+		const closed = new Promise<void>((resolve) => {
+			resolveClosed = resolve
+		})
+		audioCaptureLogger.info(`[🎙️] ${label}: using shared mic tap`)
+		return {
+			viaTap: true,
+			onData: (handler) => {
+				unsubscribe = tapMicStream(domia.id, handler, replaySinceTs)
+			},
+			stop: (reason) => {
+				if (!unsubscribe) return
+				audioCaptureLogger.info(`[🎙️] Stopping ${label} (${reason})`)
+				unsubscribe()
+				unsubscribe = null
+				resolveClosed()
+			},
+			closed,
+		}
+	}
+	const sox = spawnSoxCapture(config)
+	attachSoxStderrFilter(sox)
+	const stopSox = createStopSox(sox, label)
+	const closed = new Promise<void>((resolve) => {
+		sox.on("close", () => resolve())
+	})
+	return {
+		viaTap: false,
+		onData: (handler) => {
+			sox.stdout.on("data", handler)
+		},
+		stop: (reason) => stopSox(reason),
+		closed,
+	}
 }

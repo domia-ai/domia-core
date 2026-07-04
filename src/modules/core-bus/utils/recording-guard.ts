@@ -9,3 +9,6 @@ export const tryBeginRecording = (domiaId: string): boolean => {
 export const endRecording = (domiaId: string): void => {
 	recordingInProgress.delete(domiaId)
 }
+
+export const isRecordingInProgress = (domiaId: string): boolean =>
+	recordingInProgress.has(domiaId)

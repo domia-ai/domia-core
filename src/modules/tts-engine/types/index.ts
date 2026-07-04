@@ -58,6 +58,8 @@ export type KokoroPathsType = {
 	voices: string
 	tokens: string
 	dataDir: string
+	dictDir: string | null
+	lexicon: string | null
 }
 
 export type TtsWorkerEngineConfigType = {

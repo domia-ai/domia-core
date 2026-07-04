@@ -14,7 +14,8 @@ import {
 	notifyInteractionFailed,
 	playStreamedAudio,
 	registerAudioForServing,
-	resolvePending,
+	completeInteraction,
+	pushInteractionReply,
 	getStreamingSink,
 	isTurnAborted,
 	notifyTurnAborted,
@@ -342,6 +343,10 @@ export const handleLlmDone = async (
 	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`🗣️ LLM_DONE: ${reply}`, { domiaId })
 
+	if (payload.interactionId && reply) {
+		pushInteractionReply(payload.interactionId, reply)
+	}
+
 	if (payload.alreadyStreamed) {
 		domiaBusLogger.info(
 			`🗣️ LLM_DONE: alreadyStreamed flag set — handleSttDone already ran TTS+playback, skipping`,
@@ -386,8 +391,11 @@ export const handleLlmDone = async (
 		interactionId,
 	)
 
+	if (ensured.usedFallback) pushInteractionReply(interactionId, ensured.reply)
 	if (responseType === RESPONSE_TYPE_ENUM.TEXT) {
-		resolvePending(interactionId, ensured.reply)
+		completeInteraction(interactionId, {
+			result: { transcript: payload.transcript ?? "", reply: ensured.reply },
+		})
 		await forwardLlmDoneToOrigin(ctx, session)
 		return
 	}

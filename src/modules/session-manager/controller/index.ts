@@ -9,7 +9,54 @@ import {
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import dbAdapter from "../db-adapter"
 import { RECENT_TURNS_WINDOW, RECENT_TURNS_MAX_AGE_MS } from "../constants"
-import type { NewInteractionDataType } from "../types"
+import type {
+	NewInteractionDataType,
+	LatencyPercentilesType,
+	LatencyStatsType,
+} from "../types"
+
+const percentiles = (values: number[]): LatencyPercentilesType => {
+	const v = values
+		.filter((n) => Number.isFinite(n) && n > 0)
+		.sort((a, b) => a - b)
+	if (v.length === 0)
+		return { count: 0, p50: null, p90: null, min: null, max: null }
+	const at = (q: number) =>
+		v[Math.min(v.length - 1, Math.round(q * (v.length - 1)))]
+	return {
+		count: v.length,
+		p50: at(0.5),
+		p90: at(0.9),
+		min: v[0],
+		max: v[v.length - 1],
+	}
+}
+
+export const getLatencyStats = async (
+	domia: DomiaType,
+	limit = 100,
+): Promise<LatencyStatsType> => {
+	const rows = await dbAdapter.getRecentInteractionsForDomia(domia.id, limit)
+	const ok = rows.filter((r) => r.status === "ok")
+	const bySatellite: Record<string, LatencyPercentilesType> = {}
+	const satIds = [
+		...new Set(ok.map((r) => r.satelliteId).filter((s): s is string => !!s)),
+	]
+	for (const id of satIds) {
+		bySatellite[id] = percentiles(
+			ok.filter((r) => r.satelliteId === id).map((r) => r.ttfaMs ?? 0),
+		)
+	}
+	return {
+		sampleSize: ok.length,
+		ttfa: percentiles(ok.map((r) => r.ttfaMs ?? 0)),
+		perceivedTtfa: percentiles(ok.map((r) => r.perceivedTtfaMs ?? 0)),
+		stt: percentiles(ok.map((r) => r.sttMs ?? 0)),
+		llm: percentiles(ok.map((r) => r.llmMs ?? 0)),
+		tts: percentiles(ok.map((r) => r.ttsMs ?? 0)),
+		bySatellite,
+	}
+}
 
 const pipelineStarts = new Map<string, number>()
 
@@ -233,6 +280,7 @@ export const getRecentTurns = async (
 ): Promise<RecentTurnType[]> => {
 	try {
 		const limit = domia?.memoryWindowTurns ?? RECENT_TURNS_WINDOW
+		if (limit <= 0) return []
 		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
 		const rows = await dbAdapter.getRecentInteractionsForDomia(
 			domia.id,

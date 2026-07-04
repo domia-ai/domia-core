@@ -19,3 +19,15 @@ export type EmotionTrajectoryEntryType = {
 	cause: string
 	delta: EmotionPartialType
 }
+
+export type MoodProsodyType = {
+	speedMult: number
+	pitchMult: number
+	silenceScaleMult: number
+}
+
+export type ProsodyVoiceType = {
+	speed: number
+	silenceScale: number
+	pitch: number
+}

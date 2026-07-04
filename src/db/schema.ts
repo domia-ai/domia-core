@@ -4,6 +4,7 @@ import {
 	real,
 	integer,
 	unique,
+	index,
 } from "drizzle-orm/sqlite-core"
 import { relations, sql } from "drizzle-orm"
 
@@ -55,6 +56,14 @@ import {
 	DEFAULT_FOLLOW_UP_WINDOW_MS,
 	DEFAULT_BARGE_IN_ENABLED,
 	DEFAULT_SPECULATIVE_SILENCE_MS,
+	DEFAULT_SEMANTIC_ENDPOINTING_ENABLED,
+	DEFAULT_ACOUSTIC_ENDPOINTING_ENABLED,
+	DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD,
+	DEFAULT_TURN_DETECTOR_MODEL_PATH,
+	DEFAULT_SPECULATIVE_TTS_ENABLED,
+	DEFAULT_SHARED_MIC_STREAM_ENABLED,
+	DEFAULT_ENDPOINT_COMPLETE_MS,
+	DEFAULT_ENDPOINT_INCOMPLETE_MS,
 	DEFAULT_FOLLOW_UP_LEAD_PAD_MS,
 	DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS,
 	DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS,
@@ -84,6 +93,7 @@ import {
 	DEFAULT_MEMORY_MAX_AGE_MS,
 	DEFAULT_LLM_CONCURRENCY,
 	DEFAULT_REFLECTION_ONLY_WHEN_IDLE,
+	DEFAULT_ENVIRONMENT_TIME_ENABLED,
 	DEFAULT_REFLECTION_CONCURRENCY,
 	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
 	DEFAULT_REFLECTION_YIELD_TO_VOICE,
@@ -135,6 +145,7 @@ import {
 	DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS,
 	DEFAULT_AUDIO_PLAYBACK_VOLUME,
 	DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED,
+	DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS,
 	DEFAULT_FEEDBACK_SOUNDS_ENABLED,
 	DEFAULT_ACK_SOUND_ENABLED,
 	DEFAULT_ERROR_SOUND_ENABLED,
@@ -165,6 +176,7 @@ import {
 	DEFAULT_AGENT_PROMPT_MODE,
 	SKILLS_ROUTING_ENUM_VALUES,
 	DEFAULT_SKILLS_ROUTING,
+	DEFAULT_INTENT_EMBED_THRESHOLD,
 	DEFAULT_AGENT_MAX_STEPS,
 	DEFAULT_TOOL_SHORTLIST_MAX,
 	DEFAULT_SKILL_PROTOCOL,
@@ -221,6 +233,7 @@ export const domia = sqliteTable("domia", {
 	localIp: text("local_ip"),
 	grpcPort: integer("grpc_port"),
 	lastSeenAt: integer("last_seen_at"),
+	peerNodeId: text("peer_node_id"),
 	grpcUnaryDeadlineMs: integer("grpc_unary_deadline_ms")
 		.notNull()
 		.default(DEFAULT_GRPC_UNARY_DEADLINE_MS),
@@ -284,16 +297,20 @@ export const emotionState = sqliteTable("emotion_state", {
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
-export const emotionEvent = sqliteTable("emotion_event", {
-	id: text("id").primaryKey(),
-	domiaId: text("domia_id")
-		.notNull()
-		.references(() => domia.id),
-	cause: text("cause").notNull(),
-	delta: text("delta", { mode: "json" }).notNull(),
-	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
-})
+export const emotionEvent = sqliteTable(
+	"emotion_event",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		cause: text("cause").notNull(),
+		delta: text("delta", { mode: "json" }).notNull(),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [index("idx_emotion_event_domia_created").on(t.domiaId, t.createdAt)],
+)
 
 export const memoryFact = sqliteTable(
 	"memory_fact",
@@ -310,7 +327,10 @@ export const memoryFact = sqliteTable(
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
-	(t) => [unique().on(t.domiaId, t.subject, t.relation)],
+	(t) => [
+		unique().on(t.domiaId, t.subject, t.relation),
+		index("idx_memory_fact_domia_updated").on(t.domiaId, t.updatedAt),
+	],
 )
 
 export const moduleSettings = sqliteTable("module_settings", {
@@ -331,6 +351,11 @@ export const moduleSettings = sqliteTable("module_settings", {
 	factRecall: integer("fact_recall", { mode: "boolean" })
 		.notNull()
 		.default(true),
+	environmentTimeEnabled: integer("environment_time_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_ENVIRONMENT_TIME_ENABLED),
 	reflectionOnlyWhenIdle: integer("reflection_only_when_idle", {
 		mode: "boolean",
 	})
@@ -478,6 +503,40 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	speculativeSilenceMs: integer("speculative_silence_ms")
 		.notNull()
 		.default(DEFAULT_SPECULATIVE_SILENCE_MS),
+	semanticEndpointingEnabled: integer("semantic_endpointing_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_SEMANTIC_ENDPOINTING_ENABLED),
+	acousticEndpointingEnabled: integer("acoustic_endpointing_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_ACOUSTIC_ENDPOINTING_ENABLED),
+	acousticEndpointCompleteThreshold: real(
+		"acoustic_endpoint_complete_threshold",
+	)
+		.notNull()
+		.default(DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD),
+	turnDetectorModelPath: text("turn_detector_model_path")
+		.notNull()
+		.default(DEFAULT_TURN_DETECTOR_MODEL_PATH),
+	speculativeTtsEnabled: integer("speculative_tts_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_SPECULATIVE_TTS_ENABLED),
+	sharedMicStreamEnabled: integer("shared_mic_stream_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_SHARED_MIC_STREAM_ENABLED),
+	endpointCompleteMs: integer("endpoint_complete_ms")
+		.notNull()
+		.default(DEFAULT_ENDPOINT_COMPLETE_MS),
+	endpointIncompleteMs: integer("endpoint_incomplete_ms")
+		.notNull()
+		.default(DEFAULT_ENDPOINT_INCOMPLETE_MS),
 	followUpLeadPadMs: integer("follow_up_lead_pad_ms")
 		.notNull()
 		.default(DEFAULT_FOLLOW_UP_LEAD_PAD_MS),
@@ -597,6 +656,10 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 		.notNull()
 		.default(DEFAULT_SKILLS_ROUTING),
 	intentModelName: text("intent_model_name"),
+	embeddingModelName: text("embedding_model_name"),
+	intentEmbedThreshold: real("intent_embed_threshold")
+		.notNull()
+		.default(DEFAULT_INTENT_EMBED_THRESHOLD),
 	toolModelName: text("tool_model_name"),
 	agentMaxSteps: integer("agent_max_steps")
 		.notNull()
@@ -734,6 +797,9 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	streamingEnabled: integer("streaming_enabled", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED),
+	watchdogGraceMs: integer("watchdog_grace_ms")
+		.notNull()
+		.default(DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS),
 	outputDevice: text("output_device"),
 	feedbackSoundsEnabled: integer("feedback_sounds_enabled", { mode: "boolean" })
 		.notNull()
@@ -805,102 +871,117 @@ export const interactionSessionTrace = sqliteTable(
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
+	(t) => [
+		index("idx_session_trace_domia_lastused").on(t.domiaId, t.lastUsedAt),
+	],
 )
 
-export const interactionTrace = sqliteTable("interaction_trace", {
-	id: text("id").primaryKey(),
-	domiaId: text("domia_id")
-		.notNull()
-		.references(() => domia.id),
-	interactionSessionTraceId: text("interaction_session_trace_id")
-		.notNull()
-		.references(() => interactionSessionTrace.id),
-	sessionId: text("session_id").notNull(),
-	inputType: text("input_type", { enum: INTERACTION_INPUT_TYPE_ENUM_VALUES })
-		.notNull()
-		.default(INTERACTION_INPUT_TYPE_ENUM.VOICE),
-	responseType: text("response_type", { enum: RESPONSE_TYPE_ENUM_VALUES })
-		.notNull()
-		.default(RESPONSE_TYPE_ENUM.VOICE),
-	isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-	inputRaw: text("input_raw"),
-	inputAudioPath: text("input_audio_path"),
-	wakewordUsed: text("wakeword_used").notNull().default(DEFAULT_WAKE_WORD),
-	sttResult: text("stt_result"),
-	intentDecision: text("intent_decision"),
-	intentMs: integer("intent_ms"),
-	agentDecisionMs: integer("agent_decision_ms"),
-	agentToolMs: integer("agent_tool_ms"),
-	agentFinalizeMs: integer("agent_finalize_ms"),
-	skillProviderUsed: text("skill_provider_used"),
-	skillPrompt: text("skill_prompt"),
-	skillResponse: text("skill_response", { mode: "json" }),
-	llmPrompt: text("llm_prompt"),
-	llmResponse: text("llm_response"),
-	heardReply: text("heard_reply"),
-	ttsEngineUsed: text("tts_engine_used"),
-	ttsAudioPath: text("tts_audio_path"),
-	finalOutput: text("final_output"),
-	emotionSnapshot: text("emotion_snapshot", { mode: "json" }),
-	characterSnapshot: text("character_snapshot", { mode: "json" }),
-	userEmotionSnapshot: text("user_emotion_snapshot", { mode: "json" }),
-	sttMs: integer("stt_ms"),
-	sttQueueMs: integer("stt_queue_ms"),
-	llmMs: integer("llm_ms"),
-	llmPromptTokens: integer("llm_prompt_tokens"),
-	llmCompletionTokens: integer("llm_completion_tokens"),
-	llmTokensPerSec: real("llm_tokens_per_sec"),
-	llmTtftMs: integer("llm_ttft_ms"),
-	llmContextWindow: integer("llm_context_window"),
-	llmFinishReason: text("llm_finish_reason"),
-	toolCallCount: integer("tool_call_count"),
-	toolErrorCount: integer("tool_error_count"),
-	inputAudioMs: integer("input_audio_ms"),
-	ttsMs: integer("tts_ms"),
-	ttsQueueMs: integer("tts_queue_ms"),
-	ttfaMs: integer("ttfa_ms"),
-	perceivedTtfaMs: integer("perceived_ttfa_ms"),
-	totalMs: integer("total_ms"),
-	sttExecutorKey: text("stt_executor_key"),
-	llmExecutorKey: text("llm_executor_key"),
-	ttsExecutorKey: text("tts_executor_key"),
-	sttModelUsed: text("stt_model_used"),
-	llmModelUsed: text("llm_model_used"),
-	ttsVoiceUsed: text("tts_voice_used"),
-	wakeWordModelUsed: text("wake_word_model_used"),
-	status: text("status", { enum: INTERACTION_STATUS_ENUM_VALUES })
-		.notNull()
-		.default(INTERACTION_STATUS_ENUM.OK),
-	errorStep: text("error_step"),
-	errorMessage: text("error_message"),
-	satelliteId: text("satellite_id"),
-	satelliteProtocol: text("satellite_protocol", {
-		enum: SATELLITE_PROTOCOL_ENUM_VALUES,
-	}),
-	domiaSnapshot: text("domia_snapshot", { mode: "json" }),
-	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
-})
+export const interactionTrace = sqliteTable(
+	"interaction_trace",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		interactionSessionTraceId: text("interaction_session_trace_id")
+			.notNull()
+			.references(() => interactionSessionTrace.id),
+		sessionId: text("session_id").notNull(),
+		inputType: text("input_type", { enum: INTERACTION_INPUT_TYPE_ENUM_VALUES })
+			.notNull()
+			.default(INTERACTION_INPUT_TYPE_ENUM.VOICE),
+		responseType: text("response_type", { enum: RESPONSE_TYPE_ENUM_VALUES })
+			.notNull()
+			.default(RESPONSE_TYPE_ENUM.VOICE),
+		isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+		inputRaw: text("input_raw"),
+		inputAudioPath: text("input_audio_path"),
+		wakewordUsed: text("wakeword_used").notNull().default(DEFAULT_WAKE_WORD),
+		sttResult: text("stt_result"),
+		intentDecision: text("intent_decision"),
+		intentMs: integer("intent_ms"),
+		agentDecisionMs: integer("agent_decision_ms"),
+		agentToolMs: integer("agent_tool_ms"),
+		agentFinalizeMs: integer("agent_finalize_ms"),
+		skillProviderUsed: text("skill_provider_used"),
+		skillPrompt: text("skill_prompt"),
+		skillResponse: text("skill_response", { mode: "json" }),
+		llmPrompt: text("llm_prompt"),
+		llmResponse: text("llm_response"),
+		heardReply: text("heard_reply"),
+		ttsEngineUsed: text("tts_engine_used"),
+		ttsAudioPath: text("tts_audio_path"),
+		finalOutput: text("final_output"),
+		emotionSnapshot: text("emotion_snapshot", { mode: "json" }),
+		characterSnapshot: text("character_snapshot", { mode: "json" }),
+		userEmotionSnapshot: text("user_emotion_snapshot", { mode: "json" }),
+		sttMs: integer("stt_ms"),
+		sttQueueMs: integer("stt_queue_ms"),
+		llmMs: integer("llm_ms"),
+		llmPromptTokens: integer("llm_prompt_tokens"),
+		llmCompletionTokens: integer("llm_completion_tokens"),
+		llmTokensPerSec: real("llm_tokens_per_sec"),
+		llmTtftMs: integer("llm_ttft_ms"),
+		llmContextWindow: integer("llm_context_window"),
+		llmFinishReason: text("llm_finish_reason"),
+		toolCallCount: integer("tool_call_count"),
+		toolErrorCount: integer("tool_error_count"),
+		inputAudioMs: integer("input_audio_ms"),
+		ttsMs: integer("tts_ms"),
+		ttsQueueMs: integer("tts_queue_ms"),
+		ttfaMs: integer("ttfa_ms"),
+		perceivedTtfaMs: integer("perceived_ttfa_ms"),
+		llmFirstSentenceMs: integer("llm_first_sentence_ms"),
+		ttsFirstChunkMs: integer("tts_first_chunk_ms"),
+		totalMs: integer("total_ms"),
+		sttExecutorKey: text("stt_executor_key"),
+		llmExecutorKey: text("llm_executor_key"),
+		ttsExecutorKey: text("tts_executor_key"),
+		sttModelUsed: text("stt_model_used"),
+		llmModelUsed: text("llm_model_used"),
+		ttsVoiceUsed: text("tts_voice_used"),
+		wakeWordModelUsed: text("wake_word_model_used"),
+		status: text("status", { enum: INTERACTION_STATUS_ENUM_VALUES })
+			.notNull()
+			.default(INTERACTION_STATUS_ENUM.OK),
+		errorStep: text("error_step"),
+		errorMessage: text("error_message"),
+		satelliteId: text("satellite_id"),
+		satelliteProtocol: text("satellite_protocol", {
+			enum: SATELLITE_PROTOCOL_ENUM_VALUES,
+		}),
+		domiaSnapshot: text("domia_snapshot", { mode: "json" }),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [
+		index("idx_trace_domia_created").on(t.domiaId, t.createdAt),
+		index("idx_trace_session").on(t.interactionSessionTraceId),
+	],
+)
 
-export const announcement = sqliteTable("announcement", {
-	id: text("id").primaryKey(),
-	domiaId: text("domia_id")
-		.notNull()
-		.references(() => domia.id),
-	broadcastId: text("broadcast_id").notNull(),
-	text: text("text").notNull().default(""),
-	kind: text("kind", { enum: ANNOUNCEMENT_KIND_ENUM_VALUES })
-		.notNull()
-		.default(ANNOUNCEMENT_KIND_ENUM.TEXT),
-	delivery: text("delivery", { enum: ANNOUNCEMENT_DELIVERY_ENUM_VALUES })
-		.notNull()
-		.default(ANNOUNCEMENT_DELIVERY_ENUM.DOMIA_VOICE),
-	target: text("target"),
-	delivered: integer("delivered", { mode: "boolean" }).notNull().default(false),
-	audioPath: text("audio_path"),
-	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
-	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
-})
+export const announcement = sqliteTable(
+	"announcement",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		broadcastId: text("broadcast_id").notNull(),
+		text: text("text").notNull().default(""),
+		kind: text("kind", { enum: ANNOUNCEMENT_KIND_ENUM_VALUES })
+			.notNull()
+			.default(ANNOUNCEMENT_KIND_ENUM.TEXT),
+		delivery: text("delivery", { enum: ANNOUNCEMENT_DELIVERY_ENUM_VALUES })
+			.notNull()
+			.default(ANNOUNCEMENT_DELIVERY_ENUM.DOMIA_VOICE),
+		target: text("target"),
+		audioPath: text("audio_path"),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [index("idx_announcement_domia_updated").on(t.domiaId, t.updatedAt)],
+)
 
 export const capabilityDelegation = sqliteTable("capability_delegation", {
 	id: text("id").primaryKey(),
@@ -944,6 +1025,7 @@ export const satelliteConfig = sqliteTable(
 		followUpEnabled: integer("follow_up_enabled", { mode: "boolean" })
 			.notNull()
 			.default(DEFAULT_SATELLITE_FOLLOW_UP),
+		desiredVolume: real("desired_volume"),
 		isActive: integer("is_active", { mode: "boolean" })
 			.notNull()
 			.default(DEFAULT_SATELLITE_ACTIVE),

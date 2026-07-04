@@ -1,4 +1,8 @@
 import { createAsyncSemaphore } from "@/utils"
+import {
+	DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
+	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
+} from "@/db"
 import type { DomiaType } from "@/modules/core"
 
 type SemaphoreType = ReturnType<typeof createAsyncSemaphore>
@@ -8,7 +12,10 @@ const semaphores = new Map<string, SemaphoreType>()
 const semaphoreFor = (domiaId: string): SemaphoreType => {
 	let semaphore = semaphores.get(domiaId)
 	if (!semaphore) {
-		semaphore = createAsyncSemaphore(2, 4)
+		semaphore = createAsyncSemaphore(
+			DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
+			DEFAULT_MAX_QUEUED_VOICE_REPLIES,
+		)
 		semaphores.set(domiaId, semaphore)
 	}
 	return semaphore
@@ -24,8 +31,12 @@ export const admitVoiceReply = async (
 	domia: DomiaType,
 ): Promise<() => void> => {
 	const semaphore = semaphoreFor(domia.id)
-	semaphore.setLimit(domia?.maxConcurrentVoiceReplies ?? 2)
-	semaphore.setMaxWaiters(domia?.maxQueuedVoiceReplies ?? 4)
+	semaphore.setLimit(
+		domia?.maxConcurrentVoiceReplies ?? DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
+	)
+	semaphore.setMaxWaiters(
+		domia?.maxQueuedVoiceReplies ?? DEFAULT_MAX_QUEUED_VOICE_REPLIES,
+	)
 	return semaphore.acquire({ timeoutMs: domia?.voiceQueueTimeoutMs })
 }
 

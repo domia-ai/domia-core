@@ -4,6 +4,7 @@ import { type DomiaType } from "@/modules/core"
 import { warmupLogger } from "@/utils"
 import { runTTS } from "@/modules/tts-engine"
 import { runSttPcmPooled } from "@/modules/stt-engine"
+import { warmTurnDetector } from "@/modules/turn-detector"
 import { warmupLLM } from "@/modules/llm-engine"
 import type { RuntimeCapabilitiesType } from "@/setups/environment"
 
@@ -53,6 +54,8 @@ export const warmupOnBoot = (
 	if (capabilities.llm && domia.llmModelConfig?.modelName)
 		tasks.push(warmLlm(domia))
 	if (capabilities.tts && domia.ttsConfig?.modelPath) tasks.push(warmTts(domia))
+	if (domia.wakeWordConfig?.acousticEndpointingEnabled)
+		warmTurnDetector(domia.wakeWordConfig.turnDetectorModelPath)
 	if (tasks.length === 0) return
 	warmupLogger.info(`🔥 warming local models (${tasks.length} stages)`)
 	void Promise.allSettled(tasks).then(() =>

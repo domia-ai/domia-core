@@ -13,7 +13,8 @@ import type {
 	SentenceFlushTuningType,
 } from "../types/sentence-buffer"
 
-const HARD_TERMINATORS = /([.!?])\s/
+const HARD_TERMINATORS =
+	/(?<!\b(?:Dr|Mr|Mrs|Ms|St|vs|etc|Prof|Sr|Jr))(?<!\b[A-Za-z])(?<!\s\d)([.!?])["”'’)]*\s+(?=["“'‘(]?[A-Z0-9])/
 const SOFT_TERMINATORS = /([,;:])\s/
 
 export const DEFAULT_SENTENCE_TUNING: SentenceFlushTuningType = {
@@ -127,15 +128,21 @@ const tryFirstFlushTimeCap = (buffer: string): FlushResultType => {
 	}
 }
 
-const isSpeakable = (sentence: string): boolean =>
+export const isSpeakable = (sentence: string): boolean =>
 	/[\p{L}\p{N}]/u.test(sentence)
+
+export const cutFirstUnit = (
+	buffer: string,
+	tuning: SentenceFlushTuningType,
+): FlushResultType => nextFlush(buffer, false, tuning)
 
 export const splitSentences = async function* (
 	tokens: AsyncIterable<string>,
 	tuning: SentenceFlushTuningType = DEFAULT_SENTENCE_TUNING,
+	startEmitted = false,
 ): AsyncIterable<string> {
 	let buffer = ""
-	let emittedAny = false
+	let emittedAny = startEmitted
 	let firstTokenAt = 0
 
 	for await (const token of tokens) {
@@ -193,12 +200,17 @@ export class AsyncQueue<T> {
 	private waiters: ((value: T | null) => void)[] = []
 	private spaceWaiters: (() => void)[] = []
 	private closed = false
+	private consuming = false
 
 	push(item: T): void {
 		if (this.closed) return
 		const waiter = this.waiters.shift()
 		if (waiter) waiter(item)
 		else this.buffer.push(item)
+	}
+
+	isClosed(): boolean {
+		return this.closed
 	}
 
 	async waitForSpace(maxDepth: number): Promise<void> {
@@ -217,20 +229,26 @@ export class AsyncQueue<T> {
 	}
 
 	async *iter(): AsyncIterable<T> {
-		while (true) {
-			const next = this.buffer.shift()
-			if (next !== undefined) {
-				const space = this.spaceWaiters.shift()
-				if (space) space()
-				yield next
-				continue
+		if (this.consuming) throw new Error("AsyncQueue supports a single consumer")
+		this.consuming = true
+		try {
+			while (true) {
+				const next = this.buffer.shift()
+				if (next !== undefined) {
+					const space = this.spaceWaiters.shift()
+					if (space) space()
+					yield next
+					continue
+				}
+				if (this.closed) return
+				const item = await new Promise<T | null>((resolve) =>
+					this.waiters.push(resolve),
+				)
+				if (item === null) return
+				yield item
 			}
-			if (this.closed) return
-			const item = await new Promise<T | null>((resolve) =>
-				this.waiters.push(resolve),
-			)
-			if (item === null) return
-			yield item
+		} finally {
+			this.close()
 		}
 	}
 }

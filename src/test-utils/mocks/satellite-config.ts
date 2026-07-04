@@ -26,6 +26,7 @@ export const baseSatelliteConfig = (
 		desiredWakeWords: DEFAULT_DESIRED_WAKE_WORDS,
 		desiredNumbers: DEFAULT_SATELLITE_DESIRED_NUMBERS,
 		followUpEnabled: DEFAULT_SATELLITE_FOLLOW_UP,
+		desiredVolume: null,
 		isActive: DEFAULT_SATELLITE_ACTIVE,
 		createdAt: now(),
 		updatedAt: now(),

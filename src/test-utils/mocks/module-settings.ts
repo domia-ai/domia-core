@@ -15,6 +15,7 @@ export const baseModuleSettings = (
 	memoryEngine: faker.datatype.boolean(),
 	factCapture: true,
 	factRecall: faker.datatype.boolean(),
+	environmentTimeEnabled: true,
 	reflectionOnlyWhenIdle: true,
 	reflectionConcurrency: 1,
 	reflectionQueueMaxDepth: 4,

@@ -18,6 +18,7 @@ export const baseDomia: SelectDomiaType = {
 	warmupOnBoot: true,
 	isHosted: true,
 	lastSeenAt: null,
+	peerNodeId: null,
 	grpcUnaryDeadlineMs: 10_000,
 	grpcStreamIdleTimeoutMs: 15_000,
 	grpcStreamDeadlineMs: 60_000,

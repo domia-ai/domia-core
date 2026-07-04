@@ -35,8 +35,10 @@
 		"setup:models:kokoro": "bash scripts/download-models.sh kokoro",
 		"setup:models:moonshine": "bash scripts/download-models.sh moonshine",
 		"setup:models:zipformer": "bash scripts/download-models.sh zipformer",
+		"setup:models:parakeet": "bash scripts/download-models.sh parakeet",
 		"setup:models:kws": "bash scripts/download-models.sh kws",
-		"setup:models:vad": "bash scripts/download-models.sh vad"
+		"setup:models:vad": "bash scripts/download-models.sh vad",
+		"setup:models:kokoro-v1": "bash scripts/download-models.sh kokoro-v1"
 	},
 	"devDependencies": {
 		"@dotenvx/dotenvx": "^1.67.0",
@@ -81,9 +83,10 @@
 		"nice-grpc": "^2.1.16",
 		"nice-grpc-common": "^2.0.3",
 		"ollama": "^0.6.3",
+		"onnxruntime-node": "^1.27.0",
 		"openai": "^6.43.0",
 		"sherpa-onnx-node": "^1.13.2",
-		"ws": "^8.20.1",
+		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	}
 }

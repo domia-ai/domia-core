@@ -20,7 +20,7 @@ const dbAdapter = {
 			.values({ ...data, updatedAt: DEFAULT_TIMESTAMP })
 			.onConflictDoUpdate({
 				target: emotionState.id,
-				set: data,
+				set: { ...data, updatedAt: DEFAULT_TIMESTAMP },
 				where: eq(emotionState.domiaId, data.domiaId),
 			}),
 	createEmotionEvent: (

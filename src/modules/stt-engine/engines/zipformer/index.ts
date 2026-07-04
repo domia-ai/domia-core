@@ -1,7 +1,7 @@
 import { STT_ENGINE_ENUM } from "@/db"
 import {
 	runSttPooled,
-	runSttStreamPooled,
+	collectStreamAndTranscribePooled,
 	runSttPcmPooled,
 	createSttSessionPooled,
 } from "../../utils"
@@ -16,7 +16,7 @@ export const zipformerEngine: SttEngineAdapterType = {
 		expectedSampleRate: SAMPLE_RATE,
 	},
 	run: runSttPooled,
-	runStream: runSttStreamPooled,
+	runStream: collectStreamAndTranscribePooled,
 	runPcm: runSttPcmPooled,
 	createSession: createSttSessionPooled,
 }

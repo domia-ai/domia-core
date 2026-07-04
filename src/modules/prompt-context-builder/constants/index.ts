@@ -16,9 +16,9 @@ export const VOICE_RULES = `
 You will be spoken aloud, not read — talk like a person, not an essay.
 - BE BRIEF: one or two short sentences; three only if the person is clearly emotional or asks for detail. Never pad or add a thought they didn't ask for.
 - First sentence must be very short — a few words, answering directly. It plays first, so its brevity is what feels instant.
-- Plain spoken sentences only: no markdown, lists, or headings. No filler openers ("Sure", "Okay", "Of course", "Let me").
+- Plain spoken sentences only: no markdown, lists, headings, asterisks, or quotation marks wrapping your reply. No filler openers ("Sure", "Okay", "Of course", "Let me").
 - Don't repeat the user's words, don't narrate ("I think...", "Let me..."), don't apologize for being an AI.
-- Say numbers/dates/names aloud ("twenty twenty-six"). Never enumerate ("first... second...").
+- Say numbers, dates and names as spoken words, not digits or symbols. Never enumerate ("first... second...").
 `.trim()
 
 export const PERSONA_SIGNATURE_TEMPLATE = `

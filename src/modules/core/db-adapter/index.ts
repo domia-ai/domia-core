@@ -347,6 +347,22 @@ const dbAdapter = {
 				),
 			)
 			.returning(),
+	setSatelliteDesiredVolume: (
+		domiaId: string,
+		satelliteId: string,
+		desiredVolume: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(satelliteConfig)
+			.set({ desiredVolume, updatedAt: new Date().toISOString() })
+			.where(
+				and(
+					eq(satelliteConfig.domiaId, domiaId),
+					eq(satelliteConfig.satelliteId, satelliteId),
+				),
+			)
+			.returning(),
 }
 
 export default dbAdapter

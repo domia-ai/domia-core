@@ -2,6 +2,7 @@ import { faker } from "@faker-js/faker"
 
 import { generateUuid, now } from "@/utils"
 import {
+	DEFAULT_INTENT_EMBED_THRESHOLD,
 	DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
 	DEFAULT_LLM_MODEL_NAME,
 	DEFAULT_LLM_MODEL_NUM_PREDICT,
@@ -36,6 +37,8 @@ export const baseLlmModelConfig = (
 		agentPromptMode: "compact",
 		skillsRouting: "intent-gate",
 		intentModelName: null,
+		embeddingModelName: null,
+		intentEmbedThreshold: DEFAULT_INTENT_EMBED_THRESHOLD,
 		toolModelName: null,
 		agentMaxSteps: 5,
 		toolShortlistMax: 8,

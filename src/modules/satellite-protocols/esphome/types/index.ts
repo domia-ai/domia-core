@@ -14,6 +14,7 @@ export type EsphomeBindingType = {
 	encryptionKey: string | null
 	desiredWakeWords?: string[]
 	desiredNumbers?: Record<string, number>
+	desiredVolume?: number | null
 	followUpEnabled?: boolean
 }
 

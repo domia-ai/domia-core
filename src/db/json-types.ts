@@ -11,9 +11,10 @@ export type SkillToolType = {
 }
 
 export type ToolFinalizeRuleType = {
-	mode: "agent_loop" | "template"
+	mode: "agent_loop" | "template" | "async"
 	ack?: string
 	error?: string
+	done?: string
 }
 
 export type ToolFinalizeMapType = Record<string, ToolFinalizeRuleType>

@@ -1,9 +1,9 @@
 import { createReadStream, existsSync } from "fs"
+import { Readable } from "stream"
 import { ZodError } from "zod"
 import { writeFile, mkdir, copyFile } from "fs/promises"
 import { join, resolve, sep } from "path"
-import { generateUuid, writeWavToTemp } from "@/utils"
-import { DEFAULT_OLLAMA_HOST } from "@/db"
+import { generateUuid, writeWavToTemp, buildStreamingWavHeader } from "@/utils"
 import { env } from "@/config"
 import {
 	type DomiaType,
@@ -19,8 +19,10 @@ import {
 	deleteSatellite,
 	setSatelliteDesiredWakeWords,
 	setSatelliteDesiredNumber,
+	setSatelliteDesiredVolume,
 	setSatelliteFollowUp,
 	getOwnDomia,
+	resolveOllamaHost,
 } from "@/modules/core"
 import { publishIdentityState } from "@/modules/heartbeat-manager"
 import { discoverEsphome } from "@/modules/satellite-discovery"
@@ -40,6 +42,7 @@ import {
 	recordAnnouncement,
 	getAnnouncementById,
 	getAnnouncementsSince,
+	getLatencyStats,
 } from "@/modules/session-manager"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
 import { getFactsSince } from "@/modules/memory"
@@ -82,6 +85,8 @@ import {
 	postSatelliteBodySchema,
 	postSatelliteWakeWordsBodySchema,
 	postSatelliteNumberBodySchema,
+	postSatelliteVolumeBodySchema,
+	postSatelliteTimerBodySchema,
 	postSatelliteFollowUpBodySchema,
 	getSyncQuerySchema,
 	getAudioQuerySchema,
@@ -98,6 +103,10 @@ import {
 	announceAudio,
 	renderAnnouncementUrl,
 	getSatelliteControl,
+	getAudioStream,
+	startSatelliteTimer,
+	cancelSatelliteTimer,
+	listSatelliteTimers,
 	canDeliverIntercom,
 	canDeliverBroadcast,
 	getAllPresence,
@@ -128,6 +137,21 @@ export const handleGetAudio = async (
 ) => {
 	const { interactionId } = request.params
 	const { kind } = getAudioQuerySchema.parse(request.query)
+	if (kind === "tts") {
+		const live = getAudioStream(interactionId)
+		if (live) {
+			const header = buildStreamingWavHeader(live.sampleRate, live.channels, 16)
+			const gen = async function* () {
+				yield header
+				try {
+					for await (const chunk of live.queue.iter()) yield chunk
+				} catch {
+					/* single-consumer already draining */
+				}
+			}
+			return reply.type("audio/wav").send(Readable.from(gen()))
+		}
+	}
 	let filePath =
 		kind === "tts" || kind === "announce"
 			? getAudioFilePath(interactionId)
@@ -278,7 +302,6 @@ const persistAnnouncement = async (
 			kind: opts.kind,
 			delivery: opts.delivery,
 			target: opts.result.target,
-			delivered: opts.result.delivered,
 			audioPath,
 		})
 	} catch (err) {
@@ -466,9 +489,12 @@ export const handleGetConfigHealth = async (domia: DomiaType) => {
 	return { health: configHealth(domia) }
 }
 
+export const handleGetLatencyStats = async (domia: DomiaType) => {
+	return { stats: await getLatencyStats(domia) }
+}
+
 export const handleGetModels = async (domia: DomiaType) => {
-	const ollamaHost = domia.llmModelConfig?.baseUrl ?? DEFAULT_OLLAMA_HOST
-	return { models: await listModels(ollamaHost) }
+	return { models: await listModels(resolveOllamaHost(domia)) }
 }
 
 export const handlePostModelInstall = async (
@@ -476,9 +502,8 @@ export const handlePostModelInstall = async (
 	body: unknown,
 	reply: FastifyReply,
 ) => {
-	const ollamaHost = domia.llmModelConfig?.baseUrl ?? DEFAULT_OLLAMA_HOST
 	try {
-		return { job: startInstall(body, ollamaHost) }
+		return { job: startInstall(body, resolveOllamaHost(domia)) }
 	} catch (err) {
 		httpServerLogger.error("Model install request failed", { err })
 		return reply.code(400).send({ error: "Invalid model install spec" })
@@ -802,6 +827,106 @@ export const handleSetSatelliteFollowUp = async (
 	const control = getSatelliteControl(domiaKey, satelliteId)
 	control?.setFollowUp?.(parsed.data.enabled)
 	return { applied: true, live: !!control?.setFollowUp }
+}
+
+export const handleStartSatelliteTimer = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const parsed = postSatelliteTimerBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid timer body" })
+	}
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	if (!control?.sendTimerEvent) {
+		return reply.code(409).send({
+			error: `satellite ${satelliteId} does not support timers or is offline`,
+		})
+	}
+	const timer = startSatelliteTimer(
+		domiaKey,
+		satelliteId,
+		parsed.data.name ?? "Timer",
+		parsed.data.seconds,
+	)
+	return { started: true, timerId: timer.timerId }
+}
+
+export const handleCancelSatelliteTimer = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	timerId: string,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const cancelled = cancelSatelliteTimer(timerId)
+	if (!cancelled) {
+		return reply.code(404).send({ error: `no active timer ${timerId}` })
+	}
+	return { cancelled: true }
+}
+
+export const handleListSatelliteTimers = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const active = listSatelliteTimers(domiaKey, satelliteId).map((t) => ({
+		timerId: t.timerId,
+		name: t.name,
+		totalSeconds: t.totalSeconds,
+		secondsLeft: Math.max(
+			0,
+			t.totalSeconds - Math.round((Date.now() - t.startedAt) / 1000),
+		),
+	}))
+	return { timers: active }
+}
+
+export const handleSetSatelliteVolume = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	const parsed = postSatelliteVolumeBodySchema.safeParse(body)
+	if (!parsed.success) {
+		return reply.code(400).send({ error: "Invalid volume body" })
+	}
+	const updated = await setSatelliteDesiredVolume(
+		domia.id,
+		satelliteId,
+		parsed.data.volume,
+	)
+	if (updated.length === 0) {
+		return reply
+			.code(404)
+			.send({ error: `satellite not bound to ${domiaKey}: ${satelliteId}` })
+	}
+	invalidateOwnDomia(domiaKey)
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	control?.setVolume?.(parsed.data.volume)
+	return { applied: true, live: !!control?.setVolume }
 }
 
 export const handleTestSatelliteSpeaker = async (

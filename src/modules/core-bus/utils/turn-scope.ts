@@ -4,6 +4,16 @@ import { clearStreamingSink } from "./streaming-sink"
 import type { TurnScopeType } from "../types"
 
 const turns = new Map<string, TurnScopeType>()
+const abortedInteractions = new Set<string>()
+const ABORTED_TOMBSTONE_MAX = 512
+
+const rememberAbort = (interactionId: string): void => {
+	abortedInteractions.add(interactionId)
+	if (abortedInteractions.size > ABORTED_TOMBSTONE_MAX) {
+		const oldest = abortedInteractions.values().next().value
+		if (oldest !== undefined) abortedInteractions.delete(oldest)
+	}
+}
 
 export const beginTurn = (
 	domiaId: string,
@@ -11,6 +21,7 @@ export const beginTurn = (
 ): TurnScopeType => {
 	const existing = turns.get(domiaId)
 	if (existing) existing.abort("superseded")
+	abortedInteractions.delete(interactionId)
 
 	const controller = new AbortController()
 	let abortReason: string | null = null
@@ -24,6 +35,7 @@ export const beginTurn = (
 		abort: (reason) => {
 			if (controller.signal.aborted) return
 			abortReason = reason
+			rememberAbort(interactionId)
 			controller.abort()
 			stopActivePlayback(domiaId)
 			clearStreamingSink(interactionId)
@@ -55,6 +67,7 @@ export const isTurnAborted = (
 	domiaId: string,
 	interactionId: string,
 ): boolean => {
+	if (abortedInteractions.has(interactionId)) return true
 	const scope = turns.get(domiaId)
 	if (!scope) return false
 	if (scope.interactionId !== interactionId) return true

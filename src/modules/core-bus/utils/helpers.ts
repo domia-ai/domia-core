@@ -1,7 +1,13 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, toError, withTimeout } from "@/utils"
-import { rejectPending, resolvePending } from "./pending-requests"
-import { updateInteraction } from "@/modules/session-manager"
+import {
+	completeInteraction,
+	INTERACTION_COMPLETION_TIMEOUT,
+} from "./interaction-runtime"
+import {
+	updateInteraction,
+	getInteractionById,
+} from "@/modules/session-manager"
 import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { playAudio } from "@/modules/audio-playback"
 import { runTTS } from "@/modules/tts-engine"
@@ -11,6 +17,7 @@ import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver
 import { resolveFallbackMessage } from "./fallback-messages"
 import type {
 	CoreBusContextType,
+	InteractionStatusType,
 	NotifyAudioFallbackArgsType,
 	NotifyInteractionFailedArgsType,
 } from "../types"
@@ -128,10 +135,7 @@ export const notifyInteractionFailed = (
 			}),
 		)
 	}
-	if (responseType === RESPONSE_TYPE_ENUM.TEXT) {
-		rejectPending(interactionId, err)
-		return
-	}
+	if (responseType === RESPONSE_TYPE_ENUM.TEXT) return
 	if (silent) return
 	void playFallbackAudio(ctx, step)
 }
@@ -163,17 +167,52 @@ export const notifyAudioFallback = (
 	)
 }
 
+const TERMINAL_STATUSES: readonly string[] = [
+	INTERACTION_STATUS_ENUM.FAILED,
+	INTERACTION_STATUS_ENUM.ABORTED,
+	INTERACTION_STATUS_ENUM.NO_SPEECH,
+]
+
+export const persistTerminal = async (
+	interactionId: string,
+	status: InteractionStatusType,
+	opts: { errorStep?: string; errorMessage?: string } = {},
+): Promise<void> => {
+	try {
+		const existing = await getInteractionById(interactionId)
+		if (existing && TERMINAL_STATUSES.includes(existing.status)) return
+		await updateInteraction({
+			id: interactionId,
+			status,
+			...(opts.errorStep !== undefined ? { errorStep: opts.errorStep } : {}),
+			...(opts.errorMessage !== undefined
+				? { errorMessage: opts.errorMessage }
+				: {}),
+		})
+	} catch (err) {
+		domiaBusLogger.warn("⚠️ failed to persist terminal state", {
+			interactionId,
+			status,
+			err,
+		})
+	}
+}
+
+export const persistInteractionTimeout = (interactionId: string): void => {
+	void persistTerminal(interactionId, INTERACTION_STATUS_ENUM.FAILED, {
+		errorStep: "timeout",
+		errorMessage: INTERACTION_COMPLETION_TIMEOUT,
+	})
+}
+
 export const notifyTurnAborted = async (
 	domiaId: string,
 	interactionId: string,
 	originDomiaKey: string | undefined,
 	reply = "",
 ): Promise<void> => {
-	await updateInteraction({
-		id: interactionId,
-		status: INTERACTION_STATUS_ENUM.ABORTED,
-	}).catch(() => undefined)
-	resolvePending(interactionId, reply)
+	await persistTerminal(interactionId, INTERACTION_STATUS_ENUM.ABORTED)
+	completeInteraction(interactionId, { interrupted: true, result: { reply } })
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
 		interactionId,
 		originDomiaKey,

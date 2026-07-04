@@ -1,12 +1,14 @@
 import { spawn, type ChildProcess } from "child_process"
 
 import { type DomiaType } from "@/modules/core"
+import { DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS } from "@/db"
 import { audioPlaybackLogger } from "@/utils"
 import { registerActivePlayback } from "../../utils"
 import type { AudioPlaybackResult, SoxStreamOptionsType } from "../../types"
 
 const STREAM_BUFFER_BYTES = 65536
 const KILL_GRACE_MS = 2000
+const PREWARM_TTL_MS = 15000
 const STDERR_NOISE_PATTERN = /can't set sample rate/
 
 const volumeFromConfig = (
@@ -53,13 +55,23 @@ const attachStderrFilter = (
 	})
 }
 
-const waitDrainOrExit = (proc: ChildProcess): Promise<void> =>
+const waitDrainOrExit = (
+	proc: ChildProcess,
+	stallBudgetMs: number,
+	onStall: () => void,
+): Promise<void> =>
 	new Promise<void>((resolve) => {
+		let stallTimer: ReturnType<typeof setTimeout> | null = null
 		const finish = (): void => {
+			if (stallTimer) clearTimeout(stallTimer)
 			proc.stdin?.off("drain", finish)
 			proc.off("exit", finish)
 			proc.stdin?.off("close", finish)
 			resolve()
+		}
+		if (stallBudgetMs > 0) {
+			stallTimer = setTimeout(onStall, stallBudgetMs)
+			stallTimer.unref()
 		}
 		proc.stdin?.once("drain", finish)
 		proc.once("exit", finish)
@@ -141,6 +153,95 @@ export const runSox = async (
 	})
 }
 
+const prewarmedPlayers = new Map<
+	string,
+	{ proc: ChildProcess; args: string[]; timer: ReturnType<typeof setTimeout> }
+>()
+
+const killDetachedProc = (proc: ChildProcess): void => {
+	const signal = (sig: NodeJS.Signals): void => {
+		try {
+			if (proc.pid) process.kill(-proc.pid, sig)
+			else proc.kill(sig)
+		} catch {
+			try {
+				proc.kill(sig)
+			} catch {
+				/* */
+			}
+		}
+	}
+	signal("SIGTERM")
+	const killTimer = setTimeout(() => {
+		if (proc.exitCode === null && proc.signalCode === null) signal("SIGKILL")
+	}, KILL_GRACE_MS)
+	killTimer.unref()
+}
+
+const killPrewarmed = (domiaId: string): void => {
+	const entry = prewarmedPlayers.get(domiaId)
+	if (!entry) return
+	prewarmedPlayers.delete(domiaId)
+	clearTimeout(entry.timer)
+	killDetachedProc(entry.proc)
+}
+
+const takePrewarmedPlayer = (
+	domiaId: string,
+	args: string[],
+): ChildProcess | null => {
+	const entry = prewarmedPlayers.get(domiaId)
+	if (!entry) return null
+	prewarmedPlayers.delete(domiaId)
+	clearTimeout(entry.timer)
+	const compatible =
+		entry.args.join("\u0000") === args.join("\u0000") &&
+		entry.proc.exitCode === null &&
+		entry.proc.stdin?.writable === true
+	if (compatible) {
+		entry.proc.removeAllListeners("error")
+		entry.proc.removeAllListeners("exit")
+		entry.proc.stderr?.removeAllListeners("data")
+		audioPlaybackLogger.info("🔊 adopting prewarmed player", { domiaId })
+		return entry.proc
+	}
+	killDetachedProc(entry.proc)
+	return null
+}
+
+export const prewarmSoxPlayer = (
+	domia: DomiaType,
+	options: SoxStreamOptionsType,
+): void => {
+	const domiaId = domia.id
+	if (prewarmedPlayers.has(domiaId)) return
+	const { factor } = volumeFromConfig(domia.audioPlaybackConfig)
+	const args = buildStreamPlayArgs(options, factor)
+	try {
+		const proc = spawn("play", args, {
+			stdio: ["pipe", "ignore", "pipe"],
+			detached: true,
+		})
+		proc.on("error", () => killPrewarmed(domiaId))
+		proc.on("exit", () => {
+			const entry = prewarmedPlayers.get(domiaId)
+			if (entry?.proc === proc) {
+				clearTimeout(entry.timer)
+				prewarmedPlayers.delete(domiaId)
+			}
+		})
+		attachStderrFilter(proc, domiaId)
+		const timer = setTimeout(() => killPrewarmed(domiaId), PREWARM_TTL_MS)
+		timer.unref()
+		prewarmedPlayers.set(domiaId, { proc, args, timer })
+		audioPlaybackLogger.info("🔊 prewarmed player spawned (device opening)", {
+			domiaId,
+		})
+	} catch (err) {
+		audioPlaybackLogger.warn("prewarm player spawn failed", { domiaId, err })
+	}
+}
+
 export const runSoxStream = async (
 	domia: DomiaType,
 	chunks: AsyncIterable<Buffer>,
@@ -157,13 +258,13 @@ export const runSoxStream = async (
 		volume,
 	})
 
-	const shellCommand = `cat | play ${playArgs.map((a) => `'${a}'`).join(" ")}`
-
 	return new Promise<AudioPlaybackResult>((resolve, reject) => {
-		const proc = spawn("bash", ["-c", shellCommand], {
-			stdio: ["pipe", "ignore", "pipe"],
-			detached: true,
-		})
+		const proc =
+			takePrewarmedPlayer(domia.id, playArgs) ??
+			spawn("play", playArgs, {
+				stdio: ["pipe", "ignore", "pipe"],
+				detached: true,
+			})
 		const iterator = chunks[Symbol.asyncIterator]()
 
 		const state = {
@@ -173,10 +274,22 @@ export const runSoxStream = async (
 			exitCode: null as number | null,
 			pumpError: null as Error | null,
 			firstChunkWritten: false,
+			firstChunkAt: 0,
 			interrupted: false,
+			watchdogTripped: false,
 			totalBytes: 0,
 			chunkCount: 0,
 			startedAt: Date.now(),
+		}
+		const watchdogGraceMs =
+			domia.audioPlaybackConfig?.watchdogGraceMs ??
+			DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS
+		let watchdogTimer: ReturnType<typeof setTimeout> | null = null
+		const clearWatchdogTimer = (): void => {
+			if (watchdogTimer) {
+				clearTimeout(watchdogTimer)
+				watchdogTimer = null
+			}
 		}
 
 		let killTimer: ReturnType<typeof setTimeout> | null = null
@@ -208,6 +321,30 @@ export const runSoxStream = async (
 			killTimer.unref()
 		}
 
+		const tripWatchdog = (reason: string): void => {
+			if (state.settled || state.exited || state.interrupted) return
+			if (state.watchdogTripped) return
+			state.watchdogTripped = true
+			audioPlaybackLogger.error(
+				"🐕 Playback watchdog tripped — audio device not consuming, killing player",
+				{
+					domiaId: domia.id,
+					reason,
+					totalBytes: state.totalBytes,
+					elapsedMs: Date.now() - state.startedAt,
+					expectedAudioMs: bytesToAudioMs(
+						state.totalBytes,
+						options.sampleRate,
+						options.channels,
+						options.bitsPerSample,
+					),
+				},
+			)
+			killProcessGroup()
+			proc.stdin?.destroy()
+			void iterator.return?.(undefined)
+		}
+
 		const unregister = registerActivePlayback(domia.id, () => {
 			state.interrupted = true
 			audioPlaybackLogger.info("🛑 Sox stream playback interrupted", {
@@ -222,6 +359,7 @@ export const runSoxStream = async (
 			if (state.settled) return
 			state.settled = true
 			clearKillTimer()
+			clearWatchdogTimer()
 			unregister()
 			if (err) reject(err)
 			else resolve(result)
@@ -244,6 +382,13 @@ export const runSoxStream = async (
 			})
 			if (state.interrupted) {
 				settle({ engine: "SOX", success: true, interrupted: true })
+				return
+			}
+			if (state.watchdogTripped) {
+				settle(
+					{ engine: "SOX", success: false },
+					new Error("playback watchdog: audio device not consuming"),
+				)
 				return
 			}
 			if (state.pumpError) {
@@ -324,9 +469,39 @@ export const runSoxStream = async (
 					state.chunkCount++
 					if (!state.firstChunkWritten) {
 						state.firstChunkWritten = true
+						state.firstChunkAt = Date.now()
 						options.onFirstChunkWritten?.()
 					}
-					if (!okWrite) await waitDrainOrExit(proc)
+					if (!okWrite) {
+						const bufferedAheadMs = state.firstChunkAt
+							? Math.max(
+									0,
+									bytesToAudioMs(
+										state.totalBytes,
+										options.sampleRate,
+										options.channels,
+										options.bitsPerSample,
+									) -
+										(Date.now() - state.firstChunkAt),
+								)
+							: 0
+						const stallBudgetMs =
+							watchdogGraceMs > 0
+								? watchdogGraceMs +
+									Math.max(
+										bytesToAudioMs(
+											STREAM_BUFFER_BYTES,
+											options.sampleRate,
+											options.channels,
+											options.bitsPerSample,
+										),
+										bufferedAheadMs,
+									)
+								: 0
+						await waitDrainOrExit(proc, stallBudgetMs, () =>
+							tripWatchdog("stdin stalled — no drain within budget"),
+						)
+					}
 				}
 			} catch (err) {
 				state.pumpError = err instanceof Error ? err : new Error(String(err))
@@ -341,6 +516,21 @@ export const runSoxStream = async (
 					if (proc.stdin && !proc.stdin.destroyed) proc.stdin.end()
 				} catch {
 					/* */
+				}
+				if (watchdogGraceMs > 0 && !state.exited && !state.settled) {
+					const deadlineMs =
+						bytesToAudioMs(
+							state.totalBytes,
+							options.sampleRate,
+							options.channels,
+							options.bitsPerSample,
+						) + watchdogGraceMs
+					clearWatchdogTimer()
+					watchdogTimer = setTimeout(
+						() => tripWatchdog("player did not exit by audio deadline"),
+						deadlineMs,
+					)
+					watchdogTimer.unref()
 				}
 				tryFinish()
 			}

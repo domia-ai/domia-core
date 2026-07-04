@@ -52,11 +52,27 @@ case "${1:-}" in
     ;;
 esac
 
+case "${1:-}" in
+  parakeet|parakeet-tdt)
+    download_and_extract "parakeet-tdt-06b-v2" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2" \
+      "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+    ;;
+esac
+
 case "${1:-all}" in
   kokoro|all)
     download_and_extract "kokoro-en-v0_19" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2" \
       "kokoro-en-v0_19"
+    ;;
+esac
+
+case "${1:-all}" in
+  kokoro-v1|all)
+    download_and_extract "kokoro-multi-lang-v1_0" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2" \
+      "kokoro-multi-lang-v1_0"
     ;;
 esac
 

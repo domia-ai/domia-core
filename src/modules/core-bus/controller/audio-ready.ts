@@ -247,6 +247,7 @@ export const handleAudioReady = async (
 	const { canRunStt } = features
 	const domiaId = domia.id
 	const { filePath, audioUrl, originDomiaKey } = payload
+	const responseType = payload.responseType ?? RESPONSE_TYPE_ENUM.VOICE
 
 	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`🎧 AUDIO_READY received`, {
@@ -263,7 +264,12 @@ export const handleAudioReady = async (
 	)
 	if (!interactionId) return
 	if (filePath)
-		await updateInteraction({ id: interactionId, inputAudioPath: filePath })
+		void updateInteraction({
+			id: interactionId,
+			inputAudioPath: filePath,
+		}).catch((err) =>
+			domiaBusLogger.warn("detached updateInteraction failed", { err }),
+		)
 	markPipelineStart(interactionId)
 	setTraceContext({ interactionId, originDomiaKey })
 	domiaBusLogger.info(`🆕 Interaction ${interactionId}`, { domiaId })
@@ -288,18 +294,21 @@ export const handleAudioReady = async (
 				sttExecMs = t.execMs
 				sttQueueMs = t.queueWaitMs
 			})
-			await updateInteraction({
+			void updateInteraction({
 				id: interactionId,
 				sttExecutorKey: domia.domiaKey,
 				sttMs: sttExecMs ?? Date.now() - sttStart,
 				sttQueueMs,
 				sttModelUsed: domia.sttConfig?.modelName ?? null,
 				totalMs: pipelineElapsed(interactionId),
-			})
+			}).catch((err) =>
+				domiaBusLogger.warn("detached updateInteraction failed", { err }),
+			)
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,
 				originDomiaKey,
+				responseType,
 				speechEndAt: payload.speechEndAt,
 				liveVoice: payload.liveVoice,
 			})
@@ -315,7 +324,7 @@ export const handleAudioReady = async (
 				capability: CAPABILITY_ENUM.STT,
 				interactionId,
 				originDomiaKey,
-				responseType: RESPONSE_TYPE_ENUM.VOICE,
+				responseType,
 			})
 			return
 		}
@@ -331,7 +340,7 @@ export const handleAudioReady = async (
 		}
 		const audioPath: string = localPath
 
-		if (features.canPlayback) {
+		if (features.canPlayback && responseType === RESPONSE_TYPE_ENUM.VOICE) {
 			const fusedTargets = targets.filter(
 				(target) =>
 					target.streamingCapabilities.stt &&
@@ -371,7 +380,7 @@ export const handleAudioReady = async (
 			{
 				originDomiaKey,
 				interactionId,
-				responseType: RESPONSE_TYPE_ENUM.VOICE,
+				responseType,
 			},
 			() => wavFileToPcmChunks(audioPath),
 		)
@@ -380,14 +389,17 @@ export const handleAudioReady = async (
 				`AUDIO_READY delegation failed: ${streamed.error ?? "unknown"} (tried ${streamed.attemptedTargets})`,
 			)
 		}
-		await updateInteraction({
+		void updateInteraction({
 			id: interactionId,
 			sttExecutorKey: streamed.target?.domiaKey,
-		})
+		}).catch((err) =>
+			domiaBusLogger.warn("detached updateInteraction failed", { err }),
+		)
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 			transcript: streamed.transcript,
 			interactionId,
 			originDomiaKey,
+			responseType,
 			speechEndAt: payload.speechEndAt,
 			liveVoice: payload.liveVoice,
 		})
@@ -400,7 +412,7 @@ export const handleAudioReady = async (
 		notifyInteractionFailed(ctx, {
 			interactionId,
 			originDomiaKey,
-			responseType: RESPONSE_TYPE_ENUM.VOICE,
+			responseType,
 			error: toError(err),
 			step: "stt",
 			liveVoice: payload.liveVoice,

@@ -1,5 +1,8 @@
 import {
 	DEFAULT_AGENT_MAX_STEPS,
+	DEFAULT_SLOW_TOOL_AFTER_MS,
+	DEFAULT_ASYNC_TOOL_ACK,
+	DEFAULT_ASYNC_TOOL_DONE,
 	SKILL_TOOL_NAME_SEPARATOR,
 	AGENT_PROMPT_MODE_ENUM,
 	DEFAULT_FINALIZE_ACK,
@@ -25,7 +28,32 @@ import type {
 	AgentInferenceType,
 	AgentResultType,
 	AgentTurnOptionsType,
+	AsyncToolOutcomeType,
 } from "../types"
+
+const ABORTED = Symbol("agent-aborted")
+
+const raceAbort = <T>(
+	p: Promise<T>,
+	signal?: AbortSignal,
+): Promise<T | typeof ABORTED> => {
+	if (!signal) return p as Promise<T | typeof ABORTED>
+	if (signal.aborted) return Promise.resolve(ABORTED)
+	return new Promise((resolve, reject) => {
+		const onAbort = (): void => resolve(ABORTED)
+		signal.addEventListener("abort", onAbort, { once: true })
+		p.then(
+			(v) => {
+				signal.removeEventListener("abort", onAbort)
+				resolve(v)
+			},
+			(e) => {
+				signal.removeEventListener("abort", onAbort)
+				reject(e)
+			},
+		)
+	})
+}
 
 const isEmptyArg = (v: unknown): boolean =>
 	v == null ||
@@ -116,8 +144,23 @@ export const runAgentTurn = async (
 			]
 		}),
 	)
+	const knownToolNames = new Set(toolDefs.map((t) => t.name))
+
+	const abortedReturn = (step: number): AgentResultType => ({
+		reply: "",
+		toolNamesUsed,
+		serversUsed: [...serversUsed],
+		steps: step + 1,
+		skillPrompt: SKILLS_CLAUSE,
+		skillResponses,
+		decisionMs,
+		toolMs,
+		finalizeMs,
+		finalizeMode: "agent_loop",
+	})
 
 	for (let step = 0; step < maxSteps; step++) {
+		if (opts?.signal?.aborted) return abortedReturn(step)
 		let out: ToolCallOrReplyType
 		const streamFinalize =
 			opts?.voice && opts.streamFinalize && toolNamesUsed.length > 0
@@ -144,7 +187,12 @@ export const runAgentTurn = async (
 				}
 				out = { kind: "tool_calls", calls: res.calls }
 			} else {
-				out = await inference(messages, toolDefs)
+				const inferred = await raceAbort(
+					inference(messages, toolDefs),
+					opts?.signal,
+				)
+				if (inferred === ABORTED) return abortedReturn(step)
+				out = inferred
 			}
 		} catch (err) {
 			if (toolNamesUsed.length === 0) throw err
@@ -187,9 +235,78 @@ export const runAgentTurn = async (
 
 		decisionMs += inferMs
 		messages.push({ role: "assistant", content: "", toolCalls: out.calls })
+
+		const allAsync =
+			opts?.allowAsyncTools === true &&
+			out.calls.length > 0 &&
+			out.calls.every(
+				(call) => resolveToolFinalize(call.name)?.mode === "async",
+			)
+		if (allAsync) {
+			const pendingTools: Promise<AsyncToolOutcomeType>[] = []
+			const ackParts: string[] = []
+			for (const call of out.calls) {
+				toolNamesUsed.push(call.name)
+				const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+				if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
+				const rule = resolveToolFinalize(call.name)
+				ackParts.push(rule?.ack ?? DEFAULT_ASYNC_TOOL_ACK)
+				skillResponses.push({ tool: call.name, dispatched: true })
+				const safeArgs = pruneEmptyArgs(
+					filterToAllowed(call.arguments, allowedParams.get(call.name)),
+				)
+				pendingTools.push(
+					callTool(call.name, safeArgs)
+						.then((result) => ({
+							tool: call.name,
+							ok: result.status === "ok" && !result.isError,
+							doneText:
+								result.status === "ok" && !result.isError
+									? (rule?.done ?? DEFAULT_ASYNC_TOOL_DONE)
+									: (rule?.error ?? DEFAULT_FINALIZE_ERROR),
+						}))
+						.catch(() => ({
+							tool: call.name,
+							ok: false,
+							doneText: rule?.error ?? DEFAULT_FINALIZE_ERROR,
+						})),
+				)
+			}
+			agentLogger.info(
+				`agent async tools dispatched (${out.calls.length}) — respond-first`,
+				{ domiaId: domia.id, tools: toolNamesUsed },
+			)
+			return {
+				reply: [...new Set(ackParts)].join(" "),
+				toolNamesUsed,
+				serversUsed: [...serversUsed],
+				steps: step + 1,
+				skillPrompt: SKILLS_CLAUSE,
+				skillResponses,
+				decisionMs,
+				toolMs,
+				finalizeMs,
+				finalizeMode: "template",
+				pendingTools,
+			}
+		}
+
 		const templateParts: string[] = []
 		let allTemplate = true
 		for (const call of out.calls) {
+			if (!knownToolNames.has(call.name)) {
+				allTemplate = false
+				messages.push({
+					role: "tool",
+					toolName: call.name,
+					content: `Error: no tool named "${call.name}" exists. Available tools: ${[...knownToolNames].join(", ")}. Pick one of these or reply without a tool.`,
+				})
+				agentLogger.warn("agent called unknown tool — corrected", {
+					domiaId: domia.id,
+					name: call.name,
+				})
+				continue
+			}
 			toolNamesUsed.push(call.name)
 			const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 			if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
@@ -197,7 +314,22 @@ export const runAgentTurn = async (
 				filterToAllowed(call.arguments, allowedParams.get(call.name)),
 			)
 			const t0 = process.hrtime.bigint()
-			const result = await callTool(call.name, safeArgs)
+			let slowTimer: ReturnType<typeof setTimeout> | null = null
+			if (opts?.onSlowTool) {
+				slowTimer = setTimeout(
+					opts.onSlowTool,
+					opts.slowToolAfterMs ?? DEFAULT_SLOW_TOOL_AFTER_MS,
+				)
+				slowTimer.unref()
+			}
+			const raced = await raceAbort(
+				callTool(call.name, safeArgs, opts?.signal).finally(() => {
+					if (slowTimer) clearTimeout(slowTimer)
+				}),
+				opts?.signal,
+			)
+			if (raced === ABORTED) return abortedReturn(step)
+			const result = raced
 			const ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e6)
 			toolMs += ms
 			skillResponses.push({
@@ -241,7 +373,10 @@ export const runAgentTurn = async (
 		toolNamesUsed,
 	})
 	return {
-		reply: AGENT_FAILURE_REPLY,
+		reply:
+			toolNamesUsed.length > 0
+				? AGENT_ACTED_FAILURE_REPLY
+				: AGENT_FAILURE_REPLY,
 		toolNamesUsed,
 		serversUsed: [...serversUsed],
 		steps: maxSteps,
