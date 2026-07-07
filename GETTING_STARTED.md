@@ -31,10 +31,10 @@ npm run setup:models     # or: make setup-models
 make mosquitto-password
 
 # 6. Create the database from the schema (no migrations — drizzle-kit push)
-npm run db:reset:hub
+npm run db:reset
 
 # 7. Run your Domia
-npm run dev:hub
+npm run dev
 ```
 
 When you see `DOMIA is running and waiting for events...`, it's live on `http://localhost:3100`.
@@ -98,35 +98,90 @@ curl -X POST http://localhost:3100/voice \
 
 > **Dev-only convenience.** In production each Domia runs on its **own device** (a Raspberry Pi, a Mac mini, a NUC…) — one instance per host, with its own DB and ports. Running two (or more) instances on a single machine — separate env files, ports, DBs — exists **only** so you can exercise cross-Domia features (gRPC delegation, MQTT discovery, P2P symmetry) on one dev box without a second physical device.
 
-Every Domia is just "a Domia" — its role is its DB config, not a label. Launch as many as you want: one **env file** per instance (device identity: `DATABASE_URL`, `DOMIA_KEY`, ports, log) and `DOMIA_ENV=<file> npm run dev`. No new package.json scripts. A second `.env.edge` is provided as a convenience:
+Every Domia is just "a Domia" — its role is its DB config, not a label. Launch as many as you want: one **env file** per instance (device identity: `DATABASE_URL`, `DOMIA_KEY`, ports, log) and `DOMIA_ENV=<file> npm run dev`. No new package.json scripts. A second `.env.b` is provided as a convenience:
 
 ```bash
-npm run db:reset:edge
-npm run dev:edge          # runs on http://localhost:3101
+npm run db:reset:b
+npm run dev:b          # runs on http://localhost:3101
 
 # give them complementary roles, then they delegate over the mesh:
 DOMIA_ENV=.env      npm run dev-cli -- config import templates/full-hub.json
-DOMIA_ENV=.env.edge npm run dev-cli -- config import templates/thin-client.json
+DOMIA_ENV=.env.b npm run dev-cli -- config import templates/thin-client.json
 ```
 
 A third instance is just `cp .env.example .env.kitchen`, edit its identity, then `DOMIA_ENV=.env.kitchen npm run db:reset && DOMIA_ENV=.env.kitchen npm run dev`.
+
+## 📡 Connect a satellite (off-the-shelf voice hardware)
+
+A satellite is a small far-field mic/speaker in a room; your Domia does everything else. Three protocols are supported:
+
+- **ESPHome** — stock Home Assistant voice hardware (e.g. the **Voice PE**) with **factory firmware, no reflash**.
+- **Wyoming** — the Home Assistant satellite protocol.
+- **WebSocket** — Domia's reference protocol for custom builds.
+
+Flow: open the web Console → your Domia → Satellites → **Discover** (mDNS scan finds ESPHome devices on the LAN) → bind it to the identity that owns that room. Wake word runs on the device; wake words, timers, and volume are managed from the Console. Satellites bind **per identity** — a hub hosting several room-identities routes each satellite to its room's Domia.
+
+If discovery fails across VPNs/subnets, add the satellite manually by host/port (mDNS does not cross most VPN boundaries).
+
+## 🧠 The companion layers (memory, emotion, knowledge)
+
+The character layers ship **on by default** in the standard templates and cost ~nothing on the hot path (all learning happens in a background "reflection" pass on its own small model — pull `llama3.2:1b`):
+
+- **Facts** — Domia learns durable facts about you from conversation (typed + confidence-gated) and recalls them by relevance.
+- **Knowledge base** — _authored_ knowledge about its place. Add entries in the Console (Knowledge section) or via the API, and Domia answers those questions offline, no tools:
+
+```bash
+curl -X POST 'http://localhost:3100/knowledge?domiaKey=<KEY>' \
+  -H 'content-type: application/json' \
+  -d '{"title":"Wifi","content":"The network is CasaExample; password on the router card.","keywords":["wifi"]}'
+```
+
+- **Long-term memory** — when a session ends, a summary episode and an evolving model of the person are written; the next session starts with "previously…" context.
+- **Emotion** — an 8-axis mood shades speaking speed/pitch per reply and decays toward the character's baseline.
+
+All of it is per-identity DB flags (`module_settings`) — editable live from the Console.
+
+## 📊 Measure it
+
+Every turn persists per-stage timings (STT, LLM queue/TTFT, TTS first-chunk, TTFA, RSS) and logs one `TURN_COMPLETE` line:
+
+```bash
+npm run bench:voice                          # golden corpus end-to-end, prints a scorecard
+LABEL=my-change npm run bench:voice          # labeled run, saved to tmp/bench-voice-results/
+grep TURN_COMPLETE log/a.log | tail -5       # per-turn timing lines
+```
+
+Run a labeled bench before and after any tuning change to see exactly what moved.
 
 ## 🧩 Swapping engines & models
 
 Everything is DB config — switch without touching code:
 
 - **STT:** download alternatives with `npm run setup:models:whisper` / `:zipformer` / `:moonshine`, then set `stt_config.engine` + model path.
-- **TTS:** Kokoro is the default (`npm run setup:models:kokoro`); pick a voice via `tts_config.voice_name` (e.g. `am_adam`, `bf_emma`).
+- **TTS:** Kokoro is the default (`npm run setup:models:kokoro`); pick a voice via `tts_config.voice_name` (e.g. `am_adam`, `bf_emma`). A second engine, **Pocket** (`npm run setup:models:pocket`), is faster and clones a reference voice — switch with `tts_config.engine`.
 - **LLM:** any Ollama model — `docker exec -it domia-ollama ollama pull <model>`, then set `llm_model_config.model_name`.
 
 Any config edit — via the web Console, `config import`, or `POST /config` — persists to the DB and restarts the Domia so it reloads cleanly from config. `POST /config/refresh` only re-reads the cached identity/heartbeat after an out-of-band DB write (e.g. activating a mind template); it does not reconfigure the pipeline.
+
+## 🗣️ Speak another language (Spanish today, N-language ready)
+
+Language is per-identity config — in a multi-room home each Domia can speak its own language. Spanish ships end to end:
+
+```bash
+npm run setup:models:whisper-multilingual    # multilingual STT (whisper-base)
+npm run setup:models:vits-es                 # Spanish TTS voice (Piper es_MX)
+npm run setup:models:embeddings-multilingual # multilingual intent embeddings
+npm run dev-cli -- config import templates/espanol.json
+```
+
+Every spoken fixed string (confirmations, timers, fallbacks) comes from a language catalog; skill matching, memory recall, and Home Assistant entity resolution all follow the configured language. English stays the base/default, and the wake word stays English for now. Adding a language = one catalog entry in `src/utils/language-catalogs/` + a config template.
 
 ## 🆘 Troubleshooting
 
 - `make doctor` — verifies `sox` is installed.
 - Ollama not responding → `make dev` (is the container up?) and confirm `OLLAMA_HOST` in `.env`.
-- `SQLITE_ERROR: no such column` after a schema change → re-run `npm run db:reset:hub` (the DB is regenerated, never migrated).
-- Logs stream to `log/<instance>.log`, one file per env (`DOMIA_LOG_FILE`) — e.g. `log/hub.log`, `log/edge.log`.
+- `SQLITE_ERROR: no such column` after a schema change → re-run `npm run db:reset` (the DB is regenerated, never migrated).
+- Logs stream to `log/<instance>.log`, one file per env (`DOMIA_LOG_FILE`) — e.g. `log/a.log`, `log/b.log`.
 
 ---
 

@@ -54,6 +54,7 @@ export const deliverLocalPlayback = async (
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
 		interactionId,
 		originDomiaKey,
+		playedLocally: false,
 	})
 	await updateInteraction({
 		id: interactionId,

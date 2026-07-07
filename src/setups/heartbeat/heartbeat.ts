@@ -1,7 +1,7 @@
 import { heartbeatLogger } from "@/utils"
 import type { SetupHeartbeatArgsType } from "./types"
 import { sendHeartbeat } from "@/modules/heartbeat-manager"
-import { getOwnDomia } from "@/modules/core"
+import { safeOwnDomia } from "@/modules/core"
 
 export const setupHeartbeat = ({
 	domia,
@@ -12,9 +12,11 @@ export const setupHeartbeat = ({
 
 	return setInterval(() => {
 		void (async () => {
-			const live = (await getOwnDomia(domiaKey).catch(() => null)) ?? domia
+			const live = (await safeOwnDomia(domiaKey, "heartbeat")) ?? domia
 			heartbeatLogger.info(`💓 Sending heartbeat for ${domiaKey}`)
 			await sendHeartbeat({ domia: live })
-		})()
+		})().catch((err) =>
+			heartbeatLogger.warn(`heartbeat send failed for ${domiaKey}`, { err }),
+		)
 	}, intervalSeconds * 1000)
 }

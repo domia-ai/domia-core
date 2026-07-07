@@ -1,7 +1,7 @@
 import { Ollama, type Message, type Tool } from "ollama"
 
 import { DomiaType } from "@/modules/core"
-import { llmEngineLogger, createAsyncSemaphore } from "@/utils"
+import { llmEngineLogger, createAsyncSemaphore, parseLlmJson } from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
 import {
 	LLM_ENGINE_ENUM,
@@ -225,11 +225,12 @@ const toOllamaTools = (tools: ToolDefinitionType[]): Tool[] =>
 
 const normalizeArgs = (raw: unknown): Record<string, unknown> => {
 	if (typeof raw === "string") {
-		try {
-			return JSON.parse(raw) as Record<string, unknown>
-		} catch {
-			return {}
-		}
+		const { value } = parseLlmJson(raw)
+		if (value) return value
+		llmEngineLogger.warn("tool-call arguments failed to parse — using {}", {
+			raw: raw.slice(0, 200),
+		})
+		return {}
 	}
 	if (raw && typeof raw === "object") return raw as Record<string, unknown>
 	return {}

@@ -1,4 +1,4 @@
-import { generateUuid, domiaBusLogger } from "@/utils"
+import { generateUuid, domiaBusLogger, languageSetsFor } from "@/utils"
 import { getSatelliteControl } from "./satellite-registry"
 import type {
 	ActiveTimerType,
@@ -8,51 +8,23 @@ import type {
 
 const timers = new Map<string, ActiveTimerType>()
 
-const TIMER_KEYWORDS = /\b(timer|temporizador|alarm|alarma)\b/i
-const NUMBER_WORDS: Record<string, number> = {
-	one: 1,
-	two: 2,
-	three: 3,
-	four: 4,
-	five: 5,
-	six: 6,
-	seven: 7,
-	eight: 8,
-	nine: 9,
-	ten: 10,
-	fifteen: 15,
-	twenty: 20,
-	thirty: 30,
-	sixty: 60,
-	un: 1,
-	una: 1,
-	dos: 2,
-	tres: 3,
-	cuatro: 4,
-	cinco: 5,
-	seis: 6,
-	siete: 7,
-	ocho: 8,
-	nueve: 9,
-	diez: 10,
-	quince: 15,
-	veinte: 20,
-	treinta: 30,
-	sesenta: 60,
-}
 const UNIT_SECONDS: { re: RegExp; mult: number }[] = [
 	{ re: /\b(hours?|horas?|hr|hrs)\b/i, mult: 3600 },
 	{ re: /\b(minutes?|minutos?|mins?|min)\b/i, mult: 60 },
 	{ re: /\b(seconds?|segundos?|secs?|sec)\b/i, mult: 1 },
 ]
 
-export const parseTimerIntent = (text: string): TimerIntentType | null => {
-	if (!TIMER_KEYWORDS.test(text)) return null
+export const parseTimerIntent = (
+	text: string,
+	language?: string | null,
+): TimerIntentType | null => {
+	const sets = languageSetsFor(language)
+	if (!sets.timerKeywordsRe.test(text)) return null
 	const lower = text.toLowerCase()
 	const numMatch = lower.match(/(\d+)/)
 	let amount = numMatch ? Number(numMatch[1]) : null
 	if (amount === null) {
-		for (const [word, val] of Object.entries(NUMBER_WORDS)) {
+		for (const [word, val] of Object.entries(sets.numberWords)) {
 			if (new RegExp(`\\b${word}\\b`).test(lower)) {
 				amount = val
 				break
@@ -64,8 +36,10 @@ export const parseTimerIntent = (text: string): TimerIntentType | null => {
 	const mult = unit ? unit.mult : 60
 	const seconds = amount * mult
 	if (seconds <= 0 || seconds > 86400) return null
-	const unitLabel = mult === 3600 ? "hour" : mult === 60 ? "minute" : "second"
-	const label = `${amount} ${unitLabel}${amount === 1 ? "" : "s"} timer`
+	const units = sets.unitWords
+	const unitLabel =
+		mult === 3600 ? units.hour : mult === 60 ? units.minute : units.second
+	const label = `${amount} ${unitLabel}${amount === 1 ? "" : units.plural}`
 	return { seconds, label }
 }
 

@@ -4,6 +4,7 @@ import tseslint from "typescript-eslint"
 import prettierConfig from "eslint-config-prettier"
 import prettierPlugin from "eslint-plugin-prettier/recommended"
 import { globalIgnores } from "eslint/config"
+import globals from "globals"
 
 export default tseslint.config(
 	eslint.configs.recommended,
@@ -15,6 +16,10 @@ export default tseslint.config(
 		rules: {
 			"@typescript-eslint/consistent-type-definitions": ["warn", "type"],
 		},
+	},
+	{
+		files: ["evals/**/*.ts"],
+		languageOptions: { globals: globals.node },
 	},
 	globalIgnores(["build/**/*", ".venv/*", "tmp/**/*"]),
 )

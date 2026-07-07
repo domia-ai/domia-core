@@ -29,6 +29,8 @@ export const createInferencePool = (
 		recycleAfterJobs,
 	} = config
 	const warmWorkers = Math.max(0, Math.min(config.warmWorkers, maxWorkers))
+	const maxConcurrentSessions = Math.max(0, config.maxConcurrentSessions ?? 0)
+	const sessionIdleTimeoutMs = Math.max(0, config.sessionIdleTimeoutMs ?? 0)
 
 	const workers: WorkerStateType[] = []
 	const queue: PendingJobType[] = []
@@ -44,6 +46,9 @@ export const createInferencePool = (
 
 	const busyCount = (): number =>
 		workers.filter((w) => w.currentJob !== null || w.sessionHeld).length
+
+	const heldSessionCount = (): number =>
+		workers.filter((w) => w.sessionHeld).length
 
 	const scheduleIdleReap = (ws: WorkerStateType): void => {
 		if (ws.idleTimer) clearTimeout(ws.idleTimer)
@@ -262,11 +267,16 @@ export const createInferencePool = (
 		})
 	}
 
-	const acquireSession = (): PoolSessionType => {
-		if (shuttingDown) throw poolBusyError(`${label} pool is shutting down`)
+	const acquireSession = (): PoolSessionType | null => {
+		if (shuttingDown) return null
+		if (
+			maxConcurrentSessions > 0 &&
+			heldSessionCount() >= maxConcurrentSessions
+		)
+			return null
 		let ws = idleWorker()
 		if (!ws && workers.length < maxWorkers) ws = spawnWorker()
-		if (!ws) throw poolBusyError(`${label} pool has no worker for a session`)
+		if (!ws) return null
 		ws.sessionHeld = true
 		if (ws.idleTimer) {
 			clearTimeout(ws.idleTimer)
@@ -275,6 +285,19 @@ export const createInferencePool = (
 		const held = ws
 		let released = false
 		let chain: Promise<unknown> = Promise.resolve()
+		let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+		const armIdleTimer = (): void => {
+			if (sessionIdleTimeoutMs <= 0) return
+			if (idleTimer) clearTimeout(idleTimer)
+			idleTimer = setTimeout(() => {
+				if (released) return
+				inferencePoolLogger.warn(
+					`⌛ ${label} session idle ${sessionIdleTimeoutMs}ms — releasing pinned worker`,
+				)
+				release()
+			}, sessionIdleTimeoutMs)
+		}
 
 		const exchangeOne = <T>(payload: unknown): Promise<T> => {
 			if (released || shuttingDown || !workers.includes(held)) {
@@ -308,32 +331,48 @@ export const createInferencePool = (
 			})
 		}
 
+		let inFlight = 0
+
 		const exchange = <T>(payload: unknown): Promise<T> => {
+			inFlight++
+			if (idleTimer) {
+				clearTimeout(idleTimer)
+				idleTimer = null
+			}
 			const next = chain.then(
 				() => exchangeOne<T>(payload),
 				() => exchangeOne<T>(payload),
 			)
 			chain = next.catch(() => undefined)
+			const settle = (): void => {
+				inFlight--
+				if (inFlight === 0 && !released) armIdleTimer()
+			}
+			void next.then(settle, settle)
 			return next
 		}
 
-		return {
-			exchange,
-			release: () => {
-				if (released) return
-				released = true
-				held.sessionHeld = false
-				if (workers.includes(held)) {
-					if (recycleAfterJobs > 0 && held.jobs >= recycleAfterJobs) {
-						held.recycling = true
-						held.handle.send({ type: "shutdown" })
-					} else {
-						scheduleIdleReap(held)
-					}
+		function release(): void {
+			if (released) return
+			released = true
+			if (idleTimer) {
+				clearTimeout(idleTimer)
+				idleTimer = null
+			}
+			held.sessionHeld = false
+			if (workers.includes(held)) {
+				if (recycleAfterJobs > 0 && held.jobs >= recycleAfterJobs) {
+					held.recycling = true
+					held.handle.send({ type: "shutdown" })
+				} else {
+					scheduleIdleReap(held)
 				}
-				pump()
-			},
+			}
+			pump()
 		}
+
+		armIdleTimer()
+		return { exchange, release }
 	}
 
 	const shutdown = async (): Promise<void> => {
@@ -359,6 +398,7 @@ export const createInferencePool = (
 		acquireSession,
 		activeWorkers: () => workers.length,
 		busyWorkers: busyCount,
+		heldSessions: heldSessionCount,
 		queuedJobs: () => queue.length,
 		shutdown,
 	}

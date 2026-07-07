@@ -3,6 +3,8 @@ import { clearStreamingSink } from "./streaming-sink"
 import type {
 	InteractionRuntimeType,
 	InteractionCompletionResultType,
+	PartialResultType,
+	CompletionHandleType,
 } from "../types"
 
 const runtimes = new Map<string, InteractionRuntimeType>()
@@ -17,20 +19,7 @@ const safeCallback = (label: string, fn: () => void): void => {
 	}
 }
 
-type PartialResultType = {
-	transcript: string
-	reply: string
-	ttsFilePath?: string
-	audioUrl?: string
-}
-
 const partials = new Map<string, PartialResultType>()
-
-type CompletionHandleType = {
-	resolve: (result: InteractionCompletionResultType) => void
-	reject: (err: Error) => void
-	timeout: ReturnType<typeof setTimeout>
-}
 
 const completions = new Map<string, CompletionHandleType>()
 

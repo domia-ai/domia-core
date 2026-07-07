@@ -122,6 +122,7 @@ export const playStreamedAudio = async (
 				publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
 					interactionId: meta.interactionId,
 					originDomiaKey: meta.originDomiaKey,
+					playedLocally: true,
 				})
 			},
 		})

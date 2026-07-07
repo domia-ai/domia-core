@@ -12,6 +12,9 @@ export type PromptOverridesType = z.infer<typeof promptOverridesSchema>
 export type BuildPromptContextOptionsType = {
 	recentTurns?: RecentTurnType[]
 	knownFacts?: string[]
+	knowledgeBase?: string[]
+	previously?: string[]
+	userModel?: string | null
 	userMoodTrend?: string[]
 	omitUserInput?: boolean
 }

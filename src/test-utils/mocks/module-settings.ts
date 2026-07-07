@@ -25,6 +25,8 @@ export const baseModuleSettings = (
 	narrativeEngine: faker.datatype.boolean(),
 	identityEngine: faker.datatype.boolean(),
 	skillsEngine: false,
+	metricsSampleResources: true,
+	turnEventsPersist: true,
 	createdAt: now(),
 	updatedAt: now(),
 })

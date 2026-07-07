@@ -1,5 +1,6 @@
 import { DEFAULT_OWN_CONFIG_TTL_MS } from "@/db"
 import { env } from "@/config/env"
+import { appLogger } from "@/utils"
 
 import { getDomia } from "../controller"
 import type { DomiaType, OwnDomiaEntryType } from "../types"
@@ -47,5 +48,20 @@ export const getOwnDomia = async (
 		return await pending
 	} finally {
 		inflight.delete(domiaKey)
+	}
+}
+
+export const safeOwnDomia = async (
+	domiaKey?: string,
+	context?: string,
+): Promise<DomiaType | null> => {
+	try {
+		return (await getOwnDomia(domiaKey)) ?? null
+	} catch (err) {
+		appLogger.warn(`getOwnDomia failed${context ? ` (${context})` : ""}`, {
+			domiaKey: domiaKey ?? env.DOMIA_KEY,
+			err,
+		})
+		return null
 	}
 }

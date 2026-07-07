@@ -3,7 +3,8 @@ import {
 	clearDomiaBusSubscribers,
 	DOMIA_EVENT_BUS_ENUM,
 } from "@/buses"
-import { domiaBusLogger } from "@/utils"
+import { domiaBusLogger, runWithTraceContext } from "@/utils"
+import type { TraceContextType } from "@/utils"
 import { resolveLiveDomia } from "@/setups/live-domia"
 import {
 	handleWakeDetected,
@@ -46,15 +47,25 @@ export const setupCoreBus = ({
 	const liveCtx = async (): Promise<CoreBusContextType> =>
 		resolveLiveDomia(domia, runtimeCapabilities)
 
+	const traceFromPayload = (payload: unknown): TraceContextType => {
+		const p = (payload ?? {}) as TraceContextType
+		return {
+			interactionId: p.interactionId,
+			originDomiaKey: p.originDomiaKey,
+			traceId: p.traceId,
+		}
+	}
+
 	const onEvent =
 		<P>(handler: (ctx: CoreBusContextType, payload: P) => unknown) =>
-		async (payload: P): Promise<void> => {
-			try {
-				await handler(await liveCtx(), payload)
-			} catch (err) {
-				domiaBusLogger.error("core-bus event handler failed", { err })
-			}
-		}
+		async (payload: P): Promise<void> =>
+			runWithTraceContext(traceFromPayload(payload), async () => {
+				try {
+					await handler(await liveCtx(), payload)
+				} catch (err) {
+					domiaBusLogger.error("core-bus event handler failed", { err })
+				}
+			})
 
 	subscribeToDomiaBus(
 		domiaId,

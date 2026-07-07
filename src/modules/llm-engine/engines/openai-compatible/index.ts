@@ -1,7 +1,7 @@
 import OpenAI from "openai"
 
 import { DomiaType } from "@/modules/core"
-import { llmEngineLogger, createAsyncSemaphore } from "@/utils"
+import { llmEngineLogger, createAsyncSemaphore, parseLlmJson } from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
 import { LLM_ENGINE_ENUM, DEFAULT_LLM_CONCURRENCY } from "@/db"
 import type {
@@ -14,7 +14,11 @@ import type {
 	LlmUsageType,
 	LlmUsageSinkType,
 } from "../../types"
-import type { OpenAiResolvedConfigType, LlamaTimingsType } from "./types"
+import type {
+	OpenAiResolvedConfigType,
+	LlamaTimingsType,
+	ToolCallAccType,
+} from "./types"
 
 const openAiUsage = (
 	usage:
@@ -110,11 +114,12 @@ const requireToolModel = (domia: DomiaType): string =>
 
 const normalizeArgs = (raw: unknown): Record<string, unknown> => {
 	if (typeof raw === "string") {
-		try {
-			return JSON.parse(raw) as Record<string, unknown>
-		} catch {
-			return {}
-		}
+		const { value } = parseLlmJson(raw)
+		if (value) return value
+		llmEngineLogger.warn("tool-call arguments failed to parse — using {}", {
+			raw: raw.slice(0, 200),
+		})
+		return {}
 	}
 	if (raw && typeof raw === "object") return raw as Record<string, unknown>
 	return {}
@@ -399,8 +404,6 @@ const runOpenAiCompatibleWithTools = async (
 		release()
 	}
 }
-
-type ToolCallAccType = { name: string; args: string }
 
 const runOpenAiCompatibleReplyStreamOrTools = async (
 	domia: DomiaType,

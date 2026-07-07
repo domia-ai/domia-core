@@ -11,6 +11,13 @@ import {
 	DEFAULT_OLLAMA_HOST,
 	DEFAULT_OLLAMA_KEEP_ALIVE_MS,
 	LLM_ENGINE_ENUM,
+	DEFAULT_MATCHER_ENGINE,
+	DEFAULT_MATCHER_SEMANTIC_THRESHOLD,
+	DEFAULT_MATCHER_RRF_K,
+	DEFAULT_MATCHER_CASCADE_EXIT,
+	DEFAULT_EMBED_BACKEND,
+	DEFAULT_EMBED_MODEL_PATH,
+	DEFAULT_AGENT_ACK_AFTER_MS,
 } from "@/db/constants"
 import { type SelectLlmModelConfigType } from "@/db"
 
@@ -39,9 +46,17 @@ export const baseLlmModelConfig = (
 		intentModelName: null,
 		embeddingModelName: null,
 		intentEmbedThreshold: DEFAULT_INTENT_EMBED_THRESHOLD,
+		descriptorRoutingEnabled: false,
 		toolModelName: null,
 		agentMaxSteps: 5,
+		agentAckAfterMs: DEFAULT_AGENT_ACK_AFTER_MS,
 		toolShortlistMax: 8,
+		matcherEngine: DEFAULT_MATCHER_ENGINE,
+		matcherSemanticThreshold: DEFAULT_MATCHER_SEMANTIC_THRESHOLD,
+		matcherRrfK: DEFAULT_MATCHER_RRF_K,
+		matcherCascadeExit: DEFAULT_MATCHER_CASCADE_EXIT,
+		embedBackend: DEFAULT_EMBED_BACKEND,
+		embedModelPath: DEFAULT_EMBED_MODEL_PATH,
 		createdAt: now(),
 		updatedAt: now(),
 	}

@@ -1,0 +1,86 @@
+[
+	{
+		"name": "cuentame un chiste (no tool)",
+		"suite": "chat",
+		"language": "es",
+		"turns": [
+			{
+				"text": "cuéntame un chiste",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "tell me a story about lights (adversarial)",
+		"suite": "chat",
+		"language": "en",
+		"turns": [
+			{
+				"text": "tell me a short story about a house full of lights",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "la cocina de mi abuela (adversarial es)",
+		"suite": "chat",
+		"language": "es",
+		"turns": [
+			{
+				"text": "la cocina de mi abuela era enorme y siempre olía a pan",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "how are you today",
+		"suite": "chat",
+		"language": "en",
+		"turns": [
+			{
+				"text": "how are you today?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "what music do you like (adversarial)",
+		"suite": "chat",
+		"language": "en",
+		"turns": [
+			{
+				"text": "what kind of music do you enjoy in the living room?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "me gusta la luz del atardecer (adversarial es)",
+		"suite": "chat",
+		"language": "es",
+		"turns": [
+			{
+				"text": "me encanta la luz del atardecer en verano",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	}
+]

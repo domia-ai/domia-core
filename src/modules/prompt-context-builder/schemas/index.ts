@@ -9,6 +9,9 @@ const personaCharacterSchema = z.object({
 	knowledgeDepth: z.string().nullish(),
 	language: z.string().nullish(),
 	interests: z.array(z.string()).nullish(),
+	roleMode: z.string().nullish(),
+	emotionExpressionStyle: z.string().nullish(),
+	voiceStyle: z.string().nullish(),
 })
 
 const personaEmotionSchema = z.object({
@@ -61,6 +64,9 @@ export const personaContextSchema = z.object({
 	useCompactPrompt: z.boolean(),
 	recentTurns: z.array(recentTurnSchema).nullish(),
 	knownFacts: z.array(z.string()).nullish(),
+	knowledgeBase: z.array(z.string()).nullish(),
+	previously: z.array(z.string()).nullish(),
+	userModel: z.string().nullish(),
 	userMoodTrend: z.array(z.string()).nullish(),
 	promptOverrides: promptOverridesSchema.nullish(),
 	ttsVoice: ttsVoiceSchema.nullish(),

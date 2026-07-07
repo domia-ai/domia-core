@@ -45,6 +45,14 @@ case "${1:-}" in
 esac
 
 case "${1:-}" in
+  whisper-multilingual|whisper-ml)
+    download_and_extract "whisper-base" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.tar.bz2" \
+      "sherpa-onnx-whisper-base"
+    ;;
+esac
+
+case "${1:-}" in
   moonshine)
     download_and_extract "moonshine-tiny-en-int8" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-moonshine-tiny-en-int8.tar.bz2" \
@@ -57,6 +65,14 @@ case "${1:-}" in
     download_and_extract "parakeet-tdt-06b-v2" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2" \
       "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+    ;;
+esac
+
+case "${1:-}" in
+  parakeet-streaming|parakeet-unified)
+    download_and_extract "parakeet-unified-560" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-streaming-560ms.tar.bz2" \
+      "sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-streaming-560ms"
     ;;
 esac
 
@@ -94,6 +110,56 @@ case "${1:-all}" in
     download_and_extract "kws-zipformer-gigaspeech-3.3M-2024-01-01" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2" \
       "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+    ;;
+esac
+
+case "${1:-all}" in
+  embeddings|bge|all)
+    if [ ! -d "bge-small-en-v1.5" ]; then
+      echo "[bge-small-en-v1.5] downloading"
+      base="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
+      mkdir -p "bge-small-en-v1.5/onnx"
+      for f in config.json tokenizer.json tokenizer_config.json special_tokens_map.json vocab.txt; do
+        curl -fSL -o "bge-small-en-v1.5/$f" "$base/$f"
+      done
+      curl -fSL -o "bge-small-en-v1.5/onnx/model_quantized.onnx" "$base/onnx/model_quantized.onnx"
+      echo "[bge-small-en-v1.5] done"
+    else
+      echo "[bge-small-en-v1.5] already present, skipping"
+    fi
+    ;;
+esac
+
+case "${1:-}" in
+  pocket)
+    download_and_extract "sherpa-onnx-pocket-tts-int8-2026-01-26" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2" \
+      "sherpa-onnx-pocket-tts-int8-2026-01-26"
+    ;;
+esac
+
+case "${1:-}" in
+  vits-es)
+    download_and_extract "vits-piper-es_MX-claude-high" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-es_MX-claude-high.tar.bz2" \
+      "vits-piper-es_MX-claude-high"
+    ;;
+esac
+
+case "${1:-}" in
+  embeddings-multilingual)
+    if [ ! -d "paraphrase-multilingual-minilm-l12-v2" ]; then
+      echo "[paraphrase-multilingual-minilm] downloading"
+      base="https://huggingface.co/Xenova/paraphrase-multilingual-MiniLM-L12-v2/resolve/main"
+      mkdir -p "paraphrase-multilingual-minilm-l12-v2/onnx"
+      for f in config.json tokenizer.json tokenizer_config.json special_tokens_map.json; do
+        curl -fSL -o "paraphrase-multilingual-minilm-l12-v2/$f" "$base/$f"
+      done
+      curl -fSL -o "paraphrase-multilingual-minilm-l12-v2/onnx/model_quantized.onnx" "$base/onnx/model_quantized.onnx"
+      echo "[paraphrase-multilingual-minilm] done"
+    else
+      echo "[paraphrase-multilingual-minilm] already present, skipping"
+    fi
     ;;
 esac
 

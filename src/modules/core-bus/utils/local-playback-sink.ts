@@ -1,6 +1,6 @@
 import { domiaBusLogger } from "@/utils"
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
-import { type DomiaType, getOwnDomia } from "@/modules/core"
+import { type DomiaType, safeOwnDomia } from "@/modules/core"
 import { playAudioStream } from "@/modules/audio-playback"
 import {
 	getSatelliteSinkFor,
@@ -78,7 +78,7 @@ export const resolveIntercomSink = async (
 
 	if (getSatelliteAnnouncerFor(toDomiaKey)) return null
 
-	const domia = await getOwnDomia(toDomiaKey).catch(() => null)
+	const domia = await safeOwnDomia(toDomiaKey, "local-playback-sink")
 	if (!domia) return null
 	const capabilities = normalizeRuntimeCapabilities(
 		domia.runtimeCapabilities ?? {},
@@ -96,7 +96,7 @@ export const canDeliverIntercom = async (
 	if (getSatelliteSinkFor(toDomiaKey)) return true
 	if (getSatelliteAnnouncerFor(toDomiaKey)) return false
 
-	const domia = await getOwnDomia(toDomiaKey).catch(() => null)
+	const domia = await safeOwnDomia(toDomiaKey, "local-playback-sink")
 	if (!domia) return false
 	const features = resolveCoreBusFeatures(
 		domia,
@@ -112,7 +112,7 @@ export const canDeliverBroadcast = async (
 	if (getSatelliteSinkFor(toDomiaKey)) return true
 	if (getSatelliteAnnouncerFor(toDomiaKey)) return true
 
-	const domia = await getOwnDomia(toDomiaKey).catch(() => null)
+	const domia = await safeOwnDomia(toDomiaKey, "local-playback-sink")
 	if (!domia) return false
 	const features = resolveCoreBusFeatures(
 		domia,

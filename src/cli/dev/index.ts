@@ -1,4 +1,5 @@
 import { Command } from "commander"
+import { devCliLogger } from "@/utils"
 
 import {
 	environmentCommand,
@@ -240,6 +241,6 @@ program
 	.parseAsync()
 	.then(() => process.exit(0))
 	.catch((err) => {
-		console.error(err)
+		devCliLogger.error("dev cli command failed", { err })
 		process.exit(1)
 	})

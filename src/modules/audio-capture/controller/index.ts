@@ -50,13 +50,17 @@ export const startCapture = async (
 	callbacks?: CaptureCallbacksType,
 ): Promise<CaptureHandleType> => {
 	const engine = domia?.wakeWordConfig?.engine
-	if (!engine || !WAKE_WORD_ENGINE_ENUM_VALUES?.includes(engine)) {
+	const adapter =
+		engine && WAKE_WORD_ENGINE_ENUM_VALUES?.includes(engine)
+			? wakeWordEngines[engine]
+			: null
+	if (!adapter) {
 		throw domiaError(AUDIO_ERRORS.WAKE_WORD_ENGINE_NOT_FOUND, {
 			logger: audioCaptureLogger,
 			meta: { engine },
 		})
 	}
-	return wakeWordEngines[engine](domia, callbacks)
+	return adapter.run(domia, callbacks)
 }
 
 export const startAudioRecording = async (

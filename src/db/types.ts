@@ -16,7 +16,10 @@ import {
 	PROFESSION_ENUM_VALUES,
 	RELATIONSHIP_TYPE_ENUM_VALUES,
 	ROLE_MODE_ENUM_VALUES,
+	FACT_KIND_ENUM_VALUES,
 	WAKE_WORD_ENGINE_ENUM_VALUES,
+	VAD_ENGINE_ENUM_VALUES,
+	EMBED_BACKEND_ENUM_VALUES,
 	STT_ENGINE_ENUM_VALUES,
 	LLM_ENGINE_ENUM_VALUES,
 	TTS_ENGINE_ENUM_VALUES,
@@ -165,6 +168,13 @@ export type {
 	SkillProviderConfigType,
 	ToolFinalizeRuleType,
 	ToolFinalizeMapType,
+	ToolRunStatusType,
+	ToolResultErrorCodeType,
+	ToolTraceEntryType,
+	SkillDescriptorRoutingType,
+	SkillDescriptorExecutionType,
+	SkillDescriptorLocaleType,
+	DomiaSkillDescriptorType,
 } from "./json-types"
 
 export type SelectSkillProviderType = InferSelectModel<
@@ -223,12 +233,34 @@ export type UpdateMemoryFactType = Partial<Omit<InsertMemoryFactType, "id">> & {
 	id: string
 }
 
+export type SelectKnowledgeEntryType = InferSelectModel<
+	typeof schema.knowledgeEntry
+>
+export type InsertKnowledgeEntryType = InferInsertModel<
+	typeof schema.knowledgeEntry
+>
+export type UpdateKnowledgeEntryType = Partial<
+	Omit<InsertKnowledgeEntryType, "id">
+> & { id: string }
+
+export type SelectMemoryEpisodeType = InferSelectModel<
+	typeof schema.memoryEpisode
+>
+export type InsertMemoryEpisodeType = InferInsertModel<
+	typeof schema.memoryEpisode
+>
+export type SelectUserModelType = InferSelectModel<typeof schema.userModel>
+export type InsertUserModelType = InferInsertModel<typeof schema.userModel>
+
 export type SelectAnnouncementType = InferSelectModel<
 	typeof schema.announcement
 >
 export type InsertAnnouncementType = InferInsertModel<
 	typeof schema.announcement
 >
+
+export type InsertTurnEventType = InferInsertModel<typeof schema.turnEvent>
+export type SelectTurnEventType = InferSelectModel<typeof schema.turnEvent>
 
 export type WithParsedDatesType<T> = Omit<T, "createdAt" | "updatedAt"> & {
 	createdAt: Date | null
@@ -245,8 +277,11 @@ export type KnowledgeDepthEnumType =
 export type RelationshipTypeEnumType =
 	(typeof RELATIONSHIP_TYPE_ENUM_VALUES)[number]
 export type RoleModeEnumType = (typeof ROLE_MODE_ENUM_VALUES)[number]
+export type FactKindEnumType = (typeof FACT_KIND_ENUM_VALUES)[number]
 export type WakeWordEngineEnumType =
 	(typeof WAKE_WORD_ENGINE_ENUM_VALUES)[number]
+export type VadEngineEnumType = (typeof VAD_ENGINE_ENUM_VALUES)[number]
+export type EmbedBackendEnumType = (typeof EMBED_BACKEND_ENUM_VALUES)[number]
 export type SttEngineEnumType = (typeof STT_ENGINE_ENUM_VALUES)[number]
 export type LlmEngineEnumType = (typeof LLM_ENGINE_ENUM_VALUES)[number]
 export type TtsEngineEnumType = (typeof TTS_ENGINE_ENUM_VALUES)[number]

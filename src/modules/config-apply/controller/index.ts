@@ -18,6 +18,7 @@ import type {
 	BusyCheckType,
 	ConfigApplyResultType,
 	SubsystemOutcomeType,
+	ChangeActionType,
 } from "../types"
 
 const mutexes = new Map<string, ReturnType<typeof createAsyncSemaphore>>()
@@ -212,13 +213,6 @@ const TTS_LIVE = new Set([
 ])
 const LLM_DRAIN = new Set(["engine", "baseUrl", "apiKey"])
 const CAP_LIVE_DRAIN = new Set(["stt", "tts", "playback"])
-
-type ChangeActionType =
-	| "live"
-	| "live-drain"
-	| "identity"
-	| "restart"
-	| ReloadSubsystemType
 
 const classifyChange = (section: string, field: string): ChangeActionType => {
 	switch (section) {

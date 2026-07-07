@@ -5,11 +5,23 @@ import {
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { runLLMIntent } from "@/modules/llm-engine"
-import { intentRouterLogger } from "@/utils"
+import { intentRouterLogger, parseLlmJson } from "@/utils"
 
 import { INTENT_SYSTEM } from "../constants"
-import { cosine, embedTexts, keyphraseHit, toolEmbeddings } from "../utils"
-import type { IntentDecisionType, IntentToolHintType } from "../types"
+import { embed } from "@/modules/embeddings"
+import {
+	cosine,
+	keyphraseHit,
+	keywordHit,
+	exampleEmbeddings,
+	toolEmbeddings,
+	lexicalToolScore,
+} from "../utils"
+import type {
+	IntentDecisionType,
+	IntentToolHintType,
+	IntentRoutingHintsType,
+} from "../types"
 
 const EMBED_AMBIGUITY_BAND = 0.06
 
@@ -17,28 +29,43 @@ const classifyByEmbedding = async (
 	domia: DomiaType,
 	transcript: string,
 	tools: IntentToolHintType[],
+	hints?: IntentRoutingHintsType,
 ): Promise<IntentDecisionType | "ambiguous" | null> => {
 	const hit = keyphraseHit(transcript, tools)
 	if (hit) return { needsSkill: true, reason: `keyphrase:${hit}` }
+	if (hints?.keywords?.length) {
+		const kw = keywordHit(transcript, hints.keywords)
+		if (kw) return { needsSkill: true, reason: `keyword:${kw}` }
+	}
 	const started = Date.now()
-	const [toolVecs, queryVecs] = await Promise.all([
+	const [toolVecs, exampleVecs, queryVecs] = await Promise.all([
 		toolEmbeddings(domia, tools),
-		embedTexts(domia, [transcript]),
+		hints?.exampleUtterances?.length
+			? exampleEmbeddings(domia, hints.exampleUtterances)
+			: Promise.resolve(null),
+		embed(domia, [transcript]),
 	])
 	const query = queryVecs?.[0]
 	if (!toolVecs || !query) return null
 	let best = 0
 	for (const vec of toolVecs) best = Math.max(best, cosine(query, vec))
+	if (exampleVecs)
+		for (const vec of exampleVecs) best = Math.max(best, cosine(query, vec))
 	const threshold =
 		domia.llmModelConfig?.intentEmbedThreshold ?? DEFAULT_INTENT_EMBED_THRESHOLD
-	const verdict =
+	let verdict =
 		best >= threshold
 			? "skill"
 			: best >= threshold - EMBED_AMBIGUITY_BAND
 				? "ambiguous"
 				: "chat"
+	let lexical = 0
+	if (verdict === "chat") {
+		lexical = await lexicalToolScore(domia, transcript, tools)
+		if (lexical > 0) verdict = "ambiguous"
+	}
 	intentRouterLogger.info(
-		`intent embedding gate: sim=${best.toFixed(3)} thr=${threshold} → ${verdict} (${Date.now() - started}ms)`,
+		`intent embedding gate: sim=${best.toFixed(3)} lex=${lexical.toFixed(2)} thr=${threshold} → ${verdict} (${Date.now() - started}ms)`,
 		{ domiaId: domia.id },
 	)
 	if (verdict === "ambiguous") return "ambiguous"
@@ -63,8 +90,8 @@ const buildPrompt = (
 }
 
 const parseDecision = (raw: string): boolean | null => {
-	try {
-		const obj = JSON.parse(raw) as Record<string, unknown>
+	const { value: obj } = parseLlmJson(raw)
+	if (obj) {
 		const v = obj.tool ?? obj.needsTool ?? obj.needs_skill ?? obj.skill
 		if (typeof v === "boolean") return v
 		if (typeof v === "string") {
@@ -72,8 +99,6 @@ const parseDecision = (raw: string): boolean | null => {
 			if (["false", "no", "none", "null", ""].includes(s)) return false
 			return true
 		}
-	} catch {
-		/* fall through */
 	}
 	if (/\btrue\b/i.test(raw) && !/\bfalse\b/i.test(raw)) return true
 	if (/\bfalse\b/i.test(raw) && !/\btrue\b/i.test(raw)) return false
@@ -84,13 +109,20 @@ export const classifyNeedsSkill = async (
 	domia: DomiaType,
 	transcript: string,
 	tools: IntentToolHintType[],
-	opts: { canRunLlm: boolean },
+	opts: { canRunLlm: boolean; hints?: IntentRoutingHintsType },
 ): Promise<IntentDecisionType> => {
 	const routing = domia.llmModelConfig?.skillsRouting
 	if (routing === SKILLS_ROUTING_ENUM.ALWAYS_AGENT)
 		return { needsSkill: true, reason: "always-agent" }
+	if (routing === SKILLS_ROUTING_ENUM.FAST_ROUTER)
+		return { needsSkill: tools.length > 0, reason: "fast-router" }
 	if (routing === SKILLS_ROUTING_ENUM.EMBEDDING_GATE) {
-		const decided = await classifyByEmbedding(domia, transcript, tools)
+		const decided = await classifyByEmbedding(
+			domia,
+			transcript,
+			tools,
+			opts.hints,
+		)
 		if (decided && decided !== "ambiguous") return decided
 		if (decided === null) {
 			intentRouterLogger.warn(

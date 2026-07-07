@@ -26,26 +26,30 @@ Every capability below is implemented and runs end-to-end on your own hardware �
   `src/modules/{audio-capture,vad,stt-engine,llm-engine,tts-engine,audio-playback}` · `src/modules/core-bus`
 - **Multi-device P2P mesh** — Domias discover each other over MQTT and stream audio/text/tokens to each other over **gRPC streaming**.
   `src/modules/{grpc-client,network-sync,heartbeat-manager}` · `src/setups/grpc-server`
-- **Capability delegation** — a thin device (e.g. a Raspberry Pi) can delegate STT/LLM/TTS to a stronger Domia. The origin orchestrates; the responder just lends compute.
+- **Capability delegation** — a thin device can delegate STT/LLM/TTS to a stronger Domia. The origin orchestrates; the responder just lends compute.
   `src/modules/capability-resolver`
+- **Off-the-shelf voice satellites** — stock **Home Assistant voice hardware** (ESPHome devices like the Voice PE, factory firmware) and **Wyoming** satellites connect straight to a Domia, plus a reference WebSocket protocol. Wake word on the device, everything else on your Domia.
+  `src/modules/{satellite-core,satellite-protocols,satellite-discovery}`
+- **Multi-tenant** — one process can host several Domia identities at once (one per room), each with its own persona, config, and satellites, sharing the node's inference.
+  `src/setups/hosted-identities`
 - **Multi-space parallel hub** — one hub can serve several spaces **at the same time** via child-process inference pools (warm/lazy/reap/recycle workers, RAM-aware).
   `src/modules/inference-pool`
 - **Identity owned by the origin** — your Domia's **persona, voice, emotion, and memory travel with the request**, so when a hub answers for it, it answers in _your_ Domia's character and voice, not the hub's.
   `src/modules/{prompt-context-builder,emotion-engine,memory,reflection}`
 - **Emotion + reflection** — an 8-dimension emotional state with decay, updated by one off-the-hot-path LLM "reflection" pass that also extracts facts to remember.
   `src/modules/{emotion-engine,reflection}`
-- **Memory** — recent-conversation memory + durable fact memory ("what it knows about you").
-  `src/modules/memory`
-- **Skills / tool-calling via MCP** (opt-in) — Domia speaks the Model Context Protocol: it decides when a turn needs a tool, picks it, calls it mid-conversation, and folds the result into its spoken reply. Point it at any MCP server — including a Home Assistant one — to act in the world. Gated by a module flag + at least one active provider.
-  `src/modules/{skill-engine,agent}` · `src/modules/llm-engine` (tool-calling)
+- **Tiered memory** — recent-conversation memory, durable fact memory ("what it knows about you"), an authored **knowledge base** ("what it knows about its place" — a host Domia answers house questions offline, no tools), and long-term memory: session episodes plus a growing model of who it talks to.
+  `src/modules/memory` · `src/modules/session-manager`
+- **Skills / tool-calling via MCP** (opt-in) — Domia speaks the Model Context Protocol: it decides when a turn needs a tool, picks it, calls it mid-conversation, and folds the result into its spoken reply. A **hybrid router** (lexical + semantic embeddings, fully in-process) picks the right tools for small local models and fails closed to conversation — add any MCP server via config, zero extra code; Home Assistant gets a built-in specialization.
+  `src/modules/{skill-engine,agent,matcher,embeddings,intent-router}` · `src/modules/llm-engine` (tool-calling)
 - **Everything is DB-driven + remotely reconfigurable** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle); a Domia boots minimal and gets its role by importing a config bundle (`POST /config`), which persists and restarts it to reload cleanly.
   `src/db` · `src/modules/config-engine` · HTTP `POST /config`
-- **Operability** — HTTP control API (`/voice`, `/chat`, `/mind`, `/templates`, `/config`, `/config/health`, `/admin/restart`) and a developer CLI to exercise STT/TTS/LLM/mind in isolation. A separate **web console** — [domia-app](https://github.com/domia-ai/domia-app) — drives this API across every Domia (fleet observability + remote config); [live read-only demo](https://console.domia.ai).
+- **Operability** — HTTP control API (`/voice`, `/chat`, `/speak`, `/mind`, `/knowledge`, `/identities`, `/satellites`, `/templates`, `/config`, `/config/health`, `/admin/restart`), a developer CLI to exercise STT/TTS/LLM/mind in isolation, per-turn stage metrics persisted for every interaction, and a repeatable voice benchmark (`npm run bench:voice`). A separate **web console** — [domia-app](https://github.com/domia-ai/domia-app) — drives this API across every Domia (fleet observability + remote config); [live read-only demo](https://console.domia.ai).
   `src/setups/http-server` · `src/cli/dev`
 - **Voice UX** — wake word, barge-in (interrupt a reply), follow-up conversation mode (keep talking without re-waking), model warm-up on boot, and non-verbal feedback sounds — all DB-configurable.
 - **Adapts to your hardware** — the same code runs on a thin edge device or a powerful hub; model size, engine, and thread counts are just DB config, never hardcoded. Better hardware, better experience.
 
-**On the roadmap (not built yet):** multilingual speech, fine-tuned lightweight models (QLoRA), vector-RAG long-term memory, and a marketplace for voices/characters.
+**On the roadmap (not built yet):** multilingual speech, API authentication, GPU-accelerated inference on dedicated hub hardware, fine-tuned lightweight models, and a marketplace for voices/characters.
 
 ---
 
@@ -65,7 +69,7 @@ The LLM streams tokens; a sentence-splitter feeds finished sentences to TTS imme
 
 ### Any Domia, role decided by config
 
-There is no hardcoded "server" or "client". **Every instance is just a Domia.** What it does — run STT locally? delegate TTS? act as a hub for other spaces? — is decided entirely by its database config (capabilities, engines, delegations). In development we run two instances labelled _smart_ and _dump_ to exercise cross-Domia features, but those labels don't exist in production.
+There is no hardcoded "server" or "client". **Every instance is just a Domia.** What it does — run STT locally? delegate TTS? act as a hub for other spaces? — is decided entirely by its database config (capabilities, engines, delegations), applied from a portable template. In development we run two neutral instances (node A and node B) to exercise cross-Domia features; neither has a baked-in role.
 
 ### Identity travels with the request
 
@@ -79,7 +83,7 @@ B answers in A's character and A's voice, then reports new emotion/facts back to
 
 The hub never "owns" the conversation — it lends CPU, while the **identity stays with the origin**. That's why several spaces can share one hub and each still sounds and feels like itself.
 
-For the full architecture, see [`.claude/docs/domia-state-and-roadmap.md`](./.claude/docs/domia-state-and-roadmap.md).
+For the full architecture and current state, see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ---
 
@@ -91,20 +95,21 @@ For the full architecture, see [`.claude/docs/domia-state-and-roadmap.md`](./.cl
 # 1. install deps
 npm install
 
-# 2. start Ollama (LLM) + Mosquitto (MQTT) and pull a model
+# 2. start Ollama (LLM) + Mosquitto (MQTT) and pull the models
 docker compose up -d ollama mosquitto
 docker exec -it domia-ollama ollama pull llama3.1:8b
+docker exec -it domia-ollama ollama pull llama3.2:1b   # background "thinker" (reflection/memory)
 # (Ollama can also run natively instead of Docker — install it from ollama.com,
-#  run `ollama pull llama3.1:8b`, and point OLLAMA_HOST in .env at it.)
+#  pull the same models, and point OLLAMA_HOST in .env at it.)
 
 # 3. download the on-device speech models (STT / TTS / VAD / wake word)
 npm run setup:models
 
 # 4. create the database from the schema (no migrations — drizzle-kit push)
-npm run db:reset:hub
+npm run db:reset
 
 # 5. run your Domia (boots minimal — every capability off, no models needed yet)
-npm run dev:hub
+npm run dev
 
 # 6. give it a role from a portable config template (CLI or web console)
 npm run dev-cli -- config import templates/full-hub.json
@@ -116,9 +121,9 @@ You should see `DOMIA is running and waiting for events...`. Drive it without a 
 npm run dev-cli -- tts -t "hello, this is my own voice"
 ```
 
-**Born minimal, configured externally.** A Domia has no baked-in role — it boots minimal and you apply a config template (`full-hub`, `thin-client`, or your own) via the CLI or the web console; the change persists and the Domia restarts to apply it.
+**Born minimal, configured externally.** A Domia has no baked-in role — it boots minimal and you apply a config template (`full-hub`, `standalone`, `thin-client`, `snappy`, `jetson`, or your own) via the CLI or the web console; the change persists and the Domia restarts to apply it.
 
-**Many Domias (delegation / multi-space):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. A second `.env.edge` is provided: `npm run db:reset:edge` then `npm run dev:edge`. Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
+**Many Domias (delegation / multi-space):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. A second `.env.b` is provided: `npm run db:reset:b` then `npm run dev:b`. Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
 
 See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and per-component testing.
 
@@ -133,6 +138,8 @@ See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and 
 - **Voice pipeline** — `audio-capture`, `vad`, `stt-engine`, `tts-engine`, `audio-playback`
 - **Cognition** — `llm-engine`, `prompt-context-builder`, `reflection`
 - **Identity** — `character-engine`, `emotion-engine`, `memory`, `mind`
+- **Action** — `skill-engine`, `agent`, `matcher`, `embeddings`, `intent-router`
+- **Satellites** — `satellite-core`, `satellite-protocols` (ESPHome / Wyoming / WebSocket), `satellite-discovery`
 - **Distribution** — `grpc-client`, `capability-resolver`, `network-sync`, `heartbeat-manager`, `mqtt-event-handler`
 - **Performance & ops** — `inference-pool`, `voice-admission`, `config-engine`, `session-manager`
 
@@ -140,8 +147,8 @@ See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and 
 
 ## 📦 Roadmap
 
-- **Now → next:** test suite + CI, performance/latency polish, admin CLI.
-- **Memory & models:** vector-RAG long-term memory, fine-tuned lightweight models, multilingual speech.
+- **Now → next:** live soak of the companion layers, real-world Home Assistant deployment, GPU hub validation (Jetson-class), test suite + CI.
+- **Then:** multilingual speech, API authentication, vector long-term memory at scale, fine-tuned lightweight models.
 
 ---
 

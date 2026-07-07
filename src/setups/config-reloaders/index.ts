@@ -1,7 +1,7 @@
 import { registerReloader, registerBusyCheck } from "@/modules/config-apply"
 import { reloadSttPool, sttPoolBusy } from "@/modules/stt-engine"
 import { reloadTtsPool, ttsPoolBusy } from "@/modules/tts-engine"
-import { getOwnDomia } from "@/modules/core"
+import { safeOwnDomia } from "@/modules/core"
 import { hasActivePlayback } from "@/modules/audio-playback"
 import { reloadMqtt } from "../mqtt"
 import { reloadVoiceListener } from "../voice-listener"
@@ -28,7 +28,10 @@ export const setupConfigReloaders = (): void => {
 	registerReloader("mqtt", {
 		scope: "global",
 		reload: async () => {
-			const principal = await getOwnDomia().catch(() => null)
+			const principal = await safeOwnDomia(
+				undefined,
+				"config-reloader principal",
+			)
 			if (principal) await reloadMqtt(principal)
 		},
 	})

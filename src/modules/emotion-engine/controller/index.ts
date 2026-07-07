@@ -1,5 +1,10 @@
-import { dbClient } from "@/db"
-import { emotionEngineLogger, generateUuid, parseDbTimestamp } from "@/utils"
+import { dbClient, PERSONALITY_ENUM } from "@/db"
+import {
+	emotionEngineLogger,
+	generateUuid,
+	parseDbTimestamp,
+	now,
+} from "@/utils"
 import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
 import { type PersonaContextType } from "@/modules/prompt-context-builder"
 
@@ -28,6 +33,9 @@ import {
 	EMOTION_TRAJECTORY_WINDOW,
 	EMOTION_TAG_DELTA,
 	EMOTION_TAG_AXES,
+	EMOTION_USER_REACTION_MATRIX,
+	EMOTION_USER_SUSCEPTIBILITY,
+	EMOTION_USER_INFLUENCE_MIN_DELTA,
 } from "../constants"
 import dbAdapter from "../db-adapter"
 
@@ -50,7 +58,8 @@ const baselineFor = (domia: DomiaType): EmotionType => {
 }
 
 const applyInMemory = (domia: DomiaType, vector: EmotionType): void => {
-	if (domia?.emotionState) Object.assign(domia.emotionState, vector)
+	if (domia?.emotionState)
+		Object.assign(domia.emotionState, vector, { updatedAt: now() })
 }
 
 const elapsedSinceUpdate = (domia: DomiaType): number => {
@@ -96,7 +105,7 @@ export const buildMoodContextLines = (
 }
 
 export const emotionAppraisalInstructionLines = (): string[] => [
-	`In "emotion" return how this exchange shifted the companion's feelings: {"deltas": {emotion: signed number between -${EMOTION_APPRAISAL_MAX_DELTA} and ${EMOTION_APPRAISAL_MAX_DELTA}}, "cause": "2-5 word phrase"}. In "deltas" include only emotions that genuinely shifted (positive = increase); use {} if none. Valid emotion keys: ${EMOTION_KEYS.join(", ")}.`,
+	`In "emotion" return how this exchange shifted the companion's OWN feelings about what happened: {"deltas": {emotion: signed number between -${EMOTION_APPRAISAL_MAX_DELTA} and ${EMOTION_APPRAISAL_MAX_DELTA}}, "cause": "2-5 word phrase"}. Do not mirror the person's mood here — that is captured separately in "userEmotion". In "deltas" include only emotions that genuinely shifted (positive = increase); use {} if none. Valid emotion keys: ${EMOTION_KEYS.join(", ")}.`,
 ]
 
 export const parseEmotionFromObject = (
@@ -134,7 +143,24 @@ export const userEmotionInstructionLines = (): string[] => [
 export const parseUserEmotionFromObject = (
 	userEmotionObj: unknown,
 ): UserEmotionType | null => {
-	const result = userEmotionSchema.safeParse(userEmotionObj)
+	const normalized =
+		userEmotionObj && typeof userEmotionObj === "object"
+			? {
+					...userEmotionObj,
+					intensity:
+						typeof (userEmotionObj as { intensity?: unknown }).intensity ===
+						"number"
+							? Math.max(
+									0,
+									Math.min(
+										1,
+										(userEmotionObj as { intensity: number }).intensity,
+									),
+								)
+							: (userEmotionObj as { intensity?: unknown }).intensity,
+				}
+			: userEmotionObj
+	const result = userEmotionSchema.safeParse(normalized)
 	if (!result.success) return null
 	return {
 		primary: result.data.primary.trim().slice(0, 40),
@@ -203,6 +229,37 @@ export const applyMoodDelta = (
 		from: current,
 		to: next,
 	})
+}
+
+export const applyUserEmotionInfluence = (
+	origin: DomiaType,
+	userEmotion: UserEmotionType,
+): void => {
+	if (origin?.moduleSettings?.emotionEngine === false) return
+	const primary = userEmotion.primary.toLowerCase()
+	const axis = EMOTION_TAG_AXES.find((a) => a === primary)
+	if (!axis) return
+	const personality = origin?.characterProfile?.personality
+	const susceptibility =
+		(personality && EMOTION_USER_SUSCEPTIBILITY[personality]) ??
+		EMOTION_USER_SUSCEPTIBILITY[PERSONALITY_ENUM.NEUTRAL]
+	const intensity = Math.max(0, Math.min(1, userEmotion.intensity))
+	const delta: EmotionPartialType = {}
+	for (const [key, weight] of Object.entries(
+		EMOTION_USER_REACTION_MATRIX[axis],
+	)) {
+		const value = Math.max(
+			-EMOTION_APPRAISAL_MAX_DELTA,
+			Math.min(
+				EMOTION_APPRAISAL_MAX_DELTA,
+				(weight ?? 0) * intensity * susceptibility,
+			),
+		)
+		if (Math.abs(value) < EMOTION_USER_INFLUENCE_MIN_DELTA) continue
+		delta[key as keyof EmotionType] = value
+	}
+	if (Object.keys(delta).length === 0) return
+	applyMoodDelta(origin, delta, `user seemed ${axis}`)
 }
 
 export const applyExpressedEmotionTags = (

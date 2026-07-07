@@ -28,6 +28,8 @@ export type InferencePoolConfigType = {
 	queueTimeoutMs: number
 	executionTimeoutMs: number
 	recycleAfterJobs: number
+	maxConcurrentSessions?: number
+	sessionIdleTimeoutMs?: number
 }
 
 export type PoolJobTimingType = {
@@ -44,9 +46,10 @@ export type PoolSessionType = {
 
 export type InferencePoolType = {
 	submit: <T>(payload: unknown, onTiming?: PoolJobTimingCbType) => Promise<T>
-	acquireSession: () => PoolSessionType
+	acquireSession: () => PoolSessionType | null
 	activeWorkers: () => number
 	busyWorkers: () => number
+	heldSessions: () => number
 	queuedJobs: () => number
 	shutdown: () => Promise<void>
 }

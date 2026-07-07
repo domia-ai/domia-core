@@ -17,6 +17,7 @@ import {
 	endRecording,
 	abortActiveTurn,
 	getIntercom,
+	skillsMayIntercept,
 } from "../utils"
 import { runSpeculativeTurn } from "./speculative-turn"
 import type { CoreBusContextType } from "../types"
@@ -73,14 +74,12 @@ export const handleWakeDetected = async (
 			features.canRunLlm &&
 			features.canSentencePipeline &&
 			Boolean(features.llm?.adapter.runStream)
-		const skillsMayIntercept =
-			domia.moduleSettings?.skillsEngine === true &&
-			(domia.skillProviders ?? []).some(
-				(p) => p.isActive && (p.toolsCache?.length ?? 0) > 0,
-			)
+		const speculationBlockedBySkills =
+			skillsMayIntercept(domia) &&
+			domia.wakeWordConfig?.speculateWithSkills !== true
 		if (
 			speculativeMs > 0 &&
-			!skillsMayIntercept &&
+			!speculationBlockedBySkills &&
 			stt?.adapter.runPcm &&
 			(localSpeculation || !features.canRunLlm)
 		) {

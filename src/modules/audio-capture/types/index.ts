@@ -1,3 +1,6 @@
+import type { DomiaType } from "@/modules/core"
+import type { WakeWordEngineEnumType } from "@/db"
+
 export type CaptureCallbacksType = {
 	onWake?: () => void | Promise<void>
 	onRecordingStart?: () => void | Promise<void>
@@ -7,6 +10,19 @@ export type CaptureCallbacksType = {
 
 export type CaptureHandleType = {
 	stop: () => void
+}
+
+export type WakeWordCapabilitiesType = {
+	sampleRate: number
+}
+
+export type WakeWordEngineAdapterType = {
+	id: WakeWordEngineEnumType
+	capabilities: WakeWordCapabilitiesType
+	run: (
+		domia: DomiaType,
+		callbacks?: CaptureCallbacksType,
+	) => Promise<CaptureHandleType>
 }
 
 export type StartAudioStreamResultType = {

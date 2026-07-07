@@ -4,6 +4,7 @@ import type {
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
 } from "@/modules/llm-engine"
+import type { ToolTraceEntryType } from "@/db"
 
 export type AgentInferenceType = (
 	messages: ChatMessageType[],
@@ -26,6 +27,13 @@ export type AgentTurnOptionsType = {
 
 export type AgentFinalizeModeType = "agent_loop" | "template" | "streamed"
 
+export type AgentStopReasonType =
+	| "completed"
+	| "max_steps"
+	| "tool_error"
+	| "aborted"
+	| "context_overflow"
+
 export type AgentResultType = {
 	reply: string
 	replyStream?: AsyncIterable<string>
@@ -33,11 +41,12 @@ export type AgentResultType = {
 	serversUsed: string[]
 	steps: number
 	skillPrompt: string | null
-	skillResponses: unknown[]
+	skillResponses: ToolTraceEntryType[]
 	decisionMs: number
 	toolMs: number
 	finalizeMs: number
 	finalizeMode: AgentFinalizeModeType
+	stopReason: AgentStopReasonType
 	pendingTools?: Promise<AsyncToolOutcomeType>[]
 }
 
@@ -45,4 +54,5 @@ export type AsyncToolOutcomeType = {
 	tool: string
 	ok: boolean
 	doneText: string
+	resolvedArgs?: Record<string, unknown>
 }

@@ -12,11 +12,11 @@
 		"playback": true
 	},
 	"modules": {
-		"emotionEngine": false,
-		"emotionCapture": false,
-		"memoryEngine": false,
-		"factCapture": false,
-		"factRecall": false,
+		"emotionEngine": true,
+		"emotionCapture": true,
+		"memoryEngine": true,
+		"factCapture": true,
+		"factRecall": true,
 		"collectiveMind": false,
 		"narrativeEngine": false,
 		"identityEngine": true,
@@ -81,7 +81,8 @@
 		"contextWindow": 4096,
 		"numPredict": 80,
 		"llmConcurrency": 3,
-		"useCompactPrompt": false
+		"useCompactPrompt": false,
+		"reflectionModelName": "llama3.2:1b"
 	},
 	"wakeWord": {
 		"name": "Default",

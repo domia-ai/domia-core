@@ -14,7 +14,7 @@ import type {
 } from "../types/sentence-buffer"
 
 const HARD_TERMINATORS =
-	/(?<!\b(?:Dr|Mr|Mrs|Ms|St|vs|etc|Prof|Sr|Jr))(?<!\b[A-Za-z])(?<!\s\d)([.!?])["”'’)]*\s+(?=["“'‘(]?[A-Z0-9])/
+	/(?<!\b(?:Dr|Mr|Mrs|Ms|St|vs|etc|Prof|Sr|Jr))(?<!\b[A-Za-z])(?<!\s\d)([.!?])["”'’)]*\s+(?=["“'‘([]?[A-Z0-9])/
 const SOFT_TERMINATORS = /([,;:])\s/
 
 export const DEFAULT_SENTENCE_TUNING: SentenceFlushTuningType = {

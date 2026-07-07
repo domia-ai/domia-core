@@ -28,7 +28,7 @@ export type SttEngineAdapterType = {
 		pcm: Buffer,
 		onTiming?: PoolJobTimingCbType,
 	) => Promise<string>
-	createSession?: (domia: DomiaType) => SttStreamSessionType
+	createSession?: (domia: DomiaType) => SttStreamSessionType | null
 }
 
 export type WhisperPathsType = {
@@ -66,6 +66,7 @@ export type SttWorkerEngineConfigType = {
 	engine: SttEngineEnumType
 	modelPath: string
 	modelName: string | null
+	language: string | null
 	quantization: string | null
 	numThreads: number
 	provider: string
@@ -112,3 +113,5 @@ export type SttStreamSessionType = {
 export type RecognizerEntryType =
 	| { online: true; rec: OnlineRecognizerInstance }
 	| { online: false; rec: OfflineRecognizerInstance }
+
+export type OnlineEntryType = Extract<RecognizerEntryType, { online: true }>

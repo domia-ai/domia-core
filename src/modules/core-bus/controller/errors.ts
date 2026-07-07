@@ -57,6 +57,7 @@ export const handleInteractionFailed = (
 			{
 				errorStep: payload.step,
 				errorMessage: payload.error,
+				errorCode: payload.errorCode,
 			},
 		)
 	}

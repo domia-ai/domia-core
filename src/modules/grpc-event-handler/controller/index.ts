@@ -38,7 +38,7 @@ export const handleDeliverEvent = async (
 
 	let event: DOMIA_EVENT_BUS_ENUM
 	let interactionId: string | undefined
-	let busPayload: Record<string, unknown>
+	let publish: () => void
 
 	const rejectForeignOrigin = (
 		eventName: string,
@@ -67,12 +67,13 @@ export const handleDeliverEvent = async (
 				p.audio && p.audio.length > 0
 					? await writeWavToTemp(p.audio, p.interactionId ?? "", "audio-in")
 					: p.filePath
-			busPayload = {
-				filePath,
-				audioUrl: p.audioUrl,
-				originDomiaKey: p.originDomiaKey,
-				interactionId: p.interactionId,
-			}
+			publish = () =>
+				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
+					filePath,
+					audioUrl: p.audioUrl,
+					originDomiaKey: p.originDomiaKey,
+					interactionId: p.interactionId,
+				})
 			break
 		}
 		case "sttDone": {
@@ -81,12 +82,13 @@ export const handleDeliverEvent = async (
 			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.STT_DONE
 			interactionId = p.interactionId
-			busPayload = {
-				transcript: p.transcript,
-				interactionId: p.interactionId,
-				originDomiaKey: p.originDomiaKey,
-				responseType: p.responseType,
-			}
+			publish = () =>
+				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
+					transcript: p.transcript,
+					interactionId: p.interactionId ?? "",
+					originDomiaKey: p.originDomiaKey,
+					responseType: p.responseType,
+				})
 			break
 		}
 		case "llmDone": {
@@ -95,12 +97,13 @@ export const handleDeliverEvent = async (
 			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.LLM_DONE
 			interactionId = p.interactionId
-			busPayload = {
-				reply: p.reply,
-				interactionId: p.interactionId,
-				originDomiaKey: p.originDomiaKey,
-				responseType: p.responseType,
-			}
+			publish = () =>
+				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+					reply: p.reply,
+					interactionId: p.interactionId ?? "",
+					originDomiaKey: p.originDomiaKey,
+					responseType: p.responseType,
+				})
 			break
 		}
 		case "ttsDone": {
@@ -111,25 +114,27 @@ export const handleDeliverEvent = async (
 				p.audio && p.audio.length > 0
 					? await writeWavToTemp(p.audio, p.interactionId ?? "", "tts-in")
 					: p.filePath
-			busPayload = {
-				filePath,
-				audioUrl: p.audioUrl,
-				interactionId: p.interactionId,
-				originDomiaKey: p.originDomiaKey,
-			}
+			publish = () =>
+				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
+					filePath,
+					audioUrl: p.audioUrl,
+					interactionId: p.interactionId ?? "",
+					originDomiaKey: p.originDomiaKey,
+				})
 			break
 		}
 		case "interactionFailed": {
 			const p = envelope.payload.interactionFailed
 			event = DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED
 			interactionId = p.interactionId
-			busPayload = {
-				error: p.error,
-				step: p.step,
-				interactionId: p.interactionId,
-				originDomiaKey: p.originDomiaKey,
-				responseType: p.responseType,
-			}
+			publish = () =>
+				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED, {
+					error: p.error ?? "unknown remote error",
+					step: p.step,
+					interactionId: p.interactionId ?? "",
+					originDomiaKey: p.originDomiaKey,
+					responseType: p.responseType,
+				})
 			break
 		}
 		default:
@@ -157,7 +162,7 @@ export const handleDeliverEvent = async (
 				`📥 deliverEvent ${event} from ${senderKey} → bus`,
 				{ domiaId: domia.id, interactionId },
 			)
-			publishToDomiaBus(domia.id, event, busPayload as never)
+			publish()
 			return { accepted: true, reason: "ok", deduplicated: false }
 		},
 	)

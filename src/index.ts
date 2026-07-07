@@ -8,6 +8,10 @@ import { setupTempSweeper } from "./setups/temp-sweeper"
 import { setupRetention } from "./setups/retention"
 import { setupShutdown } from "./setups/shutdown"
 import {
+	setupTurnEventLogging,
+	setupTurnEventPersistence,
+} from "./setups/turn-events"
+import {
 	setupVoiceListener,
 	setupMqtt,
 	setupEnvironment,
@@ -34,6 +38,8 @@ process.on("unhandledRejection", (reason) => {
 async function main() {
 	appLogger.info("Initialize Domia with default config")
 	setupShutdown()
+	setupTurnEventLogging()
+	setupTurnEventPersistence()
 	const ownDomia = await initialize(undefined, { isHosted: true })
 	setGrpcClientTunables(ownDomia)
 	setupTempSweeper()

@@ -1,4 +1,4 @@
-import type { RecognizerEntryType } from "../types"
+import type { RecognizerEntryType, OnlineEntryType } from "../types"
 import fs from "fs"
 import path from "path"
 
@@ -25,6 +25,7 @@ import type {
 
 const SAMPLE_RATE = 16000
 const FEAT = { sampleRate: SAMPLE_RATE, featureDim: 80 }
+const FEAT_128 = { sampleRate: SAMPLE_RATE, featureDim: 128 }
 
 let cached: RecognizerEntryType | null = null
 let cachedKey: string | null = null
@@ -61,6 +62,31 @@ const buildZipformer = (config: SttWorkerEngineConfigType) => {
 	})
 }
 
+const buildParakeetStreaming = (config: SttWorkerEngineConfigType) => {
+	const dir = path.resolve(config.modelPath)
+	if (!fs.existsSync(dir)) missing(dir)
+	const q = resolveQuantization(config.quantization)
+	const encoder = findOnnxFile({ dir, prefix: "encoder", quantization: q })
+	const decoder = findOnnxFile({ dir, prefix: "decoder", quantization: q })
+	const joiner = findOnnxFile({ dir, prefix: "joiner", quantization: q })
+	const tokens = path.join(dir, "tokens.txt")
+	if (!encoder || !decoder || !joiner || !fs.existsSync(tokens)) missing(dir)
+	return createOnlineRecognizer({
+		featConfig: FEAT_128,
+		modelConfig: {
+			transducer: { encoder, decoder, joiner },
+			tokens,
+			numThreads: config.numThreads,
+			provider: config.provider,
+			debug: 0,
+		},
+		enableEndpoint: config.enableEndpoint,
+		rule1MinTrailingSilence: config.rule1MinTrailingSilence,
+		rule2MinTrailingSilence: config.rule2MinTrailingSilence,
+		rule3MinUtteranceLength: config.rule3MinUtteranceLength,
+	})
+}
+
 const buildWhisper = (config: SttWorkerEngineConfigType) => {
 	const dir = path.resolve(config.modelPath)
 	const name = config.modelName ?? ""
@@ -78,10 +104,15 @@ const buildWhisper = (config: SttWorkerEngineConfigType) => {
 	})
 	const tokens = path.join(dir, `${name}-tokens.txt`)
 	if (!encoder || !decoder || !fs.existsSync(tokens)) missing(dir)
+	const englishOnly = name.endsWith(".en")
+	const whisper =
+		!englishOnly && config.language
+			? { encoder, decoder, language: config.language, task: "transcribe" }
+			: { encoder, decoder }
 	return createOfflineRecognizer({
 		featConfig: FEAT,
 		modelConfig: {
-			whisper: { encoder, decoder },
+			whisper,
 			tokens,
 			numThreads: config.numThreads,
 			provider: config.provider,
@@ -179,6 +210,8 @@ const getRecognizer = (
 	})
 	if (config.engine === STT_ENGINE_ENUM.ZIPFORMER) {
 		cached = { online: true, rec: buildZipformer(config) }
+	} else if (config.engine === STT_ENGINE_ENUM.PARAKEET_STREAMING) {
+		cached = { online: true, rec: buildParakeetStreaming(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.WHISPER) {
 		cached = { online: false, rec: buildWhisper(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.PARAKEET) {
@@ -224,8 +257,6 @@ const transcribe = (
 	rec.decode(stream)
 	return rec.getResult(stream).text.trim()
 }
-
-type OnlineEntryType = Extract<RecognizerEntryType, { online: true }>
 
 let activeSession: {
 	stream: ReturnType<OnlineEntryType["rec"]["createStream"]>

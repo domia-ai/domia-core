@@ -1,4 +1,9 @@
-import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
+import {
+	publishToDomiaBus,
+	DOMIA_EVENT_BUS_ENUM,
+	emitTurnEvent,
+	DOMIA_TURN_EVENT_ENUM,
+} from "@/buses"
 import { domiaBusLogger } from "@/utils"
 import {
 	CAPABILITY_ENUM,
@@ -29,6 +34,8 @@ import {
 	sentenceTuningFromDomia,
 	cutFirstUnit,
 	isSpeakable,
+	skillsMayIntercept,
+	looksSkillish,
 } from "../utils"
 import type {
 	CoreBusContextType,
@@ -140,6 +147,15 @@ const startSpeculation = (
 			return null
 		}
 		onPartial?.(transcript)
+		if (skillsMayIntercept(domia) && (await looksSkillish(domia, transcript))) {
+			domiaBusLogger.info(
+				`🔮 speculation g${generation} skipped — skill-ish transcript ("${transcript.slice(0, 60)}")`,
+				{ domiaId: domia.id },
+			)
+			me.queue.close()
+			return transcript
+		}
+		if (me.cancelled) return null
 		const bundle = await takeMemoryBundle(domia, args.interactionId)
 		if (me.cancelled) return null
 		me.prompt = buildPromptContext(domia, transcript, bundle)
@@ -183,6 +199,12 @@ const startSpeculation = (
 			return me.cancelled ? null : transcript
 		}
 		me.started = true
+		emitTurnEvent({
+			type: DOMIA_TURN_EVENT_ENUM.SPECULATION_STARTED,
+			interactionId: args.interactionId,
+			originDomiaKey: domia.domiaKey,
+			executorKey: me.executorKey ?? undefined,
+		})
 		domiaBusLogger.info(
 			`🔮 speculation g${generation}: ${llmTargets ? "delegated " : ""}LLM started ("${transcript.slice(0, 60)}")`,
 			{ domiaId: domia.id, interactionId: args.interactionId },
@@ -303,6 +325,13 @@ export const runSpeculativeTurn = async (
 				{ domiaId: domia.id, interactionId: args.interactionId },
 			)
 		}
+		if (active.started && !active.handedOff)
+			emitTurnEvent({
+				type: DOMIA_TURN_EVENT_ENUM.SPECULATION_DISCARDED,
+				interactionId: args.interactionId,
+				originDomiaKey: domia.domiaKey,
+				executorKey: active.executorKey ?? undefined,
+			})
 		domiaBusLogger.info(
 			`🔮 speculation g${active.generation} cancelled (${reason})`,
 			{ domiaId: domia.id, interactionId: args.interactionId },
@@ -388,12 +417,25 @@ export const runSpeculativeTurn = async (
 				final !== undefined &&
 				(final === "" || !transcriptsCompatible(transcript, final))
 			if (finalDisagrees) {
+				if (winner.started)
+					emitTurnEvent({
+						type: DOMIA_TURN_EVENT_ENUM.SPECULATION_DISCARDED,
+						interactionId: args.interactionId,
+						originDomiaKey: domia.domiaKey,
+						executorKey: winner.executorKey ?? undefined,
+					})
 				domiaBusLogger.info(
 					`🔮 speculation g${winner.generation} discarded — final decode disagrees ("${transcript.slice(0, 40)}" vs "${(final ?? "").slice(0, 40)}")`,
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
 			} else if (winner.started) {
 				winner.handedOff = true
+				emitTurnEvent({
+					type: DOMIA_TURN_EVENT_ENUM.SPECULATION_COMMITTED,
+					interactionId: args.interactionId,
+					originDomiaKey: domia.domiaKey,
+					executorKey: winner.executorKey ?? undefined,
+				})
 				domiaBusLogger.info(
 					`🔮 speculation g${winner.generation} confirmed — LLM already running${winner.firstUnitText ? " + first-unit TTS primed" : ""}`,
 					{ domiaId: domia.id, interactionId: args.interactionId },

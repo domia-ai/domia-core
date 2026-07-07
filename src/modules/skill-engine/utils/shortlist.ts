@@ -1,79 +1,56 @@
 import type { SkillToolType } from "@/db"
+import type { ScoredToolType } from "@/modules/matcher"
 
-import type { ToolShortlistResultType } from "../types"
-
-const STOPWORDS = new Set([
-	"the",
-	"a",
-	"an",
-	"please",
-	"can",
-	"could",
-	"would",
-	"you",
-	"my",
-	"me",
-	"i",
-	"to",
-	"of",
-	"is",
-	"it",
-	"do",
-	"and",
-])
-
-const wordsOf = (value: string): string[] =>
-	value
-		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-		.toLowerCase()
-		.split(/[^a-z0-9]+/)
-		.filter((w) => w.length >= 2)
-
-const queryTokens = (transcript: string): string[] => [
-	...new Set(wordsOf(transcript).filter((w) => !STOPWORDS.has(w))),
-]
-
-const scoreTool = (tool: SkillToolType, tokens: string[]): number => {
-	const nameWords = new Set([
-		...wordsOf(tool.rawName),
-		...wordsOf(tool.namespacedName),
-	])
-	const descWords = new Set(wordsOf(tool.description ?? ""))
-	let score = 0
-	for (const token of tokens) {
-		if (nameWords.has(token)) score += 2
-		else if (descWords.has(token)) score += 1
-	}
-	return score
-}
+import type {
+	ToolShortlistResultType,
+	ToolShortlistOptionsType,
+} from "../types"
 
 export const shortlistTools = (
-	transcript: string,
-	tools: SkillToolType[],
+	ranked: ScoredToolType[],
 	max: number,
+	opts: ToolShortlistOptionsType = {},
 ): ToolShortlistResultType => {
-	if (max <= 0 || tools.length <= max) {
-		return { tools, total: tools.length, dropped: 0, applied: false }
+	const total = ranked.length
+	if (max <= 0)
+		return {
+			tools: ranked.map((r) => r.tool),
+			total,
+			dropped: 0,
+			applied: false,
+		}
+	const confMin = opts.confMin ?? 0
+	const core = opts.coreNames?.size
+		? ranked
+				.filter((r) => opts.coreNames?.has(r.tool.namespacedName))
+				.sort((a, b) => a.index - b.index)
+				.map((r) => r.tool)
+		: []
+	const maxScore = ranked.length ? ranked[0].score : 0
+
+	if (maxScore <= 0 || maxScore < confMin) {
+		return {
+			tools: core,
+			total,
+			dropped: total - core.length,
+			applied: true,
+		}
 	}
-	const tokens = queryTokens(transcript)
-	const scored = tools.map((tool, index) => ({
-		tool,
-		index,
-		score: scoreTool(tool, tokens),
-	}))
-	const maxScore = scored.reduce((m, s) => Math.max(m, s.score), 0)
-	if (maxScore === 0) {
-		return { tools, total: tools.length, dropped: 0, applied: false }
+
+	const rankedTools = ranked.filter((r) => r.score > 0).map((r) => r.tool)
+	const cap = Math.max(max, core.length)
+	const seen = new Set<string>()
+	const merged: SkillToolType[] = []
+	for (const tool of [...core, ...rankedTools]) {
+		if (seen.has(tool.namespacedName)) continue
+		seen.add(tool.namespacedName)
+		merged.push(tool)
+		if (merged.length >= cap) break
 	}
-	const ranked = scored
-		.filter((s) => s.score > 0)
-		.sort((a, b) => b.score - a.score || a.index - b.index)
-		.slice(0, max)
-		.map((s) => s.tool)
 	return {
-		tools: ranked,
-		total: tools.length,
-		dropped: tools.length - ranked.length,
-		applied: true,
+		tools: merged,
+		total,
+		dropped: total - merged.length,
+		applied: merged.length < total,
 	}
 }

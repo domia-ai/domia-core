@@ -7,9 +7,7 @@ import {
 	disconnectProviders,
 } from "@/modules/skill-engine"
 
-export type McpSetupHandleType = {
-	stop: () => Promise<void>
-}
+import type { McpSetupHandleType } from "./types"
 
 const skillHandles = new Map<string, McpSetupHandleType>()
 

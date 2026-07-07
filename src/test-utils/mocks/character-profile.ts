@@ -10,6 +10,7 @@ import {
 	RELATIONSHIP_TYPE_ENUM,
 	ROLE_MODE_ENUM,
 	DEFAULT_LANGUAGE,
+	DEFAULT_EMOTION_EXPRESSION_STYLE,
 } from "@/db/constants"
 import { type SelectCharacterProfileType } from "@/db"
 
@@ -34,6 +35,8 @@ export const baseCharacterProfile = (
 		skills: [faker.person.jobTitle(), faker.commerce.product()],
 		relationshipType: RELATIONSHIP_TYPE_ENUM.COMPANION,
 		roleMode: ROLE_MODE_ENUM.PASSIVE,
+		emotionExpressionStyle: DEFAULT_EMOTION_EXPRESSION_STYLE,
+		voiceStyle: null,
 		promptOverrides: null,
 		createdAt: now(),
 		updatedAt: now(),

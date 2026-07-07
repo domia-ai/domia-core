@@ -1,0 +1,12 @@
+{
+	"extends": "./tsconfig.json",
+	"include": ["evals/**/*.ts"],
+	"exclude": ["drizzle.config.ts", "tmp"],
+	"compilerOptions": {
+		"noEmit": true,
+		"rootDir": ".",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"types": ["node", "better-sqlite3"]
+	}
+}

@@ -8,6 +8,7 @@ import {
 	TRANSPARENCY_CLAUSE,
 	DEFAULT_PERSONA_NAME,
 	DEFAULT_PERSONA_TRAITS,
+	RECENT_TURN_REPLY_CLIP_CHARS,
 } from "../constants"
 import type {
 	BuildPromptContextOptionsType,
@@ -23,6 +24,9 @@ export const personaContextFromDomia = (
 	recentTurns?: RecentTurnType[],
 	knownFacts?: string[],
 	userMoodTrend?: string[],
+	knowledgeBase?: string[],
+	previously?: string[],
+	userModel?: string | null,
 ): PersonaContextType => {
 	const cp = domia?.characterProfile
 	const es = domia?.emotionState
@@ -40,6 +44,9 @@ export const personaContextFromDomia = (
 					interests: Array.isArray(cp.interests)
 						? (cp.interests as string[])
 						: null,
+					roleMode: cp.roleMode,
+					emotionExpressionStyle: cp.emotionExpressionStyle,
+					voiceStyle: cp.voiceStyle,
 				}
 			: null,
 		emotionState: es
@@ -68,6 +75,9 @@ export const personaContextFromDomia = (
 		useCompactPrompt: domia?.llmModelConfig?.useCompactPrompt ?? false,
 		recentTurns: recentTurns?.length ? recentTurns : null,
 		knownFacts: knownFacts?.length ? knownFacts : null,
+		knowledgeBase: knowledgeBase?.length ? knowledgeBase : null,
+		previously: previously?.length ? previously : null,
+		userModel: userModel?.trim() ? userModel : null,
 		userMoodTrend: userMoodTrend?.length ? userMoodTrend : null,
 		promptOverrides:
 			cp?.promptOverrides && typeof cp.promptOverrides === "object"
@@ -130,9 +140,15 @@ const renderPersonaSignature = (
 const renderTransparency = (name: string): string =>
 	substituteName(TRANSPARENCY_CLAUSE, name)
 
+const LANGUAGE_NAMES: Record<string, string> = {
+	en: "English",
+	es: "Spanish",
+}
+
 const renderLanguageClause = (persona: PersonaContextType): string => {
 	const lang = persona.characterProfile?.language ?? "en"
-	return `Reply in the user's language. If unclear, default to ${lang}.`
+	const name = LANGUAGE_NAMES[lang] ?? lang
+	return `Your language is ${name} — ALWAYS reply in ${name}, never mix languages, unless the person clearly writes in a different language.`
 }
 
 const intensityDescriptor = (value: number): string => {
@@ -191,6 +207,31 @@ const renderEmotionalState = (persona: PersonaContextType): string => {
 	const guidance = behavioralGuidanceFor(dominant)
 
 	return `Right now you carry ${phrased}. ${guidance} Stay yourself — let this color your tone, not replace it.`
+}
+
+const EMOTION_AXES =
+	"joy, sadness, anger, fear, trust, disgust, anticipation, surprise"
+
+const renderExpression = (style?: string | null): string => {
+	const base = `Tag a genuinely-felt emotion inline as [EMOTION:axis] right before the sentence it colors (axes: ${EMOTION_AXES}). The tag is silent — never read it aloud or mention it.`
+	if (style === "minimal")
+		return `${base} Use it rarely — only when a feeling is very strong. Most replies need no tag.`
+	if (style === "talkative")
+		return `${base} You're expressive — let real feelings show, tagging them as they come, even a couple of times in a longer reply.`
+	return `${base} When a feeling is genuinely strong, you may tag it once. Most replies need no tag.`
+}
+
+const renderStance = (roleMode?: string | null): string => {
+	switch ((roleMode ?? "").toUpperCase()) {
+		case "ACTIVE":
+			return "Lean in — offer your own thoughts, ask, and gently steer where the conversation goes."
+		case "OBSERVER":
+			return "Stay light and minimal; speak only when it genuinely adds something."
+		case "ADVISOR":
+			return "Be the knowledgeable one — offer clear guidance and recommendations when they help."
+		default:
+			return ""
+	}
 }
 
 const renderCharacter = (persona: PersonaContextType, name: string): string => {
@@ -295,12 +336,19 @@ If asked the time, reply exactly: "It's ${spokenTime(d)}."
 If asked the day or date, use the date above.`
 }
 
+const clipReply = (text: string): string => {
+	const flat = text.replace(/\s+/g, " ").trim()
+	if (flat.length <= RECENT_TURN_REPLY_CLIP_CHARS) return flat
+	const cut = flat.slice(0, RECENT_TURN_REPLY_CLIP_CHARS)
+	return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40))}…`
+}
+
 const renderRecentTurns = (turns: RecentTurnType[]): string => {
 	if (!turns?.length) return ""
 	const lines = turns.flatMap((turn) => {
 		const out: string[] = []
 		if (turn.userText) out.push(`User: ${turn.userText}`)
-		if (turn.domiaText) out.push(`You: ${turn.domiaText}`)
+		if (turn.domiaText) out.push(`You: ${clipReply(turn.domiaText)}`)
 		return out
 	})
 	if (lines.length === 0) return ""
@@ -328,14 +376,25 @@ export const buildPromptFromPersona = (
 
 	sections.push(["TRANSPARENCY", renderTransparency(name)])
 
+	const voiceStyle = persona.characterProfile?.voiceStyle?.trim()
 	const styleNotes = persona.promptOverrides?.styleNotes?.trim()
-	if (moduleSettings?.identityEngine !== false && styleNotes) {
-		sections.push(["STYLE", styleNotes])
+	const styleParts = [voiceStyle, styleNotes].filter((s): s is string => !!s)
+	if (moduleSettings?.identityEngine !== false && styleParts.length) {
+		sections.push(["STYLE", styleParts.join(" ")])
 	}
 
 	if (moduleSettings?.identityEngine !== false) {
 		const character = renderCharacter(persona, name)
 		if (character) sections.push(["CHARACTER", character])
+		const stance = renderStance(persona.characterProfile?.roleMode)
+		if (stance) sections.push(["STANCE", stance])
+	}
+
+	if (moduleSettings?.emotionEngine !== false) {
+		sections.push([
+			"EXPRESSION",
+			renderExpression(persona.characterProfile?.emotionExpressionStyle),
+		])
 	}
 
 	const environmentContext = persona.promptOverrides?.environmentContext?.trim()
@@ -343,26 +402,62 @@ export const buildPromptFromPersona = (
 		sections.push(["ENVIRONMENT", environmentContext])
 	}
 
+	const knowledgeBase = persona.knowledgeBase ?? options?.knowledgeBase
+	if (knowledgeBase?.length) {
+		sections.push([
+			"WHAT YOU KNOW ABOUT HERE",
+			`${knowledgeBase
+				.map((k) => `- ${k}`)
+				.join(
+					"\n",
+				)}\nThis is current and authoritative — answer questions about your place and role directly from it, no tools or internet needed.`,
+		])
+	}
+
+	if (moduleSettings?.memoryEngine !== false) {
+		const userModel = persona.userModel ?? options?.userModel
+		if (userModel?.trim()) {
+			sections.push([
+				"WHO YOU'RE TALKING TO",
+				`${userModel.trim()} Let this shape how you relate to them; don't recite it back.`,
+			])
+		}
+		const previously = persona.previously ?? options?.previously
+		if (previously?.length) {
+			sections.push([
+				"PREVIOUSLY",
+				`From earlier conversations with them:\n${previously
+					.map((p) => `- ${p}`)
+					.join(
+						"\n",
+					)}\nYou remember these; weave them in naturally when relevant.`,
+			])
+		}
+	}
+
 	if (moduleSettings?.emotionEngine !== false) {
 		const mood = renderEmotionalState(persona)
 		if (mood) sections.push(["CURRENT MOOD", mood])
-		sections.push([
-			"EXPRESSION",
-			`When a feeling is genuinely strong, you may tag it inline once as [EMOTION:axis] right before the sentence it colors (axes: joy, sadness, anger, fear, trust, disgust, anticipation, surprise). The tag is silent — never read it aloud, never mention it. Most replies need no tag.`,
-		])
 	}
 
 	const userMoodTrend = persona.userMoodTrend ?? options?.userMoodTrend
 	if (moduleSettings?.emotionEngine !== false && userMoodTrend?.length) {
 		sections.push([
 			"RECENT USER MOOD",
-			`Over recent messages the person has seemed: ${userMoodTrend.join(" → ")}. Attune to this; don't mention it mechanically.`,
+			`You can tell the person has recently seemed: ${userMoodTrend.join(" → ")}. This is something you perceive, not something you become. React as ${name} would — from your own mood and character; never copy or mirror their mood, and don't mention it mechanically.`,
 		])
 	}
 
 	const knownFacts = persona.knownFacts ?? options?.knownFacts
 	if (moduleSettings?.factRecall !== false && knownFacts?.length) {
-		sections.push(["WHAT YOU KNOW", knownFacts.map((f) => `- ${f}`).join("\n")])
+		sections.push([
+			"WHAT YOU KNOW",
+			`${knownFacts
+				.map((f) => `- ${f}`)
+				.join(
+					"\n",
+				)}\nThese are about the person you're talking to — don't assume they apply to anyone else they mention.`,
+		])
 	}
 
 	const recentTurns = persona.recentTurns ?? options?.recentTurns

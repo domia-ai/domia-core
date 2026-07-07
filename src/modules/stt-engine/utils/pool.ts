@@ -15,6 +15,10 @@ export const getSttPool = (
 		const maxWorkers = sttConfig.poolAutoScaleEnabled
 			? resolveMaxWorkers(sttConfig.poolMaxWorkers, "stt")
 			: Math.max(1, sttConfig.poolWarmWorkers)
+		const maxConcurrentSessions =
+			sttConfig.maxConcurrentStreamingSessions > 0
+				? sttConfig.maxConcurrentStreamingSessions
+				: Math.max(1, maxWorkers - 1)
 		sttPool = createInferencePool({
 			label: "stt",
 			backend: createChildProcessBackend("stt-entry"),
@@ -25,6 +29,8 @@ export const getSttPool = (
 			queueTimeoutMs: sttConfig.poolQueueTimeoutMs,
 			executionTimeoutMs: sttConfig.poolExecutionTimeoutMs,
 			recycleAfterJobs: sttConfig.workerRecycleAfterJobs,
+			maxConcurrentSessions,
+			sessionIdleTimeoutMs: sttConfig.sessionIdleTimeoutMs,
 		})
 	}
 	return sttPool

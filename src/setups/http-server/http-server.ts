@@ -5,6 +5,7 @@ import { env } from "@/config"
 import {
 	type DomiaType,
 	getOwnDomia,
+	safeOwnDomia,
 	invalidateOwnDomia,
 	isHostedIdentity,
 } from "@/modules/core"
@@ -23,6 +24,9 @@ import {
 	handlePostIntercom,
 	handleGetMind,
 	handleGetConfig,
+	handleGetKnowledge,
+	handlePostKnowledge,
+	handleDeleteKnowledge,
 	handlePostConfig,
 	handleGetConfigHealth,
 	handleGetLatencyStats,
@@ -77,7 +81,7 @@ const liveDomia = async (
 	}
 	if (!isHostedIdentity(domiaKey))
 		throw new Error(`identity not hosted: ${domiaKey}`)
-	const live = await getOwnDomia(domiaKey).catch(() => null)
+	const live = await safeOwnDomia(domiaKey, "http liveDomia")
 	if (!live) throw new Error(`unknown identity: ${domiaKey}`)
 	return live
 }
@@ -179,6 +183,27 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.get("/config/health", async (request) =>
 		handleGetConfigHealth(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
+
+	fastify.get("/knowledge", async (request) =>
+		handleGetKnowledge(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
+
+	fastify.post("/knowledge", async (request, reply) =>
+		handlePostKnowledge(
+			await liveDomia(domia, queryDomiaKey(request.query)),
+			request.body,
+			reply,
+		),
+	)
+
+	fastify.delete<{ Params: { id: string } }>(
+		"/knowledge/:id",
+		async (request) =>
+			handleDeleteKnowledge(
+				await liveDomia(domia, queryDomiaKey(request.query)),
+				request.params.id,
+			),
 	)
 
 	fastify.get("/stats/latency", async (request) =>

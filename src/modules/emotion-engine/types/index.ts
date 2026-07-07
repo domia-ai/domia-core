@@ -10,6 +10,11 @@ export type EmotionType = z.infer<typeof emotionSchema>
 export type EmotionPartialType = z.infer<typeof emotionPartialSchema>
 export type UserEmotionType = z.infer<typeof userEmotionSchema>
 
+export type UserReactionMatrixType = Record<
+	keyof EmotionType,
+	EmotionPartialType
+>
+
 export type EmotionAppraisalType = {
 	delta: EmotionPartialType
 	cause: string

@@ -5,12 +5,15 @@ import {
 	interactionTrace,
 	interactionSessionTrace,
 	announcement,
+	turnEvent,
+	moduleSettings,
 	type DBClientOrTxType,
 	type InsertInteractionTraceType,
 	type InsertInteractionSessionTraceType,
 	type UpdateInteractionTraceType,
 	type UpdateInteractionSessionTraceType,
 	type InsertAnnouncementType,
+	type InsertTurnEventType,
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 
@@ -22,6 +25,35 @@ const dbAdapter = {
 	getInteractionById: (id: string, client: DBClientOrTxType = dbClient) =>
 		client.query.interactionTrace.findFirst({
 			where: eq(interactionTrace.id, id),
+		}),
+	insertTurnEvents: (
+		rows: InsertTurnEventType[],
+		client: DBClientOrTxType = dbClient,
+	) => client.insert(turnEvent).values(rows),
+	getTurnEventsSince: (
+		domiaId: string,
+		since: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.turnEvent.findMany({
+			where: and(
+				eq(turnEvent.domiaId, domiaId),
+				gte(turnEvent.createdAt, since),
+			),
+			orderBy: [asc(turnEvent.createdAt), asc(turnEvent.id)],
+			limit,
+		}),
+	getTurnEventsPersist: (
+		domiaId: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.moduleSettings.findFirst({
+			columns: { turnEventsPersist: true },
+			where: and(
+				eq(moduleSettings.domiaId, domiaId),
+				eq(moduleSettings.isActive, true),
+			),
 		}),
 	updateInteractionTrace: (
 		{ id, ...data }: UpdateInteractionTraceType,

@@ -17,7 +17,8 @@ import { createKeywordSpotter } from "@/utils/ml-runtime"
 import { type CaptureCallbacksType, type KwsPathsType } from "../../types"
 import { publishMicChunk, setMicTapFormat } from "../../utils/mic-tap"
 
-const SAMPLE_RATE = 16000
+export const KWS_SAMPLE_RATE = 16000
+const SAMPLE_RATE = KWS_SAMPLE_RATE
 const CHUNK_SAMPLES = 1600
 const RESPAWN_BASE_MS = 1000
 const RESPAWN_MAX_MS = 30000

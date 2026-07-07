@@ -3,7 +3,6 @@ import {
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
 	type SelectSkillProviderType,
 	type SkillToolType,
-	type ToolFinalizeMapType,
 	type ToolFinalizeRuleType,
 } from "@/db"
 import { skillEngineLogger, now } from "@/utils"
@@ -11,11 +10,12 @@ import type { DomiaType } from "@/modules/core"
 
 import dbAdapter from "../db-adapter"
 import { resolveSkillAdapter } from "../adapters"
+import { resolveSpecialization } from "../specializations"
+import { resolveDescriptor } from "../utils/descriptor"
 import type {
 	RawSkillToolType,
 	SkillCallResultType,
 	SkillConnectionType,
-	SkillToolPolicyType,
 } from "../types"
 
 const connections = new Map<string, SkillConnectionType>()
@@ -45,6 +45,7 @@ const buildSlugMap = (
 export const connectProvider = async (
 	cfg: SelectSkillProviderType,
 	slug: string,
+	language: string | null = null,
 ): Promise<boolean> => {
 	const adapter = resolveSkillAdapter(cfg.protocol)
 	if (!adapter) {
@@ -56,6 +57,15 @@ export const connectProvider = async (
 	}
 	try {
 		const handle = await adapter.connect(cfg)
+		const specialization = resolveSpecialization(cfg)
+		if (specialization?.onConnected)
+			void Promise.resolve(specialization.onConnected(cfg, handle)).catch(
+				(err) =>
+					skillEngineLogger.warn("specialization onConnected failed", {
+						provider: cfg.name,
+						err,
+					}),
+			)
 		connections.set(cfg.id, {
 			providerId: cfg.id,
 			providerSlug: slug,
@@ -63,8 +73,10 @@ export const connectProvider = async (
 			maxResultChars: cfg.maxResultChars ?? DEFAULT_SKILL_MAX_RESULT_CHARS,
 			timeoutMs: cfg.timeout,
 			allowedTools: new Set((cfg.toolsCache ?? []).map((t) => t.rawName)),
-			toolPolicy: resolveToolPolicy(cfg.config),
-			toolFinalize: resolveToolFinalizeMap(cfg.config),
+			descriptor: resolveDescriptor(cfg, language),
+			language,
+			provider: cfg,
+			specialization,
 			handle,
 		})
 		return true
@@ -79,19 +91,44 @@ export const connectProvider = async (
 
 export const connectAll = async (domia: DomiaType): Promise<void> => {
 	const active = (domia.skillProviders ?? []).filter((s) => s.isActive)
+	const activeIds = new Set(active.map((s) => s.id))
+	const stale = [...connections.values()]
+		.filter(
+			(c) => c.provider.domiaId === domia.id && !activeIds.has(c.providerId),
+		)
+		.map((c) => c.providerId)
+	if (stale.length > 0) {
+		skillEngineLogger.info(`disconnecting ${stale.length} stale provider(s)`, {
+			domiaId: domia.id,
+		})
+		await disconnectProviders(stale)
+	}
 	const slugMap = buildSlugMap(active)
 	const toConnect = active.filter((s) => !connections.has(s.id))
 	if (toConnect.length === 0) return
+	const language = domia.characterProfile?.language ?? null
 	await Promise.allSettled(
 		toConnect.map((s) =>
-			connectProvider(s, slugMap.get(s.id) ?? slugify(s.name)),
+			connectProvider(s, slugMap.get(s.id) ?? slugify(s.name), language),
 		),
+	)
+}
+
+const fireOnDisconnected = (conn: SkillConnectionType): void => {
+	const hook = conn.specialization?.onDisconnected
+	if (!hook) return
+	void (async () => hook(conn.provider))().catch((err) =>
+		skillEngineLogger.warn("specialization onDisconnected failed", {
+			provider: conn.name,
+			err,
+		}),
 	)
 }
 
 export const disconnectAll = async (): Promise<void> => {
 	const all = [...connections.values()]
 	connections.clear()
+	for (const conn of all) fireOnDisconnected(conn)
 	await Promise.allSettled(all.map((c) => c.handle.close()))
 }
 
@@ -101,54 +138,10 @@ export const disconnectProviders = async (ids: string[]): Promise<void> => {
 		const conn = connections.get(id)
 		if (!conn) continue
 		connections.delete(id)
+		fireOnDisconnected(conn)
 		closing.push(conn.handle.close())
 	}
 	await Promise.allSettled(closing)
-}
-
-const resolveParamAllow = (
-	config: unknown,
-): Record<string, string[]> | null => {
-	const raw = (config as { toolParamAllow?: unknown })?.toolParamAllow
-	if (!raw || typeof raw !== "object") return null
-	const out: Record<string, string[]> = {}
-	for (const [k, v] of Object.entries(raw as Record<string, unknown>))
-		if (Array.isArray(v)) out[k] = v.map((x) => String(x))
-	return Object.keys(out).length ? out : null
-}
-
-const resolveToolPolicy = (config: unknown): SkillToolPolicyType | null => {
-	const raw = (config as { toolPolicy?: unknown })?.toolPolicy
-	if (!raw || typeof raw !== "object") return null
-	const out: SkillToolPolicyType = {}
-	for (const [k, v] of Object.entries(raw as Record<string, unknown>))
-		if (v === "allow" || v === "block") out[k] = v
-	return Object.keys(out).length ? out : null
-}
-
-const toFinalizeRule = (v: unknown): ToolFinalizeRuleType | null => {
-	if (!v || typeof v !== "object") return null
-	const o = v as Record<string, unknown>
-	if (o.mode !== "agent_loop" && o.mode !== "template" && o.mode !== "async")
-		return null
-	const rule: ToolFinalizeRuleType = { mode: o.mode }
-	if (typeof o.ack === "string") rule.ack = o.ack
-	if (typeof o.error === "string") rule.error = o.error
-	if (typeof o.done === "string") rule.done = o.done
-	return rule
-}
-
-const resolveToolFinalizeMap = (
-	config: unknown,
-): ToolFinalizeMapType | null => {
-	const raw = (config as { toolFinalize?: unknown })?.toolFinalize
-	if (!raw || typeof raw !== "object") return null
-	const out: ToolFinalizeMapType = {}
-	for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-		const rule = toFinalizeRule(v)
-		if (rule) out[k] = rule
-	}
-	return Object.keys(out).length ? out : null
 }
 
 export const resolveToolFinalize = (
@@ -163,8 +156,10 @@ export const resolveToolFinalize = (
 	const conn = [...connections.values()].find(
 		(c) => c.providerSlug === providerSlug && c.allowedTools.has(rawName),
 	)
-	if (!conn?.toolFinalize) return null
-	return conn.toolFinalize[rawName] ?? conn.toolFinalize["*"] ?? null
+	if (!conn) return null
+	return (
+		conn.descriptor.finalize[rawName] ?? conn.descriptor.finalize["*"] ?? null
+	)
 }
 
 const pruneSchemaParams = (
@@ -213,11 +208,12 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 		}
 		try {
 			const listed = await conn.handle.listTools()
+			const paramAllow = conn.descriptor.paramAllow
 			const tools = toCachedTools(
 				conn,
 				listed,
 				cfg.toolWhitelist ?? null,
-				resolveParamAllow(cfg.config),
+				Object.keys(paramAllow).length ? paramAllow : null,
 			)
 			conn.allowedTools = new Set(tools.map((t) => t.rawName))
 			dbAdapter.cacheTools(cfg.id, tools, now()).run()
@@ -228,6 +224,7 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 				error,
 			})
 			connections.delete(cfg.id)
+			fireOnDisconnected(conn)
 			void conn.handle.close().catch(() => undefined)
 			if (cfg.toolsCache?.length) result.push(...cfg.toolsCache)
 		}
@@ -259,15 +256,18 @@ export const callTool = async (
 				text: `Tool "${rawName}" is not available.`,
 				status: "unauthorized",
 				isError: true,
+				resolvedArgs: args,
 			}
 		}
 		return {
 			text: `Tool unavailable: ${providerSlug || "home"} is offline.`,
 			status: "error",
 			isError: true,
+			resolvedArgs: args,
 		}
 	}
-	const policy = conn.toolPolicy?.[rawName] ?? conn.toolPolicy?.["*"]
+	const policy =
+		conn.descriptor.toolPolicy[rawName] ?? conn.descriptor.toolPolicy["*"]
 	if (policy === "block") {
 		skillEngineLogger.warn("skill callTool blocked by policy", {
 			tool: namespacedName,
@@ -276,10 +276,20 @@ export const callTool = async (
 			text: `Action "${rawName}" is blocked by policy.`,
 			status: "blocked",
 			isError: true,
+			resolvedArgs: args,
 		}
 	}
 	try {
-		const res = await conn.handle.callTool(rawName, args, signal)
+		const resolvedArgs = conn.specialization?.resolveArgs
+			? await conn.specialization.resolveArgs(
+					conn.provider,
+					rawName,
+					args,
+					conn.language,
+				)
+			: args
+		skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
+		const res = await conn.handle.callTool(rawName, resolvedArgs, signal)
 		const truncated =
 			res.text.length > conn.maxResultChars
 				? `${res.text.slice(0, conn.maxResultChars)}…[truncated]`
@@ -288,12 +298,18 @@ export const callTool = async (
 			text: truncated || "(no output)",
 			status: res.status,
 			isError: res.isError,
+			resolvedArgs,
 		}
 	} catch (error) {
 		skillEngineLogger.warn("skill callTool failed", {
 			tool: namespacedName,
 			error,
 		})
-		return { text: `Tool "${rawName}" failed.`, status: "error", isError: true }
+		return {
+			text: `Tool "${rawName}" failed.`,
+			status: "error",
+			isError: true,
+			resolvedArgs: args,
+		}
 	}
 }

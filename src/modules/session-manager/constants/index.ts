@@ -1,2 +1,4 @@
 export const RECENT_TURNS_WINDOW = 8
 export const RECENT_TURNS_MAX_AGE_MS = 1_800_000
+export const SUMMARIZE_IDLE_POLL_MS = 2_000
+export const SUMMARIZE_MAX_IDLE_WAIT_MS = 120_000

@@ -12,6 +12,9 @@ import type {
 	SkillAuthType,
 	SkillToolType,
 	SkillProviderConfigType,
+	DomiaSkillDescriptorType,
+	TtsEngineConfigType,
+	ToolTraceEntryType,
 } from "./json-types"
 import {
 	PERSONALITY_ENUM,
@@ -28,6 +31,10 @@ import {
 	RELATIONSHIP_TYPE_ENUM_VALUES,
 	ROLE_MODE_ENUM,
 	ROLE_MODE_ENUM_VALUES,
+	EMOTION_EXPRESSION_STYLE_ENUM_VALUES,
+	DEFAULT_EMOTION_EXPRESSION_STYLE,
+	FACT_KIND_ENUM_VALUES,
+	DEFAULT_FACT_KIND,
 	WAKE_WORD_ENGINE_ENUM,
 	WAKE_WORD_ENGINE_ENUM_VALUES,
 	STT_ENGINE_ENUM,
@@ -44,6 +51,7 @@ import {
 	DEFAULT_WAKE_WORD_MODEL,
 	DEFAULT_WAKE_WORD_MODEL_PATH,
 	DEFAULT_VAD_ENGINE,
+	VAD_ENGINE_ENUM_VALUES,
 	DEFAULT_VAD_MODEL_PATH,
 	DEFAULT_WAKE_WORD_SENSITIVITY,
 	DEFAULT_WAKE_WORD_THRESHOLD,
@@ -61,6 +69,8 @@ import {
 	DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD,
 	DEFAULT_TURN_DETECTOR_MODEL_PATH,
 	DEFAULT_SPECULATIVE_TTS_ENABLED,
+	DEFAULT_SPECULATE_WITH_SKILLS,
+	DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,
 	DEFAULT_SHARED_MIC_STREAM_ENABLED,
 	DEFAULT_ENDPOINT_COMPLETE_MS,
 	DEFAULT_ENDPOINT_INCOMPLETE_MS,
@@ -118,6 +128,8 @@ import {
 	DEFAULT_STT_POOL_IDLE_TIMEOUT_MS,
 	DEFAULT_STT_POOL_QUEUE_MAX_DEPTH,
 	DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS,
+	DEFAULT_STT_MAX_CONCURRENT_STREAMING_SESSIONS,
+	DEFAULT_STT_SESSION_IDLE_TIMEOUT_MS,
 	DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS,
 	INTERACTION_INPUT_TYPE_ENUM_VALUES,
 	INTERACTION_INPUT_TYPE_ENUM,
@@ -177,13 +189,25 @@ import {
 	SKILLS_ROUTING_ENUM_VALUES,
 	DEFAULT_SKILLS_ROUTING,
 	DEFAULT_INTENT_EMBED_THRESHOLD,
+	DEFAULT_DESCRIPTOR_ROUTING_ENABLED,
 	DEFAULT_AGENT_MAX_STEPS,
+	DEFAULT_AGENT_ACK_AFTER_MS,
 	DEFAULT_TOOL_SHORTLIST_MAX,
+	MATCHER_ENGINE_ENUM_VALUES,
+	DEFAULT_MATCHER_ENGINE,
+	DEFAULT_MATCHER_SEMANTIC_THRESHOLD,
+	DEFAULT_MATCHER_RRF_K,
+	DEFAULT_MATCHER_CASCADE_EXIT,
+	EMBED_BACKEND_ENUM_VALUES,
+	DEFAULT_EMBED_BACKEND,
+	DEFAULT_EMBED_MODEL_PATH,
 	DEFAULT_SKILL_PROTOCOL,
 	DEFAULT_MCP_TRANSPORT_TYPE,
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
 	DEFAULT_SKILL_TIMEOUT_MS,
 	DEFAULT_SKILLS_ENGINE,
+	DEFAULT_METRICS_SAMPLE_RESOURCES,
+	DEFAULT_TURN_EVENTS_PERSIST,
 	ANNOUNCEMENT_KIND_ENUM,
 	ANNOUNCEMENT_KIND_ENUM_VALUES,
 	ANNOUNCEMENT_DELIVERY_ENUM,
@@ -323,6 +347,9 @@ export const memoryFact = sqliteTable(
 		relation: text("relation").notNull(),
 		value: text("value").notNull(),
 		confidence: real("confidence").notNull().default(0.7),
+		kind: text("kind", { enum: FACT_KIND_ENUM_VALUES })
+			.notNull()
+			.default(DEFAULT_FACT_KIND),
 		sourceInteractionId: text("source_interaction_id"),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -332,6 +359,54 @@ export const memoryFact = sqliteTable(
 		index("idx_memory_fact_domia_updated").on(t.domiaId, t.updatedAt),
 	],
 )
+
+export const knowledgeEntry = sqliteTable(
+	"knowledge_entry",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		title: text("title").notNull(),
+		content: text("content").notNull(),
+		keywords: text("keywords", { mode: "json" }).$type<string[]>(),
+		priority: integer("priority").notNull().default(0),
+		isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [index("idx_knowledge_domia_active").on(t.domiaId, t.isActive)],
+)
+
+export const memoryEpisode = sqliteTable(
+	"memory_episode",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		sessionId: text("session_id").notNull(),
+		summary: text("summary").notNull(),
+		moodArc: text("mood_arc"),
+		topics: text("topics", { mode: "json" }).$type<string[]>(),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [index("idx_episode_domia_created").on(t.domiaId, t.createdAt)],
+)
+
+export const userModel = sqliteTable("user_model", {
+	id: text("id").primaryKey(),
+	domiaId: text("domia_id")
+		.notNull()
+		.unique()
+		.references(() => domia.id),
+	summary: text("summary"),
+	moodTendencies: text("mood_tendencies"),
+	interests: text("interests", { mode: "json" }).$type<string[]>(),
+	prefs: text("prefs", { mode: "json" }).$type<string[]>(),
+	familiarity: real("familiarity").notNull().default(0),
+	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+})
 
 export const moduleSettings = sqliteTable("module_settings", {
 	id: text("id").primaryKey(),
@@ -381,6 +456,14 @@ export const moduleSettings = sqliteTable("module_settings", {
 	skillsEngine: integer("skills_engine", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_SKILLS_ENGINE),
+	metricsSampleResources: integer("metrics_sample_resources", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_METRICS_SAMPLE_RESOURCES),
+	turnEventsPersist: integer("turn_events_persist", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_TURN_EVENTS_PERSIST),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -433,6 +516,12 @@ export const characterProfile = sqliteTable("character_profile", {
 	})
 		.notNull()
 		.default(ROLE_MODE_ENUM.PASSIVE),
+	emotionExpressionStyle: text("emotion_expression_style", {
+		enum: EMOTION_EXPRESSION_STYLE_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_EMOTION_EXPRESSION_STYLE),
+	voiceStyle: text("voice_style"),
 	promptOverrides: text("prompt_overrides", { mode: "json" }),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -470,7 +559,9 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 		.notNull()
 		.default(DEFAULT_WAKE_WORD_MODEL_PATH),
 	quantization: text("quantization").notNull().default(DEFAULT_QUANTIZATION),
-	vadEngine: text("vad_engine").notNull().default(DEFAULT_VAD_ENGINE),
+	vadEngine: text("vad_engine", { enum: VAD_ENGINE_ENUM_VALUES })
+		.notNull()
+		.default(DEFAULT_VAD_ENGINE),
 	vadModelPath: text("vad_model_path")
 		.notNull()
 		.default(DEFAULT_VAD_MODEL_PATH),
@@ -526,6 +617,12 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	})
 		.notNull()
 		.default(DEFAULT_SPECULATIVE_TTS_ENABLED),
+	speculateWithSkills: integer("speculate_with_skills", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_SPECULATE_WITH_SKILLS),
+	speculationSkillGateMaxScore: real("speculation_skill_gate_max_score")
+		.notNull()
+		.default(DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE),
 	sharedMicStreamEnabled: integer("shared_mic_stream_enabled", {
 		mode: "boolean",
 	})
@@ -553,7 +650,7 @@ export const sttConfig = sqliteTable("stt_config", {
 		.references(() => domia.id),
 	engine: text("engine", { enum: STT_ENGINE_ENUM_VALUES })
 		.notNull()
-		.default(STT_ENGINE_ENUM.ZIPFORMER),
+		.default(STT_ENGINE_ENUM.PARAKEET),
 	modelName: text("model_name").notNull().default(DEFAULT_STT_MODEL_NAME),
 	language: text("language").notNull().default(DEFAULT_LANGUAGE),
 	modelPath: text("model_path").notNull().default(DEFAULT_STT_MODEL_PATH),
@@ -603,6 +700,14 @@ export const sttConfig = sqliteTable("stt_config", {
 	poolExecutionTimeoutMs: integer("stt_pool_execution_timeout_ms")
 		.notNull()
 		.default(DEFAULT_STT_POOL_EXECUTION_TIMEOUT_MS),
+	maxConcurrentStreamingSessions: integer(
+		"stt_max_concurrent_streaming_sessions",
+	)
+		.notNull()
+		.default(DEFAULT_STT_MAX_CONCURRENT_STREAMING_SESSIONS),
+	sessionIdleTimeoutMs: integer("stt_session_idle_timeout_ms")
+		.notNull()
+		.default(DEFAULT_STT_SESSION_IDLE_TIMEOUT_MS),
 	workerRecycleAfterJobs: integer("stt_worker_recycle_after_jobs")
 		.notNull()
 		.default(DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS),
@@ -660,13 +765,43 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	intentEmbedThreshold: real("intent_embed_threshold")
 		.notNull()
 		.default(DEFAULT_INTENT_EMBED_THRESHOLD),
+	descriptorRoutingEnabled: integer("descriptor_routing_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_DESCRIPTOR_ROUTING_ENABLED),
 	toolModelName: text("tool_model_name"),
 	agentMaxSteps: integer("agent_max_steps")
 		.notNull()
 		.default(DEFAULT_AGENT_MAX_STEPS),
+	agentAckAfterMs: integer("agent_ack_after_ms")
+		.notNull()
+		.default(DEFAULT_AGENT_ACK_AFTER_MS),
 	toolShortlistMax: integer("tool_shortlist_max")
 		.notNull()
 		.default(DEFAULT_TOOL_SHORTLIST_MAX),
+	matcherEngine: text("matcher_engine", {
+		enum: MATCHER_ENGINE_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_MATCHER_ENGINE),
+	matcherSemanticThreshold: real("matcher_semantic_threshold")
+		.notNull()
+		.default(DEFAULT_MATCHER_SEMANTIC_THRESHOLD),
+	matcherRrfK: integer("matcher_rrf_k")
+		.notNull()
+		.default(DEFAULT_MATCHER_RRF_K),
+	matcherCascadeExit: real("matcher_cascade_exit")
+		.notNull()
+		.default(DEFAULT_MATCHER_CASCADE_EXIT),
+	embedBackend: text("embed_backend", {
+		enum: EMBED_BACKEND_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_EMBED_BACKEND),
+	embedModelPath: text("embed_model_path")
+		.notNull()
+		.default(DEFAULT_EMBED_MODEL_PATH),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -687,6 +822,9 @@ export const ttsConfig = sqliteTable("tts_config", {
 	language: text("language").notNull().default(DEFAULT_LANGUAGE),
 	modelPath: text("model_path").notNull().default(DEFAULT_TTS_MODEL_PATH),
 	espeakNgDataPath: text("espeak_ng_data_path"),
+	engineConfig: text("engine_config", {
+		mode: "json",
+	}).$type<TtsEngineConfigType>(),
 	quantization: text("quantization"),
 	pitch: real("pitch").notNull().default(1),
 	speed: real("speed").notNull().default(DEFAULT_TTS_SPEED),
@@ -768,6 +906,9 @@ export const skillProvider = sqliteTable("skill_provider", {
 	url: text("url").notNull(),
 	description: text("description"),
 	config: text("config", { mode: "json" }).$type<SkillProviderConfigType>(),
+	descriptor: text("descriptor", {
+		mode: "json",
+	}).$type<DomiaSkillDescriptorType>(),
 	auth: text("auth", { mode: "json" }).$type<SkillAuthType>(),
 	toolsCache: text("tools_cache", { mode: "json" }).$type<SkillToolType[]>(),
 	toolWhitelist: text("tool_whitelist", { mode: "json" }).$type<string[]>(),
@@ -905,7 +1046,9 @@ export const interactionTrace = sqliteTable(
 		agentFinalizeMs: integer("agent_finalize_ms"),
 		skillProviderUsed: text("skill_provider_used"),
 		skillPrompt: text("skill_prompt"),
-		skillResponse: text("skill_response", { mode: "json" }),
+		skillResponse: text("skill_response", { mode: "json" }).$type<
+			ToolTraceEntryType[]
+		>(),
 		llmPrompt: text("llm_prompt"),
 		llmResponse: text("llm_response"),
 		heardReply: text("heard_reply"),
@@ -918,6 +1061,7 @@ export const interactionTrace = sqliteTable(
 		sttMs: integer("stt_ms"),
 		sttQueueMs: integer("stt_queue_ms"),
 		llmMs: integer("llm_ms"),
+		llmQueueMs: integer("llm_queue_ms"),
 		llmPromptTokens: integer("llm_prompt_tokens"),
 		llmCompletionTokens: integer("llm_completion_tokens"),
 		llmTokensPerSec: real("llm_tokens_per_sec"),
@@ -933,6 +1077,7 @@ export const interactionTrace = sqliteTable(
 		perceivedTtfaMs: integer("perceived_ttfa_ms"),
 		llmFirstSentenceMs: integer("llm_first_sentence_ms"),
 		ttsFirstChunkMs: integer("tts_first_chunk_ms"),
+		rssMb: integer("rss_mb"),
 		totalMs: integer("total_ms"),
 		sttExecutorKey: text("stt_executor_key"),
 		llmExecutorKey: text("llm_executor_key"),
@@ -981,6 +1126,30 @@ export const announcement = sqliteTable(
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
 	(t) => [index("idx_announcement_domia_updated").on(t.domiaId, t.updatedAt)],
+)
+
+export const turnEvent = sqliteTable(
+	"turn_event",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		interactionId: text("interaction_id").notNull(),
+		type: text("type").notNull(),
+		seq: integer("seq").notNull(),
+		ts: integer("ts").notNull(),
+		originDomiaKey: text("origin_domia_key"),
+		executorDomiaKey: text("executor_domia_key"),
+		satelliteId: text("satellite_id"),
+		traceId: text("trace_id"),
+		payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>(),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [
+		index("idx_turn_event_interaction_seq").on(t.interactionId, t.seq),
+		index("idx_turn_event_domia_created").on(t.domiaId, t.createdAt),
+	],
 )
 
 export const capabilityDelegation = sqliteTable("capability_delegation", {

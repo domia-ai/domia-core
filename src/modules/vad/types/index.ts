@@ -1,3 +1,5 @@
+import type { VadEngineEnumType } from "@/db"
+
 export type VadSessionType = {
 	acceptSamples: (samples: Float32Array) => void
 	isSpeechActive: () => boolean
@@ -7,10 +9,14 @@ export type VadSessionType = {
 	reset: () => void
 }
 
-export type VadEngineAdapterType = {
-	id: string
+export type VadCapabilitiesType = {
 	sampleRate: number
 	windowSize: number
+}
+
+export type VadEngineAdapterType = {
+	id: VadEngineEnumType
+	capabilities: VadCapabilitiesType
 	createSession: (modelPath: string, tuning: VadTuningType) => VadSessionType
 }
 

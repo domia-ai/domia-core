@@ -13,8 +13,20 @@ import type {
 let cachedEngine: OfflineTtsInstance | null = null
 let cachedKey: string | null = null
 
-const resolveDataDir = (dir: string, configured: string | null): string =>
-	configured?.trim() || path.join(dir, "espeak-ng-data")
+const SYSTEM_ESPEAK_DATA_DIRS = [
+	"/usr/share/espeak-ng-data",
+	"/usr/local/share/espeak-ng-data",
+	"/opt/homebrew/share/espeak-ng-data",
+]
+
+const resolveDataDir = (dir: string, configured: string | null): string => {
+	const explicit = configured?.trim()
+	if (explicit) return explicit
+	const bundled = path.join(dir, "espeak-ng-data")
+	if (fs.existsSync(bundled)) return bundled
+	const system = SYSTEM_ESPEAK_DATA_DIRS.find((p) => fs.existsSync(p))
+	return system ?? bundled
+}
 
 const resolvePaths = (
 	modelDir: string,

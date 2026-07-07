@@ -1,7 +1,11 @@
 import { errorLogger, type LoggerType } from "@/utils"
 import type { ErrorCodeType } from "./types"
 
+const DOMIA_ERROR_MARKER = Symbol.for("domia.error")
+
 export class DomiaError extends Error {
+	readonly [DOMIA_ERROR_MARKER] = true
+
 	constructor(
 		public readonly code: string,
 		message: string,
@@ -11,7 +15,24 @@ export class DomiaError extends Error {
 		this.name = "DomiaError"
 		Error.captureStackTrace?.(this, DomiaError)
 	}
+
+	static isInstance(value: unknown): value is DomiaError {
+		return (
+			typeof value === "object" &&
+			value !== null &&
+			(value as Record<symbol, unknown>)[DOMIA_ERROR_MARKER] === true
+		)
+	}
 }
+
+export const isDomiaError = (value: unknown): value is DomiaError =>
+	DomiaError.isInstance(value)
+
+export const hasErrorCode = (
+	value: unknown,
+	prefix: string,
+): value is DomiaError =>
+	DomiaError.isInstance(value) && value.code.startsWith(prefix)
 
 export const getErrorMessage = (error: ErrorCodeType) => {
 	return `[${error?.code}] ${error?.message}`

@@ -1,6 +1,6 @@
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
 import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
-import { type DomiaType, getOwnDomia, getHostedDomias } from "@/modules/core"
+import { type DomiaType, safeOwnDomia, getHostedDomias } from "@/modules/core"
 import { resolveCoreBusFeatures } from "./features"
 import { playStreamedAudio } from "./playback"
 import { registerStreamingSink, clearStreamingSink } from "./streaming-sink"
@@ -206,7 +206,7 @@ export const speakActiveRoom = async (
 ): Promise<SpokenDomiaResultType | null> => {
 	const domiaKey = mostRecentlyActiveSatellite()
 	if (!domiaKey) return null
-	const domia = await getOwnDomia(domiaKey).catch(() => null)
+	const domia = await safeOwnDomia(domiaKey, "speak")
 	if (!domia) return null
 	return { domia, result: await speak(domia, text) }
 }
@@ -216,7 +216,7 @@ export const speakBroadcast = async (
 ): Promise<SpokenDomiaResultType[]> => {
 	const out: SpokenDomiaResultType[] = []
 	for (const { domiaKey } of await getHostedDomias()) {
-		const domia = await getOwnDomia(domiaKey).catch(() => null)
+		const domia = await safeOwnDomia(domiaKey, "speak")
 		if (!domia) continue
 		out.push({ domia, result: await speak(domia, text) })
 	}

@@ -1,0 +1,97 @@
+[
+	{
+		"name": "turn on the kitchen light",
+		"suite": "home",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "turn on the kitchen light",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOn",
+					"argMatchers": { "name": "kitchen|cocina" },
+					"expectEvents": {
+						"present": [
+							"turn.started",
+							"intent.decided",
+							"tool.requested",
+							"tool.result",
+							"turn.completed"
+						],
+						"toolResultStatus": "ok",
+						"seqOrdered": true
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "turn off the living room light",
+		"suite": "home",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "turn off the living room light",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOff",
+					"argMatchers": { "name": "living|sala" }
+				}
+			}
+		]
+	},
+	{
+		"name": "dim the bedroom light",
+		"suite": "home",
+		"language": "en",
+		"runs": 3,
+		"passRatio": 0.34,
+		"turns": [
+			{
+				"text": "dim the bedroom light a bit",
+				"expect": {
+					"routed": "skill",
+					"notTools": ["HassTurnOff"],
+					"argMatchers": { "name": "bedroom|dormitorio" }
+				}
+			}
+		]
+	},
+	{
+		"name": "set the thermostat",
+		"suite": "home",
+		"language": "en",
+		"runs": 3,
+		"passRatio": 0.34,
+		"turns": [
+			{
+				"text": "set the thermostat to 22 degrees",
+				"expect": {
+					"routed": "skill",
+					"argMatchers": { "name": "thermostat|termostato|calefacc" }
+				}
+			}
+		]
+	},
+	{
+		"name": "turn on la luz de la cocina (mixed)",
+		"suite": "home",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "turn on la luz de la cocina",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOn",
+					"argMatchers": { "name": "cocina|kitchen" }
+				}
+			}
+		]
+	}
+]

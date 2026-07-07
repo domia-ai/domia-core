@@ -3,13 +3,18 @@ import { createServer, type Server } from "nice-grpc"
 import { env } from "@/config"
 import { grpcServerLogger, setTraceContext } from "@/utils"
 import { resolveLiveDomia, resolveLiveIdentity } from "@/setups/live-domia"
-import { getOwnDomia, isHostedIdentity } from "@/modules/core"
+import { safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import { speak as speakOnDomia } from "@/modules/core-bus"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
 import { closeAllChannels, setLocalService } from "@/modules/grpc-client"
 import { registerShutdownTask } from "@/setups/shutdown"
 import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
-import { applyMoodDelta, emotionPartialSchema } from "@/modules/emotion-engine"
+import {
+	applyMoodDelta,
+	applyUserEmotionInfluence,
+	emotionPartialSchema,
+	parseUserEmotionFromObject,
+} from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
 import { updateInteraction } from "@/modules/session-manager"
 import { runLLM, runLLMWithTools } from "@/modules/llm-engine"
@@ -431,12 +436,17 @@ const buildImplementation = ({
 						grpcServerLogger.warn("⚠️ reflection facts failed", { err })
 					}
 				}
-				if (request.userEmotionJson && request.interactionId) {
+				if (request.userEmotionJson) {
 					try {
-						await updateInteraction({
-							id: request.interactionId,
-							userEmotionSnapshot: JSON.parse(request.userEmotionJson),
-						})
+						const userEmotion = parseUserEmotionFromObject(
+							JSON.parse(request.userEmotionJson),
+						)
+						if (userEmotion && request.interactionId)
+							await updateInteraction({
+								id: request.interactionId,
+								userEmotionSnapshot: userEmotion,
+							})
+						if (userEmotion) applyUserEmotionInfluence(domia, userEmotion)
 					} catch (err) {
 						grpcServerLogger.warn("⚠️ reflection user emotion failed", { err })
 					}
@@ -531,7 +541,10 @@ const buildImplementation = ({
 				})
 				return { delivered: false, target: "unknown" }
 			}
-			const target = await getOwnDomia(request.targetDomiaKey).catch(() => null)
+			const target = await safeOwnDomia(
+				request.targetDomiaKey,
+				"grpc delegation target",
+			)
 			if (!target) {
 				grpcServerLogger.warn("📢 Speak: unknown target identity", {
 					targetDomiaKey: request.targetDomiaKey,

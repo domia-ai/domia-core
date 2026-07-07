@@ -9,10 +9,15 @@ import type { DomiaType } from "@/modules/core"
 import {
 	applyMoodToVoice,
 	getEmotionVectorFromEmotionState,
+	expressivenessForStyle,
+	tagBoostedMood,
+	EMOTION_TAG_PROSODY_BOOST,
+	EMOTION_TAG_PROSODY_BLEND,
 } from "@/modules/emotion-engine"
 import {
 	wavFileToPcmChunks,
 	emotionTagPattern,
+	emotionTagLoosePattern,
 	collapseSpeechWhitespace,
 } from "@/utils"
 import type {
@@ -23,6 +28,7 @@ import type {
 } from "../types"
 
 const SPEECH_ARTIFACT_CHARS = /["“”„‟«»‹›`*#]/g
+const BRACKET_GROUPS = /\[[^\]]{0,40}\]/g
 const THINK_BLOCKS = /<think>[\s\S]*?<\/think>/g
 const MARKDOWN_LINKS = /\[([^\]]*)\]\([^)]*\)/g
 const EMOJI =
@@ -34,7 +40,9 @@ export const sanitizeForSpeech = (text: string): string =>
 		text
 			.replace(THINK_BLOCKS, "")
 			.replace(emotionTagPattern(), "")
+			.replace(emotionTagLoosePattern(), "")
 			.replace(MARKDOWN_LINKS, "$1")
+			.replace(BRACKET_GROUPS, "")
 			.replace(SMART_APOSTROPHES, "'")
 			.replace(SPEECH_ARTIFACT_CHARS, "")
 			.replace(EMOJI, ""),
@@ -75,6 +83,32 @@ export const resolveTtsVoice = (
 	return applyMoodToVoice(
 		base,
 		getEmotionVectorFromEmotionState(domia.emotionState),
+		expressivenessForStyle(domia.characterProfile?.emotionExpressionStyle),
+	)
+}
+
+export const sentenceVoiceForTags = (
+	domia: DomiaType,
+	tags: string[],
+): TtsVoiceType | null => {
+	if (tags.length === 0 || !domia.ttsConfig || !moodShades(domia)) return null
+	const c = domia.ttsConfig
+	const base: TtsVoiceType = {
+		voiceName: c.voiceName,
+		speed: c.speed,
+		silenceScale: c.silenceScale,
+		pitch: c.pitch,
+	}
+	const mood = tagBoostedMood(
+		getEmotionVectorFromEmotionState(domia.emotionState),
+		tags,
+		EMOTION_TAG_PROSODY_BOOST,
+		EMOTION_TAG_PROSODY_BLEND,
+	)
+	return applyMoodToVoice(
+		base,
+		mood,
+		expressivenessForStyle(domia.characterProfile?.emotionExpressionStyle),
 	)
 }
 
@@ -91,6 +125,7 @@ export const ttsVoiceFromDomia = (domia: DomiaType): TtsVoiceType | null => {
 	return applyMoodToVoice(
 		base,
 		getEmotionVectorFromEmotionState(domia.emotionState),
+		expressivenessForStyle(domia.characterProfile?.emotionExpressionStyle),
 	)
 }
 

@@ -46,7 +46,11 @@ export const handleMqttMessage = ({
 				invalidateOwnDomia(domiaKey)
 				void getOwnDomia(domiaKey)
 					.then((fresh) => fresh && setGrpcClientTunables(fresh))
-					.catch(() => undefined)
+					.catch((err: unknown) =>
+						logger.warn(`grpc tunables refresh failed for ${domiaKey}`, {
+							err,
+						}),
+					)
 				logger.info(`🔄 config cache invalidated via MQTT [${domiaKey}]`)
 				break
 			}

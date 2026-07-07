@@ -1,15 +1,19 @@
-import { DomiaType } from "@/modules/core"
 import { WAKE_WORD_ENGINE_ENUM, type WakeWordEngineEnumType } from "@/db"
 
-import { runKws } from "./kws"
-import { type CaptureCallbacksType, type CaptureHandleType } from "../types"
+import { runKws, KWS_SAMPLE_RATE } from "./kws"
+import { type WakeWordEngineAdapterType } from "../types"
 
 export const wakeWordEngines: Record<
 	WakeWordEngineEnumType,
-	(
-		domia: DomiaType,
-		callbacks?: CaptureCallbacksType,
-	) => Promise<CaptureHandleType>
+	WakeWordEngineAdapterType
 > = {
-	[WAKE_WORD_ENGINE_ENUM.KWS]: runKws,
+	[WAKE_WORD_ENGINE_ENUM.KWS]: {
+		id: WAKE_WORD_ENGINE_ENUM.KWS,
+		capabilities: { sampleRate: KWS_SAMPLE_RATE },
+		run: runKws,
+	},
 }
+
+export const getWakeWordEngine = (
+	id: WakeWordEngineEnumType,
+): WakeWordEngineAdapterType | null => wakeWordEngines[id] ?? null

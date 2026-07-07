@@ -1,0 +1,19 @@
+[
+	{
+		"name": "recalls the user's name across turns",
+		"suite": "memory",
+		"language": "es",
+		"runs": 3,
+		"passRatio": 0.51,
+		"turns": [
+			{
+				"text": "me llamo Kevin, recuérdalo por favor",
+				"expect": { "routed": "chat" }
+			},
+			{
+				"text": "¿cómo me llamo?",
+				"expect": { "routed": "chat", "replyIncludes": ["Kevin"] }
+			}
+		]
+	}
+]

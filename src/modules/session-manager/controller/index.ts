@@ -1,18 +1,37 @@
 import { type DomiaType } from "@/modules/core"
-import { generateUuid } from "@/utils"
+import { generateUuid, memoryLogger, parseLlmJson } from "@/utils"
+import { runLLMJson } from "@/modules/llm-engine"
+import { activeVoiceReplies } from "@/modules/voice-admission"
+import { recordEpisode, patchUserModel } from "@/modules/memory"
 
 import {
 	DBClientOrTxType,
 	UpdateInteractionTraceType,
+	INTERACTION_INPUT_TYPE_ENUM,
 	type InsertAnnouncementType,
+	type InsertTurnEventType,
+	type SelectInteractionTraceType,
 } from "@/db"
+import {
+	emitTurnEvent,
+	DOMIA_TURN_EVENT_ENUM,
+	type DomiaTurnEventType,
+	type TurnEventInputSourceType,
+} from "@/buses"
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import dbAdapter from "../db-adapter"
-import { RECENT_TURNS_WINDOW, RECENT_TURNS_MAX_AGE_MS } from "../constants"
+import {
+	RECENT_TURNS_WINDOW,
+	RECENT_TURNS_MAX_AGE_MS,
+	SUMMARIZE_IDLE_POLL_MS,
+	SUMMARIZE_MAX_IDLE_WAIT_MS,
+} from "../constants"
+import { sessionSummarySchema } from "../schemas"
 import type {
 	NewInteractionDataType,
 	LatencyPercentilesType,
 	LatencyStatsType,
+	RecentTurnsAndMoodsType,
 } from "../types"
 
 const percentiles = (values: number[]): LatencyPercentilesType => {
@@ -53,7 +72,10 @@ export const getLatencyStats = async (
 		perceivedTtfa: percentiles(ok.map((r) => r.perceivedTtfaMs ?? 0)),
 		stt: percentiles(ok.map((r) => r.sttMs ?? 0)),
 		llm: percentiles(ok.map((r) => r.llmMs ?? 0)),
+		llmQueue: percentiles(ok.map((r) => r.llmQueueMs ?? 0)),
 		tts: percentiles(ok.map((r) => r.ttsMs ?? 0)),
+		ttsFirstChunk: percentiles(ok.map((r) => r.ttsFirstChunkMs ?? 0)),
+		rssMb: percentiles(ok.map((r) => r.rssMb ?? 0)),
 		bySatellite,
 	}
 }
@@ -87,8 +109,59 @@ export const getSessionsSince = (
 	limit: number,
 ) => dbAdapter.getSessionsSince(domiaId, since, limit)
 
+export const getTurnEventsSince = (
+	domiaId: string,
+	since: string,
+	limit: number,
+) => dbAdapter.getTurnEventsSince(domiaId, since, limit)
+
 export const recordAnnouncement = (data: InsertAnnouncementType) =>
 	dbAdapter.insertAnnouncement(data)
+
+const TURN_EVENT_COLUMN_KEYS = new Set([
+	"type",
+	"interactionId",
+	"originDomiaKey",
+	"executorDomiaKey",
+	"satelliteId",
+	"traceId",
+	"ts",
+	"seq",
+])
+
+export const persistTurnEventBatch = async (
+	interactionId: string,
+	events: DomiaTurnEventType[],
+): Promise<void> => {
+	if (events.length === 0) return
+	const interaction = await dbAdapter.getInteractionById(interactionId)
+	if (!interaction) return
+	const settings = await dbAdapter.getTurnEventsPersist(interaction.domiaId)
+	if (settings && settings.turnEventsPersist === false) return
+	const rows: InsertTurnEventType[] = events.map((e) => {
+		const payload: Record<string, unknown> = {}
+		for (const [k, v] of Object.entries(e))
+			if (!TURN_EVENT_COLUMN_KEYS.has(k)) payload[k] = v
+		return {
+			id: generateUuid(),
+			domiaId: interaction.domiaId,
+			interactionId,
+			type: e.type,
+			seq: e.seq,
+			ts: e.ts,
+			originDomiaKey: e.originDomiaKey ?? null,
+			executorDomiaKey: e.executorDomiaKey ?? null,
+			satelliteId: e.satelliteId ?? null,
+			traceId: e.traceId ?? null,
+			payload,
+			createdAt: new Date(e.ts)
+				.toISOString()
+				.replace("T", " ")
+				.replace("Z", ""),
+		}
+	})
+	await dbAdapter.insertTurnEvents(rows)
+}
 
 export const getAnnouncementById = (id: string) =>
 	dbAdapter.getAnnouncementById(id)
@@ -109,6 +182,94 @@ export const getLastAnnouncementAt = async (domiaId: string) => {
 	return row?.updatedAt ?? null
 }
 
+const SESSION_SUMMARY_MIN_TURNS = 2
+const SESSION_SUMMARY_MAX_TURNS = 24
+
+export const summarizeSession = async (
+	domia: DomiaType,
+	sessionId: string,
+): Promise<void> => {
+	try {
+		const rows = await dbAdapter.getRecentInteractionsForDomia(
+			domia.id,
+			SESSION_SUMMARY_MAX_TURNS,
+		)
+		const turns = rows
+			.filter((r) => r.sessionId === sessionId)
+			.reverse()
+			.map((r) => {
+				const user = r.inputRaw ?? r.sttResult ?? ""
+				const you = r.heardReply ?? r.llmResponse ?? ""
+				return user || you ? `User: ${user}\nYou: ${you}` : ""
+			})
+			.filter(Boolean)
+		if (turns.length < SESSION_SUMMARY_MIN_TURNS) return
+
+		const deadline = Date.now() + SUMMARIZE_MAX_IDLE_WAIT_MS
+		while (activeVoiceReplies(domia.id) > 0) {
+			if (Date.now() >= deadline) {
+				memoryLogger.info(
+					"session summary skipped — voice stayed busy (best-effort)",
+					{ domiaId: domia.id, sessionId },
+				)
+				return
+			}
+			await new Promise((r) => setTimeout(r, SUMMARIZE_IDLE_POLL_MS))
+		}
+
+		const name = domia.characterProfile?.name?.trim() || "Domia"
+		const prompt = `You are ${name}. The conversation below just ended. Summarize it for your own memory. Return ONLY a JSON object:
+{"summary":"2-3 sentences: what happened, the emotional arc, and what you learned about this person","moodArc":"a short phrase","topics":["a","few","topics"],"userSummary":"one line updating your private model of this person — who they are and how they relate to you","moodTendencies":"a short phrase","interests":["their","interests"]}
+
+Conversation:
+${turns.join("\n")}`
+
+		const reflectionModel = domia.llmModelConfig?.reflectionModelName?.trim()
+		const summarizer =
+			reflectionModel && domia.llmModelConfig
+				? {
+						...domia,
+						llmModelConfig: {
+							...domia.llmModelConfig,
+							modelName: reflectionModel,
+						},
+					}
+				: domia
+		const raw = await runLLMJson(summarizer, prompt)
+		const { value: obj, state } = parseLlmJson(raw, sessionSummarySchema)
+		if (!obj) return
+		if (state === "repaired") {
+			memoryLogger.warn("llm-json repaired", {
+				site: "session-summary",
+				model: summarizer.llmModelConfig?.modelName,
+				rawLength: raw.length,
+			})
+		}
+		if (obj.summary?.trim()) {
+			await recordEpisode(domia, sessionId, {
+				summary: obj.summary.trim(),
+				moodArc: obj.moodArc ?? null,
+				topics: Array.isArray(obj.topics) ? obj.topics : null,
+			})
+		}
+		await patchUserModel(domia, {
+			summary: obj.userSummary ?? null,
+			moodTendencies: obj.moodTendencies ?? null,
+			interests: Array.isArray(obj.interests) ? obj.interests : null,
+		})
+		memoryLogger.info("🧠 session summarized → episode + user-model", {
+			domiaId: domia.id,
+			sessionId,
+			turns: turns.length,
+		})
+	} catch (err) {
+		memoryLogger.warn("session summarize failed (skipping)", {
+			domiaId: domia.id,
+			err,
+		})
+	}
+}
+
 export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	const now = Date.now()
 	const domiaId = domia?.id
@@ -127,6 +288,10 @@ export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 			interactionSessionTraceId: existingSession.id,
 			sessionId: existingSession.sessionId,
 		}
+	}
+
+	if (existingSession && expired) {
+		void summarizeSession(domia, existingSession.sessionId)
 	}
 
 	const newId = generateUuid()
@@ -201,6 +366,24 @@ export const getOrCreateInteractionId = async (
 	defaultData: NewInteractionDataType,
 	client?: DBClientOrTxType,
 ): Promise<string | null> => {
+	const emitStarted = (interactionId: string): void => {
+		const satelliteId = defaultData.satelliteId ?? undefined
+		const isText = defaultData.inputType === INTERACTION_INPUT_TYPE_ENUM.TEXT
+		const source: TurnEventInputSourceType = satelliteId
+			? "satellite"
+			: isText
+				? "http"
+				: "local"
+		emitTurnEvent({
+			type: DOMIA_TURN_EVENT_ENUM.TURN_STARTED,
+			interactionId,
+			originDomiaKey: domia.domiaKey,
+			satelliteId,
+			inputType: isText ? "text" : "voice",
+			source,
+		})
+	}
+
 	if (existingInteractionId) {
 		const existing = await getInteractionById(existingInteractionId, client)
 		if (existing) return existingInteractionId
@@ -211,6 +394,7 @@ export const getOrCreateInteractionId = async (
 				client,
 				existingInteractionId,
 			)
+			emitStarted(existingInteractionId)
 		} catch {
 			// row may have been created concurrently — fall through
 		}
@@ -222,6 +406,7 @@ export const getOrCreateInteractionId = async (
 			defaultData,
 			client,
 		)
+		emitStarted(interactionId)
 		return interactionId
 	} catch {
 		return null
@@ -243,6 +428,58 @@ export const getInteractionById = async (
 	return rows
 }
 
+const withinMaxAge = (
+	row: SelectInteractionTraceType,
+	now: number,
+	maxAgeMs: number,
+): boolean => {
+	const ts = row.createdAt ? Date.parse(row.createdAt + "Z") : NaN
+	return !Number.isNaN(ts) && now - ts <= maxAgeMs
+}
+
+const mapRowsToMoods = (
+	rows: SelectInteractionTraceType[],
+	maxAgeMs: number,
+	limit: number,
+): string[] => {
+	const now = Date.now()
+	return rows
+		.filter((row) => withinMaxAge(row, now, maxAgeMs))
+		.map((row) => row.userEmotionSnapshot)
+		.filter(
+			(s): s is { primary: string; intensity?: number; note?: string } =>
+				!!s &&
+				typeof s === "object" &&
+				typeof (s as { primary?: unknown }).primary === "string",
+		)
+		.map((s) => (s.note ? `${s.primary} (${s.note})` : s.primary))
+		.slice(0, limit)
+		.reverse()
+}
+
+const mapRowsToTurns = (
+	rows: SelectInteractionTraceType[],
+	maxAgeMs: number,
+	limit: number,
+	excludeInteractionId: string | undefined,
+): RecentTurnType[] => {
+	const now = Date.now()
+	return rows
+		.filter((row) => row.id !== excludeInteractionId)
+		.filter((row) => withinMaxAge(row, now, maxAgeMs))
+		.map((row) => ({
+			userText: row.inputRaw ?? row.sttResult ?? null,
+			domiaText:
+				row.heardReply === ""
+					? null
+					: (row.heardReply ?? row.llmResponse ?? row.finalOutput ?? null),
+			createdAt: row.createdAt,
+		}))
+		.filter((turn) => turn.userText && turn.domiaText)
+		.slice(0, limit)
+		.reverse()
+}
+
 export const getRecentUserMoods = async (
 	domia: DomiaType,
 	limit: number = RECENT_TURNS_WINDOW,
@@ -252,23 +489,11 @@ export const getRecentUserMoods = async (
 			domia.id,
 			limit * 3,
 		)
-		const now = Date.now()
-		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
-		return rows
-			.filter((row) => {
-				const ts = row.createdAt ? Date.parse(row.createdAt + "Z") : NaN
-				return !Number.isNaN(ts) && now - ts <= maxAgeMs
-			})
-			.map((row) => row.userEmotionSnapshot)
-			.filter(
-				(s): s is { primary: string; intensity?: number; note?: string } =>
-					!!s &&
-					typeof s === "object" &&
-					typeof (s as { primary?: unknown }).primary === "string",
-			)
-			.map((s) => (s.note ? `${s.primary} (${s.note})` : s.primary))
-			.slice(0, limit)
-			.reverse()
+		return mapRowsToMoods(
+			rows,
+			domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS,
+			limit,
+		)
 	} catch {
 		return []
 	}
@@ -281,30 +506,41 @@ export const getRecentTurns = async (
 	try {
 		const limit = domia?.memoryWindowTurns ?? RECENT_TURNS_WINDOW
 		if (limit <= 0) return []
-		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
 		const rows = await dbAdapter.getRecentInteractionsForDomia(
 			domia.id,
 			limit * 3,
 		)
-		const now = Date.now()
-		return rows
-			.filter((row) => row.id !== excludeInteractionId)
-			.filter((row) => {
-				const ts = row.createdAt ? Date.parse(row.createdAt + "Z") : NaN
-				return !Number.isNaN(ts) && now - ts <= maxAgeMs
-			})
-			.map((row) => ({
-				userText: row.inputRaw ?? row.sttResult ?? null,
-				domiaText:
-					row.heardReply === ""
-						? null
-						: (row.heardReply ?? row.llmResponse ?? row.finalOutput ?? null),
-				createdAt: row.createdAt,
-			}))
-			.filter((turn) => turn.userText && turn.domiaText)
-			.slice(0, limit)
-			.reverse()
+		return mapRowsToTurns(
+			rows,
+			domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS,
+			limit,
+			excludeInteractionId,
+		)
 	} catch {
 		return []
+	}
+}
+
+export const getRecentTurnsAndMoods = async (
+	domia: DomiaType,
+	excludeInteractionId: string | undefined,
+): Promise<RecentTurnsAndMoodsType> => {
+	try {
+		const turnsLimit = domia?.memoryWindowTurns ?? RECENT_TURNS_WINDOW
+		const moodLimit = RECENT_TURNS_WINDOW
+		const rows = await dbAdapter.getRecentInteractionsForDomia(
+			domia.id,
+			Math.max(turnsLimit, moodLimit) * 3,
+		)
+		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
+		return {
+			recentTurns:
+				turnsLimit > 0
+					? mapRowsToTurns(rows, maxAgeMs, turnsLimit, excludeInteractionId)
+					: [],
+			userMoodTrend: mapRowsToMoods(rows, maxAgeMs, moodLimit),
+		}
+	} catch {
+		return { recentTurns: [], userMoodTrend: [] }
 	}
 }

@@ -5,6 +5,7 @@ import {
 	emotionEvent,
 	memoryFact,
 	announcement,
+	turnEvent,
 } from "@/db"
 import {
 	postChatBodySchema,
@@ -60,6 +61,7 @@ export type GetSyncResponseType = {
 	emotionEvents: (typeof emotionEvent.$inferSelect)[]
 	facts: (typeof memoryFact.$inferSelect)[]
 	announcements: (typeof announcement.$inferSelect)[]
+	turnEvents: (typeof turnEvent.$inferSelect)[]
 	nextCursor: string
 }
 

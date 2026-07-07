@@ -1,0 +1,40 @@
+{
+	"version": 1,
+	"ttsEngine": "KOKORO",
+	"ttsVoice": "af_heart",
+	"sampleRateHz": 16000,
+	"golden": [
+		{ "id": "g01", "text": "What time is it right now?" },
+		{ "id": "g02", "text": "Tell me a short joke about computers." },
+		{ "id": "g03", "text": "How are you doing today?" },
+		{ "id": "g04", "text": "What's your favorite kind of music?" },
+		{
+			"id": "g05",
+			"text": "Can you explain what photosynthesis is in simple words?"
+		},
+		{ "id": "g06", "text": "Thanks for chatting, talk to you later." }
+	],
+	"hesitant": [
+		{
+			"id": "h01",
+			"parts": ["Turn on the", "lights in the kitchen please."],
+			"text": "Turn on the lights in the kitchen please."
+		},
+		{
+			"id": "h02",
+			"parts": ["I was wondering if", "you could tell me a story."],
+			"text": "I was wondering if you could tell me a story."
+		},
+		{
+			"id": "h03",
+			"parts": ["Remind me to", "call my mom tomorrow morning."],
+			"text": "Remind me to call my mom tomorrow morning."
+		}
+	],
+	"roundTrip": [
+		"Good morning, how did you sleep?",
+		"The kitchen lights are on now.",
+		"It's about seven in the evening.",
+		"I added milk to your shopping list."
+	]
+}

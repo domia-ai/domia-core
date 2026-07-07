@@ -9,6 +9,7 @@ import {
 import {
 	getRecentTrajectory,
 	applyMoodDelta,
+	applyUserEmotionInfluence,
 	buildMoodContextLines,
 	emotionAppraisalInstructionLines,
 	parseEmotionFromObject,
@@ -29,6 +30,7 @@ import {
 	reflectionLogger,
 	createAsyncSemaphore,
 	isSemaphoreBusyError,
+	parseLlmJson,
 	sleep,
 	withTimeout,
 } from "@/utils"
@@ -250,10 +252,15 @@ export const runReflection = async (
 						"reflection",
 					)
 					if (yielded) return empty
-					const match = raw.match(/\{[\s\S]*\}/)
-					const obj = match
-						? (JSON.parse(match[0]) as Record<string, unknown>)
-						: {}
+					const parsed = parseLlmJson(raw)
+					if (parsed.state === "repaired") {
+						reflectionLogger.warn("llm-json repaired", {
+							site: "reflection",
+							model: reflector?.llmModelConfig?.modelName,
+							rawLength: raw.length,
+						})
+					}
+					const obj = parsed.value ?? {}
 					const emotion: EmotionAppraisalType | null = flags.emotion
 						? parseEmotionFromObject(obj.emotion)
 						: null
@@ -326,6 +333,7 @@ export const routeReflectionResult = async (
 				id: interactionId,
 				userEmotionSnapshot: userEmotion,
 			})
+		if (hasUserEmotion) applyUserEmotionInfluence(executor, userEmotion)
 		if (hasFacts) await upsertFacts(executor, facts, interactionId)
 		return
 	}

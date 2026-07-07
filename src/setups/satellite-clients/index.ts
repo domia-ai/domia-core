@@ -9,7 +9,7 @@ import { connectEsphomeSatellite } from "@/modules/satellite-protocols/esphome"
 import { connectWyomingSatellite } from "@/modules/satellite-protocols/wyoming"
 import { SATELLITE_PROTOCOL_ENUM } from "@/db"
 
-type SatelliteHandleType = { close: () => void; domiaId: string }
+import type { SatelliteHandleType } from "./types"
 
 const satelliteHandles = new Map<string, SatelliteHandleType>()
 

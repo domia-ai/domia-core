@@ -19,6 +19,8 @@ import {
 	DEFAULT_STT_POOL_IDLE_TIMEOUT_MS,
 	DEFAULT_STT_POOL_QUEUE_MAX_DEPTH,
 	DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS,
+	DEFAULT_STT_MAX_CONCURRENT_STREAMING_SESSIONS,
+	DEFAULT_STT_SESSION_IDLE_TIMEOUT_MS,
 	DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS,
 } from "@/db/constants"
 import { type SelectSttConfigType } from "@/db"
@@ -51,6 +53,9 @@ export const baseSttConfig = (domiaId?: string): SelectSttConfigType => {
 		poolQueueMaxDepth: DEFAULT_STT_POOL_QUEUE_MAX_DEPTH,
 		poolQueueTimeoutMs: DEFAULT_STT_POOL_QUEUE_TIMEOUT_MS,
 		poolExecutionTimeoutMs: 30_000,
+		maxConcurrentStreamingSessions:
+			DEFAULT_STT_MAX_CONCURRENT_STREAMING_SESSIONS,
+		sessionIdleTimeoutMs: DEFAULT_STT_SESSION_IDLE_TIMEOUT_MS,
 		workerRecycleAfterJobs: DEFAULT_STT_WORKER_RECYCLE_AFTER_JOBS,
 		createdAt: now(),
 		updatedAt: now(),

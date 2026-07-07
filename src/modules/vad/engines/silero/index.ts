@@ -2,6 +2,7 @@ import fs from "fs"
 import path from "path"
 
 import { audioCaptureLogger, domiaError, AUDIO_ERRORS } from "@/utils"
+import { VAD_ENGINE_ENUM } from "@/db"
 import { createVad } from "@/utils/ml-runtime"
 import type {
 	VadEngineAdapterType,
@@ -71,8 +72,10 @@ const createSession = (
 }
 
 export const sileroVadEngine: VadEngineAdapterType = {
-	id: "SILERO",
-	sampleRate: SAMPLE_RATE,
-	windowSize: WINDOW_SIZE,
+	id: VAD_ENGINE_ENUM.SILERO,
+	capabilities: {
+		sampleRate: SAMPLE_RATE,
+		windowSize: WINDOW_SIZE,
+	},
 	createSession,
 }

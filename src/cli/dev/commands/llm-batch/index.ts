@@ -6,13 +6,7 @@ import { buildPromptContext } from "@/modules/prompt-context-builder"
 import { getDomia, measure, formatDuration } from "@/test-utils"
 import { devCliLogger } from "@/utils"
 
-type BatchInputType = { transcript: string }
-type ResultType = {
-	transcript: string
-	response: string
-	durationMs: number
-	duration: string
-}
+import type { BatchInputType, ResultType } from "./types"
 
 export const llmBatchCommand = async (
 	inputPath: string,

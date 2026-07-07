@@ -33,6 +33,7 @@ const engineConfigOf = (
 	engine: sttConfig.engine,
 	modelPath: path.resolve(sttConfig.modelPath),
 	modelName: sttConfig.modelName ?? null,
+	language: sttConfig.language ?? null,
 	quantization: sttConfig.quantization ?? null,
 	numThreads: sttConfig.numThreads,
 	provider: sttConfig.provider,
@@ -63,10 +64,11 @@ export const runSttPooled = async (
 
 export const createSttSessionPooled = (
 	domia: DomiaType,
-): SttStreamSessionType => {
+): SttStreamSessionType | null => {
 	const sttConfig = requireSttConfig(domia)
 	const pool = getSttPool(sttConfig)
 	const session = pool.acquireSession()
+	if (!session) return null
 	let lastPartial = ""
 	let closed = false
 	let started = false

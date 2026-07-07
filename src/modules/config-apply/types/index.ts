@@ -11,6 +11,13 @@ export type ReloadSubsystemType =
 
 export type ReloaderScopeType = "global" | "per-identity"
 
+export type ChangeActionType =
+	| "live"
+	| "live-drain"
+	| "identity"
+	| "restart"
+	| ReloadSubsystemType
+
 export type ConfigChangeType = { section: string; field: string }
 
 export type ConfigApplyPlanType = {

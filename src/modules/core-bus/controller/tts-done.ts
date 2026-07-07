@@ -21,7 +21,6 @@ export const handleTtsDone = async (
 	const { filePath, reply, transcript, originDomiaKey, audioUrl, liveVoice } =
 		payload
 
-	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	const audioDelivery = payload.interactionId
 		? getInteractionRuntime(payload.interactionId)?.audioDelivery
 		: undefined

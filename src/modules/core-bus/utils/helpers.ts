@@ -1,5 +1,16 @@
-import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, toError, withTimeout } from "@/utils"
+import {
+	publishToDomiaBus,
+	DOMIA_EVENT_BUS_ENUM,
+	emitTurnEvent,
+	DOMIA_TURN_EVENT_ENUM,
+} from "@/buses"
+import {
+	domiaBusLogger,
+	getTraceContext,
+	isDomiaError,
+	toError,
+	withTimeout,
+} from "@/utils"
 import {
 	completeInteraction,
 	INTERACTION_COMPLETION_TIMEOUT,
@@ -36,7 +47,10 @@ const playFallbackAudio = async (
 		)
 		return false
 	}
-	const message = resolveFallbackMessage(step)
+	const message = resolveFallbackMessage(
+		step,
+		ctx.domia.characterProfile?.language,
+	)
 	try {
 		const tts = await withTimeout(
 			runTTS(ctx.domia, message),
@@ -119,6 +133,7 @@ export const notifyInteractionFailed = (
 		responseType,
 		error: err.message,
 		step,
+		errorCode: isDomiaError(error) ? error.code : undefined,
 		liveVoice,
 	}
 	publishToDomiaBus(
@@ -176,7 +191,7 @@ const TERMINAL_STATUSES: readonly string[] = [
 export const persistTerminal = async (
 	interactionId: string,
 	status: InteractionStatusType,
-	opts: { errorStep?: string; errorMessage?: string } = {},
+	opts: { errorStep?: string; errorMessage?: string; errorCode?: string } = {},
 ): Promise<void> => {
 	try {
 		const existing = await getInteractionById(interactionId)
@@ -189,6 +204,30 @@ export const persistTerminal = async (
 				? { errorMessage: opts.errorMessage }
 				: {}),
 		})
+		const ctx = getTraceContext()
+		const originDomiaKey = ctx?.originDomiaKey ?? ""
+		if (status === INTERACTION_STATUS_ENUM.FAILED) {
+			emitTurnEvent({
+				type: DOMIA_TURN_EVENT_ENUM.TURN_FAILED,
+				interactionId,
+				originDomiaKey,
+				traceId: ctx?.traceId,
+				step: opts.errorStep,
+				errorCode: opts.errorCode,
+				errorMessage: opts.errorMessage ?? "failed",
+			})
+		} else {
+			emitTurnEvent({
+				type: DOMIA_TURN_EVENT_ENUM.TURN_ABORTED,
+				interactionId,
+				originDomiaKey,
+				traceId: ctx?.traceId,
+				reason:
+					status === INTERACTION_STATUS_ENUM.NO_SPEECH
+						? "no_speech"
+						: (opts.errorStep ?? "aborted"),
+			})
+		}
 	} catch (err) {
 		domiaBusLogger.warn("⚠️ failed to persist terminal state", {
 			interactionId,

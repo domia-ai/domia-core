@@ -10,6 +10,10 @@ import {
 	DEFAULT_EMOTION_EVENT_MAX_ROWS_PER_DOMIA,
 	DEFAULT_ANNOUNCEMENT_MAX_AGE_MS,
 	DEFAULT_MEMORY_FACT_MAX_ROWS_PER_DOMIA,
+	DEFAULT_MEMORY_EPISODE_MAX_AGE_MS,
+	DEFAULT_MEMORY_EPISODE_MAX_ROWS_PER_DOMIA,
+	DEFAULT_TURN_EVENT_MAX_AGE_MS,
+	DEFAULT_TURN_EVENT_MAX_ROWS_PER_DOMIA,
 } from "@/db"
 import { appLogger } from "@/utils"
 
@@ -111,6 +115,26 @@ const sweep = (): void => {
 			"memory_fact",
 			"updated_at",
 			DEFAULT_MEMORY_FACT_MAX_ROWS_PER_DOMIA,
+		)
+		removed += deleteOlderThan(
+			"memory_episode",
+			"created_at",
+			DEFAULT_MEMORY_EPISODE_MAX_AGE_MS,
+		)
+		removed += deleteBeyondPerDomiaCap(
+			"memory_episode",
+			"created_at",
+			DEFAULT_MEMORY_EPISODE_MAX_ROWS_PER_DOMIA,
+		)
+		removed += deleteOlderThan(
+			"turn_event",
+			"created_at",
+			DEFAULT_TURN_EVENT_MAX_AGE_MS,
+		)
+		removed += deleteBeyondPerDomiaCap(
+			"turn_event",
+			"created_at",
+			DEFAULT_TURN_EVENT_MAX_ROWS_PER_DOMIA,
 		)
 		removed += deleteOrphanSessionTraces()
 		if (removed > 0) {

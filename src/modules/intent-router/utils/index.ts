@@ -1,34 +1,11 @@
-import {
-	type DomiaType,
-	resolveEmbedModel,
-	resolveOllamaHost,
-} from "@/modules/core"
-import { intentRouterLogger } from "@/utils"
+import { type DomiaType } from "@/modules/core"
+import { embed, embedSpaceKey } from "@/modules/embeddings"
+import { getMatcherEngine } from "@/modules/matcher"
+import { intentRouterLogger, languageSetsFor } from "@/utils"
+import type { SkillToolType } from "@/db"
 import type { IntentToolHintType } from "../types"
 
 const embedCache = new Map<string, number[][]>()
-
-const EMBED_TIMEOUT_MS = 3000
-
-export const embedTexts = async (
-	domia: DomiaType,
-	texts: string[],
-): Promise<number[][] | null> => {
-	try {
-		const res = await fetch(`${resolveOllamaHost(domia)}/api/embed`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ model: resolveEmbedModel(domia), input: texts }),
-			signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
-		})
-		if (!res.ok) return null
-		const json = (await res.json()) as { embeddings?: number[][] }
-		return json.embeddings ?? null
-	} catch (err) {
-		intentRouterLogger.warn("embed request failed", { err })
-		return null
-	}
-}
 
 export const cosine = (a: number[], b: number[]): number => {
 	let dot = 0
@@ -50,10 +27,10 @@ export const toolEmbeddings = async (
 	domia: DomiaType,
 	tools: IntentToolHintType[],
 ): Promise<number[][] | null> => {
-	const key = `${resolveOllamaHost(domia)}|${resolveEmbedModel(domia)}|${tools.map(toolText).join("§")}`
+	const key = `${embedSpaceKey(domia)}|${tools.map(toolText).join("§")}`
 	const cached = embedCache.get(key)
 	if (cached) return cached
-	const vectors = await embedTexts(
+	const vectors = await embed(
 		domia,
 		tools.map((t) => toolText(t)),
 	)
@@ -64,6 +41,57 @@ export const toolEmbeddings = async (
 		domiaId: domia.id,
 	})
 	return vectors
+}
+
+export const exampleEmbeddings = async (
+	domia: DomiaType,
+	utterances: string[],
+): Promise<number[][] | null> => {
+	if (utterances.length === 0) return null
+	const key = `ex|${embedSpaceKey(domia)}|${utterances.join("§")}`
+	const cached = embedCache.get(key)
+	if (cached) return cached
+	const vectors = await embed(domia, utterances)
+	if (!vectors) return null
+	if (embedCache.size > 32) embedCache.clear()
+	embedCache.set(key, vectors)
+	return vectors
+}
+
+export const keywordHit = (
+	transcript: string,
+	keywords: string[],
+): string | null => {
+	const t = transcript.toLowerCase()
+	for (const kw of keywords) {
+		const w = kw.trim().toLowerCase()
+		if (
+			w.length >= KEYPHRASE_MIN_LEN &&
+			new RegExp(`\\b${escapeRegExp(w)}`).test(t)
+		)
+			return kw
+	}
+	return null
+}
+
+export const lexicalToolScore = async (
+	domia: DomiaType,
+	transcript: string,
+	tools: IntentToolHintType[],
+): Promise<number> => {
+	const lexical = getMatcherEngine("lexical")
+	if (!lexical || tools.length === 0) return 0
+	const shaped: SkillToolType[] = tools.map((t) => ({
+		provider: "",
+		rawName: t.name,
+		namespacedName: t.name,
+		description: t.description,
+		inputSchema: {},
+	}))
+	const ranked = await lexical.rank(transcript, shaped, {
+		stopwords: languageSetsFor(domia.characterProfile?.language).stopwords,
+	})
+	return ranked.length > 0 ? ranked[0].score : 0
 }
 
 const KEYPHRASE_MIN_LEN = 4

@@ -1,21 +1,33 @@
 import {
 	DEFAULT_AGENT_MAX_STEPS,
 	DEFAULT_SLOW_TOOL_AFTER_MS,
-	DEFAULT_ASYNC_TOOL_ACK,
-	DEFAULT_ASYNC_TOOL_DONE,
+	DEFAULT_AGENT_ACK_AFTER_MS,
 	SKILL_TOOL_NAME_SEPARATOR,
 	AGENT_PROMPT_MODE_ENUM,
 	DEFAULT_FINALIZE_ACK,
 	DEFAULT_FINALIZE_ERROR,
+	DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
 } from "@/db"
-import type { SkillToolType } from "@/db"
+import type {
+	SkillToolType,
+	ToolTraceEntryType,
+	ToolRunStatusType,
+	ToolResultErrorCodeType,
+} from "@/db"
+import { languageSetsFor, getTraceContext } from "@/utils"
+import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import type { DomiaType } from "@/modules/core"
 import type {
 	ChatMessageType,
 	ToolCallOrReplyType,
 	ToolDefinitionType,
 } from "@/modules/llm-engine"
-import { callTool, resolveToolFinalize } from "@/modules/skill-engine"
+import {
+	callTool,
+	resolveToolFinalize,
+	renderFinalizeText,
+	type SkillCallResultType,
+} from "@/modules/skill-engine"
 import { buildPromptContext } from "@/modules/prompt-context-builder"
 import { agentLogger } from "@/utils"
 
@@ -32,6 +44,94 @@ import type {
 } from "../types"
 
 const ABORTED = Symbol("agent-aborted")
+
+const TOOL_RESULT_COMPACT_CAP = 240
+const COMPACT_SUFFIX = " …[truncated]"
+
+const mapSkillStatus = (
+	status: SkillCallResultType["status"],
+): ToolRunStatusType =>
+	status === "ok" ? "ok" : status === "timeout" ? "timeout" : "failed"
+
+const skillErrorCode = (
+	status: SkillCallResultType["status"],
+): ToolResultErrorCodeType | undefined => (status === "ok" ? undefined : status)
+
+const toToolTraceEntry = (
+	tool: string,
+	result: SkillCallResultType,
+	durationMs: number,
+	args: Record<string, unknown>,
+): ToolTraceEntryType => ({
+	kind: "result",
+	tool,
+	status: mapSkillStatus(result.status),
+	durationMs,
+	summaryForLlm: result.text,
+	output: result.text,
+	errorCode: skillErrorCode(result.status),
+	args,
+	resolvedArgs: result.resolvedArgs,
+})
+
+const providerOf = (toolName: string): string | undefined => {
+	const sepIdx = toolName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+	return sepIdx > 0 ? toolName.slice(0, sepIdx) : undefined
+}
+
+const emitToolRequested = (toolName: string): void => {
+	const ctx = getTraceContext()
+	if (!ctx?.interactionId) return
+	emitTurnEvent({
+		type: DOMIA_TURN_EVENT_ENUM.TOOL_REQUESTED,
+		interactionId: ctx.interactionId,
+		originDomiaKey: ctx.originDomiaKey ?? "",
+		traceId: ctx.traceId,
+		toolName,
+		provider: providerOf(toolName),
+	})
+}
+
+const emitToolResult = (
+	toolName: string,
+	status: ToolRunStatusType,
+	toolMs?: number,
+): void => {
+	const ctx = getTraceContext()
+	if (!ctx?.interactionId) return
+	emitTurnEvent({
+		type: DOMIA_TURN_EVENT_ENUM.TOOL_RESULT,
+		interactionId: ctx.interactionId,
+		originDomiaKey: ctx.originDomiaKey ?? "",
+		traceId: ctx.traceId,
+		toolName,
+		status,
+		toolMs,
+	})
+}
+
+export const estimateTokens = (messages: ChatMessageType[]): number => {
+	let chars = 0
+	for (const m of messages) {
+		chars += m.content.length
+		if (m.toolCalls) chars += JSON.stringify(m.toolCalls).length
+	}
+	return Math.ceil(chars / 4)
+}
+
+export const compactWithinBudget = (
+	messages: ChatMessageType[],
+	budgetTokens: number,
+): boolean => {
+	if (estimateTokens(messages) <= budgetTokens) return true
+	for (const m of messages) {
+		if (estimateTokens(messages) <= budgetTokens) return true
+		if (m.role === "tool" && m.content.length > TOOL_RESULT_COMPACT_CAP) {
+			m.content = m.content.slice(0, TOOL_RESULT_COMPACT_CAP) + COMPACT_SUFFIX
+		}
+	}
+	return estimateTokens(messages) <= budgetTokens
+}
 
 const raceAbort = <T>(
 	p: Promise<T>,
@@ -127,12 +227,16 @@ export const runAgentTurn = async (
 	]
 	const toolNamesUsed: string[] = []
 	const serversUsed = new Set<string>()
-	const skillResponses: unknown[] = []
+	const skillResponses: ToolTraceEntryType[] = []
 	let decisionMs = 0
 	let toolMs = 0
 	let finalizeMs = 0
 	const maxSteps =
 		domia.llmModelConfig?.agentMaxSteps ?? DEFAULT_AGENT_MAX_STEPS
+	const contextWindow =
+		domia.llmModelConfig?.contextWindow ?? DEFAULT_LLM_MODEL_CONTEXT_WINDOW
+	const numPredict = Math.max(0, domia.llmModelConfig?.numPredict ?? 0)
+	const tokenBudget = Math.max(512, contextWindow - numPredict - 256)
 	const allowedParams = new Map<string, Set<string> | null>(
 		tools.map((t) => {
 			const props = t.inputSchema?.properties as
@@ -144,6 +248,13 @@ export const runAgentTurn = async (
 			]
 		}),
 	)
+	const requiredParams = new Map<string, string[]>(
+		tools.map((t) => {
+			const req = t.inputSchema?.required
+			return [t.namespacedName, Array.isArray(req) ? req.map(String) : []]
+		}),
+	)
+	const argCorrected = new Set<string>()
 	const knownToolNames = new Set(toolDefs.map((t) => t.name))
 
 	const abortedReturn = (step: number): AgentResultType => ({
@@ -157,10 +268,35 @@ export const runAgentTurn = async (
 		toolMs,
 		finalizeMs,
 		finalizeMode: "agent_loop",
+		stopReason: "aborted",
 	})
 
 	for (let step = 0; step < maxSteps; step++) {
 		if (opts?.signal?.aborted) return abortedReturn(step)
+		if (!compactWithinBudget(messages, tokenBudget)) {
+			agentLogger.warn("agent context overflow — compaction insufficient", {
+				domiaId: domia.id,
+				step,
+				tokens: estimateTokens(messages),
+				budget: tokenBudget,
+			})
+			return {
+				reply:
+					toolNamesUsed.length > 0
+						? AGENT_ACTED_FAILURE_REPLY
+						: AGENT_FAILURE_REPLY,
+				toolNamesUsed,
+				serversUsed: [...serversUsed],
+				steps: step + 1,
+				skillPrompt: SKILLS_CLAUSE,
+				skillResponses,
+				decisionMs,
+				toolMs,
+				finalizeMs,
+				finalizeMode: "agent_loop",
+				stopReason: "context_overflow",
+			}
+		}
 		let out: ToolCallOrReplyType
 		const streamFinalize =
 			opts?.voice && opts.streamFinalize && toolNamesUsed.length > 0
@@ -183,6 +319,7 @@ export const runAgentTurn = async (
 						toolMs,
 						finalizeMs,
 						finalizeMode: "streamed",
+						stopReason: "completed",
 					}
 				}
 				out = { kind: "tool_calls", calls: res.calls }
@@ -211,6 +348,7 @@ export const runAgentTurn = async (
 				toolMs,
 				finalizeMs,
 				finalizeMode: "agent_loop",
+				stopReason: "tool_error",
 			}
 		}
 		const inferMs = Math.round(
@@ -230,6 +368,7 @@ export const runAgentTurn = async (
 				toolMs,
 				finalizeMs,
 				finalizeMode: "agent_loop",
+				stopReason: "completed",
 			}
 		}
 
@@ -250,25 +389,50 @@ export const runAgentTurn = async (
 				const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 				if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
 				const rule = resolveToolFinalize(call.name)
-				ackParts.push(rule?.ack ?? DEFAULT_ASYNC_TOOL_ACK)
-				skillResponses.push({ tool: call.name, dispatched: true })
+				ackParts.push(
+					rule?.ack ??
+						languageSetsFor(domia.characterProfile?.language).phrases.onIt,
+				)
 				const safeArgs = pruneEmptyArgs(
 					filterToAllowed(call.arguments, allowedParams.get(call.name)),
 				)
+				skillResponses.push({
+					kind: "dispatched",
+					tool: call.name,
+					args: safeArgs,
+				})
+				emitToolRequested(call.name)
+				const phrases = languageSetsFor(
+					domia.characterProfile?.language,
+				).phrases
 				pendingTools.push(
 					callTool(call.name, safeArgs)
-						.then((result) => ({
-							tool: call.name,
-							ok: result.status === "ok" && !result.isError,
-							doneText:
-								result.status === "ok" && !result.isError
-									? (rule?.done ?? DEFAULT_ASYNC_TOOL_DONE)
-									: (rule?.error ?? DEFAULT_FINALIZE_ERROR),
-						}))
+						.then((result) => {
+							const ok = result.status === "ok" && !result.isError
+							const template = ok ? rule?.done : rule?.error
+							const fallback = ok
+								? phrases.thatIsDone
+								: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR)
+							return {
+								tool: call.name,
+								ok,
+								doneText: template
+									? (renderFinalizeText(
+											template,
+											safeArgs,
+											result.resolvedArgs,
+										) ?? fallback)
+									: fallback,
+								resolvedArgs: result.resolvedArgs,
+							}
+						})
 						.catch(() => ({
 							tool: call.name,
 							ok: false,
-							doneText: rule?.error ?? DEFAULT_FINALIZE_ERROR,
+							doneText:
+								rule?.error && !rule.error.includes("{")
+									? rule.error
+									: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR),
 						})),
 				)
 			}
@@ -287,12 +451,17 @@ export const runAgentTurn = async (
 				toolMs,
 				finalizeMs,
 				finalizeMode: "template",
+				stopReason: "completed",
 				pendingTools,
 			}
 		}
 
 		const templateParts: string[] = []
 		let allTemplate = true
+		const toRun: {
+			call: (typeof out.calls)[number]
+			safeArgs: Record<string, unknown>
+		}[] = []
 		for (const call of out.calls) {
 			if (!knownToolNames.has(call.name)) {
 				allTemplate = false
@@ -307,49 +476,224 @@ export const runAgentTurn = async (
 				})
 				continue
 			}
-			toolNamesUsed.push(call.name)
-			const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
-			if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
 			const safeArgs = pruneEmptyArgs(
 				filterToAllowed(call.arguments, allowedParams.get(call.name)),
 			)
-			const t0 = process.hrtime.bigint()
+			const missing = (requiredParams.get(call.name) ?? []).filter(
+				(k) => safeArgs[k] === undefined,
+			)
+			if (missing.length > 0 && !argCorrected.has(call.name)) {
+				argCorrected.add(call.name)
+				allTemplate = false
+				messages.push({
+					role: "tool",
+					toolName: call.name,
+					content: `Error: "${call.name}" is missing required argument(s): ${missing.join(", ")}. You sent ${JSON.stringify(safeArgs)}. Call "${call.name}" again with ${missing.join(" and ")} filled in.`,
+				})
+				agentLogger.warn("agent tool call missing required args — corrected", {
+					domiaId: domia.id,
+					name: call.name,
+					missing,
+				})
+				continue
+			}
+			toolNamesUsed.push(call.name)
+			const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+			if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
+			toRun.push({ call, safeArgs })
+			emitToolRequested(call.name)
+		}
+
+		const markCancelled = (): void => {
+			for (const { call, safeArgs } of toRun) {
+				skillResponses.push({
+					kind: "result",
+					tool: call.name,
+					status: "cancelled",
+					durationMs: 0,
+					summaryForLlm: "",
+					args: safeArgs,
+				})
+				emitToolResult(call.name, "cancelled")
+			}
+		}
+
+		if (toRun.length > 0) {
+			const allDeadline =
+				opts?.allowAsyncTools === true &&
+				toRun.every(
+					({ call }) => resolveToolFinalize(call.name)?.mode === "deadline",
+				)
 			let slowTimer: ReturnType<typeof setTimeout> | null = null
-			if (opts?.onSlowTool) {
+			if (opts?.onSlowTool && !allDeadline) {
 				slowTimer = setTimeout(
 					opts.onSlowTool,
 					opts.slowToolAfterMs ?? DEFAULT_SLOW_TOOL_AFTER_MS,
 				)
 				slowTimer.unref()
 			}
-			const raced = await raceAbort(
-				callTool(call.name, safeArgs, opts?.signal).finally(() => {
-					if (slowTimer) clearTimeout(slowTimer)
-				}),
-				opts?.signal,
+			const runOne = async (
+				name: string,
+				args: Record<string, unknown>,
+				signal?: AbortSignal,
+			) => {
+				const started = process.hrtime.bigint()
+				try {
+					const result = await callTool(name, args, signal)
+					return {
+						result,
+						ms: Math.round(Number(process.hrtime.bigint() - started) / 1e6),
+					}
+				} catch (err) {
+					return {
+						result: {
+							text: String(err),
+							status: "error" as const,
+							isError: true,
+						},
+						ms: Math.round(Number(process.hrtime.bigint() - started) / 1e6),
+					}
+				}
+			}
+			const running = toRun.map((p) =>
+				runOne(p.call.name, p.safeArgs, allDeadline ? undefined : opts?.signal),
 			)
-			if (raced === ABORTED) return abortedReturn(step)
-			const result = raced
-			const ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e6)
-			toolMs += ms
-			skillResponses.push({
-				tool: call.name,
-				result: result.text,
-				status: result.status,
-				isError: result.isError,
-				ms,
-			})
-			messages.push({ role: "tool", toolName: call.name, content: result.text })
-			const rule = resolveToolFinalize(call.name)
-			if (rule?.mode === "template") {
-				const ok = result.status === "ok" && !result.isError
-				templateParts.push(
-					ok
-						? (rule.ack ?? DEFAULT_FINALIZE_ACK)
-						: (rule.error ?? DEFAULT_FINALIZE_ERROR),
+			let settled: Awaited<(typeof running)[number]>[]
+			if (allDeadline) {
+				const ackAfterMs = Math.min(
+					...toRun.map(
+						({ call }) =>
+							resolveToolFinalize(call.name)?.ackAfterMs ??
+							domia.llmModelConfig?.agentAckAfterMs ??
+							DEFAULT_AGENT_ACK_AFTER_MS,
+					),
 				)
+				let deadlineTimer: ReturnType<typeof setTimeout> | null = null
+				const raced = await raceAbort(
+					Promise.race([
+						Promise.all(running).then((s) => ({
+							deadline: false as const,
+							settled: s,
+						})),
+						new Promise<{ deadline: true }>((resolve) => {
+							deadlineTimer = setTimeout(
+								() => resolve({ deadline: true }),
+								ackAfterMs,
+							)
+							deadlineTimer.unref()
+						}),
+					]),
+					opts?.signal,
+				)
+				if (deadlineTimer) clearTimeout(deadlineTimer)
+				if (raced === ABORTED) {
+					markCancelled()
+					return abortedReturn(step)
+				}
+				if (raced.deadline) {
+					const phrases = languageSetsFor(
+						domia.characterProfile?.language,
+					).phrases
+					const ackParts: string[] = []
+					const pendingTools: Promise<AsyncToolOutcomeType>[] = []
+					for (let i = 0; i < toRun.length; i++) {
+						const { call, safeArgs } = toRun[i]
+						const rule = resolveToolFinalize(call.name)
+						ackParts.push(rule?.ack ?? phrases.onIt)
+						skillResponses.push({
+							kind: "dispatched",
+							tool: call.name,
+							args: safeArgs,
+						})
+						pendingTools.push(
+							running[i].then(({ result }) => {
+								const ok = result.status === "ok" && !result.isError
+								const template = ok ? rule?.done : rule?.error
+								const fallback = ok
+									? phrases.thatIsDone
+									: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR)
+								return {
+									tool: call.name,
+									ok,
+									doneText: template
+										? (renderFinalizeText(
+												template,
+												safeArgs,
+												result.resolvedArgs,
+											) ?? fallback)
+										: fallback,
+									resolvedArgs: result.resolvedArgs,
+								}
+							}),
+						)
+					}
+					agentLogger.info(
+						`agent deadline ack (${toRun.length}) — respond-first after ${ackAfterMs}ms`,
+						{ domiaId: domia.id, tools: toRun.map((p) => p.call.name) },
+					)
+					return {
+						reply: [...new Set(ackParts)].join(" "),
+						toolNamesUsed,
+						serversUsed: [...serversUsed],
+						steps: step + 1,
+						skillPrompt: SKILLS_CLAUSE,
+						skillResponses,
+						decisionMs,
+						toolMs,
+						finalizeMs,
+						finalizeMode: "template",
+						stopReason: "completed",
+						pendingTools,
+					}
+				}
+				settled = raced.settled
 			} else {
-				allTemplate = false
+				const awaited = await raceAbort(Promise.all(running), opts?.signal)
+				if (slowTimer) clearTimeout(slowTimer)
+				if (awaited === ABORTED) {
+					markCancelled()
+					return abortedReturn(step)
+				}
+				settled = awaited
+			}
+			toolMs += settled.reduce((m, s) => Math.max(m, s.ms), 0)
+			const phrases = languageSetsFor(domia.characterProfile?.language).phrases
+			for (let i = 0; i < toRun.length; i++) {
+				const { call, safeArgs } = toRun[i]
+				const { result } = settled[i]
+				const entry = toToolTraceEntry(
+					call.name,
+					result,
+					settled[i].ms,
+					safeArgs,
+				)
+				skillResponses.push(entry)
+				emitToolResult(call.name, mapSkillStatus(result.status), settled[i].ms)
+				messages.push({
+					role: "tool",
+					toolName: call.name,
+					content: result.text,
+				})
+				const rule = resolveToolFinalize(call.name)
+				if (rule?.mode === "template" || rule?.mode === "deadline") {
+					const ok = result.status === "ok" && !result.isError
+					const template = ok
+						? rule.mode === "deadline"
+							? (rule.done ?? rule.ack)
+							: rule.ack
+						: rule.error
+					const fallback = ok
+						? (phrases.done ?? DEFAULT_FINALIZE_ACK)
+						: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR)
+					const rendered = template
+						? (renderFinalizeText(template, safeArgs, result.resolvedArgs) ??
+							fallback)
+						: fallback
+					templateParts.push(rendered)
+					if (entry.kind === "result") entry.displaySummary = rendered
+				} else {
+					allTemplate = false
+				}
 			}
 		}
 		if (allTemplate && templateParts.length > 0) {
@@ -364,6 +708,7 @@ export const runAgentTurn = async (
 				toolMs,
 				finalizeMs,
 				finalizeMode: "template",
+				stopReason: "completed",
 			}
 		}
 	}
@@ -386,5 +731,6 @@ export const runAgentTurn = async (
 		toolMs,
 		finalizeMs,
 		finalizeMode: "agent_loop",
+		stopReason: "max_steps",
 	}
 }

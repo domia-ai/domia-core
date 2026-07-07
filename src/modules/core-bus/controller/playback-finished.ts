@@ -1,4 +1,9 @@
-import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
+import {
+	publishToDomiaBus,
+	DOMIA_EVENT_BUS_ENUM,
+	emitTurnEvent,
+	DOMIA_TURN_EVENT_ENUM,
+} from "@/buses"
 import {
 	domiaBusLogger,
 	isSemaphoreBusyError,
@@ -21,6 +26,7 @@ import {
 	endRecording,
 	completeInteraction,
 	pushInteractionFirstAudio,
+	skillsMayIntercept,
 } from "../utils"
 import type {
 	CoreBusContextType,
@@ -32,7 +38,16 @@ export const handlePlaybackStarted = (
 	_ctx: CoreBusContextType,
 	payload: PlaybackStartedPayloadType,
 ): void => {
-	if (payload?.interactionId) pushInteractionFirstAudio(payload.interactionId)
+	if (payload?.interactionId) {
+		pushInteractionFirstAudio(payload.interactionId)
+		emitTurnEvent({
+			type: DOMIA_TURN_EVENT_ENUM.PLAYBACK_STARTED,
+			interactionId: payload.interactionId,
+			originDomiaKey: payload.originDomiaKey ?? "",
+			traceId: payload.traceId,
+			playedLocally: payload.playedLocally ?? false,
+		})
+	}
 }
 
 const speculationEligible = (ctx: CoreBusContextType): boolean => {
@@ -42,14 +57,12 @@ const speculationEligible = (ctx: CoreBusContextType): boolean => {
 		features.canRunLlm &&
 		features.canSentencePipeline &&
 		Boolean(features.llm?.adapter.runStream)
-	const skillsMayIntercept =
-		domia.moduleSettings?.skillsEngine === true &&
-		(domia.skillProviders ?? []).some(
-			(p) => p.isActive && (p.toolsCache?.length ?? 0) > 0,
-		)
+	const speculationBlockedBySkills =
+		skillsMayIntercept(domia) &&
+		domia.wakeWordConfig?.speculateWithSkills !== true
 	return (
 		speculativeMs > 0 &&
-		!skillsMayIntercept &&
+		!speculationBlockedBySkills &&
 		Boolean(features.stt?.adapter.runPcm) &&
 		(localSpeculation || !features.canRunLlm)
 	)
@@ -128,6 +141,14 @@ export const handlePlaybackFinished = async (
 	if (payload?.interactionId) {
 		completeInteraction(payload.interactionId, {
 			interrupted: payload.status !== "completed",
+		})
+		emitTurnEvent({
+			type: DOMIA_TURN_EVENT_ENUM.PLAYBACK_FINISHED,
+			interactionId: payload.interactionId,
+			originDomiaKey: payload.originDomiaKey ?? "",
+			traceId: payload.traceId,
+			status: payload.status ?? "completed",
+			playedLocally: payload.playedLocally ?? false,
 		})
 	}
 

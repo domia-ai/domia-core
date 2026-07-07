@@ -7,7 +7,8 @@ import {
 	unregisterHostedIdentity,
 	isHostedIdentity,
 } from "@/modules/core"
-import { abortActiveTurn } from "@/modules/core-bus"
+import { abortActiveTurn, clearDomiaPresence } from "@/modules/core-bus"
+import { clearVoiceAdmission } from "@/modules/voice-admission"
 import { initialize, DEFAULT_CONFIG_VALUES } from "@/modules/config-engine"
 import { warmupOnBoot } from "@/modules/warmup"
 import { setupCoreBus, teardownCoreBus } from "@/setups/core-bus"
@@ -71,6 +72,8 @@ const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 	await stopSkills(key)
 	stopVoiceListener(key)
 	if (domia) teardownCoreBus(domia.id)
+	if (domia) clearVoiceAdmission(domia.id)
+	clearDomiaPresence(key)
 	if (domia) await reloadSatelliteClientsForDomia(domia)
 	appLogger.info(`🪫 stopped hosting identity ${key}`)
 }

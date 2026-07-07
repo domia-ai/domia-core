@@ -229,3 +229,12 @@ export const mostRecentlyActiveSatellite = (): string | null => {
 	}
 	return best?.domiaKey ?? null
 }
+
+export const clearDomiaPresence = (domiaKey: string): void => {
+	presence.delete(domiaKey)
+	listeners.delete(domiaKey)
+	const prefix = `${domiaKey}\u0000`
+	for (const key of connectionIds.keys()) {
+		if (key.startsWith(prefix)) connectionIds.delete(key)
+	}
+}

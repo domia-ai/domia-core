@@ -1,0 +1,126 @@
+{
+	"version": 1,
+	"tools": [
+		{
+			"name": "report_issue",
+			"description": "Report a maintenance or repair problem in the unit, like a leak, a broken appliance, or no hot water.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"description": { "type": "string", "description": "what is wrong" }
+				},
+				"required": ["description"]
+			}
+		},
+		{
+			"name": "request_cleaning",
+			"description": "Request housekeeping: a cleaning, fresh towels, or new linens.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"note": { "type": "string", "description": "optional detail" }
+				},
+				"required": []
+			}
+		},
+		{
+			"name": "extend_checkout",
+			"description": "Request a later checkout time than the standard one.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"time": { "type": "string", "description": "requested checkout time" }
+				},
+				"required": ["time"]
+			}
+		},
+		{
+			"name": "book_taxi",
+			"description": "Book a taxi, cab, or airport transfer for the guest.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"destination": { "type": "string", "description": "where to go" }
+				},
+				"required": ["destination"]
+			}
+		},
+		{
+			"name": "set_ac_temperature",
+			"description": "Set the air conditioning temperature in the apartment.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"value": { "type": "number", "description": "degrees" }
+				},
+				"required": ["value"]
+			}
+		},
+		{
+			"name": "order_supplies",
+			"description": "Order more supplies for the guest, such as coffee, water, or toiletries.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"item": { "type": "string", "description": "what to order" }
+				},
+				"required": ["item"]
+			}
+		}
+	],
+	"utterances": [
+		{
+			"text": "there's a leak under the bathroom sink",
+			"route": "skill",
+			"tool": "report_issue",
+			"requiredArgs": ["description"]
+		},
+		{
+			"text": "the heater stopped working last night",
+			"route": "skill",
+			"tool": "report_issue",
+			"requiredArgs": ["description"]
+		},
+		{
+			"text": "could we get some fresh towels",
+			"route": "skill",
+			"tool": "request_cleaning"
+		},
+		{
+			"text": "can someone tidy up the apartment",
+			"route": "skill",
+			"tool": "request_cleaning"
+		},
+		{
+			"text": "we'd like to check out late tomorrow, around one pm",
+			"route": "skill",
+			"tool": "extend_checkout",
+			"requiredArgs": ["time"]
+		},
+		{
+			"text": "book us a cab to the airport",
+			"route": "skill",
+			"tool": "book_taxi",
+			"requiredArgs": ["destination"]
+		},
+		{
+			"text": "set the air conditioning to twenty degrees",
+			"route": "skill",
+			"tool": "set_ac_temperature",
+			"requiredArgs": ["value"]
+		},
+		{
+			"text": "we ran out of coffee, can you bring more",
+			"route": "skill",
+			"tool": "order_supplies",
+			"requiredArgs": ["item"]
+		},
+		{ "text": "how are you doing today", "route": "chat" },
+		{
+			"text": "what's the best part about living in this city",
+			"route": "chat"
+		},
+		{ "text": "thank you so much for the help", "route": "chat" },
+		{ "text": "tell me a fun fact", "route": "chat" }
+	]
+}

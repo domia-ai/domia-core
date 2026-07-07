@@ -3,6 +3,7 @@ import Database from "better-sqlite3"
 import path from "path"
 
 import { env } from "@/config"
+import { dbLogger } from "@/utils"
 import * as schema from "./schema"
 
 const dbPath = path.resolve(process.cwd(), env.DATABASE_URL)
@@ -22,8 +23,8 @@ export const dbClient = drizzle(sqlite, { schema })
 export const closeDb = (): void => {
 	try {
 		sqlite.close()
-	} catch {
-		/* */
+	} catch (err) {
+		dbLogger.warn("sqlite close failed", { err })
 	}
 }
 

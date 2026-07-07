@@ -51,9 +51,13 @@ export type GeneratedAudio = {
 }
 
 export type TtsGenerationConfig = {
-	sid: number
+	sid?: number
 	speed: number
 	silenceScale?: number
+	referenceAudio?: Float32Array
+	referenceSampleRate?: number
+	numSteps?: number
+	extra?: Record<string, unknown>
 }
 
 export type TtsOnProgressInfo = {

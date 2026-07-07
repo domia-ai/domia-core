@@ -1,7 +1,7 @@
 import { writeFile, readFile } from "fs/promises"
 import { join } from "path"
 
-import { type DomiaType, getOwnDomia, isHostedIdentity } from "@/modules/core"
+import { type DomiaType, safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import {
 	INTERACTION_STATUS_ENUM,
 	DEFAULT_SATELLITE_TURN_TIMEOUT_MS,
@@ -99,7 +99,7 @@ export const createSatelliteSession = (
 	const STT_SAMPLE_RATE = 16000
 
 	const streamingSttCreate = ():
-		| ((domia: DomiaType) => SttStreamSessionType)
+		| ((domia: DomiaType) => SttStreamSessionType | null)
 		| null => {
 		if (sampleRate !== STT_SAMPLE_RATE || channels !== 1) return null
 		if (identity.runtimeCapabilities?.stt !== true) return null
@@ -213,7 +213,7 @@ export const createSatelliteSession = (
 	): Promise<DomiaType | null> => {
 		if (!domiaKey) return isHostedIdentity(fallback.domiaKey) ? fallback : null
 		if (!isHostedIdentity(domiaKey)) return null
-		return (await getOwnDomia(domiaKey).catch(() => null)) ?? null
+		return (await safeOwnDomia(domiaKey, "satellite-core resolve")) ?? null
 	}
 
 	const persistTurnFailure = (
@@ -392,7 +392,12 @@ export const createSatelliteSession = (
 			})
 			if (session) {
 				const transcript = await session.finish()
-				void writeFile(path, wav).catch(() => undefined)
+				void writeFile(path, wav).catch((err) =>
+					satelliteGatewayLogger.warn("satellite audio archive write failed", {
+						path,
+						err,
+					}),
+				)
 				publishToDomiaBus(identity.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 					transcript,
 					interactionId,
@@ -408,6 +413,7 @@ export const createSatelliteSession = (
 				})
 			}
 		} catch (err) {
+			session?.abort()
 			await persistTurnFailure(interactionId, err)
 			transport.sendError(String(err))
 			finalize()
@@ -524,6 +530,8 @@ export const createSatelliteSession = (
 						sttSession = create(identity)
 					} catch {
 						sttSession = null
+					}
+					if (!sttSession) {
 						satelliteGatewayLogger.info(
 							"🛰️ streaming STT slot unavailable — batch fallback",
 							{ satelliteId, domiaKey: identity.domiaKey },

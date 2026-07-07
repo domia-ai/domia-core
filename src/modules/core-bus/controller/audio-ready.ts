@@ -249,7 +249,6 @@ export const handleAudioReady = async (
 	const { filePath, audioUrl, originDomiaKey } = payload
 	const responseType = payload.responseType ?? RESPONSE_TYPE_ENUM.VOICE
 
-	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`🎧 AUDIO_READY received`, {
 		domiaId,
 		filePath,

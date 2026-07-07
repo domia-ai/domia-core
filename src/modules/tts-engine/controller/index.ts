@@ -1,6 +1,6 @@
 import { TTS_ENGINE_ENUM_VALUES } from "@/db"
 import { type DomiaType } from "@/modules/core"
-import { domiaError, LLM_ERRORS, ttsEngineLogger } from "@/utils"
+import { domiaError, TTS_ERRORS, ttsEngineLogger } from "@/utils"
 
 import { ttsEngines } from "../engines"
 import { sanitizeForSpeech } from "../utils"
@@ -15,7 +15,7 @@ export const runTTS = async (
 	const engine = ttsModelConfig?.engine
 
 	if (!engine || !TTS_ENGINE_ENUM_VALUES?.includes(engine)) {
-		throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
+		throw domiaError(TTS_ERRORS.TTS_ENGINE_NOT_FOUND, {
 			logger: ttsEngineLogger,
 			meta: {
 				engine,

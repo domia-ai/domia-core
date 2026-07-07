@@ -1,4 +1,10 @@
 import { type InsertInteractionTraceType } from "@/db"
+import type { RecentTurnType } from "@/modules/prompt-context-builder"
+
+export type RecentTurnsAndMoodsType = {
+	recentTurns: RecentTurnType[]
+	userMoodTrend: string[]
+}
 
 export type NewInteractionDataType = Omit<
 	InsertInteractionTraceType,
@@ -19,6 +25,9 @@ export type LatencyStatsType = {
 	perceivedTtfa: LatencyPercentilesType
 	stt: LatencyPercentilesType
 	llm: LatencyPercentilesType
+	llmQueue: LatencyPercentilesType
 	tts: LatencyPercentilesType
+	ttsFirstChunk: LatencyPercentilesType
+	rssMb: LatencyPercentilesType
 	bySatellite: Record<string, LatencyPercentilesType>
 }

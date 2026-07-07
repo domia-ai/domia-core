@@ -1,4 +1,10 @@
 export const MEMORY_FACT_RECALL_LIMIT = 20
+export const MEMORY_FACT_CANDIDATE_LIMIT = 60
 export const MEMORY_FACT_EXTRACT_MAX = 5
 export const DEFAULT_FACT_CONFIDENCE = 0.7
 export const MIN_RECALL_CONFIDENCE = 0.35
+export const MIN_RECALL_CONF_USER = 0.6
+export const MIN_RECALL_CONF_PREF = 0.45
+export const MIN_RECALL_CONF_OBS = 0.35
+export const KB_CANDIDATE_LIMIT = 40
+export const KB_RECALL_LIMIT = 8

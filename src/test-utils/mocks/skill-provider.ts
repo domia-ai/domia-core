@@ -21,6 +21,7 @@ export const baseSkillProvider = (
 		url: faker.internet.url(),
 		description: faker.lorem.sentence(),
 		config: null,
+		descriptor: null,
 		auth: null,
 		toolsCache: null,
 		toolWhitelist: null,

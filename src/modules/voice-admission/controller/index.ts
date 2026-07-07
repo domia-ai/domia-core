@@ -5,7 +5,7 @@ import {
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 
-type SemaphoreType = ReturnType<typeof createAsyncSemaphore>
+import type { SemaphoreType } from "../types"
 
 const semaphores = new Map<string, SemaphoreType>()
 
@@ -49,3 +49,7 @@ export const queuedVoiceReplies = (domiaId?: string): number =>
 	domiaId
 		? (semaphores.get(domiaId)?.waitingCount() ?? 0)
 		: sumAcross((s) => s.waitingCount())
+
+export const clearVoiceAdmission = (domiaId: string): void => {
+	semaphores.delete(domiaId)
+}

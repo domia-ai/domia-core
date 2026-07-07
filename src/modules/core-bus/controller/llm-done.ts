@@ -340,7 +340,6 @@ export const handleLlmDone = async (
 	const domiaId = domia.id
 	const { reply, originDomiaKey, responseType } = payload
 
-	setTraceContext({ interactionId: payload.interactionId, originDomiaKey })
 	domiaBusLogger.info(`🗣️ LLM_DONE: ${reply}`, { domiaId })
 
 	if (payload.interactionId && reply) {
@@ -379,7 +378,7 @@ export const handleLlmDone = async (
 	if (!interactionId) return
 	setTraceContext({ interactionId, originDomiaKey })
 
-	const ensured = ensureReplyOrFallback(reply)
+	const ensured = ensureReplyOrFallback(reply, domia.characterProfile?.language)
 	if (ensured.usedFallback) {
 		domiaBusLogger.warn("LLM_DONE: empty reply — using fallback message", {
 			domiaId,

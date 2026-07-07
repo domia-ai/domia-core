@@ -1,17 +1,16 @@
-import { type DomiaType, getOwnDomia, isHostedIdentity } from "@/modules/core"
 import {
-	resolveCoreBusFeatures,
-	type CoreBusFeaturesType,
-} from "@/modules/core-bus"
+	type DomiaType,
+	getOwnDomia,
+	safeOwnDomia,
+	isHostedIdentity,
+} from "@/modules/core"
+import { resolveCoreBusFeatures } from "@/modules/core-bus"
 import {
 	normalizeRuntimeCapabilities,
 	type RuntimeCapabilitiesType,
 } from "@/setups/environment"
 
-export type LiveDomiaType = {
-	domia: DomiaType
-	features: CoreBusFeaturesType
-}
+import type { LiveDomiaType } from "./types"
 
 const liveFrom = (
 	domia: DomiaType,
@@ -47,7 +46,7 @@ export const resolveLiveIdentity = async (
 	if (!isHostedIdentity(targetDomiaKey)) {
 		throw new Error(`identity not hosted: ${targetDomiaKey}`)
 	}
-	const resolved = await getOwnDomia(targetDomiaKey).catch(() => null)
+	const resolved = await safeOwnDomia(targetDomiaKey, "live-domia resolve")
 	if (!resolved) {
 		throw new Error(`identity not resolvable: ${targetDomiaKey}`)
 	}

@@ -1,0 +1,133 @@
+{
+	"version": 1,
+	"aliases": {
+		"warmer": ["temperature", "warm", "heat"],
+		"cooler": ["temperature", "cool"],
+		"colder": ["temperature", "cold"],
+		"brighter": ["light", "bright"],
+		"dimmer": ["light", "dim"],
+		"degrees": ["temperature"],
+		"thermostat": ["temperature"]
+	},
+	"tools": [
+		{
+			"name": "turn_on_light",
+			"description": "Turn a light on, by room or name (e.g. kitchen, bedroom).",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"name": { "type": "string", "description": "the light or area" }
+				},
+				"required": ["name"]
+			}
+		},
+		{
+			"name": "turn_off_light",
+			"description": "Turn a light off, by room or name.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"name": { "type": "string", "description": "the light or area" }
+				},
+				"required": ["name"]
+			}
+		},
+		{
+			"name": "set_temperature",
+			"description": "Set the thermostat temperature for an area.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"name": { "type": "string", "description": "the area" },
+					"value": { "type": "number", "description": "degrees" }
+				},
+				"required": ["name", "value"]
+			}
+		},
+		{
+			"name": "get_state",
+			"description": "Check the current state of a device (e.g. is a door open).",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"name": { "type": "string", "description": "the device" }
+				},
+				"required": ["name"]
+			}
+		},
+		{
+			"name": "play_music",
+			"description": "Play music matching a query.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"query": { "type": "string", "description": "artist, genre or song" }
+				},
+				"required": ["query"]
+			}
+		},
+		{
+			"name": "set_timer",
+			"description": "Start a countdown timer.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"seconds": { "type": "number", "description": "duration in seconds" }
+				},
+				"required": ["seconds"]
+			}
+		}
+	],
+	"utterances": [
+		{
+			"text": "turn on the kitchen light",
+			"route": "skill",
+			"tool": "turn_on_light",
+			"requiredArgs": ["name"]
+		},
+		{
+			"text": "turn off the bedroom lights please",
+			"route": "skill",
+			"tool": "turn_off_light",
+			"requiredArgs": ["name"]
+		},
+		{
+			"text": "set the living room to seventy two degrees",
+			"route": "skill",
+			"tool": "set_temperature",
+			"requiredArgs": ["name", "value"]
+		},
+		{
+			"text": "make the office warmer, put it at seventy four",
+			"route": "skill",
+			"tool": "set_temperature",
+			"requiredArgs": ["name", "value"]
+		},
+		{
+			"text": "is the garage door open",
+			"route": "skill",
+			"tool": "get_state",
+			"requiredArgs": ["name"]
+		},
+		{
+			"text": "play some jazz",
+			"route": "skill",
+			"tool": "play_music",
+			"requiredArgs": ["query"]
+		},
+		{
+			"text": "set a timer for five minutes",
+			"route": "skill",
+			"tool": "set_timer",
+			"requiredArgs": ["seconds"]
+		},
+		{ "text": "how are you doing today", "route": "chat" },
+		{ "text": "tell me a short joke", "route": "chat" },
+		{
+			"text": "what do you think about long walks in the evening",
+			"route": "chat"
+		},
+		{ "text": "thanks, that's all for now", "route": "chat" },
+		{ "text": "who wrote romeo and juliet", "route": "chat" }
+	]
+}

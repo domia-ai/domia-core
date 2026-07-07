@@ -129,6 +129,12 @@ export type StreamMetaType = {
 	aborted?: () => boolean
 }
 
+export type TurnSessionContextType = {
+	session: SttFlowSessionType
+	scope: TurnScopeType | null
+	turnSignal: AbortSignal | undefined
+}
+
 export type TurnScopeType = {
 	domiaId: string
 	interactionId: string
@@ -275,7 +281,10 @@ export type FastIntentContextType = {
 
 export type FastIntentType = {
 	name: string
-	match: (text: string) => Record<string, unknown> | null
+	match: (
+		text: string,
+		ctx: FastIntentContextType,
+	) => Record<string, unknown> | null
 	handle: (
 		params: Record<string, unknown>,
 		ctx: FastIntentContextType,
@@ -362,6 +371,19 @@ export type InteractionCompletionResultType = {
 	interrupted: boolean
 }
 
+export type PartialResultType = {
+	transcript: string
+	reply: string
+	ttsFilePath?: string
+	audioUrl?: string
+}
+
+export type CompletionHandleType = {
+	resolve: (result: InteractionCompletionResultType) => void
+	reject: (err: Error) => void
+	timeout: ReturnType<typeof setTimeout>
+}
+
 export type InteractionRuntimeType = {
 	interactionId: string
 	originDomiaKey?: string
@@ -431,6 +453,9 @@ export type PlaybackOutcomeType = {
 export type MemoryBundleType = {
 	recentTurns: RecentTurnType[]
 	knownFacts: string[]
+	knowledgeBase: string[]
+	previously: string[]
+	userModel: string | null
 	userMoodTrend: string[]
 }
 
@@ -446,6 +471,9 @@ export type SttFlowSessionType = {
 	recentTurns: RecentTurnType[]
 	knownFacts: string[]
 	userMoodTrend: string[]
+	knowledgeBase: string[]
+	previously: string[]
+	userModel: string | null
 }
 
 export type LlmFlowSessionType = {
@@ -461,4 +489,9 @@ export type LlmFlowSessionType = {
 export type ExtractedEmotionTagsType = {
 	tags: string[]
 	clean: string
+}
+
+export type SentenceEmotionTagsType = {
+	applyTags: string[]
+	carryTags: string[]
 }

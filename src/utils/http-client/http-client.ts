@@ -1,14 +1,31 @@
-const DEFAULT_TIMEOUT_MS = 15_000
-const DEFAULT_RETRY_DELAY_MS = 250
-const DEFAULT_RETRYABLE_PATTERN =
-	/ECONNREFUSED|ECONNRESET|ETIMEDOUT|fetch failed|HTTP 50[234]/i
+import {
+	DEFAULT_TIMEOUT_MS,
+	DEFAULT_RETRY_DELAY_MS,
+	MAX_RETRY_AFTER_MS,
+	DEFAULT_RETRYABLE_PATTERN,
+} from "./constants"
+import type { FetchWithRetryOptions } from "./types"
 
-export type FetchWithRetryOptions = {
-	timeoutMs?: number
-	retries?: number
-	retryDelayMs?: number
-	isRetryable?: (err: unknown) => boolean
-	onRetry?: (err: unknown, attempt: number) => void
+class HttpRetryError extends Error {
+	constructor(
+		message: string,
+		public readonly retryAfterMs: number | null,
+	) {
+		super(message)
+		this.name = "HttpRetryError"
+	}
+}
+
+const parseRetryAfterMs = (res: Response): number | null => {
+	const header = res.headers.get("retry-after")
+	if (!header) return null
+	const seconds = Number(header)
+	if (Number.isFinite(seconds))
+		return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, seconds * 1000))
+	const date = Date.parse(header)
+	if (Number.isFinite(date))
+		return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, date - Date.now()))
+	return null
 }
 
 export const fetchWithTimeout = async (
@@ -47,15 +64,19 @@ export const fetchWithRetry = async (
 	for (let attempt = 0; attempt <= retries; attempt++) {
 		try {
 			const res = await fetchWithTimeout(url, init, timeoutMs)
-			if (res.status >= 500 && res.status !== 501) {
-				throw new Error(`HTTP ${res.status}`)
+			if (res.status === 429 || (res.status >= 500 && res.status !== 501)) {
+				throw new HttpRetryError(`HTTP ${res.status}`, parseRetryAfterMs(res))
 			}
 			return res
 		} catch (err) {
 			lastErr = err
 			if (attempt >= retries || !isRetryable(err)) throw err
 			onRetry?.(err, attempt + 1)
-			await new Promise((r) => setTimeout(r, retryDelayMs))
+			const delay =
+				err instanceof HttpRetryError && err.retryAfterMs !== null
+					? err.retryAfterMs
+					: retryDelayMs
+			await new Promise((r) => setTimeout(r, delay))
 		}
 	}
 	throw lastErr

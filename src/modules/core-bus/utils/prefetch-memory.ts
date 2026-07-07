@@ -1,7 +1,16 @@
 import type { DomiaType } from "@/modules/core"
-import { getRecentTurns, getRecentUserMoods } from "@/modules/session-manager"
-import { getFactStrings } from "@/modules/memory"
-import type { RecentTurnType } from "@/modules/prompt-context-builder"
+import {
+	getRecentTurns,
+	getRecentUserMoods,
+	getRecentTurnsAndMoods,
+} from "@/modules/session-manager"
+import {
+	getFactStrings,
+	getKnowledgeStrings,
+	getPreviouslyStrings,
+	getUserModelSummary,
+} from "@/modules/memory"
+import type { RecentTurnsAndMoodsType } from "@/modules/session-manager"
 import type { MemoryBundleType } from "../types"
 
 const PREFETCH_TTL_MS = 60_000
@@ -15,18 +24,45 @@ const loadMemoryBundle = async (
 	domia: DomiaType,
 	interactionId: string,
 ): Promise<MemoryBundleType> => {
-	const [recentTurns, knownFacts, userMoodTrend] = await Promise.all([
-		domia.moduleSettings?.memoryEngine !== false
-			? (getRecentTurns(domia, interactionId) as Promise<RecentTurnType[]>)
-			: Promise.resolve([] as RecentTurnType[]),
+	const memoryOn = domia.moduleSettings?.memoryEngine !== false
+	const emotionOn = domia.moduleSettings?.emotionEngine !== false
+	const turnsAndMoods: Promise<RecentTurnsAndMoodsType> =
+		memoryOn && emotionOn
+			? getRecentTurnsAndMoods(domia, interactionId)
+			: memoryOn
+				? getRecentTurns(domia, interactionId).then((recentTurns) => ({
+						recentTurns,
+						userMoodTrend: [],
+					}))
+				: emotionOn
+					? getRecentUserMoods(domia).then((userMoodTrend) => ({
+							recentTurns: [],
+							userMoodTrend,
+						}))
+					: Promise.resolve({ recentTurns: [], userMoodTrend: [] })
+	const [
+		{ recentTurns, userMoodTrend },
+		knownFacts,
+		knowledgeBase,
+		previously,
+		userModel,
+	] = await Promise.all([
+		turnsAndMoods,
 		domia.moduleSettings?.factRecall !== false
 			? getFactStrings(domia)
 			: Promise.resolve([] as string[]),
-		domia.moduleSettings?.emotionEngine !== false
-			? getRecentUserMoods(domia)
-			: Promise.resolve([] as string[]),
+		getKnowledgeStrings(domia),
+		memoryOn ? getPreviouslyStrings(domia) : Promise.resolve([] as string[]),
+		memoryOn ? getUserModelSummary(domia) : Promise.resolve(null),
 	])
-	return { recentTurns, knownFacts, userMoodTrend }
+	return {
+		recentTurns,
+		knownFacts,
+		knowledgeBase,
+		previously,
+		userModel,
+		userMoodTrend,
+	}
 }
 
 const evictExpired = (now: number): void => {
