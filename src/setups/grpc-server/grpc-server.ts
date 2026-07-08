@@ -1,7 +1,7 @@
-import { createServer, type Server } from "nice-grpc"
+import { createServer, ServerError, Status, type Server } from "nice-grpc"
 
 import { env } from "@/config"
-import { grpcServerLogger, setTraceContext } from "@/utils"
+import { grpcServerLogger, setTraceContext, isValidMeshBearer } from "@/utils"
 import { resolveLiveDomia, resolveLiveIdentity } from "@/setups/live-domia"
 import { safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import { speak as speakOnDomia } from "@/modules/core-bus"
@@ -571,7 +571,12 @@ export const setupGrpcServer = async ({
 		return
 	}
 
-	server = createServer()
+	server = createServer().use(async function* (call, context) {
+		if (!isValidMeshBearer(context.metadata.get("authorization"))) {
+			throw new ServerError(Status.UNAUTHENTICATED, "invalid mesh token")
+		}
+		return yield* call.next(call.request, context)
+	})
 	const implementation = buildImplementation({ domia, capabilities })
 	server.add(DomiaNodeDefinition, implementation)
 	setLocalService(implementation)

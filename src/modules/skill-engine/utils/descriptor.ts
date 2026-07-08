@@ -3,6 +3,11 @@ import {
 	type DomiaSkillDescriptorType,
 	type SkillDescriptorLocaleType,
 	type ToolFinalizeMapType,
+	DEFAULT_SKILL_RETRY_MAX_ATTEMPTS,
+	DEFAULT_SKILL_RETRY_BACKOFF_MS,
+	DEFAULT_SKILL_BREAKER_THRESHOLD,
+	DEFAULT_SKILL_BREAKER_COOLDOWN_MS,
+	DEFAULT_SKILL_IDEMPOTENT_WITHIN_TURN,
 } from "@/db"
 import { skillEngineLogger } from "@/utils"
 import { domiaSkillDescriptorSchema } from "../schemas"
@@ -96,6 +101,28 @@ export const resolveDescriptor = (
 			dExec?.genericWords,
 			locale?.genericWords,
 		),
+		resilience: {
+			retryMaxAttempts:
+				dExec?.resilience?.retryMaxAttempts ??
+				fExec?.resilience?.retryMaxAttempts ??
+				DEFAULT_SKILL_RETRY_MAX_ATTEMPTS,
+			retryBackoffMs:
+				dExec?.resilience?.retryBackoffMs ??
+				fExec?.resilience?.retryBackoffMs ??
+				DEFAULT_SKILL_RETRY_BACKOFF_MS,
+			breakerThreshold:
+				dExec?.resilience?.breakerThreshold ??
+				fExec?.resilience?.breakerThreshold ??
+				DEFAULT_SKILL_BREAKER_THRESHOLD,
+			breakerCooldownMs:
+				dExec?.resilience?.breakerCooldownMs ??
+				fExec?.resilience?.breakerCooldownMs ??
+				DEFAULT_SKILL_BREAKER_COOLDOWN_MS,
+			idempotentWithinTurn:
+				dExec?.resilience?.idempotentWithinTurn ??
+				fExec?.resilience?.idempotentWithinTurn ??
+				DEFAULT_SKILL_IDEMPOTENT_WITHIN_TURN,
+		},
 	}
 	cache.set(cacheKey, resolved)
 	return resolved

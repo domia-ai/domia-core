@@ -5,14 +5,20 @@
 		"language": "es",
 		"runs": 3,
 		"passRatio": 0.51,
+		"isolate": "facts",
 		"turns": [
 			{
 				"text": "me llamo Kevin, recuérdalo por favor",
-				"expect": { "routed": "chat" }
+				"expect": {
+					"routed": "chat"
+				}
 			},
 			{
 				"text": "¿cómo me llamo?",
-				"expect": { "routed": "chat", "replyIncludes": ["Kevin"] }
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["Kevin"]
+				}
 			}
 		]
 	}

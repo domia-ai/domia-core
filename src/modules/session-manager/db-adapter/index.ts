@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, asc } from "drizzle-orm"
+import { eq, desc, and, gte, gt, or, asc } from "drizzle-orm"
 
 import {
 	dbClient,
@@ -33,13 +33,17 @@ const dbAdapter = {
 	getTurnEventsSince: (
 		domiaId: string,
 		since: string,
+		sinceId: string,
 		limit: number,
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client.query.turnEvent.findMany({
 			where: and(
 				eq(turnEvent.domiaId, domiaId),
-				gte(turnEvent.createdAt, since),
+				or(
+					gt(turnEvent.createdAt, since),
+					and(eq(turnEvent.createdAt, since), gt(turnEvent.id, sinceId)),
+				),
 			),
 			orderBy: [asc(turnEvent.createdAt), asc(turnEvent.id)],
 			limit,
@@ -80,6 +84,12 @@ const dbAdapter = {
 			where: eq(interactionTrace.domiaId, domiaId),
 			orderBy: desc(interactionTrace.updatedAt),
 			columns: { updatedAt: true },
+		}),
+	getLastTurnEventAt: (domiaId: string, client: DBClientOrTxType = dbClient) =>
+		client.query.turnEvent.findFirst({
+			where: eq(turnEvent.domiaId, domiaId),
+			orderBy: desc(turnEvent.createdAt),
+			columns: { createdAt: true },
 		}),
 	getRecentInteractionsForDomia: (
 		domiaId: string,

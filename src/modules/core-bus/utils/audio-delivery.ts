@@ -9,10 +9,36 @@ import { deliverEvent } from "@/modules/grpc-client"
 import { reflectOnInteraction } from "@/modules/reflection"
 import { pipelineElapsed, updateInteraction } from "@/modules/session-manager"
 import { downloadAudioToTemp } from "./audio"
-import { notifyAudioFallback, notifyInteractionFailed } from "./helpers"
+import {
+	notifyAudioFallback,
+	notifyInteractionFailed,
+	notifyTurnAborted,
+} from "./helpers"
 import { heardReplyOf } from "./fallback-messages"
 import { isTurnAborted } from "./turn-scope"
-import type { CoreBusContextType, TtsDonePayloadType } from "../types"
+import type {
+	CoreBusContextType,
+	TtsDonePayloadType,
+	DeliverySinkType,
+	InteractionAudioDeliveryType,
+} from "../types"
+
+export const resolveDeliverySink = (
+	audioDelivery: InteractionAudioDeliveryType | undefined,
+	canPlayback: boolean,
+): DeliverySinkType => {
+	if (
+		audioDelivery === "streaming-sink" ||
+		audioDelivery === "audio-url" ||
+		audioDelivery === "none"
+	) {
+		return { terminalAt: "dispatch" }
+	}
+	return {
+		terminalAt: "playback",
+		deliver: canPlayback ? deliverLocalPlayback : deliverDelegatedPlayback,
+	}
+}
 
 export const deliverLocalPlayback = async (
 	ctx: CoreBusContextType,
@@ -49,6 +75,7 @@ export const deliverLocalPlayback = async (
 			"🛑 TTS_DONE: turn aborted before playback — skipping stale reply",
 			{ domiaId, interactionId },
 		)
+		await notifyTurnAborted(domiaId, interactionId, originDomiaKey, reply)
 		return
 	}
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {

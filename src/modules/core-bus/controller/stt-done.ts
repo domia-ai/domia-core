@@ -10,6 +10,7 @@ import {
 	isSemaphoreBusyError,
 	setTraceContext,
 	toError,
+	languageSetsFor,
 } from "@/utils"
 import {
 	AsyncQueue,
@@ -43,9 +44,12 @@ import {
 	isRecordingInProgress,
 	resolveFastIntent,
 	getInteractionRuntime,
+	setInteractionTarget,
+	stage,
 	buildTurnSession,
 	skillsEnabled,
 	shortlistedToolsOf,
+	claimTurnCompleted,
 } from "../utils"
 import { applyExpressedEmotionTags } from "@/modules/emotion-engine"
 import {
@@ -58,11 +62,12 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	INTERACTION_STATUS_ENUM,
 	RESPONSE_TYPE_ENUM,
+	SKILL_TOOL_NAME_SEPARATOR,
 	type SkillToolType,
 	type ToolTraceEntryType,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
-import { personaContextFromDomia } from "@/modules/prompt-context-builder"
+import { buildDelegationPersona } from "@/modules/prompt-context-builder"
 import { reflectOnInteraction } from "@/modules/reflection"
 import { playFeedbackSound } from "@/modules/feedback-sounds"
 import { admitVoiceReply } from "@/modules/voice-admission"
@@ -74,12 +79,24 @@ import {
 } from "@/modules/llm-engine"
 import {
 	runAgentTurn,
+	peekPendingConfirmation,
+	takePendingConfirmation,
+	markConfirmationReasked,
+	confirmationScope,
+	isAffirmative,
+	isNegative,
 	type AgentInferenceType,
 	type AgentStreamInferenceType,
 	type AgentResultType,
 } from "@/modules/agent"
+import { deliverReply } from "./llm-done"
 import { classifyNeedsSkill } from "@/modules/intent-router"
-import { buildToolManifest } from "@/modules/skill-engine"
+import {
+	buildToolManifest,
+	callTool,
+	resolveToolFinalize,
+	renderFinalizeText,
+} from "@/modules/skill-engine"
 import { hasActivePlayback } from "@/modules/audio-playback"
 import {
 	ttsAdapterToPcmChunks,
@@ -105,12 +122,17 @@ const numOrUndef = (v: unknown): number | undefined =>
 
 const persistTurnComplete = async (
 	payload: Parameters<typeof updateInteraction>[0],
+	emitCompletion = true,
 ): Promise<Awaited<ReturnType<typeof updateInteraction>>> => {
-	const result = await updateInteraction(payload)
 	const p = payload as Record<string, unknown>
+	const earlyId = typeof p.id === "string" ? p.id : ""
+	// claim BEFORE the await: playback-finished races this write on the streaming path
+	const claimed =
+		emitCompletion && earlyId ? claimTurnCompleted(earlyId) : false
+	const result = await updateInteraction(payload)
+	if (!emitCompletion) return result
 	const ctx = getTraceContext()
-	const interactionId =
-		typeof p.id === "string" ? p.id : (ctx?.interactionId ?? "")
+	const interactionId = earlyId || (ctx?.interactionId ?? "")
 	if (interactionId) {
 		if (numOrUndef(p.llmMs) !== undefined) {
 			emitTurnEvent({
@@ -126,21 +148,23 @@ const persistTurnComplete = async (
 					typeof p.llmFinishReason === "string" ? p.llmFinishReason : undefined,
 			})
 		}
-		emitTurnEvent({
-			type: DOMIA_TURN_EVENT_ENUM.TURN_COMPLETED,
-			interactionId,
-			originDomiaKey: ctx?.originDomiaKey ?? "",
-			traceId: ctx?.traceId,
-			status: typeof p.status === "string" ? p.status : "ok",
-			ttfaMs: numOrUndef(p.ttfaMs),
-			perceivedTtfaMs: numOrUndef(p.perceivedTtfaMs),
-			llmQueueMs: numOrUndef(p.llmQueueMs),
-			llmFirstSentenceMs: numOrUndef(p.llmFirstSentenceMs),
-			ttsFirstChunkMs: numOrUndef(p.ttsFirstChunkMs),
-			llmMs: numOrUndef(p.llmMs),
-			ttsMs: numOrUndef(p.ttsMs),
-			totalMs: numOrUndef(p.totalMs),
-		})
+		if (claimed) {
+			emitTurnEvent({
+				type: DOMIA_TURN_EVENT_ENUM.TURN_COMPLETED,
+				interactionId,
+				originDomiaKey: ctx?.originDomiaKey ?? "",
+				traceId: ctx?.traceId,
+				status: typeof p.status === "string" ? p.status : "ok",
+				ttfaMs: numOrUndef(p.ttfaMs),
+				perceivedTtfaMs: numOrUndef(p.perceivedTtfaMs),
+				llmQueueMs: numOrUndef(p.llmQueueMs),
+				llmFirstSentenceMs: numOrUndef(p.llmFirstSentenceMs),
+				ttsFirstChunkMs: numOrUndef(p.ttsFirstChunkMs),
+				llmMs: numOrUndef(p.llmMs),
+				ttsMs: numOrUndef(p.ttsMs),
+				totalMs: numOrUndef(p.totalMs),
+			})
+		}
 	}
 	return result
 }
@@ -492,7 +516,10 @@ const tryLocalFullStreamVoice = async (
 	const { features, domia } = ctx
 	const { llm, tts, canSentencePipeline } = features
 	const pipelineForSink = getStreamingSink(session.interactionId) !== undefined
+	const delivery = getInteractionRuntime(session.interactionId)?.delivery
+		.audioDelivery
 	if (
+		delivery === "none" ||
 		!session.isVoice ||
 		(!canSentencePipeline && !pipelineForSink) ||
 		!llm ||
@@ -544,20 +571,23 @@ const runLocalSyncLlm = async (
 		return
 	}
 
-	await persistTurnComplete({
-		id: session.interactionId,
-		llmPrompt: session.promptContext,
-		llmResponse: reply,
-		llmExecutorKey: ctx.domia.domiaKey,
-		llmMs: llmElapsed,
-		...usageCols(takeLlmUsage(session.interactionId)),
-		...resourceCols(ctx.domia),
-		llmQueueMs: takeReplyQueueWait(session.interactionId),
-		llmModelUsed: ctx.domia.llmModelConfig?.modelName ?? null,
-		totalMs: pipelineElapsed(session.interactionId),
-	})
+	await persistTurnComplete(
+		{
+			id: session.interactionId,
+			llmPrompt: session.promptContext,
+			llmResponse: reply,
+			llmExecutorKey: ctx.domia.domiaKey,
+			llmMs: llmElapsed,
+			...usageCols(takeLlmUsage(session.interactionId)),
+			...resourceCols(ctx.domia),
+			llmQueueMs: takeReplyQueueWait(session.interactionId),
+			llmModelUsed: ctx.domia.llmModelConfig?.modelName ?? null,
+			totalMs: pipelineElapsed(session.interactionId),
+		},
+		!session.isVoice,
+	)
 
-	publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+	void deliverReply(ctx, {
 		reply,
 		transcript: session.transcript,
 		interactionId: session.interactionId,
@@ -565,6 +595,20 @@ const runLocalSyncLlm = async (
 		responseType: session.responseType,
 		speechEndAt: session.speechEndAt,
 		liveVoice: session.liveVoice,
+	}).catch((err) => {
+		domiaBusLogger.error("runLocalSyncLlm deliverReply failed", {
+			domiaId: ctx.domia.id,
+			interactionId: session.interactionId,
+			err,
+		})
+		notifyInteractionFailed(ctx, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			responseType: session.responseType,
+			error: toError(err),
+			step: "delivery",
+			liveVoice: session.liveVoice,
+		})
 	})
 	if (!session.isVoice) {
 		await updateInteraction({ id: session.interactionId, heardReply: reply })
@@ -632,18 +676,31 @@ const tryAgentTurn = async (
 ): Promise<boolean> => {
 	const { domia } = ctx
 	const startTime = Date.now()
+	const envelope = getInteractionRuntime(session.interactionId)?.envelope
+	const confirmationChannel = envelope?.satelliteId ?? envelope?.source
 	let result: AgentResultType
 	try {
-		result = await runAgentTurn(domia, session.transcript, tools, inference, {
-			voice: session.isVoice,
-			streamFinalize,
-			allowAsyncTools: session.isVoice && session.liveVoice === true,
-			signal,
-			onSlowTool:
-				session.isVoice && session.liveVoice
-					? () => playFeedbackSound(domia, "thinking")
-					: undefined,
-		})
+		result = await stage(
+			{
+				interactionId: session.interactionId,
+				originDomiaKey: session.originDomiaKey ?? domia.domiaKey,
+				satelliteId: envelope?.satelliteId,
+				traceId: getTraceContext()?.traceId,
+			},
+			"skills",
+			() =>
+				runAgentTurn(domia, session.transcript, tools, inference, {
+					voice: session.isVoice,
+					streamFinalize,
+					allowAsyncTools: session.isVoice && session.liveVoice === true,
+					signal,
+					confirmationChannel,
+					onSlowTool:
+						session.isVoice && session.liveVoice
+							? () => playFeedbackSound(domia, "thinking")
+							: undefined,
+				}),
+		)
 	} catch (err) {
 		domiaBusLogger.warn("agent turn failed — falling through to normal LLM", {
 			domiaId: domia.id,
@@ -757,25 +814,28 @@ const tryAgentTurn = async (
 	const reply = finalizeExpressedEmotion(domia, agentReply)
 	const llmElapsed = Date.now() - startTime
 
-	await persistTurnComplete({
-		id: session.interactionId,
-		llmPrompt: session.promptContext,
-		llmResponse: reply,
-		llmExecutorKey: executor.key,
-		llmMs: result.finalizeMs ?? llmElapsed,
-		llmModelUsed: executor.model,
-		skillProviderUsed: result.serversUsed.join(",") || null,
-		skillPrompt: result.skillPrompt,
-		skillResponse: withAgentSummary(result),
-		...agentTimingCols(result),
-		...toolCols(result),
-		...usageCols(takeLlmUsage(session.interactionId)),
-		...resourceCols(domia),
-		llmQueueMs: takeReplyQueueWait(session.interactionId),
-		totalMs: pipelineElapsed(session.interactionId),
-	})
+	await persistTurnComplete(
+		{
+			id: session.interactionId,
+			llmPrompt: session.promptContext,
+			llmResponse: reply,
+			llmExecutorKey: executor.key,
+			llmMs: result.finalizeMs ?? llmElapsed,
+			llmModelUsed: executor.model,
+			skillProviderUsed: result.serversUsed.join(",") || null,
+			skillPrompt: result.skillPrompt,
+			skillResponse: withAgentSummary(result),
+			...agentTimingCols(result),
+			...toolCols(result),
+			...usageCols(takeLlmUsage(session.interactionId)),
+			...resourceCols(domia),
+			llmQueueMs: takeReplyQueueWait(session.interactionId),
+			totalMs: pipelineElapsed(session.interactionId),
+		},
+		!session.isVoice,
+	)
 
-	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+	void deliverReply(ctx, {
 		reply,
 		transcript: session.transcript,
 		interactionId: session.interactionId,
@@ -783,6 +843,20 @@ const tryAgentTurn = async (
 		responseType: session.responseType,
 		speechEndAt: session.speechEndAt,
 		liveVoice: session.liveVoice,
+	}).catch((err) => {
+		domiaBusLogger.error("agent turn deliverReply failed", {
+			domiaId: domia.id,
+			interactionId: session.interactionId,
+			err,
+		})
+		notifyInteractionFailed(ctx, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			responseType: session.responseType,
+			error: toError(err),
+			step: "delivery",
+			liveVoice: session.liveVoice,
+		})
 	})
 
 	if (!session.isVoice) {
@@ -943,14 +1017,7 @@ const tryDelegatedReplyAudio = async (
 			originDomiaKey: session.originDomiaKey,
 			interactionId: session.interactionId,
 			responseType: session.responseType,
-			personaContextJson: JSON.stringify(
-				personaContextFromDomia(
-					domia,
-					session.recentTurns,
-					session.knownFacts,
-					session.userMoodTrend,
-				),
-			),
+			persona: buildDelegationPersona(domia, session),
 		},
 	)
 
@@ -1091,17 +1158,7 @@ const runDelegatedStreamLlm = async (
 		originDomiaKey: session.originDomiaKey,
 		interactionId: session.interactionId,
 		responseType: session.responseType,
-		personaContextJson: JSON.stringify(
-			personaContextFromDomia(
-				domia,
-				session.recentTurns,
-				session.knownFacts,
-				session.userMoodTrend,
-				session.knowledgeBase,
-				session.previously,
-				session.userModel,
-			),
-		),
+		persona: buildDelegationPersona(domia, session),
 	})
 
 	if (!streamed.delivered || !streamed.tokens) {
@@ -1130,7 +1187,7 @@ const runDelegatedStreamLlm = async (
 		llmResponse: reply,
 		llmExecutorKey: streamed.target?.domiaKey,
 	})
-	publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+	void deliverReply(ctx, {
 		reply,
 		transcript: session.transcript,
 		interactionId: session.interactionId,
@@ -1138,6 +1195,20 @@ const runDelegatedStreamLlm = async (
 		responseType: session.responseType,
 		speechEndAt: session.speechEndAt,
 		liveVoice: session.liveVoice,
+	}).catch((err) => {
+		domiaBusLogger.error("runDelegatedStreamLlm deliverReply failed", {
+			domiaId: domia.id,
+			interactionId: session.interactionId,
+			err,
+		})
+		notifyInteractionFailed(ctx, {
+			interactionId: session.interactionId,
+			originDomiaKey: session.originDomiaKey,
+			responseType: session.responseType,
+			error: toError(err),
+			step: "delivery",
+			liveVoice: session.liveVoice,
+		})
 	})
 }
 
@@ -1235,12 +1306,117 @@ const handleSttDoneFlow = async (
 	}
 
 	if (originDomiaKey) {
+		const envelope = getInteractionRuntime(interactionId)?.envelope
+		const confirmScope = confirmationScope(
+			domia.domiaKey,
+			envelope?.satelliteId ?? envelope?.source,
+		)
+		const pending = peekPendingConfirmation(confirmScope)
+		if (pending) {
+			const phrases = languageSetsFor(pending.language).phrases
+			const replyConfirm = (reply: string): void =>
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+					reply,
+					transcript,
+					interactionId,
+					originDomiaKey,
+					responseType: payload.responseType,
+					speechEndAt: payload.speechEndAt,
+					liveVoice: payload.liveVoice,
+				})
+			const affirmative = isAffirmative(transcript, pending.language)
+			const negative = isNegative(transcript, pending.language)
+			const taken =
+				affirmative !== negative ? takePendingConfirmation(confirmScope) : null
+			if (taken && affirmative) {
+				emitTurnEvent({
+					type: DOMIA_TURN_EVENT_ENUM.TOOL_REQUESTED,
+					interactionId,
+					originDomiaKey,
+					traceId: getTraceContext()?.traceId,
+					toolName: taken.tool,
+				})
+				let reply: string
+				let trace: Extract<ToolTraceEntryType, { kind: "result" }>
+				const toolStart = Date.now()
+				try {
+					const res = await callTool(domia.id, taken.tool, taken.args)
+					const ok = res.status === "ok" && !res.isError
+					const rule = resolveToolFinalize(domia.id, taken.tool)
+					const template = ok ? rule?.done : rule?.error
+					const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
+					reply = template
+						? (renderFinalizeText(template, taken.args, res.resolvedArgs) ??
+							fallback)
+						: fallback
+					trace = {
+						kind: "result",
+						tool: taken.tool,
+						status: ok ? "ok" : "failed",
+						durationMs: Date.now() - toolStart,
+						summaryForLlm: res.text,
+						args: taken.args,
+						resolvedArgs: res.resolvedArgs,
+					}
+				} catch (err) {
+					domiaBusLogger.warn("confirmed action failed", {
+						domiaId,
+						interactionId,
+						err,
+					})
+					reply = phrases.cantDoThat ?? "I couldn't do that."
+					trace = {
+						kind: "result",
+						tool: taken.tool,
+						status: "failed",
+						durationMs: Date.now() - toolStart,
+						summaryForLlm: String(err),
+						args: taken.args,
+					}
+				}
+				emitTurnEvent({
+					type: DOMIA_TURN_EVENT_ENUM.TOOL_RESULT,
+					interactionId,
+					originDomiaKey,
+					traceId: getTraceContext()?.traceId,
+					toolName: taken.tool,
+					status: trace.status,
+					toolMs: Date.now() - toolStart,
+				})
+				void updateInteraction({
+					id: interactionId,
+					skillProviderUsed:
+						taken.tool.split(SKILL_TOOL_NAME_SEPARATOR)[0] ?? null,
+					skillResponse: [trace],
+					toolCallCount: 1,
+				})
+				replyConfirm(reply)
+				return
+			}
+			if (taken && negative) {
+				replyConfirm(phrases.cancelledAction ?? "Okay, I won't do that.")
+				return
+			}
+			if (!taken && affirmative === negative && !pending.reasked) {
+				markConfirmationReasked(confirmScope)
+				replyConfirm(
+					phrases.confirmReask ??
+						phrases.confirmAction ??
+						"Please answer yes or no.",
+				)
+				return
+			}
+			if (affirmative === negative) takePendingConfirmation(confirmScope)
+		}
+	}
+
+	if (originDomiaKey) {
 		const runtime = getInteractionRuntime(interactionId)
 		const fast = resolveFastIntent(transcript, {
 			domia,
 			interactionId,
 			originDomiaKey,
-			satelliteId: runtime?.satelliteId,
+			satelliteId: runtime?.envelope.satelliteId,
 			transcript,
 		})
 		if (fast) {
@@ -1261,12 +1437,15 @@ const handleSttDoneFlow = async (
 		}
 	}
 
-	const { session, scope, turnSignal } = await buildTurnSession(
-		domia,
-		payload,
+	const stageEnv = {
 		interactionId,
-		transcript,
-		domiaId,
+		originDomiaKey: originDomiaKey ?? domia.domiaKey,
+		satelliteId: getInteractionRuntime(interactionId)?.envelope.satelliteId,
+		traceId: getTraceContext()?.traceId,
+	}
+
+	const { session, scope, turnSignal } = await stage(stageEnv, "context", () =>
+		buildTurnSession(domia, payload, interactionId, transcript, domiaId),
 	)
 
 	try {
@@ -1370,6 +1549,8 @@ const handleSttDoneFlow = async (
 			})
 			return
 		}
+
+		setInteractionTarget(interactionId, targets[0].domiaKey)
 
 		if (await attemptDelegatedSkillsRoute(ctx, session, targets, turnSignal))
 			return

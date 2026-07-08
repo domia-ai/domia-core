@@ -1,17 +1,17 @@
 [
 	{
 		"name": "turn on the kitchen light",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "en",
 		"runs": 2,
 		"passRatio": 0.5,
+		"mode": "advisory",
 		"turns": [
 			{
 				"text": "turn on the kitchen light",
 				"expect": {
 					"routed": "skill",
-					"tool": "HassTurnOn",
-					"argMatchers": { "name": "kitchen|cocina" },
+					"tool": ["HassTurnOn", "HassLightSet"],
 					"expectEvents": {
 						"present": [
 							"turn.started",
@@ -22,74 +22,79 @@
 						],
 						"toolResultStatus": "ok",
 						"seqOrdered": true
-					}
+					},
+					"anyArgMatches": "kitchen|cocina"
 				}
 			}
 		]
 	},
 	{
 		"name": "turn off the living room light",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "en",
 		"runs": 2,
 		"passRatio": 0.5,
+		"mode": "advisory",
 		"turns": [
 			{
 				"text": "turn off the living room light",
 				"expect": {
 					"routed": "skill",
 					"tool": "HassTurnOff",
-					"argMatchers": { "name": "living|sala" }
+					"anyArgMatches": "living|sala"
 				}
 			}
 		]
 	},
 	{
 		"name": "dim the bedroom light",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "en",
 		"runs": 3,
 		"passRatio": 0.34,
+		"mode": "advisory",
 		"turns": [
 			{
 				"text": "dim the bedroom light a bit",
 				"expect": {
 					"routed": "skill",
 					"notTools": ["HassTurnOff"],
-					"argMatchers": { "name": "bedroom|dormitorio" }
+					"anyArgMatches": "bedroom|dormitorio"
 				}
 			}
 		]
 	},
 	{
 		"name": "set the thermostat",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "en",
 		"runs": 3,
 		"passRatio": 0.34,
+		"mode": "advisory",
 		"turns": [
 			{
 				"text": "set the thermostat to 22 degrees",
 				"expect": {
 					"routed": "skill",
-					"argMatchers": { "name": "thermostat|termostato|calefacc" }
+					"anyArgMatches": "thermostat|termostato|calefacc"
 				}
 			}
 		]
 	},
 	{
 		"name": "turn on la luz de la cocina (mixed)",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "en",
 		"runs": 2,
 		"passRatio": 0.5,
+		"mode": "advisory",
 		"turns": [
 			{
 				"text": "turn on la luz de la cocina",
 				"expect": {
 					"routed": "skill",
-					"tool": "HassTurnOn",
-					"argMatchers": { "name": "cocina|kitchen" }
+					"tool": ["HassTurnOn", "HassLightSet"],
+					"anyArgMatches": "cocina|kitchen"
 				}
 			}
 		]

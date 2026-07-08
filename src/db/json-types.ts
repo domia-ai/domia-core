@@ -31,12 +31,23 @@ export type SkillDescriptorRoutingType = {
 	keywords?: string[]
 }
 
+export type SkillResilienceConfigType = {
+	retryMaxAttempts?: number
+	retryBackoffMs?: number
+	breakerThreshold?: number
+	breakerCooldownMs?: number
+	idempotentWithinTurn?: boolean
+}
+
+export type ToolPolicyType = "allow" | "block" | "confirm"
+
 export type SkillDescriptorExecutionType = {
 	coreTools?: string[]
-	toolPolicy?: Record<string, "allow" | "block">
+	toolPolicy?: Record<string, ToolPolicyType>
 	paramAllow?: Record<string, string[]>
 	finalize?: ToolFinalizeMapType
 	genericWords?: string[]
+	resilience?: SkillResilienceConfigType
 }
 
 export type SkillDescriptorLocaleType = SkillDescriptorRoutingType & {

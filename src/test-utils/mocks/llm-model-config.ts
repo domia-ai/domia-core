@@ -18,6 +18,8 @@ import {
 	DEFAULT_EMBED_BACKEND,
 	DEFAULT_EMBED_MODEL_PATH,
 	DEFAULT_AGENT_ACK_AFTER_MS,
+	DEFAULT_AGENT_BUDGET_MS,
+	DEFAULT_CONFIRMATION_TTL_MS,
 } from "@/db/constants"
 import { type SelectLlmModelConfigType } from "@/db"
 
@@ -49,6 +51,8 @@ export const baseLlmModelConfig = (
 		descriptorRoutingEnabled: false,
 		toolModelName: null,
 		agentMaxSteps: 5,
+		agentBudgetMs: DEFAULT_AGENT_BUDGET_MS,
+		confirmationTtlMs: DEFAULT_CONFIRMATION_TTL_MS,
 		agentAckAfterMs: DEFAULT_AGENT_ACK_AFTER_MS,
 		toolShortlistMax: 8,
 		matcherEngine: DEFAULT_MATCHER_ENGINE,

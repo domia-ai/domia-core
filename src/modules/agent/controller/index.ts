@@ -1,5 +1,7 @@
 import {
 	DEFAULT_AGENT_MAX_STEPS,
+	DEFAULT_AGENT_BUDGET_MS,
+	DEFAULT_CONFIRMATION_TTL_MS,
 	DEFAULT_SLOW_TOOL_AFTER_MS,
 	DEFAULT_AGENT_ACK_AFTER_MS,
 	SKILL_TOOL_NAME_SEPARATOR,
@@ -26,8 +28,11 @@ import {
 	callTool,
 	resolveToolFinalize,
 	renderFinalizeText,
+	getToolPolicy,
+	getProviderResilience,
 	type SkillCallResultType,
 } from "@/modules/skill-engine"
+import { parkConfirmation, confirmationScope } from "../utils"
 import { buildPromptContext } from "@/modules/prompt-context-builder"
 import { agentLogger } from "@/utils"
 
@@ -233,6 +238,25 @@ export const runAgentTurn = async (
 	let finalizeMs = 0
 	const maxSteps =
 		domia.llmModelConfig?.agentMaxSteps ?? DEFAULT_AGENT_MAX_STEPS
+	const budgetMs =
+		opts?.budgetMs ??
+		domia.llmModelConfig?.agentBudgetMs ??
+		DEFAULT_AGENT_BUDGET_MS
+	const budgetSignals: AbortSignal[] = []
+	if (opts?.signal) budgetSignals.push(opts.signal)
+	if (budgetMs > 0) budgetSignals.push(AbortSignal.timeout(budgetMs))
+	const effectiveSignal =
+		budgetSignals.length === 0
+			? undefined
+			: budgetSignals.length === 1
+				? budgetSignals[0]
+				: AbortSignal.any(budgetSignals)
+	const idemCache = new Map<
+		string,
+		{ result: SkillCallResultType; ms: number }
+	>()
+	const idemKey = (name: string, args: Record<string, unknown>): string =>
+		`${name}:${JSON.stringify(args)}`
 	const contextWindow =
 		domia.llmModelConfig?.contextWindow ?? DEFAULT_LLM_MODEL_CONTEXT_WINDOW
 	const numPredict = Math.max(0, domia.llmModelConfig?.numPredict ?? 0)
@@ -272,7 +296,7 @@ export const runAgentTurn = async (
 	})
 
 	for (let step = 0; step < maxSteps; step++) {
-		if (opts?.signal?.aborted) return abortedReturn(step)
+		if (effectiveSignal?.aborted) return abortedReturn(step)
 		if (!compactWithinBudget(messages, tokenBudget)) {
 			agentLogger.warn("agent context overflow — compaction insufficient", {
 				domiaId: domia.id,
@@ -326,7 +350,7 @@ export const runAgentTurn = async (
 			} else {
 				const inferred = await raceAbort(
 					inference(messages, toolDefs),
-					opts?.signal,
+					effectiveSignal,
 				)
 				if (inferred === ABORTED) return abortedReturn(step)
 				out = inferred
@@ -375,11 +399,66 @@ export const runAgentTurn = async (
 		decisionMs += inferMs
 		messages.push({ role: "assistant", content: "", toolCalls: out.calls })
 
+		const confirmCall = out.calls.find((call) => {
+			if (getToolPolicy(domia.id, call.name) !== "confirm") return false
+			if (!knownToolNames.has(call.name)) return false
+			const safeArgs = pruneEmptyArgs(
+				filterToAllowed(call.arguments, allowedParams.get(call.name)),
+			)
+			const required = requiredParams.get(call.name) ?? []
+			const missing = required.some((r) => !(r in safeArgs))
+			return !missing || argCorrected.has(call.name)
+		})
+		if (confirmCall) {
+			if (out.calls.length > 1) {
+				agentLogger.warn(
+					"confirm intercept dropping sibling tool calls in the same step",
+					{
+						domiaId: domia.id,
+						parked: confirmCall.name,
+						dropped: out.calls
+							.filter((c) => c !== confirmCall)
+							.map((c) => c.name),
+					},
+				)
+			}
+			const language = domia.characterProfile?.language ?? null
+			parkConfirmation(
+				confirmationScope(domia.domiaKey, opts?.confirmationChannel),
+				{
+					tool: confirmCall.name,
+					args: pruneEmptyArgs(
+						filterToAllowed(
+							confirmCall.arguments,
+							allowedParams.get(confirmCall.name),
+						),
+					),
+					language,
+				},
+				domia.llmModelConfig?.confirmationTtlMs ?? DEFAULT_CONFIRMATION_TTL_MS,
+			)
+			return {
+				reply:
+					languageSetsFor(language).phrases.confirmAction ??
+					"Do you want me to go ahead with that?",
+				toolNamesUsed,
+				serversUsed: [...serversUsed],
+				steps: step + 1,
+				skillPrompt: SKILLS_CLAUSE,
+				skillResponses,
+				decisionMs,
+				toolMs,
+				finalizeMs,
+				finalizeMode: "agent_loop",
+				stopReason: "confirm_required",
+			}
+		}
+
 		const allAsync =
 			opts?.allowAsyncTools === true &&
 			out.calls.length > 0 &&
 			out.calls.every(
-				(call) => resolveToolFinalize(call.name)?.mode === "async",
+				(call) => resolveToolFinalize(domia.id, call.name)?.mode === "async",
 			)
 		if (allAsync) {
 			const pendingTools: Promise<AsyncToolOutcomeType>[] = []
@@ -388,7 +467,7 @@ export const runAgentTurn = async (
 				toolNamesUsed.push(call.name)
 				const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 				if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
-				const rule = resolveToolFinalize(call.name)
+				const rule = resolveToolFinalize(domia.id, call.name)
 				ackParts.push(
 					rule?.ack ??
 						languageSetsFor(domia.characterProfile?.language).phrases.onIt,
@@ -406,7 +485,7 @@ export const runAgentTurn = async (
 					domia.characterProfile?.language,
 				).phrases
 				pendingTools.push(
-					callTool(call.name, safeArgs)
+					callTool(domia.id, call.name, safeArgs)
 						.then((result) => {
 							const ok = result.status === "ok" && !result.isError
 							const template = ok ? rule?.done : rule?.error
@@ -522,7 +601,8 @@ export const runAgentTurn = async (
 			const allDeadline =
 				opts?.allowAsyncTools === true &&
 				toRun.every(
-					({ call }) => resolveToolFinalize(call.name)?.mode === "deadline",
+					({ call }) =>
+						resolveToolFinalize(domia.id, call.name)?.mode === "deadline",
 				)
 			let slowTimer: ReturnType<typeof setTimeout> | null = null
 			if (opts?.onSlowTool && !allDeadline) {
@@ -537,13 +617,24 @@ export const runAgentTurn = async (
 				args: Record<string, unknown>,
 				signal?: AbortSignal,
 			) => {
+				const idempotent =
+					getProviderResilience(domia.id, providerOf(name) ?? "")
+						?.idempotentWithinTurn === true
+				const key = idempotent ? idemKey(name, args) : null
+				if (key) {
+					const cached = idemCache.get(key)
+					if (cached) return cached
+				}
 				const started = process.hrtime.bigint()
 				try {
-					const result = await callTool(name, args, signal)
-					return {
+					const result = await callTool(domia.id, name, args, signal)
+					const out = {
 						result,
 						ms: Math.round(Number(process.hrtime.bigint() - started) / 1e6),
 					}
+					if (key && result.status === "ok" && !result.isError)
+						idemCache.set(key, out)
+					return out
 				} catch (err) {
 					return {
 						result: {
@@ -556,14 +647,18 @@ export const runAgentTurn = async (
 				}
 			}
 			const running = toRun.map((p) =>
-				runOne(p.call.name, p.safeArgs, allDeadline ? undefined : opts?.signal),
+				runOne(
+					p.call.name,
+					p.safeArgs,
+					allDeadline ? undefined : effectiveSignal,
+				),
 			)
 			let settled: Awaited<(typeof running)[number]>[]
 			if (allDeadline) {
 				const ackAfterMs = Math.min(
 					...toRun.map(
 						({ call }) =>
-							resolveToolFinalize(call.name)?.ackAfterMs ??
+							resolveToolFinalize(domia.id, call.name)?.ackAfterMs ??
 							domia.llmModelConfig?.agentAckAfterMs ??
 							DEFAULT_AGENT_ACK_AFTER_MS,
 					),
@@ -583,7 +678,7 @@ export const runAgentTurn = async (
 							deadlineTimer.unref()
 						}),
 					]),
-					opts?.signal,
+					effectiveSignal,
 				)
 				if (deadlineTimer) clearTimeout(deadlineTimer)
 				if (raced === ABORTED) {
@@ -598,7 +693,7 @@ export const runAgentTurn = async (
 					const pendingTools: Promise<AsyncToolOutcomeType>[] = []
 					for (let i = 0; i < toRun.length; i++) {
 						const { call, safeArgs } = toRun[i]
-						const rule = resolveToolFinalize(call.name)
+						const rule = resolveToolFinalize(domia.id, call.name)
 						ackParts.push(rule?.ack ?? phrases.onIt)
 						skillResponses.push({
 							kind: "dispatched",
@@ -648,7 +743,7 @@ export const runAgentTurn = async (
 				}
 				settled = raced.settled
 			} else {
-				const awaited = await raceAbort(Promise.all(running), opts?.signal)
+				const awaited = await raceAbort(Promise.all(running), effectiveSignal)
 				if (slowTimer) clearTimeout(slowTimer)
 				if (awaited === ABORTED) {
 					markCancelled()
@@ -674,7 +769,7 @@ export const runAgentTurn = async (
 					toolName: call.name,
 					content: result.text,
 				})
-				const rule = resolveToolFinalize(call.name)
+				const rule = resolveToolFinalize(domia.id, call.name)
 				if (rule?.mode === "template" || rule?.mode === "deadline") {
 					const ok = result.status === "ok" && !result.isError
 					const template = ok

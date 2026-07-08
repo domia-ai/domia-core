@@ -21,4 +21,13 @@ export type BuildPromptContextOptionsType = {
 
 export type PersonaContextType = z.infer<typeof personaContextSchema>
 
+export type DelegationMemoryType = {
+	recentTurns?: RecentTurnType[]
+	knownFacts?: string[]
+	userMoodTrend?: string[]
+	knowledgeBase?: string[]
+	previously?: string[]
+	userModel?: string | null
+}
+
 export type EmotionEntryType = [string, number]

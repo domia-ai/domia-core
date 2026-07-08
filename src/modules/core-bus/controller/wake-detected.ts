@@ -12,6 +12,8 @@ import {
 } from "@/modules/session-manager"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import {
+	beginInteraction,
+	failInteraction,
 	prefetchMemoryBundle,
 	tryBeginRecording,
 	endRecording,
@@ -68,6 +70,7 @@ export const handleWakeDetected = async (
 
 	playFeedbackSound(domia, "ack")
 
+	let runtimeInteractionId: string | null = null
 	try {
 		const speculativeMs = domia.wakeWordConfig?.speculativeSilenceMs ?? 0
 		const localSpeculation =
@@ -122,12 +125,18 @@ export const handleWakeDetected = async (
 		}
 
 		if (canStreamStt && stt?.adapter.runStream) {
-			const interactionId = await getOrCreateInteractionId(domia, undefined, {
-				inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
-				responseType: RESPONSE_TYPE_ENUM.VOICE,
-			})
-			if (!interactionId) return
-			prefetchMemoryBundle(domia, interactionId)
+			const handle = await beginInteraction(
+				domia,
+				{
+					input: { kind: "audio_stream" },
+					requestedOutput: { kind: "voice" },
+					source: "local",
+				},
+				{ audioDelivery: "local-playback", prefetch: true },
+			)
+			if (!handle) return
+			const { interactionId } = handle
+			runtimeInteractionId = interactionId
 			setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
 
 			domiaBusLogger.info(
@@ -164,20 +173,27 @@ export const handleWakeDetected = async (
 			return
 		}
 
-		const interactionId = await getOrCreateInteractionId(domia, undefined, {
-			inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
-			responseType: RESPONSE_TYPE_ENUM.VOICE,
-		})
-		if (interactionId) prefetchMemoryBundle(domia, interactionId)
+		const handle = await beginInteraction(
+			domia,
+			{
+				input: { kind: "audio_stream" },
+				requestedOutput: { kind: "voice" },
+				source: "local",
+			},
+			{ audioDelivery: "local-playback", prefetch: true },
+		)
+		runtimeInteractionId = handle?.interactionId ?? null
 		const filePath = await startAudioRecording(domia)
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath,
-			interactionId: interactionId ?? undefined,
+			interactionId: handle?.interactionId ?? undefined,
 			originDomiaKey: domia.domiaKey,
 			liveVoice: true,
 		})
 	} catch (err) {
 		domiaBusLogger.error("WAKE_DETECTED / recording failed", { domiaId, err })
+		if (runtimeInteractionId)
+			failInteraction(runtimeInteractionId, toError(err).message, "recording")
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR, {
 			error: toError(err),
 		})

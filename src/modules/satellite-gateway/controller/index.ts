@@ -2,7 +2,11 @@ import { WebSocketServer, type WebSocket, type RawData } from "ws"
 import type { Server } from "http"
 
 import { type DomiaType } from "@/modules/core"
-import { satelliteGatewayLogger } from "@/utils"
+import {
+	satelliteGatewayLogger,
+	isLoopbackAddress,
+	isValidMeshToken,
+} from "@/utils"
 import {
 	createSatelliteSession,
 	type SatelliteTransportType,
@@ -63,6 +67,7 @@ export const setupSatelliteGateway = (
 	const wss = new WebSocketServer({ server, path: "/satellite" })
 
 	wss.on("connection", (ws, request) => {
+		const remoteLoopback = isLoopbackAddress(request.socket.remoteAddress)
 		const session = createSatelliteSession({
 			fallback,
 			transport: wsTransport(ws, isLiveRequest(request.url)),
@@ -78,6 +83,15 @@ export const setupSatelliteGateway = (
 			if (!control) return
 			void (async () => {
 				if (control.type === "hello") {
+					if (!remoteLoopback && !isValidMeshToken(control.token)) {
+						satelliteGatewayLogger.warn(
+							"satellite rejected — invalid mesh token",
+							{ satelliteId: control.satelliteId },
+						)
+						ws.send(JSON.stringify({ type: "error", message: "unauthorized" }))
+						ws.close()
+						return
+					}
 					await session.onHello({
 						domiaKey: control.domiaKey,
 						satelliteId: control.satelliteId,

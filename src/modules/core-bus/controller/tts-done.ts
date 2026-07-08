@@ -4,8 +4,8 @@ import {
 	setInteractionAudio,
 	completeInteraction,
 	getInteractionRuntime,
-	deliverLocalPlayback,
-	deliverDelegatedPlayback,
+	resolveDeliverySink,
+	emitTerminalCompletion,
 } from "../utils"
 import { getOrCreateInteractionId } from "@/modules/session-manager"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
@@ -22,14 +22,10 @@ export const handleTtsDone = async (
 		payload
 
 	const audioDelivery = payload.interactionId
-		? getInteractionRuntime(payload.interactionId)?.audioDelivery
+		? getInteractionRuntime(payload.interactionId)?.delivery.audioDelivery
 		: undefined
-	// streaming-sink / audio-url / none: the producer (satellite/url) owns playback, so TTS_DONE is the
-	// terminal ("dispatched"). local-playback / delegated complete later at PLAYBACK_FINISHED (§4.3).
-	const dispatchedTerminal =
-		audioDelivery === "streaming-sink" ||
-		audioDelivery === "audio-url" ||
-		audioDelivery === "none"
+	const sink = resolveDeliverySink(audioDelivery, canPlayback)
+	const dispatchedTerminal = sink.terminalAt === "dispatch"
 	if (payload.interactionId) {
 		setInteractionAudio(payload.interactionId, {
 			ttsFilePath: filePath,
@@ -39,6 +35,13 @@ export const handleTtsDone = async (
 			completeInteraction(payload.interactionId, {
 				result: { transcript, reply },
 			})
+			await emitTerminalCompletion(
+				payload.interactionId,
+				originDomiaKey ?? "",
+				{
+					status: "ok",
+				},
+			)
 		}
 	}
 	if (!filePath && !audioUrl) {
@@ -48,7 +51,7 @@ export const handleTtsDone = async (
 		)
 		return
 	}
-	if (dispatchedTerminal) {
+	if (dispatchedTerminal || !sink.deliver) {
 		domiaBusLogger.info(
 			`🗣️ TTS_DONE: audioDelivery=${audioDelivery} — producer delivers, skipping local playback`,
 			{ domiaId, interactionId: payload.interactionId },
@@ -68,11 +71,7 @@ export const handleTtsDone = async (
 	setTraceContext({ interactionId, originDomiaKey })
 
 	try {
-		if (canPlayback) {
-			await deliverLocalPlayback(ctx, interactionId, payload)
-			return
-		}
-		await deliverDelegatedPlayback(ctx, interactionId, payload)
+		await sink.deliver(ctx, interactionId, payload)
 	} catch (err) {
 		domiaBusLogger.error("TTS_DONE: playback or delegate failed", {
 			domiaId,

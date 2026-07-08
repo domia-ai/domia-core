@@ -28,6 +28,7 @@ const getPipe = (modelDir: string): Promise<FeatureExtractionPipeline> => {
 
 export const transformersEmbedBackend: EmbedBackendType = {
 	id: EMBED_BACKEND_ENUM.TRANSFORMERS,
+	capabilities: { local: true, normalized: true },
 	embed: async (domia, texts) => {
 		if (!texts.length) return []
 		try {

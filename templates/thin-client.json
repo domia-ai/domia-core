@@ -51,7 +51,7 @@
 	"tts": {
 		"name": "Default",
 		"engine": "KOKORO",
-		"voiceName": "af_heart",
+		"voiceName": "am_michael",
 		"language": "en",
 		"modelPath": "data/models/kokoro-multi-lang-v1_0",
 		"quantization": null,

@@ -112,8 +112,9 @@ export const getSessionsSince = (
 export const getTurnEventsSince = (
 	domiaId: string,
 	since: string,
+	sinceId: string,
 	limit: number,
-) => dbAdapter.getTurnEventsSince(domiaId, since, limit)
+) => dbAdapter.getTurnEventsSince(domiaId, since, sinceId, limit)
 
 export const recordAnnouncement = (data: InsertAnnouncementType) =>
 	dbAdapter.insertAnnouncement(data)
@@ -175,6 +176,11 @@ export const getAnnouncementsSince = (
 export const getLastInteractionAt = async (domiaId: string) => {
 	const row = await dbAdapter.getLastInteractionAt(domiaId)
 	return row?.updatedAt ?? null
+}
+
+export const getLastTurnEventAt = async (domiaId: string) => {
+	const row = await dbAdapter.getLastTurnEventAt(domiaId)
+	return row?.createdAt ?? null
 }
 
 export const getLastAnnouncementAt = async (domiaId: string) => {
@@ -365,15 +371,13 @@ export const getOrCreateInteractionId = async (
 	existingInteractionId: string | undefined,
 	defaultData: NewInteractionDataType,
 	client?: DBClientOrTxType,
+	sourceOverride?: TurnEventInputSourceType,
 ): Promise<string | null> => {
 	const emitStarted = (interactionId: string): void => {
 		const satelliteId = defaultData.satelliteId ?? undefined
 		const isText = defaultData.inputType === INTERACTION_INPUT_TYPE_ENUM.TEXT
-		const source: TurnEventInputSourceType = satelliteId
-			? "satellite"
-			: isText
-				? "http"
-				: "local"
+		const source: TurnEventInputSourceType =
+			sourceOverride ?? (satelliteId ? "satellite" : isText ? "http" : "local")
 		emitTurnEvent({
 			type: DOMIA_TURN_EVENT_ENUM.TURN_STARTED,
 			interactionId,

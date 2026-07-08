@@ -30,6 +30,15 @@ export type TurnEventBodyMapType = {
 		sttMs?: number
 		speculative?: boolean
 	}
+	[DOMIA_TURN_EVENT_ENUM.STAGE_STARTED]: {
+		stageName: string
+	}
+	[DOMIA_TURN_EVENT_ENUM.STAGE_DONE]: {
+		stageName: string
+		elapsedMs: number
+		status: "ok" | "failed"
+		errorMessage?: string
+	}
 	[DOMIA_TURN_EVENT_ENUM.INTENT_DECIDED]: {
 		decision: string
 		intentMs?: number

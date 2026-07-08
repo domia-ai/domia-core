@@ -11,8 +11,10 @@ import {
 	notifyInteractionFailed,
 	playStreamedAudio,
 	takeMemoryBundle,
+	getInteractionRuntime,
 	DEFAULT_SAMPLE_RATE,
 } from "../utils"
+import { peekPendingConfirmation, confirmationScope } from "@/modules/agent"
 import {
 	getOrCreateInteractionId,
 	updateInteraction,
@@ -26,7 +28,7 @@ import {
 } from "@/db"
 import { runSTT } from "@/modules/stt-engine"
 import {
-	personaContextFromDomia,
+	buildDelegationPersona,
 	buildPromptFromPersona,
 } from "@/modules/prompt-context-builder"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
@@ -60,21 +62,13 @@ const tryFusedVoiceReply = async (
 		{ domiaId: domia.id, interactionId },
 	)
 
-	const { recentTurns, knownFacts, userMoodTrend } = await takeMemoryBundle(
-		domia,
-		interactionId,
-	)
-	const persona = personaContextFromDomia(
-		domia,
-		recentTurns,
-		knownFacts,
-		userMoodTrend,
-	)
+	const bundle = await takeMemoryBundle(domia, interactionId)
+	const persona = buildDelegationPersona(domia, bundle)
 	const streamed = await streamVoiceReplyFromTarget(domia.domiaKey, targets, {
 		originDomiaKey,
 		interactionId,
 		responseType: RESPONSE_TYPE_ENUM.VOICE,
-		personaContextJson: JSON.stringify(persona),
+		persona,
 		audioFactory: () => wavFileToPcmChunks(audioPath),
 	})
 
@@ -339,7 +333,20 @@ export const handleAudioReady = async (
 		}
 		const audioPath: string = localPath
 
-		if (features.canPlayback && responseType === RESPONSE_TYPE_ENUM.VOICE) {
+		const envelope = getInteractionRuntime(interactionId)?.envelope
+		const awaitingConfirmation =
+			peekPendingConfirmation(
+				confirmationScope(
+					domia.domiaKey,
+					envelope?.satelliteId ?? envelope?.source,
+				),
+			) !== null
+
+		if (
+			!awaitingConfirmation &&
+			features.canPlayback &&
+			responseType === RESPONSE_TYPE_ENUM.VOICE
+		) {
 			const fusedTargets = targets.filter(
 				(target) =>
 					target.streamingCapabilities.stt &&

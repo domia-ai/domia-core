@@ -99,7 +99,11 @@ export const handlePostChat = async (
 	}
 }
 
-const ALLOWED_VOICE_DIRS = [resolve(RECORDINGS_DIR), resolve("tmp")]
+const ALLOWED_VOICE_DIRS = [
+	resolve(RECORDINGS_DIR),
+	resolve("tmp"),
+	resolve("evals/fixtures"),
+]
 
 const isAllowedVoiceFilePath = (filePath: string): boolean => {
 	const resolved = resolve(filePath)

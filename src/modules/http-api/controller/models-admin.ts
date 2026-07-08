@@ -59,7 +59,7 @@ export const handleGetSync = async (
 	domia: DomiaType,
 	query: GetSyncQueryType,
 ): Promise<GetSyncResponseType> => {
-	const { since, limit } = getSyncQuerySchema.parse(query)
+	const { since, turnSince, turnId, limit } = getSyncQuerySchema.parse(query)
 	const domiaId = domia.id
 
 	const [
@@ -75,7 +75,7 @@ export const handleGetSync = async (
 		getEmotionEventsSince(domiaId, since, limit),
 		getFactsSince(domiaId, since, limit),
 		getAnnouncementsSince(domiaId, since, limit),
-		getTurnEventsSince(domiaId, since, limit),
+		getTurnEventsSince(domiaId, turnSince, turnId, limit),
 	])
 
 	const maxTs = (stamps: (string | null)[]): string =>
@@ -99,10 +99,6 @@ export const handleGetSync = async (
 			max: maxTs(announcements.map((r) => r.updatedAt)),
 			full: announcements.length >= limit,
 		},
-		{
-			max: maxTs(turnEvents.map((r) => r.createdAt)),
-			full: turnEvents.length >= limit,
-		},
 	]
 	const fullMaxes = streams.filter((s) => s.full && s.max).map((s) => s.max)
 	const allMaxes = streams.map((s) => s.max).filter(Boolean)
@@ -112,6 +108,11 @@ export const handleGetSync = async (
 			? allMaxes.reduce((a, b) => (a > b ? a : b))
 			: since
 
+	const lastTurn = turnEvents[turnEvents.length - 1]
+	const nextTurnCursor = lastTurn
+		? { since: lastTurn.createdAt, id: lastTurn.id }
+		: null
+
 	return {
 		interactions,
 		sessions,
@@ -120,5 +121,6 @@ export const handleGetSync = async (
 		announcements,
 		turnEvents,
 		nextCursor,
+		nextTurnCursor,
 	}
 }

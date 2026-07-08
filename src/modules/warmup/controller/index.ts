@@ -55,7 +55,10 @@ export const warmupOnBoot = (
 		tasks.push(warmLlm(domia))
 	if (capabilities.tts && domia.ttsConfig?.modelPath) tasks.push(warmTts(domia))
 	if (domia.wakeWordConfig?.acousticEndpointingEnabled)
-		warmTurnDetector(domia.wakeWordConfig.turnDetectorModelPath)
+		warmTurnDetector(
+			domia.wakeWordConfig.turnDetectorModelPath,
+			domia.wakeWordConfig.turnDetectorEngine,
+		)
 	if (tasks.length === 0) return
 	warmupLogger.info(`🔥 warming local models (${tasks.length} stages)`)
 	void Promise.allSettled(tasks).then(() =>

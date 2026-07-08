@@ -10,6 +10,7 @@ const envSchema = z.object({
 	DATABASE_URL: z.string(),
 	DEBUG: z.string().optional(),
 	DOMIA_KEY: z.string(),
+	DOMIA_MESH_SECRET: z.string().min(8),
 	DB_STUDIO_PORT: portString("6789"),
 	HTTP_SERVER_HOST: z.string().default("localhost"),
 	HTTP_SERVER_PORT: portString("3000"),

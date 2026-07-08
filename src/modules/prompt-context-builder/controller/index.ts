@@ -12,6 +12,7 @@ import {
 } from "../constants"
 import type {
 	BuildPromptContextOptionsType,
+	DelegationMemoryType,
 	EmotionEntryType,
 	PersonaContextType,
 	RecentTurnType,
@@ -93,6 +94,20 @@ export const personaContextFromDomia = (
 			: null,
 	}
 }
+
+export const buildDelegationPersona = (
+	domia: DomiaType,
+	memory: DelegationMemoryType,
+): PersonaContextType =>
+	personaContextFromDomia(
+		domia,
+		memory.recentTurns,
+		memory.knownFacts,
+		memory.userMoodTrend,
+		memory.knowledgeBase,
+		memory.previously,
+		memory.userModel,
+	)
 
 const resolvePersonaName = (persona: PersonaContextType): string => {
 	const raw = persona.characterProfile?.name?.trim()

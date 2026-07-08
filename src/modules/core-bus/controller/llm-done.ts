@@ -17,8 +17,10 @@ import {
 	completeInteraction,
 	pushInteractionReply,
 	getStreamingSink,
+	getInteractionRuntime,
 	isTurnAborted,
 	notifyTurnAborted,
+	emitTerminalCompletion,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -138,7 +140,10 @@ const tryLocalStreamingTtsPlayback = async (
 ): Promise<boolean> => {
 	const { tts, canPlayback } = ctx.features
 	const hasSink = getStreamingSink(session.interactionId) !== undefined
+	const delivery = getInteractionRuntime(session.interactionId)?.delivery
+		.audioDelivery
 	if (
+		delivery === "none" ||
 		(!canPlayback && !hasSink) ||
 		tts?.adapter.capabilities.streaming !== true ||
 		!tts.adapter.runStream
@@ -258,7 +263,7 @@ const runDelegatedStreamingTts = async (
 		reply: session.reply,
 		originDomiaKey: session.originDomiaKey,
 		interactionId: session.interactionId,
-		ttsVoiceJson: ownVoice ? JSON.stringify(ownVoice) : undefined,
+		ttsVoice: ownVoice ?? undefined,
 	})
 
 	if (!streamed.delivered || !streamed.audio) {
@@ -332,7 +337,7 @@ const runDelegatedStreamingTts = async (
 	}
 }
 
-export const handleLlmDone = async (
+export const deliverReply = async (
 	ctx: CoreBusContextType,
 	payload: LlmDonePayloadType,
 ): Promise<void> => {
@@ -392,6 +397,9 @@ export const handleLlmDone = async (
 
 	if (ensured.usedFallback) pushInteractionReply(interactionId, ensured.reply)
 	if (responseType === RESPONSE_TYPE_ENUM.TEXT) {
+		await emitTerminalCompletion(interactionId, originDomiaKey ?? "", {
+			status: "ok",
+		})
 		completeInteraction(interactionId, {
 			result: { transcript: payload.transcript ?? "", reply: ensured.reply },
 		})
@@ -437,3 +445,5 @@ export const handleLlmDone = async (
 		})
 	}
 }
+
+export const handleLlmDone = deliverReply

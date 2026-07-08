@@ -20,13 +20,26 @@ const routingSchema = z
 	})
 	.strict()
 
+const resilienceSchema = z
+	.object({
+		retryMaxAttempts: z.number().int().min(1).optional(),
+		retryBackoffMs: z.number().int().min(0).optional(),
+		breakerThreshold: z.number().int().min(0).optional(),
+		breakerCooldownMs: z.number().int().min(0).optional(),
+		idempotentWithinTurn: z.boolean().optional(),
+	})
+	.strict()
+
 const executionSchema = z
 	.object({
 		coreTools: z.array(z.string()).optional(),
-		toolPolicy: z.record(z.string(), z.enum(["allow", "block"])).optional(),
+		toolPolicy: z
+			.record(z.string(), z.enum(["allow", "block", "confirm"]))
+			.optional(),
 		paramAllow: z.record(z.string(), z.array(z.string())).optional(),
 		finalize: finalizeMapSchema.optional(),
 		genericWords: z.array(z.string()).optional(),
+		resilience: resilienceSchema.optional(),
 	})
 	.strict()
 

@@ -27,6 +27,7 @@ import {
 	completeInteraction,
 	pushInteractionFirstAudio,
 	skillsMayIntercept,
+	emitTerminalCompletion,
 } from "../utils"
 import type {
 	CoreBusContextType,
@@ -138,7 +139,9 @@ export const handlePlaybackFinished = async (
 	const { capabilities } = features
 	const domiaId = domia.id
 
-	if (payload?.interactionId) {
+	const ownsTrace =
+		!payload?.originDomiaKey || payload.originDomiaKey === domia.domiaKey
+	if (payload?.interactionId && ownsTrace) {
 		completeInteraction(payload.interactionId, {
 			interrupted: payload.status !== "completed",
 		})
@@ -150,6 +153,15 @@ export const handlePlaybackFinished = async (
 			status: payload.status ?? "completed",
 			playedLocally: payload.playedLocally ?? false,
 		})
+		await emitTerminalCompletion(
+			payload.interactionId,
+			payload.originDomiaKey ?? "",
+			{
+				status:
+					payload.status === "completed" ? "ok" : (payload.status ?? "ok"),
+				traceId: payload.traceId,
+			},
+		)
 	}
 
 	if (payload?.status !== "completed" || payload?.playedLocally !== true) return

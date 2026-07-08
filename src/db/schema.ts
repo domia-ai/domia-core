@@ -68,6 +68,8 @@ import {
 	DEFAULT_ACOUSTIC_ENDPOINTING_ENABLED,
 	DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD,
 	DEFAULT_TURN_DETECTOR_MODEL_PATH,
+	DEFAULT_TURN_DETECTOR_ENGINE,
+	TURN_DETECTOR_ENGINE_ENUM_VALUES,
 	DEFAULT_SPECULATIVE_TTS_ENABLED,
 	DEFAULT_SPECULATE_WITH_SKILLS,
 	DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,
@@ -191,6 +193,8 @@ import {
 	DEFAULT_INTENT_EMBED_THRESHOLD,
 	DEFAULT_DESCRIPTOR_ROUTING_ENABLED,
 	DEFAULT_AGENT_MAX_STEPS,
+	DEFAULT_AGENT_BUDGET_MS,
+	DEFAULT_CONFIRMATION_TTL_MS,
 	DEFAULT_AGENT_ACK_AFTER_MS,
 	DEFAULT_TOOL_SHORTLIST_MAX,
 	MATCHER_ENGINE_ENUM_VALUES,
@@ -609,6 +613,11 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	)
 		.notNull()
 		.default(DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD),
+	turnDetectorEngine: text("turn_detector_engine", {
+		enum: TURN_DETECTOR_ENGINE_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_TURN_DETECTOR_ENGINE),
 	turnDetectorModelPath: text("turn_detector_model_path")
 		.notNull()
 		.default(DEFAULT_TURN_DETECTOR_MODEL_PATH),
@@ -774,6 +783,12 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	agentMaxSteps: integer("agent_max_steps")
 		.notNull()
 		.default(DEFAULT_AGENT_MAX_STEPS),
+	agentBudgetMs: integer("agent_budget_ms")
+		.notNull()
+		.default(DEFAULT_AGENT_BUDGET_MS),
+	confirmationTtlMs: integer("confirmation_ttl_ms")
+		.notNull()
+		.default(DEFAULT_CONFIRMATION_TTL_MS),
 	agentAckAfterMs: integer("agent_ack_after_ms")
 		.notNull()
 		.default(DEFAULT_AGENT_ACK_AFTER_MS),

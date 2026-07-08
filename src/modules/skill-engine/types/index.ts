@@ -3,7 +3,16 @@ import type {
 	ToolFinalizeMapType,
 	SkillToolType,
 	DomiaSkillDescriptorType,
+	ToolPolicyType,
 } from "@/db"
+
+export type ResolvedSkillResilienceType = {
+	retryMaxAttempts: number
+	retryBackoffMs: number
+	breakerThreshold: number
+	breakerCooldownMs: number
+	idempotentWithinTurn: boolean
+}
 
 export type ResolvedSkillDescriptorType = {
 	kind: string | null
@@ -12,10 +21,11 @@ export type ResolvedSkillDescriptorType = {
 	exampleUtterances: string[]
 	keywords: string[]
 	coreTools: string[]
-	toolPolicy: Record<string, "allow" | "block">
+	toolPolicy: Record<string, ToolPolicyType>
 	paramAllow: Record<string, string[]>
 	finalize: ToolFinalizeMapType
 	genericWords: string[]
+	resilience: ResolvedSkillResilienceType
 }
 
 export type ToolShortlistResultType = {
@@ -194,8 +204,6 @@ export type SkillCallResultType = {
 	isError: boolean
 	resolvedArgs?: Record<string, unknown>
 }
-
-export type SkillToolPolicyType = Record<string, "allow" | "block">
 
 export type RawSkillToolType = {
 	name: string

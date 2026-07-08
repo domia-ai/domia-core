@@ -15,6 +15,7 @@ const timeoutFetch = ((input, init) =>
 
 export const ollamaEmbedBackend: EmbedBackendType = {
 	id: EMBED_BACKEND_ENUM.OLLAMA,
+	capabilities: { local: false, normalized: true },
 	embed: async (domia, texts) => {
 		if (!texts.length) return []
 		try {

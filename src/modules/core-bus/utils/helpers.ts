@@ -20,6 +20,7 @@ import {
 	getInteractionById,
 } from "@/modules/session-manager"
 import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
+import { claimTurnCompleted } from "./turn-completion-guard"
 import { playAudio } from "@/modules/audio-playback"
 import { runTTS } from "@/modules/tts-engine"
 import { deliverEvent } from "@/modules/grpc-client"
@@ -204,6 +205,7 @@ export const persistTerminal = async (
 				? { errorMessage: opts.errorMessage }
 				: {}),
 		})
+		if (!claimTurnCompleted(interactionId)) return
 		const ctx = getTraceContext()
 		const originDomiaKey = ctx?.originDomiaKey ?? ""
 		if (status === INTERACTION_STATUS_ENUM.FAILED) {

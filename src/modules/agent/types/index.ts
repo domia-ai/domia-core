@@ -23,6 +23,8 @@ export type AgentTurnOptionsType = {
 	slowToolAfterMs?: number
 	allowAsyncTools?: boolean
 	signal?: AbortSignal
+	budgetMs?: number
+	confirmationChannel?: string
 }
 
 export type AgentFinalizeModeType = "agent_loop" | "template" | "streamed"
@@ -33,6 +35,15 @@ export type AgentStopReasonType =
 	| "tool_error"
 	| "aborted"
 	| "context_overflow"
+	| "confirm_required"
+
+export type PendingConfirmationType = {
+	tool: string
+	args: Record<string, unknown>
+	language: string | null
+	expiresAt: number
+	reasked?: boolean
+}
 
 export type AgentResultType = {
 	reply: string

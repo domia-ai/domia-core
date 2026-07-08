@@ -1,6 +1,6 @@
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import Fastify from "fastify"
-import { httpServerLogger } from "@/utils"
+import { httpServerLogger, isLoopbackAddress, isValidMeshBearer } from "@/utils"
 import { env } from "@/config"
 import {
 	type DomiaType,
@@ -96,11 +96,26 @@ const queryDomiaKey = (query: unknown): string | undefined => {
 	return typeof key === "string" && key.length > 0 ? key : undefined
 }
 
+const AUTH_EXEMPT_PATHS = new Set(["/", "/health"])
+
+const isAuthExempt = (method: string, url: string): boolean => {
+	const pathname = url.split("?")[0]
+	if (AUTH_EXEMPT_PATHS.has(pathname)) return true
+	return method === "GET" && pathname.startsWith("/audio/")
+}
+
 export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 	httpServerLogger.info("🚀 Starting HTTP server...")
 
 	const fastify = Fastify({
 		logger: false,
+	})
+
+	fastify.addHook("onRequest", async (request, reply) => {
+		if (isAuthExempt(request.method, request.url)) return
+		if (isLoopbackAddress(request.socket.remoteAddress)) return
+		if (isValidMeshBearer(request.headers.authorization)) return
+		await reply.code(401).send({ error: "unauthorized" })
 	})
 
 	fastify.get("/", async () => handleGetRoot())

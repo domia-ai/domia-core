@@ -1,7 +1,7 @@
 [
 	{
 		"name": "prende la luz de la cocina",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "es",
 		"runs": 3,
 		"passRatio": 0.34,
@@ -11,18 +11,18 @@
 				"expect": {
 					"routed": "skill",
 					"notTools": ["HassTurnOff"],
-					"argMatchers": { "name": "cocina|kitchen" },
 					"expectEvents": {
 						"present": ["tool.requested", "tool.result", "turn.completed"],
 						"seqOrdered": true
-					}
+					},
+					"anyArgMatches": "cocina|kitchen"
 				}
 			}
 		]
 	},
 	{
 		"name": "apaga la luz de la cocina",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "es",
 		"runs": 2,
 		"passRatio": 0.5,
@@ -32,14 +32,14 @@
 				"expect": {
 					"routed": "skill",
 					"tool": "HassTurnOff",
-					"argMatchers": { "name": "cocina|kitchen" }
+					"anyArgMatches": "cocina|kitchen"
 				}
 			}
 		]
 	},
 	{
 		"name": "enciende la luz del dormitorio",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "es",
 		"runs": 2,
 		"passRatio": 0.5,
@@ -48,22 +48,25 @@
 				"text": "enciende la luz del dormitorio",
 				"expect": {
 					"routed": "skill",
-					"tool": "HassTurnOn",
-					"argMatchers": { "name": "dormitorio|bedroom" }
+					"tool": ["HassTurnOn", "HassLightSet"],
+					"anyArgMatches": "dormitorio|bedroom"
 				}
 			}
 		]
 	},
 	{
 		"name": "apaga todas las luces",
-		"suite": "home",
+		"suite": "home-live",
 		"language": "es",
 		"runs": 3,
 		"passRatio": 0.34,
 		"turns": [
 			{
 				"text": "apaga todas las luces de la sala",
-				"expect": { "routed": "skill", "notTools": ["HassTurnOn"] }
+				"expect": {
+					"routed": "skill",
+					"notTools": ["HassTurnOn"]
+				}
 			}
 		]
 	}

@@ -1,6 +1,8 @@
 export enum DOMIA_TURN_EVENT_ENUM {
 	TURN_STARTED = "turn.started",
 	STT_FINAL = "stt.final",
+	STAGE_STARTED = "stage.started",
+	STAGE_DONE = "stage.done",
 	INTENT_DECIDED = "intent.decided",
 	LLM_FIRST_SENTENCE = "llm.first_sentence",
 	LLM_DONE = "llm.done",

@@ -7,14 +7,11 @@ import {
 	DEFAULT_SATELLITE_TURN_TIMEOUT_MS,
 } from "@/db"
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
-import { getOrCreateInteractionId } from "@/modules/session-manager"
+import { RESPONSE_TYPE_ENUM } from "@/db"
 import {
-	registerInteractionRuntime,
+	beginInteraction,
 	clearInteraction,
 	persistTerminal,
-	beginTurn,
-	registerStreamingSink,
 	clearStreamingSink,
 	registerSatelliteSink,
 	unregisterSatelliteSink,
@@ -35,6 +32,7 @@ import {
 	writeAudioStream,
 	closeAudioStream,
 	type StreamingSinkType,
+	type TurnScopeType,
 } from "@/modules/core-bus"
 import { getSttEngine, type SttStreamSessionType } from "@/modules/stt-engine"
 import {
@@ -247,12 +245,11 @@ export const createSatelliteSession = (
 				lastTurnAt: Date.now(),
 			})
 		}
-		setPresenceStatus(identity.domiaKey, "thinking", true)
 		const wav = wrapPcmToWav(pcm, sampleRate, channels, 16)
 		const path = join(RECORDINGS_DIR, `satellite-${generateUuid()}.wav`)
 		const interactionId = generateUuid()
 		activeInteractionId = interactionId
-		const turn = beginTurn(identity.id, interactionId)
+		let turn: TurnScopeType | null = null
 		const turnStart = Date.now()
 		let framesSent = 0
 		let streamAnnounced = false
@@ -267,7 +264,6 @@ export const createSatelliteSession = (
 			: makeSink(() => {
 					framesSent++
 				})
-		registerStreamingSink(interactionId, turnSink)
 
 		let finalized = false
 		const finalize = (): void => {
@@ -275,7 +271,7 @@ export const createSatelliteSession = (
 			finalized = true
 			if (activeFinalize === finalize) activeFinalize = null
 			clearTimeout(turnTimeout)
-			turn.end()
+			turn?.end()
 			clearInteraction(interactionId)
 			if (activeInteractionId === interactionId) {
 				activeInteractionId = null
@@ -296,100 +292,107 @@ export const createSatelliteSession = (
 			finalize()
 		}, DEFAULT_SATELLITE_TURN_TIMEOUT_MS)
 
-		registerInteractionRuntime({
-			interactionId,
-			originDomiaKey: identity.domiaKey,
-			inputMode: session ? "transcript" : "audio",
-			responseType: "voice",
-			audioDelivery: urlPlayback ? "audio-url" : "streaming-sink",
-			satelliteId,
-			wantsTranscript: true,
-			timings: { createdAt: turnStart },
-			onTranscript: (transcript) => transport.sendTranscript(transcript),
-			onComplete: (result) => {
-				void (async () => {
-					try {
-						let served = false
-						if (urlPlayback) {
-							if (result.ttsFilePath) {
-								registerAudioForServing(interactionId, result.ttsFilePath)
-							}
-							if (streamAnnounced) {
-								served = true
-							} else {
-								const audioUrl = getAudioFilePath(interactionId)
-									? buildAudioUrl(identity, interactionId)
-									: null
-								if (audioUrl) {
-									transport.playAudioUrl?.(audioUrl, interactionId)
-									served = true
-								}
-							}
-						} else if (framesSent === 0 && result.ttsFilePath) {
-							await sendViaSink(turnSink, result.ttsFilePath)
-							served = true
-						} else if (framesSent > 0) {
-							served = true
-						}
-						transport.sendReplyDone(result.reply, interactionId)
-						satelliteGatewayLogger.info("🛰️ satellite turn", {
-							satelliteId,
-							protocol,
-							domiaKey: identity.domiaKey,
-							interactionId,
-							transcriptChars: result.transcript.trim().length,
-							replyChars: result.reply.trim().length,
-							served,
-							turnMs: Date.now() - turnStart,
-						})
-					} catch (err) {
-						satelliteGatewayLogger.error("satellite onComplete failed", {
-							err,
-							satelliteId,
-							interactionId,
-						})
-					} finally {
-						finalize()
-					}
-				})()
-			},
-			onError: (error) => {
-				void (async () => {
-					try {
-						satelliteGatewayLogger.error("satellite turn failed", {
-							error,
-							satelliteId,
-							protocol,
-							domiaKey: identity.domiaKey,
-							interactionId,
-							turnMs: Date.now() - turnStart,
-						})
-						await persistTurnFailure(interactionId, error)
-						transport.sendError(error)
-					} catch (err) {
-						satelliteGatewayLogger.warn("satellite onError handler failed", {
-							err,
-							interactionId,
-						})
-					} finally {
-						finalize()
-					}
-				})()
-			},
-		})
-
 		const inputAudioMs = Math.round(
 			(pcm.length / (sampleRate * channels * 2)) * 1000,
 		)
-		try {
-			await getOrCreateInteractionId(identity, interactionId, {
-				inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
-				responseType: RESPONSE_TYPE_ENUM.VOICE,
-				inputAudioPath: path,
-				inputAudioMs,
+
+		const handle = await beginInteraction(
+			identity,
+			{
+				input: { kind: "audio_file", filePath: path, inputAudioMs },
+				requestedOutput: { kind: "voice" },
+				source: "satellite",
+				interactionId,
 				satelliteId,
 				satelliteProtocol: protocol,
-			})
+			},
+			{
+				audioDelivery: urlPlayback ? "audio-url" : "streaming-sink",
+				createdAt: turnStart,
+				liveTurn: true,
+				wantsTranscript: true,
+				sink: turnSink,
+				onTranscript: (transcript) => transport.sendTranscript(transcript),
+				onComplete: (result) => {
+					void (async () => {
+						try {
+							let served = false
+							if (urlPlayback) {
+								if (result.ttsFilePath) {
+									registerAudioForServing(interactionId, result.ttsFilePath)
+								}
+								if (streamAnnounced) {
+									served = true
+								} else {
+									const audioUrl = getAudioFilePath(interactionId)
+										? buildAudioUrl(identity, interactionId)
+										: null
+									if (audioUrl) {
+										transport.playAudioUrl?.(audioUrl, interactionId)
+										served = true
+									}
+								}
+							} else if (framesSent === 0 && result.ttsFilePath) {
+								await sendViaSink(turnSink, result.ttsFilePath)
+								served = true
+							} else if (framesSent > 0) {
+								served = true
+							}
+							transport.sendReplyDone(result.reply, interactionId)
+							satelliteGatewayLogger.info("🛰️ satellite turn", {
+								satelliteId,
+								protocol,
+								domiaKey: identity.domiaKey,
+								interactionId,
+								transcriptChars: result.transcript.trim().length,
+								replyChars: result.reply.trim().length,
+								served,
+								turnMs: Date.now() - turnStart,
+							})
+						} catch (err) {
+							satelliteGatewayLogger.error("satellite onComplete failed", {
+								err,
+								satelliteId,
+								interactionId,
+							})
+						} finally {
+							finalize()
+						}
+					})()
+				},
+				onError: (error) => {
+					void (async () => {
+						try {
+							satelliteGatewayLogger.error("satellite turn failed", {
+								error,
+								satelliteId,
+								protocol,
+								domiaKey: identity.domiaKey,
+								interactionId,
+								turnMs: Date.now() - turnStart,
+							})
+							await persistTurnFailure(interactionId, error)
+							transport.sendError(error)
+						} catch (err) {
+							satelliteGatewayLogger.warn("satellite onError handler failed", {
+								err,
+								interactionId,
+							})
+						} finally {
+							finalize()
+						}
+					})()
+				},
+			},
+		)
+		if (!handle) {
+			transport.sendError("satellite: failed to create interaction")
+			finalize()
+			return
+		}
+		turn = handle.turn
+
+		try {
 			if (session) {
 				const transcript = await session.finish()
 				void writeFile(path, wav).catch((err) =>

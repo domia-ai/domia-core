@@ -218,7 +218,10 @@ export const startSpeculativeCapture = (
 	const acoustic =
 		config.acousticEndpointingEnabled &&
 		config.sampleRate === 16000 &&
-		turnDetectorAvailable(config.turnDetectorModelPath)
+		turnDetectorAvailable(
+			config.turnDetectorModelPath,
+			config.turnDetectorEngine,
+		)
 	let currentDebounceMs = debounceMs
 	const setDebounceMs = (ms: number): void => {
 		currentDebounceMs = Math.max(
@@ -239,6 +242,7 @@ export const startSpeculativeCapture = (
 			pcm,
 			config.turnDetectorModelPath,
 			config.acousticEndpointCompleteThreshold,
+			config.turnDetectorEngine,
 		)
 			.then((r) => {
 				if (r) acousticComplete = r.complete

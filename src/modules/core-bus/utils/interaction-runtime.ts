@@ -35,7 +35,7 @@ const partialOf = (interactionId: string): PartialResultType => {
 export const registerInteractionRuntime = (
 	runtime: InteractionRuntimeType,
 ): void => {
-	runtimes.set(runtime.interactionId, runtime)
+	runtimes.set(runtime.envelope.interactionId, runtime)
 }
 
 export const getInteractionRuntime = (
@@ -77,9 +77,11 @@ export const pushInteractionTranscript = (
 	const rt = runtimes.get(interactionId)
 	if (!rt) return
 	partialOf(interactionId).transcript = transcript
-	safeCallback("onStage:stt", () => rt.onStage?.("stt", elapsedOf(rt)))
-	if (rt.wantsTranscript)
-		safeCallback("onTranscript", () => rt.onTranscript?.(transcript))
+	safeCallback("onStage:stt", () =>
+		rt.callbacks.onStage?.("stt", elapsedOf(rt)),
+	)
+	if (rt.delivery.wantsTranscript)
+		safeCallback("onTranscript", () => rt.callbacks.onTranscript?.(transcript))
 }
 
 export const pushInteractionReply = (
@@ -89,8 +91,9 @@ export const pushInteractionReply = (
 	const rt = runtimes.get(interactionId)
 	if (!rt) return
 	partialOf(interactionId).reply = reply
-	safeCallback("onStage:llm", () => rt.onStage?.("llm", elapsedOf(rt)))
-	if (rt.wantsReplyText) safeCallback("onReply", () => rt.onReply?.(reply))
+	safeCallback("onStage:llm", () =>
+		rt.callbacks.onStage?.("llm", elapsedOf(rt)),
+	)
 }
 
 export const pushInteractionFirstAudio = (interactionId: string): void => {
@@ -98,7 +101,7 @@ export const pushInteractionFirstAudio = (interactionId: string): void => {
 	if (!rt || rt.timings.firstAudioAt) return
 	rt.timings.firstAudioAt = Date.now()
 	safeCallback("onStage:firstAudioChunk", () =>
-		rt.onStage?.("firstAudioChunk", elapsedOf(rt)),
+		rt.callbacks.onStage?.("firstAudioChunk", elapsedOf(rt)),
 	)
 }
 
@@ -110,6 +113,15 @@ export const setInteractionAudio = (
 	const p = partialOf(interactionId)
 	if (audio.ttsFilePath !== undefined) p.ttsFilePath = audio.ttsFilePath
 	if (audio.audioUrl !== undefined) p.audioUrl = audio.audioUrl
+}
+
+export const setInteractionTarget = (
+	interactionId: string,
+	targetDomiaKey: string,
+): void => {
+	const rt = runtimes.get(interactionId)
+	if (!rt) return
+	rt.envelope.targetDomiaKey = targetDomiaKey
 }
 
 const buildResult = (
@@ -147,9 +159,9 @@ export const completeInteraction = (
 		!!rt?.timings.firstAudioAt || !!result.ttsFilePath || !!result.audioUrl
 	if (rt && producedAudio)
 		safeCallback("onStage:tts", () =>
-			rt.onStage?.("tts", Date.now() - rt.timings.createdAt),
+			rt.callbacks.onStage?.("tts", Date.now() - rt.timings.createdAt),
 		)
-	if (rt) safeCallback("onComplete", () => rt.onComplete?.(result))
+	if (rt) safeCallback("onComplete", () => rt.callbacks.onComplete?.(result))
 	if (handle) {
 		clearTimeout(handle.timeout)
 		handle.resolve(result)
@@ -165,7 +177,7 @@ export const failInteraction = (
 	const rt = runtimes.get(interactionId)
 	const handle = completions.get(interactionId)
 	if (!rt && !handle) return
-	if (rt) safeCallback("onError", () => rt.onError?.(error, step))
+	if (rt) safeCallback("onError", () => rt.callbacks.onError?.(error, step))
 	if (handle) {
 		clearTimeout(handle.timeout)
 		handle.reject(new Error(error))

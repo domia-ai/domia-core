@@ -19,6 +19,7 @@ import {
 	FACT_KIND_ENUM_VALUES,
 	WAKE_WORD_ENGINE_ENUM_VALUES,
 	VAD_ENGINE_ENUM_VALUES,
+	TURN_DETECTOR_ENGINE_ENUM_VALUES,
 	EMBED_BACKEND_ENUM_VALUES,
 	STT_ENGINE_ENUM_VALUES,
 	LLM_ENGINE_ENUM_VALUES,
@@ -175,6 +176,7 @@ export type {
 	SkillDescriptorExecutionType,
 	SkillDescriptorLocaleType,
 	DomiaSkillDescriptorType,
+	ToolPolicyType,
 } from "./json-types"
 
 export type SelectSkillProviderType = InferSelectModel<
@@ -281,6 +283,8 @@ export type FactKindEnumType = (typeof FACT_KIND_ENUM_VALUES)[number]
 export type WakeWordEngineEnumType =
 	(typeof WAKE_WORD_ENGINE_ENUM_VALUES)[number]
 export type VadEngineEnumType = (typeof VAD_ENGINE_ENUM_VALUES)[number]
+export type TurnDetectorEngineEnumType =
+	(typeof TURN_DETECTOR_ENGINE_ENUM_VALUES)[number]
 export type EmbedBackendEnumType = (typeof EMBED_BACKEND_ENUM_VALUES)[number]
 export type SttEngineEnumType = (typeof STT_ENGINE_ENUM_VALUES)[number]
 export type LlmEngineEnumType = (typeof LLM_ENGINE_ENUM_VALUES)[number]

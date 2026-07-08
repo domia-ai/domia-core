@@ -4,6 +4,7 @@ import {
 	type SelectSkillProviderType,
 	type SkillToolType,
 	type ToolFinalizeRuleType,
+	type ToolPolicyType,
 } from "@/db"
 import { skillEngineLogger, now } from "@/utils"
 import type { DomiaType } from "@/modules/core"
@@ -12,13 +13,54 @@ import dbAdapter from "../db-adapter"
 import { resolveSkillAdapter } from "../adapters"
 import { resolveSpecialization } from "../specializations"
 import { resolveDescriptor } from "../utils/descriptor"
+import {
+	breakerOpen,
+	recordBreakerResult,
+	isTransientStatus,
+	backoffDelay,
+	sleep,
+} from "../utils/resilience"
 import type {
 	RawSkillToolType,
 	SkillCallResultType,
 	SkillConnectionType,
+	ResolvedSkillResilienceType,
 } from "../types"
 
 const connections = new Map<string, SkillConnectionType>()
+
+const findConn = (
+	domiaId: string,
+	providerSlug: string,
+): SkillConnectionType | undefined =>
+	[...connections.values()].find(
+		(c) => c.provider.domiaId === domiaId && c.providerSlug === providerSlug,
+	)
+
+export const getProviderResilience = (
+	domiaId: string,
+	providerSlug: string,
+): ResolvedSkillResilienceType | null =>
+	findConn(domiaId, providerSlug)?.descriptor.resilience ?? null
+
+export const getToolPolicy = (
+	domiaId: string,
+	namespacedName: string,
+): ToolPolicyType => {
+	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
+	const rawName =
+		sepIdx >= 0
+			? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
+			: namespacedName
+	const conn = findConn(domiaId, providerSlug)
+	if (!conn) return "allow"
+	return (
+		conn.descriptor.toolPolicy[rawName] ??
+		conn.descriptor.toolPolicy["*"] ??
+		"allow"
+	)
+}
 
 const slugify = (name: string): string =>
 	name
@@ -145,6 +187,7 @@ export const disconnectProviders = async (ids: string[]): Promise<void> => {
 }
 
 export const resolveToolFinalize = (
+	domiaId: string,
 	namespacedName: string,
 ): ToolFinalizeRuleType | null => {
 	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
@@ -154,7 +197,10 @@ export const resolveToolFinalize = (
 			? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
 			: namespacedName
 	const conn = [...connections.values()].find(
-		(c) => c.providerSlug === providerSlug && c.allowedTools.has(rawName),
+		(c) =>
+			c.provider.domiaId === domiaId &&
+			c.providerSlug === providerSlug &&
+			c.allowedTools.has(rawName),
 	)
 	if (!conn) return null
 	return (
@@ -233,6 +279,7 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 }
 
 export const callTool = async (
+	domiaId: string,
 	namespacedName: string,
 	args: Record<string, unknown>,
 	signal?: AbortSignal,
@@ -243,8 +290,9 @@ export const callTool = async (
 		sepIdx >= 0
 			? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
 			: namespacedName
+	const breakerKey = `${domiaId}:${providerSlug}`
 	const candidates = [...connections.values()].filter(
-		(c) => c.providerSlug === providerSlug,
+		(c) => c.provider.domiaId === domiaId && c.providerSlug === providerSlug,
 	)
 	const conn = candidates.find((c) => c.allowedTools.has(rawName))
 	if (!conn) {
@@ -279,8 +327,26 @@ export const callTool = async (
 			resolvedArgs: args,
 		}
 	}
+	const {
+		retryMaxAttempts,
+		retryBackoffMs,
+		breakerThreshold,
+		breakerCooldownMs,
+	} = conn.descriptor.resilience
+	if (breakerOpen(breakerKey, breakerThreshold)) {
+		skillEngineLogger.warn("skill callTool short-circuited — breaker open", {
+			tool: namespacedName,
+		})
+		return {
+			text: `Service "${providerSlug || "home"}" is temporarily unavailable.`,
+			status: "error",
+			isError: true,
+			resolvedArgs: args,
+		}
+	}
+	let resolvedArgs: Record<string, unknown>
 	try {
-		const resolvedArgs = conn.specialization?.resolveArgs
+		resolvedArgs = conn.specialization?.resolveArgs
 			? await conn.specialization.resolveArgs(
 					conn.provider,
 					rawName,
@@ -288,20 +354,8 @@ export const callTool = async (
 					conn.language,
 				)
 			: args
-		skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
-		const res = await conn.handle.callTool(rawName, resolvedArgs, signal)
-		const truncated =
-			res.text.length > conn.maxResultChars
-				? `${res.text.slice(0, conn.maxResultChars)}…[truncated]`
-				: res.text
-		return {
-			text: truncated || "(no output)",
-			status: res.status,
-			isError: res.isError,
-			resolvedArgs,
-		}
 	} catch (error) {
-		skillEngineLogger.warn("skill callTool failed", {
+		skillEngineLogger.warn("skill callTool resolveArgs failed", {
 			tool: namespacedName,
 			error,
 		})
@@ -311,5 +365,62 @@ export const callTool = async (
 			isError: true,
 			resolvedArgs: args,
 		}
+	}
+	skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
+
+	let transportError: unknown = null
+	for (let attempt = 0; attempt < Math.max(1, retryMaxAttempts); attempt++) {
+		if (attempt > 0) {
+			skillEngineLogger.warn(
+				`skill callTool transient — retry ${attempt}/${retryMaxAttempts - 1}`,
+				{ tool: namespacedName },
+			)
+			await sleep(backoffDelay(attempt, retryBackoffMs), signal)
+		}
+		if (signal?.aborted) break
+		try {
+			const res = await conn.handle.callTool(rawName, resolvedArgs, signal)
+			if (isTransientStatus(res.status)) {
+				transportError = null
+				continue
+			}
+			recordBreakerResult(breakerKey, true, breakerThreshold, breakerCooldownMs)
+			const truncated =
+				res.text.length > conn.maxResultChars
+					? `${res.text.slice(0, conn.maxResultChars)}…[truncated]`
+					: res.text
+			return {
+				text: truncated || "(no output)",
+				status: res.status,
+				isError: res.isError,
+				resolvedArgs,
+			}
+		} catch (error) {
+			transportError = error
+			if (signal?.aborted) break
+		}
+	}
+
+	if (signal?.aborted) {
+		skillEngineLogger.info("skill callTool cancelled by caller", {
+			tool: namespacedName,
+		})
+		return {
+			text: `Tool "${rawName}" was cancelled.`,
+			status: "timeout",
+			isError: true,
+			resolvedArgs,
+		}
+	}
+	recordBreakerResult(breakerKey, false, breakerThreshold, breakerCooldownMs)
+	skillEngineLogger.warn("skill callTool failed", {
+		tool: namespacedName,
+		error: transportError,
+	})
+	return {
+		text: `Tool "${rawName}" failed.`,
+		status: "error",
+		isError: true,
+		resolvedArgs,
 	}
 }

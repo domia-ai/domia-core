@@ -1,4 +1,8 @@
-import type { DomiaEventBusPayloadMapType, DOMIA_EVENT_BUS_ENUM } from "@/buses"
+import type {
+	DomiaEventBusPayloadMapType,
+	DOMIA_EVENT_BUS_ENUM,
+	TurnEventInputSourceType,
+} from "@/buses"
 import { INTERACTION_STATUS_ENUM_VALUES } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
@@ -384,23 +388,117 @@ export type CompletionHandleType = {
 	timeout: ReturnType<typeof setTimeout>
 }
 
-export type InteractionRuntimeType = {
-	interactionId: string
-	originDomiaKey?: string
-	inputMode: InteractionInputModeType
-	responseType: "voice" | "text"
+export type InteractionRuntimeDeliveryType = {
 	audioDelivery: InteractionAudioDeliveryType
-	satelliteId?: string
-	liveVoice?: boolean
-	wantsCompletion?: boolean
 	wantsTranscript?: boolean
-	wantsReplyText?: boolean
-	timings: InteractionTimingsType
+}
+
+export type InteractionRuntimeCallbacksType = {
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
 	onTranscript?: (text: string) => void
-	onReply?: (reply: string) => void
 	onComplete?: (result: InteractionCompletionResultType) => void
 	onError?: (error: string, step?: string) => void
+}
+
+export type InteractionRuntimeType = {
+	envelope: InteractionEnvelopeType
+	timings: InteractionTimingsType
+	liveVoice?: boolean
+	delivery: InteractionRuntimeDeliveryType
+	callbacks: InteractionRuntimeCallbacksType
+}
+
+export type InteractionSourceType = TurnEventInputSourceType
+
+export type InteractionInputType =
+	| { kind: "audio_file"; filePath: string; inputAudioMs?: number }
+	| { kind: "audio_stream"; speechEndAt?: number }
+	| { kind: "transcript"; transcript: string }
+	| { kind: "text"; text: string }
+
+export type InteractionOutputRequestType = {
+	kind: "voice" | "text"
+}
+
+export type InteractionEnvelopeType = {
+	interactionId: string
+	traceId?: string
+	originDomiaKey: string
+	runtimeDomiaKey: string
+	targetDomiaKey?: string
+	satelliteId?: string
+	source: InteractionSourceType
+	input: InteractionInputType
+	requestedOutput: InteractionOutputRequestType
+}
+
+export type OutputSinkTerminalType = "dispatch" | "playback"
+
+export type StageEnvelopeType = {
+	interactionId: string
+	originDomiaKey: string
+	satelliteId?: string
+	traceId?: string
+}
+
+export type DeliverySinkType = {
+	terminalAt: OutputSinkTerminalType
+	deliver?: (
+		ctx: CoreBusContextType,
+		interactionId: string,
+		payload: TtsDonePayloadType,
+	) => Promise<void>
+}
+
+export type RunInteractionInputType = Exclude<
+	InteractionInputType,
+	{ kind: "audio_stream" }
+>
+
+export type RunInteractionOptionsType = {
+	input: RunInteractionInputType
+	requestedOutput: InteractionOutputRequestType
+	source: InteractionSourceType
+	audioDelivery: InteractionAudioDeliveryType
+	interactionId?: string
+	satelliteId?: string
+	satelliteProtocol?: SatelliteProtocolType
+	timeoutMs?: number
+	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
+	liveTurn?: boolean
+	prefetch?: boolean
+	reflect?: boolean
+}
+
+export type RunInteractionResultType = InteractionCompletionResultType & {
+	interactionId: string
+}
+
+export type InteractionRequestType = {
+	input: InteractionInputType
+	requestedOutput: InteractionOutputRequestType
+	source: InteractionSourceType
+	interactionId?: string
+	satelliteId?: string
+	satelliteProtocol?: SatelliteProtocolType
+}
+
+export type InteractionRuntimeOptionsType = {
+	audioDelivery: InteractionAudioDeliveryType
+	createdAt?: number
+	liveTurn?: boolean
+	prefetch?: boolean
+	wantsTranscript?: boolean
+	sink?: StreamingSinkType
+	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
+	onTranscript?: (text: string) => void
+	onComplete?: (result: InteractionCompletionResultType) => void
+	onError?: (error: string, step?: string) => void
+}
+
+export type BeginInteractionHandleType = {
+	interactionId: string
+	turn: TurnScopeType | null
 }
 
 export type RequestTextToVoiceReplyResult = {

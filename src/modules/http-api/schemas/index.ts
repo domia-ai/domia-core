@@ -86,6 +86,8 @@ export const postImportMindBodySchema = z.object({
 
 export const getSyncQuerySchema = z.object({
 	since: z.string().optional().default(""),
+	turnSince: z.string().optional().default(""),
+	turnId: z.string().optional().default(""),
 	limit: z.coerce.number().int().positive().max(1000).optional().default(200),
 })
 

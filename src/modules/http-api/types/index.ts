@@ -63,6 +63,7 @@ export type GetSyncResponseType = {
 	announcements: (typeof announcement.$inferSelect)[]
 	turnEvents: (typeof turnEvent.$inferSelect)[]
 	nextCursor: string
+	nextTurnCursor: { since: string; id: string } | null
 }
 
 export type PostVoiceBodyType = z.infer<typeof postVoiceBodySchema>

@@ -19,7 +19,7 @@ import {
 import { markPipelineStart, updateInteraction } from "@/modules/session-manager"
 import {
 	buildPromptContext,
-	personaContextFromDomia,
+	buildDelegationPersona,
 } from "@/modules/prompt-context-builder"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import {
@@ -169,14 +169,7 @@ const startSpeculation = (
 							originDomiaKey: domia.domiaKey,
 							interactionId: args.interactionId,
 							responseType: RESPONSE_TYPE_ENUM.VOICE,
-							personaContextJson: JSON.stringify(
-								personaContextFromDomia(
-									domia,
-									bundle.recentTurns,
-									bundle.knownFacts,
-									bundle.userMoodTrend,
-								),
-							),
+							persona: buildDelegationPersona(domia, bundle),
 						},
 					)
 					if (!streamed.delivered || !streamed.tokens) {

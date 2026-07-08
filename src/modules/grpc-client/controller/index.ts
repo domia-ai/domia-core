@@ -1,6 +1,11 @@
-import { createChannel, createClient, type Channel } from "nice-grpc"
+import {
+	createChannel,
+	createClientFactory,
+	Metadata,
+	type Channel,
+} from "nice-grpc"
 
-import { grpcClientLogger } from "@/utils"
+import { grpcClientLogger, meshBearerHeader } from "@/utils"
 import { env } from "@/config"
 import { isHostedIdentity } from "@/modules/core"
 import {
@@ -82,10 +87,20 @@ const closeChannel = (addr: string): void => {
 	clients.delete(addr)
 }
 
+const meshClientFactory = createClientFactory().use(
+	async function* (call, options) {
+		const metadata = Metadata(options.metadata ?? {}).set(
+			"authorization",
+			meshBearerHeader().authorization,
+		)
+		return yield* call.next(call.request, { ...options, metadata })
+	},
+)
+
 const createClientForAddr = (addr: string): DomiaNodeClient => {
 	const channel = createChannel(addr)
 	channels.set(addr, channel)
-	const client = createClient(DomiaNodeDefinition, channel)
+	const client = meshClientFactory.create(DomiaNodeDefinition, channel)
 	clients.set(addr, client)
 	return client
 }
@@ -513,7 +528,9 @@ export const streamLlmFromTarget = async (
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
 					responseType: request.responseType,
-					personaContextJson: request.personaContextJson,
+					personaContextJson: request.persona
+						? JSON.stringify(request.persona)
+						: undefined,
 					targetDomiaKey: target.domiaKey,
 				},
 				{ signal },
@@ -553,7 +570,9 @@ export const streamTtsFromTarget = async (
 					reply: request.reply,
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
-					ttsVoiceJson: request.ttsVoiceJson,
+					ttsVoiceJson: request.ttsVoice
+						? JSON.stringify(request.ttsVoice)
+						: undefined,
 					targetDomiaKey: target.domiaKey,
 				},
 				{ signal },
@@ -598,7 +617,9 @@ export const streamReplyAudioFromTarget = async (
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
 					responseType: request.responseType,
-					personaContextJson: request.personaContextJson,
+					personaContextJson: request.persona
+						? JSON.stringify(request.persona)
+						: undefined,
 					targetDomiaKey: target.domiaKey,
 				},
 				{ signal },
@@ -665,7 +686,9 @@ export const streamVoiceReplyFromTarget = async (
 						originDomiaKey: request.originDomiaKey,
 						interactionId: request.interactionId,
 						responseType: request.responseType,
-						personaContextJson: request.personaContextJson,
+						personaContextJson: request.persona
+							? JSON.stringify(request.persona)
+							: undefined,
 						targetDomiaKey: target.domiaKey,
 					},
 				}

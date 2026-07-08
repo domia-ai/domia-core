@@ -32,3 +32,7 @@ build/
 
 # Ignore Mosquitto password file (security)
 /config/mqtt/password.txt
+
+# Bench artifacts
+/evals/bench-results/
+/evals/results/

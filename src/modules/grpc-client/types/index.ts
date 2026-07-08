@@ -1,4 +1,6 @@
 import type { ResolvedDelegateType } from "@/modules/capability-resolver"
+import type { PersonaContextType } from "@/modules/prompt-context-builder"
+import type { TtsVoiceType } from "@/modules/tts-engine"
 import type {
 	AudioReadyPayload,
 	SttDonePayload,
@@ -48,7 +50,7 @@ export type StreamLlmRequestType = {
 	originDomiaKey?: string
 	interactionId?: string
 	responseType?: string
-	personaContextJson?: string
+	persona?: PersonaContextType
 }
 
 export type StreamLlmResult = {
@@ -64,7 +66,7 @@ export type StreamTtsRequestType = {
 	reply: string
 	originDomiaKey?: string
 	interactionId?: string
-	ttsVoiceJson?: string
+	ttsVoice?: TtsVoiceType
 }
 
 export type StreamTtsResult = {
@@ -83,7 +85,7 @@ export type StreamReplyAudioRequestType = {
 	originDomiaKey?: string
 	interactionId?: string
 	responseType?: string
-	personaContextJson?: string
+	persona?: PersonaContextType
 }
 
 export type StreamReplyAudioResult = {
@@ -103,7 +105,7 @@ export type StreamVoiceReplyRequestType = {
 	originDomiaKey?: string
 	interactionId?: string
 	responseType?: string
-	personaContextJson?: string
+	persona?: PersonaContextType
 	audioFactory: () => AsyncIterable<Buffer>
 }
 

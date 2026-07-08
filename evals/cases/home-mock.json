@@ -1,0 +1,96 @@
+[
+	{
+		"name": "mock: turn on the kitchen light",
+		"suite": "home-mock",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "turn on the kitchen light",
+				"expect": {
+					"routed": "skill",
+					"tool": ["HassTurnOn", "HassLightSet"],
+					"anyArgMatches": "kitchen",
+					"expectEvents": {
+						"present": [
+							"turn.started",
+							"intent.decided",
+							"tool.requested",
+							"tool.result",
+							"turn.completed"
+						],
+						"toolResultStatus": "ok",
+						"seqOrdered": true
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "mock: turn off the bedroom light",
+		"suite": "home-mock",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "turn off the bedroom light",
+				"expect": {
+					"routed": "skill",
+					"tool": ["HassTurnOff"],
+					"anyArgMatches": "bedroom",
+					"expectEvents": {
+						"present": ["tool.requested", "tool.result", "turn.completed"],
+						"toolResultStatus": "ok",
+						"seqOrdered": true
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "mock: prende la luz de la cocina",
+		"suite": "home-mock",
+		"language": "es",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "prende la luz de la cocina",
+				"expect": {
+					"routed": "skill",
+					"tool": ["HassTurnOn", "HassLightSet"],
+					"anyArgMatches": "kitchen|cocina",
+					"expectEvents": {
+						"present": ["tool.requested", "tool.result", "turn.completed"],
+						"toolResultStatus": "ok",
+						"seqOrdered": true
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "mock: apaga la luz del dormitorio",
+		"suite": "home-mock",
+		"language": "es",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "apaga la luz del dormitorio",
+				"expect": {
+					"routed": "skill",
+					"tool": ["HassTurnOff"],
+					"anyArgMatches": "bedroom|dormitorio",
+					"expectEvents": {
+						"present": ["tool.requested", "tool.result", "turn.completed"],
+						"toolResultStatus": "ok",
+						"seqOrdered": true
+					}
+				}
+			}
+		]
+	}
+]

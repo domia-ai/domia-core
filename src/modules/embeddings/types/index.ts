@@ -6,7 +6,13 @@ export type EmbedTextsFnType = (
 	texts: string[],
 ) => Promise<number[][] | null>
 
+export type EmbedCapabilitiesType = {
+	local: boolean
+	normalized: boolean
+}
+
 export type EmbedBackendType = {
 	id: EmbedBackendEnumType
+	capabilities: EmbedCapabilitiesType
 	embed: EmbedTextsFnType
 }

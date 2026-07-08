@@ -10,6 +10,7 @@ import { getLocalIp, upsertDomiaFromNetwork } from "@/modules/network-sync"
 import {
 	getLastInteractionAt,
 	getLastAnnouncementAt,
+	getLastTurnEventAt,
 } from "@/modules/session-manager"
 import { getLastEmotionEventAt } from "@/modules/emotion-engine"
 import { getLastFactAt } from "@/modules/memory"
@@ -37,12 +38,13 @@ export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 		const localIp = getLocalIp()
 		const grpcPort = Number(env.GRPC_PORT)
 		const httpPort = Number(env.HTTP_SERVER_PORT)
-		const [interactionAt, emotionAt, factAt, announcementAt] =
+		const [interactionAt, emotionAt, factAt, announcementAt, turnEventAt] =
 			await Promise.all([
 				getLastInteractionAt(domia.id),
 				getLastEmotionEventAt(domia.id),
 				getLastFactAt(domia.id),
 				getLastAnnouncementAt(domia.id),
+				getLastTurnEventAt(domia.id),
 			])
 		const stamps = [interactionAt, emotionAt, factAt, announcementAt].filter(
 			(s): s is string => Boolean(s),
@@ -60,6 +62,7 @@ export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 			httpPort,
 			isPrincipal: domiaKey === env.DOMIA_KEY,
 			lastInteractionAt,
+			lastTurnAt: turnEventAt,
 		}
 		delete payload.mqttConfigs
 		delete payload.localMqttConfig
