@@ -36,3 +36,4 @@ build/
 # Bench artifacts
 /evals/bench-results/
 /evals/results/
+evals/candidates/

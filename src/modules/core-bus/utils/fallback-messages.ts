@@ -1,5 +1,7 @@
 import { languageSetsFor } from "@/utils"
 
+import type { ReplyFallbackResultType, HeardReplyPlaybackType } from "../types"
+
 const STEP_TO_PHRASE: Record<string, string> = {
 	llm: "fallbackLlm",
 	stt: "fallbackStt",
@@ -20,12 +22,16 @@ export const resolveFallbackMessage = (
 export const ensureReplyOrFallback = (
 	reply: string,
 	language?: string | null,
-): { reply: string; usedFallback: boolean } =>
+): ReplyFallbackResultType =>
 	reply.trim().length > 0
 		? { reply, usedFallback: false }
 		: { reply: resolveFallbackMessage("llm", language), usedFallback: true }
 
 export const heardReplyOf = (
 	reply: string,
-	playback: { audioStarted: boolean; interrupted: boolean },
-): string => (playback.audioStarted && !playback.interrupted ? reply : "")
+	playback: HeardReplyPlaybackType,
+): string => {
+	if (!playback.audioStarted) return ""
+	if (!playback.interrupted) return reply
+	return playback.heardText ?? ""
+}

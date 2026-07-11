@@ -1,7 +1,10 @@
 import { spawn, type ChildProcess } from "child_process"
 
 import { type DomiaType } from "@/modules/core"
-import { DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS } from "@/db"
+import {
+	DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS,
+	DEFAULT_PLAYBACK_TRUNCATION_REPLAY_THRESHOLD_MS,
+} from "@/db"
 import { audioPlaybackLogger } from "@/utils"
 import { registerActivePlayback } from "../../utils"
 import type { AudioPlaybackResult, SoxStreamOptionsType } from "../../types"
@@ -91,43 +94,72 @@ const bytesToAudioMs = (
 export const runSox = async (
 	domia: DomiaType,
 	filePath: string,
+	trimStartMs = 0,
 ): Promise<AudioPlaybackResult> => {
 	const { volume, factor } = volumeFromConfig(domia.audioPlaybackConfig)
-	const args = appendVolArgs([filePath], factor)
+	const trimArgs =
+		trimStartMs > 0 ? ["trim", (trimStartMs / 1000).toFixed(3)] : []
+	const args = appendVolArgs([filePath, ...trimArgs], factor)
 
 	audioPlaybackLogger.info("🔊 Running Sox playback", {
 		domiaId: domia?.id,
 		filePath,
 		engine: "sox",
 		volume,
+		trimStartMs,
 	})
 
 	return new Promise((resolve, reject) => {
 		const proc = spawn("play", args, { stdio: "ignore" })
+		const startedAt = Date.now()
+		let pausedAt: number | null = null
+		let pausedTotalMs = 0
 		let interrupted = false
 		let killTimer: ReturnType<typeof setTimeout> | null = null
+		const filePlayedMs = (): number =>
+			Math.max(0, (pausedAt ?? Date.now()) - startedAt - pausedTotalMs)
 		const clearKillTimer = (): void => {
 			if (killTimer) {
 				clearTimeout(killTimer)
 				killTimer = null
 			}
 		}
-		const unregister = registerActivePlayback(domia.id, () => {
-			interrupted = true
-			audioPlaybackLogger.info("🛑 Sox playback interrupted", {
-				domiaId: domia.id,
-			})
-			proc.kill("SIGTERM")
-			killTimer = setTimeout(() => {
-				killTimer = null
-				try {
-					proc.kill("SIGKILL")
-				} catch {
-					/* */
-				}
-			}, KILL_GRACE_MS)
-			killTimer.unref()
-		})
+		const unregister = registerActivePlayback(
+			domia.id,
+			() => {
+				interrupted = true
+				audioPlaybackLogger.info("🛑 Sox playback interrupted", {
+					domiaId: domia.id,
+				})
+				if (pausedAt !== null) proc.kill("SIGCONT")
+				proc.kill("SIGTERM")
+				killTimer = setTimeout(() => {
+					killTimer = null
+					try {
+						proc.kill("SIGKILL")
+					} catch {
+						/* */
+					}
+				}, KILL_GRACE_MS)
+				killTimer.unref()
+			},
+			{
+				pause: () => {
+					if (interrupted || pausedAt !== null) return pausedAt !== null
+					proc.kill("SIGSTOP")
+					pausedAt = Date.now()
+					return true
+				},
+				resume: () => {
+					if (pausedAt === null) return false
+					proc.kill("SIGCONT")
+					pausedTotalMs += Date.now() - pausedAt
+					pausedAt = null
+					return true
+				},
+				positionMs: () => filePlayedMs(),
+			},
+		)
 
 		proc.on("error", (err) => {
 			clearKillTimer()
@@ -140,11 +172,16 @@ export const runSox = async (
 			clearKillTimer()
 			unregister()
 			if (interrupted) {
-				resolve({ engine: "SOX", success: true, interrupted: true })
+				resolve({
+					engine: "SOX",
+					success: true,
+					interrupted: true,
+					playedMs: filePlayedMs(),
+				})
 				return
 			}
 			if (code === 0) {
-				resolve({ engine: "SOX", success: true })
+				resolve({ engine: "SOX", success: true, playedMs: filePlayedMs() })
 				return
 			}
 			audioPlaybackLogger.error("🔇 Sox failed", { code, domiaId: domia.id })
@@ -280,6 +317,27 @@ export const runSoxStream = async (
 			totalBytes: 0,
 			chunkCount: 0,
 			startedAt: Date.now(),
+			pausedAt: null as number | null,
+			pausedTotalMs: 0,
+		}
+		const playedMsNow = (): number | undefined => {
+			if (!state.firstChunkAt) return undefined
+			const wallMs =
+				(state.pausedAt ?? Date.now()) -
+				state.firstChunkAt -
+				state.pausedTotalMs
+			return Math.max(
+				0,
+				Math.min(
+					bytesToAudioMs(
+						state.totalBytes,
+						options.sampleRate,
+						options.channels,
+						options.bitsPerSample,
+					),
+					Math.round(wallMs),
+				),
+			)
 		}
 		const watchdogGraceMs =
 			domia.audioPlaybackConfig?.watchdogGraceMs ??
@@ -312,6 +370,7 @@ export const runSoxStream = async (
 			}
 		}
 		const killProcessGroup = (): void => {
+			if (state.pausedAt !== null) signalGroup("SIGCONT")
 			signalGroup("SIGTERM")
 			if (killTimer) return
 			killTimer = setTimeout(() => {
@@ -324,6 +383,12 @@ export const runSoxStream = async (
 		const tripWatchdog = (reason: string): void => {
 			if (state.settled || state.exited || state.interrupted) return
 			if (state.watchdogTripped) return
+			if (state.pausedAt !== null) {
+				clearWatchdogTimer()
+				watchdogTimer = setTimeout(() => tripWatchdog(reason), 500)
+				watchdogTimer.unref()
+				return
+			}
 			state.watchdogTripped = true
 			audioPlaybackLogger.error(
 				"🐕 Playback watchdog tripped — audio device not consuming, killing player",
@@ -345,15 +410,35 @@ export const runSoxStream = async (
 			void iterator.return?.(undefined)
 		}
 
-		const unregister = registerActivePlayback(domia.id, () => {
-			state.interrupted = true
-			audioPlaybackLogger.info("🛑 Sox stream playback interrupted", {
-				domiaId: domia.id,
-			})
-			killProcessGroup()
-			proc.stdin?.destroy()
-			void iterator.return?.(undefined)
-		})
+		const unregister = registerActivePlayback(
+			domia.id,
+			() => {
+				state.interrupted = true
+				audioPlaybackLogger.info("🛑 Sox stream playback interrupted", {
+					domiaId: domia.id,
+				})
+				killProcessGroup()
+				proc.stdin?.destroy()
+				void iterator.return?.(undefined)
+			},
+			{
+				pause: () => {
+					if (state.settled || state.exited || state.interrupted) return false
+					if (state.pausedAt !== null) return true
+					signalGroup("SIGSTOP")
+					state.pausedAt = Date.now()
+					return true
+				},
+				resume: () => {
+					if (state.pausedAt === null) return false
+					signalGroup("SIGCONT")
+					state.pausedTotalMs += Date.now() - state.pausedAt
+					state.pausedAt = null
+					return true
+				},
+				positionMs: () => playedMsNow() ?? null,
+			},
+		)
 
 		const settle = (result: AudioPlaybackResult, err?: Error): void => {
 			if (state.settled) return
@@ -381,7 +466,12 @@ export const runSoxStream = async (
 				),
 			})
 			if (state.interrupted) {
-				settle({ engine: "SOX", success: true, interrupted: true })
+				settle({
+					engine: "SOX",
+					success: true,
+					interrupted: true,
+					playedMs: playedMsNow(),
+				})
 				return
 			}
 			if (state.watchdogTripped) {
@@ -395,7 +485,37 @@ export const runSoxStream = async (
 				settle({ engine: "SOX", success: false }, state.pumpError)
 				return
 			}
-			settle({ engine: "SOX", success: state.exitCode === 0 })
+			const expectedMs = bytesToAudioMs(
+				state.totalBytes,
+				options.sampleRate,
+				options.channels,
+				options.bitsPerSample,
+			)
+			const playedMs = playedMsNow() ?? 0
+			const truncationThresholdMs =
+				domia.audioPlaybackConfig?.truncationReplayThresholdMs ??
+				DEFAULT_PLAYBACK_TRUNCATION_REPLAY_THRESHOLD_MS
+			const truncated =
+				state.exitCode === 0 && expectedMs - playedMs > truncationThresholdMs
+			if (truncated) {
+				audioPlaybackLogger.warn(
+					"✂️ Sox stream playback truncated — player exited before draining buffered audio",
+					{
+						domiaId: domia.id,
+						playedMs,
+						expectedMs,
+						cutMs: expectedMs - playedMs,
+						totalBytes: state.totalBytes,
+					},
+				)
+			}
+			settle({
+				engine: "SOX",
+				success: state.exitCode === 0,
+				playedMs,
+				expectedMs,
+				truncated,
+			})
 		}
 
 		attachStderrFilter(proc, domia.id)

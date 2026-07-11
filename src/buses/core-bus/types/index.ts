@@ -19,6 +19,8 @@ export type DomiaEventBusPayloadMapType = {
 		interactionId?: string
 		responseType?: string
 		speechEndAt?: number
+		endpointDelayMs?: number
+		endpointDebounceMs?: number
 		liveVoice?: boolean
 		traceId?: string
 	}
@@ -33,6 +35,8 @@ export type DomiaEventBusPayloadMapType = {
 		prestartedFirstUnitText?: string
 		prestartedFirstUnitPcm?: Promise<Buffer | null>
 		speechEndAt?: number
+		endpointDelayMs?: number
+		endpointDebounceMs?: number
 	}
 	[DOMIA_EVENT_BUS_ENUM.PROCESSING_STARTED]: DomiaBusEnvelopeType
 	[DOMIA_EVENT_BUS_ENUM.LLM_DONE]: DomiaBusEnvelopeType & {
@@ -54,6 +58,7 @@ export type DomiaEventBusPayloadMapType = {
 	[DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED]: DomiaBusEnvelopeType & {
 		status?: PlaybackStatusType
 		playedLocally?: boolean
+		positionMs?: number
 	}
 	[DOMIA_EVENT_BUS_ENUM.AUDIO_ERROR]: { error: Error }
 	[DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING]: {

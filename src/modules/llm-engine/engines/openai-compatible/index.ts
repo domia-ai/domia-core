@@ -9,6 +9,7 @@ import type {
 	LlmEngineAdapterType,
 	ToolCallType,
 	ToolCallOrReplyType,
+	ToolChoiceType,
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
 	LlmUsageType,
@@ -28,7 +29,9 @@ const openAiUsage = (
 	finishReason: string | null | undefined,
 	timings: LlamaTimingsType | undefined,
 	contextWindow?: number,
+	requestId?: string | null,
 ): LlmUsageType => ({
+	requestId: requestId ?? null,
 	promptTokens: usage?.prompt_tokens ?? null,
 	completionTokens: usage?.completion_tokens ?? null,
 	tokensPerSec:
@@ -112,17 +115,20 @@ const userMessages = (
 const requireToolModel = (domia: DomiaType): string =>
 	domia.llmModelConfig?.toolModelName?.trim() || requireModel(domia)
 
-const normalizeArgs = (raw: unknown): Record<string, unknown> => {
+const normalizeArgs = (
+	raw: unknown,
+): { args: Record<string, unknown>; invalid: boolean } => {
 	if (typeof raw === "string") {
 		const { value } = parseLlmJson(raw)
-		if (value) return value
-		llmEngineLogger.warn("tool-call arguments failed to parse — using {}", {
+		if (value) return { args: value, invalid: false }
+		llmEngineLogger.warn("tool-call arguments failed to parse", {
 			raw: raw.slice(0, 200),
 		})
-		return {}
+		return { args: {}, invalid: true }
 	}
-	if (raw && typeof raw === "object") return raw as Record<string, unknown>
-	return {}
+	if (raw && typeof raw === "object")
+		return { args: raw as Record<string, unknown>, invalid: false }
+	return { args: {}, invalid: false }
 }
 
 const toOpenAiMessages = (
@@ -198,6 +204,7 @@ export const runOpenAiCompatible = async (
 				response.choices[0]?.finish_reason,
 				timingsOf(response),
 				domia.llmModelConfig?.contextWindow,
+				response.id,
 			),
 		)
 		return response.choices[0]?.message?.content?.trim() || ""
@@ -252,6 +259,7 @@ const runOpenAiCompatibleStream = async function* (
 						finishReason,
 						timingsOf(chunk),
 						domia.llmModelConfig?.contextWindow,
+						chunk.id,
 					),
 				)
 		}
@@ -362,6 +370,7 @@ const runOpenAiCompatibleWithTools = async (
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
 	onUsage?: LlmUsageSinkType,
+	toolChoice?: ToolChoiceType,
 ): Promise<ToolCallOrReplyType> => {
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
@@ -372,6 +381,7 @@ const runOpenAiCompatibleWithTools = async (
 			model: modelName,
 			messages: toOpenAiMessages(messages),
 			tools: toOpenAiTools(tools),
+			tool_choice: toolChoice === "none" ? "none" : "auto",
 			temperature: TOOL_CALL_TEMPERATURE,
 			max_tokens: TOOL_CALL_NUM_PREDICT,
 		})
@@ -381,6 +391,7 @@ const runOpenAiCompatibleWithTools = async (
 				response.choices[0]?.finish_reason,
 				timingsOf(response),
 				domia.llmModelConfig?.contextWindow,
+				response.id,
 			),
 		)
 		const message = response.choices[0]?.message
@@ -390,7 +401,10 @@ const runOpenAiCompatibleWithTools = async (
 				.filter((c) => c.type === "function")
 				.map((c) => ({
 					name: c.function.name,
-					arguments: normalizeArgs(c.function.arguments),
+					...(() => {
+						const n = normalizeArgs(c.function.arguments)
+						return { arguments: n.args, argsInvalid: n.invalid || undefined }
+					})(),
 				}))
 			return { kind: "tool_calls", calls }
 		}

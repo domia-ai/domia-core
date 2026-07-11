@@ -29,6 +29,11 @@ export const publishIdentityState = async (domiaKey: string): Promise<void> => {
 	await sendHeartbeat({ domia })
 }
 
+export const publishConfigChanged = (domiaKey: string): void => {
+	const topic = `${env.MQTT_TOPIC_ROOT}/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.CONFIG_CHANGED}`
+	localMqttClient?.publish(topic, JSON.stringify({ domiaKey }))
+}
+
 export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 	try {
 		const domiaKey = domia?.domiaKey

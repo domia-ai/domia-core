@@ -36,6 +36,43 @@ export const normalizeRmsToDbfs = (
 	return out
 }
 
+export const downmixToMonoPcm16 = (pcm: Buffer, channels: number): Buffer => {
+	if (channels <= 1) return pcm
+	const frames = Math.floor(pcm.length / (channels * 2))
+	const out = Buffer.allocUnsafe(frames * 2)
+	for (let i = 0; i < frames; i++) {
+		let sum = 0
+		for (let c = 0; c < channels; c++) {
+			sum += pcm.readInt16LE((i * channels + c) * 2)
+		}
+		out.writeInt16LE(Math.round(sum / channels), i * 2)
+	}
+	return out
+}
+
+export const downsamplePcm16 = (
+	pcm: Buffer,
+	fromRate: number,
+	toRate: number,
+): Buffer => {
+	if (fromRate === toRate) return pcm
+	const inSamples = Math.floor(pcm.length / 2)
+	if (inSamples === 0) return Buffer.alloc(0)
+	const outSamples = Math.floor((inSamples * toRate) / fromRate)
+	const out = Buffer.allocUnsafe(outSamples * 2)
+	const ratio = fromRate / toRate
+	for (let i = 0; i < outSamples; i++) {
+		const pos = i * ratio
+		const left = Math.floor(pos)
+		const right = Math.min(left + 1, inSamples - 1)
+		const frac = pos - left
+		const sample =
+			pcm.readInt16LE(left * 2) * (1 - frac) + pcm.readInt16LE(right * 2) * frac
+		out.writeInt16LE(Math.round(sample), i * 2)
+	}
+	return out
+}
+
 export const applyEdgeFade = (
 	pcm: Buffer,
 	sampleRate: number,

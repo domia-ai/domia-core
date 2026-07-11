@@ -131,7 +131,7 @@ export const classifyNeedsSkill = async (
 			)
 		}
 	}
-	if (!opts.canRunLlm) return { needsSkill: true, reason: "no-local-llm" }
+	if (!opts.canRunLlm) return { needsSkill: false, reason: "no-local-llm" }
 
 	const model =
 		domia.llmModelConfig?.intentModelName?.trim() || DEFAULT_INTENT_MODEL

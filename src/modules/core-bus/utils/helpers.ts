@@ -32,6 +32,8 @@ import type {
 	InteractionStatusType,
 	NotifyAudioFallbackArgsType,
 	NotifyInteractionFailedArgsType,
+	ForwardFailurePayloadType,
+	PersistTerminalOptsType,
 } from "../types"
 
 const FALLBACK_TTS_TIMEOUT_MS = 8000
@@ -80,13 +82,7 @@ const playFallbackAudio = async (
 const forwardFailureToOrigin = async (
 	ctx: CoreBusContextType,
 	originDomiaKey: string,
-	payload: {
-		interactionId: string | undefined
-		originDomiaKey: string | undefined
-		responseType: string | undefined
-		error: string
-		step: string | undefined
-	},
+	payload: ForwardFailurePayloadType,
 ): Promise<void> => {
 	const originDomia = await getDomiaByDomiaKey(originDomiaKey)
 	if (!originDomia) {
@@ -192,7 +188,7 @@ const TERMINAL_STATUSES: readonly string[] = [
 export const persistTerminal = async (
 	interactionId: string,
 	status: InteractionStatusType,
-	opts: { errorStep?: string; errorMessage?: string; errorCode?: string } = {},
+	opts: PersistTerminalOptsType = {},
 ): Promise<void> => {
 	try {
 		const existing = await getInteractionById(interactionId)

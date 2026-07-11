@@ -11,6 +11,7 @@ export type ChatMessageRoleType = "system" | "user" | "assistant" | "tool"
 export type ToolCallType = {
 	name: string
 	arguments: Record<string, unknown>
+	argsInvalid?: boolean
 }
 
 export type ChatMessageType = {
@@ -27,6 +28,7 @@ export type ToolDefinitionType = {
 }
 
 export type LlmUsageType = {
+	requestId?: string | null
 	promptTokens?: number | null
 	completionTokens?: number | null
 	tokensPerSec?: number | null
@@ -36,6 +38,8 @@ export type LlmUsageType = {
 }
 
 export type LlmUsageSinkType = (usage: LlmUsageType) => void
+
+export type ToolChoiceType = "auto" | "none"
 
 export type ToolCallOrReplyType =
 	| { kind: "reply"; text: string }
@@ -70,6 +74,7 @@ export type LlmEngineAdapterType = {
 		messages: ChatMessageType[],
 		tools: ToolDefinitionType[],
 		onUsage?: LlmUsageSinkType,
+		toolChoice?: ToolChoiceType,
 	) => Promise<ToolCallOrReplyType>
 	runReplyStreamOrTools?: (
 		domia: DomiaType,

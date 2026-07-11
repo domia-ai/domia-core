@@ -11,9 +11,10 @@ import {
 	setTraceContext,
 	toError,
 	languageSetsFor,
+	withIdleTimeout,
 } from "@/utils"
 import {
-	AsyncQueue,
+	createAsyncQueue,
 	concatStreams,
 	DEFAULT_SAMPLE_RATE,
 	eagerTtsSlotsFromDomia,
@@ -30,6 +31,10 @@ import {
 	isTurnAborted,
 	notifyTurnAborted,
 	recordLlmUsage,
+	recordEouMetrics,
+	eouCols,
+	createPlaybackLedger,
+	registerTurnLedger,
 	takeLlmUsage,
 	usageCols,
 	recordReplyQueueWait,
@@ -58,6 +63,8 @@ import {
 	pipelineElapsed,
 } from "@/modules/session-manager"
 import {
+	DEFAULT_TTS_PACER_MIN_REMAINING_MS,
+	DEFAULT_TTS_PACER_MAX_CHARS,
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
 	INTERACTION_STATUS_ENUM,
@@ -129,7 +136,9 @@ const persistTurnComplete = async (
 	// claim BEFORE the await: playback-finished races this write on the streaming path
 	const claimed =
 		emitCompletion && earlyId ? claimTurnCompleted(earlyId) : false
-	const result = await updateInteraction(payload)
+	const result = await updateInteraction(
+		earlyId ? { ...payload, ...eouCols(earlyId) } : payload,
+	)
 	if (!emitCompletion) return result
 	const ctx = getTraceContext()
 	const interactionId = earlyId || (ctx?.interactionId ?? "")
@@ -199,6 +208,8 @@ const releasePrestarted = (payload: SttDonePayloadType): void => {
 	void tokens?.return?.(undefined).catch(() => undefined)
 }
 
+const LLM_STREAM_IDLE_MS = 30000
+
 const QUIET_AUDIO_POLL_MS = 250
 const QUIET_AUDIO_DEADLINE_MS = 20000
 
@@ -234,6 +245,7 @@ const publishStreamedReplyComplete = (
 		originDomiaKey: session.originDomiaKey,
 		status: playback.interrupted ? "interrupted" : "completed",
 		playedLocally: playback.audioStarted,
+		positionMs: playback.positionMs,
 		liveVoice: session.liveVoice,
 	})
 }
@@ -253,9 +265,19 @@ const pipelineVoiceFromTokens = async (
 	if (!tts) return false
 
 	const startTime = Date.now()
-	const ttsStreamQueue = new AsyncQueue<AsyncIterable<Buffer>>()
+	const ttsStreamQueue = createAsyncQueue<AsyncIterable<Buffer>>()
 	const caps = tts.adapter.capabilities
 	const queueDepth = pipelineDepthFromDomia(domia)
+	const pacer = domia.ttsConfig?.pacerEnabled
+		? {
+				minRemainingMs:
+					domia.ttsConfig.pacerMinRemainingMs ??
+					DEFAULT_TTS_PACER_MIN_REMAINING_MS,
+				maxChars: domia.ttsConfig.pacerMaxChars ?? DEFAULT_TTS_PACER_MAX_CHARS,
+			}
+		: null
+	const bytesPerMsOut = (caps.sampleRate * caps.channels * 2) / 1000
+	let pendingPaced = ""
 	const eagerSlots = eagerTtsSlotsFromDomia(domia)
 
 	let ttfaMs: number | undefined
@@ -275,12 +297,20 @@ const pipelineVoiceFromTokens = async (
 		})
 	}
 	let playbackGone = false
+	const ledger = createPlaybackLedger(
+		{ sampleRate: caps.sampleRate, channels: caps.channels },
+		{
+			wordLevelHeard: domia.audioPlaybackConfig?.wordLevelHeardEnabled ?? false,
+		},
+	)
+	registerTurnLedger(session.interactionId, ledger)
 	const playbackPromise = playStreamedAudio(
 		ctx,
 		concatStreams(ttsStreamQueue.iter()),
 		{
 			interactionId: session.interactionId,
 			originDomiaKey: session.originDomiaKey,
+			ledger,
 			aborted: () => isTurnAborted(domia.id, session.interactionId),
 			onFirstChunk: () => {
 				ttfaMs =
@@ -332,16 +362,19 @@ const pipelineVoiceFromTokens = async (
 			const prefixText = prefix.text
 			const prefixPcm = prefix.pcm
 			ttsStreamQueue.push(
-				primeStream(
-					(async function* (): AsyncIterable<Buffer> {
-						const pcm = await prefixPcm.catch(() => null)
-						if (pcm && pcm.length > 0) {
-							yield pcm
-							return
-						}
-						yield* ttsAdapterToPcmChunks(domia, tts.adapter, prefixText)
-					})(),
-					eagerSlots,
+				ledger.wrapSentence(
+					extractEmotionTags(prefixText).clean,
+					primeStream(
+						(async function* (): AsyncIterable<Buffer> {
+							const pcm = await prefixPcm.catch(() => null)
+							if (pcm && pcm.length > 0) {
+								yield pcm
+								return
+							}
+							yield* ttsAdapterToPcmChunks(domia, tts.adapter, prefixText)
+						})(),
+						eagerSlots,
+					),
 				),
 			)
 		}
@@ -367,18 +400,73 @@ const pipelineVoiceFromTokens = async (
 					speed: Number(sentenceVoice.speed.toFixed(3)),
 					silenceScale: Number(sentenceVoice.silenceScale.toFixed(3)),
 				})
+			if (
+				pacer &&
+				!sentenceVoice &&
+				firstSentenceAt !== undefined &&
+				fullReply !== sentence
+			) {
+				pendingPaced = pendingPaced ? `${pendingPaced} ${sentence}` : sentence
+				const remainingMs =
+					ledger.totalBytes() / bytesPerMsOut - (ledger.positionMs() ?? 0)
+				if (
+					pendingPaced.length < pacer.maxChars &&
+					remainingMs > pacer.minRemainingMs
+				) {
+					continue
+				}
+				const batch = pendingPaced
+				pendingPaced = ""
+				await ttsStreamQueue.waitForSpace(queueDepth)
+				ttsStreamQueue.push(
+					ledger.wrapSentence(
+						extractEmotionTags(batch).clean,
+						primeStream(
+							ttsAdapterToPcmChunks(domia, tts.adapter, batch),
+							eagerSlots,
+						),
+					),
+				)
+				continue
+			}
+			if (pendingPaced) {
+				const batch = pendingPaced
+				pendingPaced = ""
+				await ttsStreamQueue.waitForSpace(queueDepth)
+				ttsStreamQueue.push(
+					ledger.wrapSentence(
+						extractEmotionTags(batch).clean,
+						primeStream(
+							ttsAdapterToPcmChunks(domia, tts.adapter, batch),
+							eagerSlots,
+						),
+					),
+				)
+			}
 			await ttsStreamQueue.waitForSpace(queueDepth)
 			ttsStreamQueue.push(
-				primeStream(
-					ttsAdapterToPcmChunks(
-						domia,
-						tts.adapter,
-						sentence,
-						sentenceVoice ? { voice: sentenceVoice } : undefined,
+				ledger.wrapSentence(
+					extractEmotionTags(sentence).clean,
+					primeStream(
+						ttsAdapterToPcmChunks(
+							domia,
+							tts.adapter,
+							sentence,
+							sentenceVoice ? { voice: sentenceVoice } : undefined,
+						),
+						eagerSlots,
 					),
-					eagerSlots,
 				),
 			)
+		}
+		if (pendingPaced) {
+			ttsStreamQueue.push(
+				ledger.wrapSentence(
+					extractEmotionTags(pendingPaced).clean,
+					ttsAdapterToPcmChunks(domia, tts.adapter, pendingPaced),
+				),
+			)
+			pendingPaced = ""
 		}
 	} catch (err) {
 		tokenError = err
@@ -395,7 +483,12 @@ const pipelineVoiceFromTokens = async (
 				interactionId: session.interactionId,
 			})
 			fullReply = ensured.reply
-			ttsStreamQueue.push(ttsAdapterToPcmChunks(domia, tts.adapter, fullReply))
+			ttsStreamQueue.push(
+				ledger.wrapSentence(
+					extractEmotionTags(fullReply).clean,
+					ttsAdapterToPcmChunks(domia, tts.adapter, fullReply),
+				),
+			)
 		}
 	}
 	fullReply = finalizeExpressedEmotion(domia, fullReply)
@@ -428,6 +521,7 @@ const pipelineVoiceFromTokens = async (
 			status: INTERACTION_STATUS_ENUM.ABORTED,
 			llmPrompt: session.promptContext,
 			llmResponse: fullReply,
+			heardReply: heardReplyOf(extractEmotionTags(fullReply).clean, playback),
 			ttsEngineUsed: tts.adapter.id,
 			ttsExecutorKey: domia.domiaKey,
 			ttsAudioPath: playback.filePath,
@@ -532,11 +626,15 @@ const tryLocalFullStreamVoice = async (
 		ctx,
 		session,
 		prestartedTokens ??
-			llm.adapter.runStream(
-				domia,
-				session.promptContext,
-				() => isTurnAborted(domia.id, session.interactionId),
-				(u) => recordLlmUsage(session.interactionId, u),
+			withIdleTimeout(
+				llm.adapter.runStream(
+					domia,
+					session.promptContext,
+					() => isTurnAborted(domia.id, session.interactionId),
+					(u) => recordLlmUsage(session.interactionId, u),
+				),
+				LLM_STREAM_IDLE_MS,
+				"llm",
 			),
 		{
 			llmExecutorKey: domia.domiaKey,
@@ -933,8 +1031,8 @@ const attemptLocalSkillsRoute = async (
 	})
 	if (!decision.needsSkill) return false
 	const onUsage = (u: LlmUsageType) => recordLlmUsage(session.interactionId, u)
-	const inference: AgentInferenceType = (messages, toolDefs) =>
-		runLLMWithTools(domia, messages, toolDefs, onUsage)
+	const inference: AgentInferenceType = (messages, toolDefs, toolChoice) =>
+		runLLMWithTools(domia, messages, toolDefs, onUsage, toolChoice)
 	const streamFinalize: AgentStreamInferenceType | undefined =
 		features.canSentencePipeline
 			? (messages, toolDefs) =>
@@ -1224,6 +1322,13 @@ export const handleSttDone = async (
 
 	if (payload.interactionId && transcript.trim()) {
 		pushInteractionTranscript(payload.interactionId, transcript)
+		if (payload.speechEndAt) {
+			recordEouMetrics(payload.interactionId, {
+				transcriptionDelayMs: Date.now() - payload.speechEndAt,
+				eouDelayMs: payload.endpointDelayMs ?? null,
+				endpointDebounceMs: payload.endpointDebounceMs ?? null,
+			})
+		}
 		emitTurnEvent({
 			type: DOMIA_TURN_EVENT_ENUM.STT_FINAL,
 			interactionId: payload.interactionId,
@@ -1340,7 +1445,15 @@ const handleSttDoneFlow = async (
 				let trace: Extract<ToolTraceEntryType, { kind: "result" }>
 				const toolStart = Date.now()
 				try {
-					const res = await callTool(domia.id, taken.tool, taken.args)
+					const res = taken.resolvedArgs
+						? await callTool(
+								domia.id,
+								taken.tool,
+								taken.resolvedArgs,
+								undefined,
+								true,
+							)
+						: await callTool(domia.id, taken.tool, taken.args)
 					const ok = res.status === "ok" && !res.isError
 					const rule = resolveToolFinalize(domia.id, taken.tool)
 					const template = ok ? rule?.done : rule?.error

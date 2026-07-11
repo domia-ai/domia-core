@@ -82,3 +82,46 @@ dev: ##🧪 Start development environment (Ollama + Mosquitto)
 	@echo "🧪 Starting dev environment with Ollama and Mosquitto..."
 	@$(MAKE) ollama
 	@$(MAKE) mosquitto
+
+##@ LiveKit
+livekit-install: ##📦 Install the livekit-server binary (only if you use the feature)
+	@unameOut=$$(uname -s); \
+	case $$unameOut in \
+		Darwin*) \
+			brew install livekit ;; \
+		Linux*) \
+			curl -sSL https://get.livekit.io | bash ;; \
+		*) \
+			echo "❌ Install livekit-server manually"; exit 1 ;; \
+	esac
+
+livekit-native: ##🛰️ Run LiveKit natively from the declared config (any OS)
+	@command -v livekit-server >/dev/null 2>&1 || { echo "❌ run: make livekit-install"; exit 1; }
+	@livekit-server --config config/livekit/livekit.yaml
+
+livekit-docker: ##🛰️ Run LiveKit in a container (host-net ideal on Linux)
+	@docker compose --profile lab up -d livekit
+
+livekit-logs: ##📜 LiveKit container logs
+	@docker compose logs -f livekit
+
+livekit-down: ##🧹 Stop & remove the LiveKit container
+	@docker compose stop livekit && docker compose rm -f livekit
+
+##@ Bootstrap (native)
+setup: ##🚀 From-zero: system deps, models, db and build (any OS)
+	@$(MAKE) install-deps
+	@npm ci
+	@npm run setup:models
+	@[ -f .env ] || cp .env.example .env
+	@npm run db:reset
+	@npm run build
+	@echo "✅ setup complete — start with: make run"
+
+run: ##🏁 Run the compiled node (loads .env)
+	@npm start
+
+install-ollama: ##🧠 Install Ollama natively + pull default models (Linux/Jetson; GPU auto)
+	@command -v ollama >/dev/null 2>&1 || curl -fsSL https://ollama.com/install.sh | sh
+	@ollama pull llama3.2:3b && ollama pull llama3.2:1b
+	@echo "✅ ollama ready (llama3.2:3b + reflection 1b)"

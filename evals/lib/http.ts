@@ -62,6 +62,13 @@ export const postConfigRefresh = async (): Promise<void> => {
 	}).catch(() => undefined)
 }
 
+export const resetConversation = async (): Promise<void> => {
+	await fetch(
+		`${env.EVAL_URL}/admin/reset-conversation?domiaKey=${env.EVAL_DOMIA_KEY}`,
+		{ method: "POST", headers: meshHeaders() },
+	).catch(() => undefined)
+}
+
 export const postModules = (modules: Record<string, unknown>): Promise<void> =>
 	postConfig({ modules })
 

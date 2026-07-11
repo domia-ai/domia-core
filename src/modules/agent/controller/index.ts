@@ -16,7 +16,11 @@ import type {
 	ToolRunStatusType,
 	ToolResultErrorCodeType,
 } from "@/db"
-import { languageSetsFor, getTraceContext } from "@/utils"
+import {
+	languageSetsFor,
+	getTraceContext,
+	wrapUntrustedToolOutput,
+} from "@/utils"
 import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import type { DomiaType } from "@/modules/core"
 import type {
@@ -26,13 +30,18 @@ import type {
 } from "@/modules/llm-engine"
 import {
 	callTool,
+	resolveSkillArgs,
 	resolveToolFinalize,
 	renderFinalizeText,
 	getToolPolicy,
 	getProviderResilience,
 	type SkillCallResultType,
 } from "@/modules/skill-engine"
-import { parkConfirmation, confirmationScope } from "../utils"
+import {
+	parkConfirmation,
+	confirmationScope,
+	summarizeConfirmAction,
+} from "../utils"
 import { buildPromptContext } from "@/modules/prompt-context-builder"
 import { agentLogger } from "@/utils"
 
@@ -280,6 +289,10 @@ export const runAgentTurn = async (
 	)
 	const argCorrected = new Set<string>()
 	const knownToolNames = new Set(toolDefs.map((t) => t.name))
+	const erroredCalls = new Map<string, string>()
+	const callKey = (name: string, args: Record<string, unknown>): string =>
+		`${name}:${JSON.stringify(args)}`
+	let forceNoTool = false
 
 	const abortedReturn = (step: number): AgentResultType => ({
 		reply: "",
@@ -322,14 +335,19 @@ export const runAgentTurn = async (
 			}
 		}
 		let out: ToolCallOrReplyType
+		const noTool = forceNoTool || step === maxSteps - 1
 		const streamFinalize =
-			opts?.voice && opts.streamFinalize && toolNamesUsed.length > 0
+			opts?.voice && opts.streamFinalize && toolNamesUsed.length > 0 && !noTool
 				? opts.streamFinalize
 				: null
 		const inferStart = process.hrtime.bigint()
 		try {
 			if (streamFinalize) {
-				const res = await streamFinalize(messages, toolDefs)
+				const res = await raceAbort(
+					streamFinalize(messages, toolDefs),
+					effectiveSignal,
+				)
+				if (res === ABORTED) return abortedReturn(step)
 				if (res.kind === "reply") {
 					return {
 						reply: "",
@@ -349,7 +367,7 @@ export const runAgentTurn = async (
 				out = { kind: "tool_calls", calls: res.calls }
 			} else {
 				const inferred = await raceAbort(
-					inference(messages, toolDefs),
+					inference(messages, toolDefs, noTool ? "none" : undefined),
 					effectiveSignal,
 				)
 				if (inferred === ABORTED) return abortedReturn(step)
@@ -410,37 +428,63 @@ export const runAgentTurn = async (
 			return !missing || argCorrected.has(call.name)
 		})
 		if (confirmCall) {
-			if (out.calls.length > 1) {
-				agentLogger.warn(
-					"confirm intercept dropping sibling tool calls in the same step",
-					{
-						domiaId: domia.id,
-						parked: confirmCall.name,
-						dropped: out.calls
-							.filter((c) => c !== confirmCall)
-							.map((c) => c.name),
-					},
-				)
-			}
+			const droppedSiblings = out.calls
+				.filter((c) => c !== confirmCall)
+				.map((c) => c.name)
 			const language = domia.characterProfile?.language ?? null
+			const confirmArgs = pruneEmptyArgs(
+				filterToAllowed(
+					confirmCall.arguments,
+					allowedParams.get(confirmCall.name),
+				),
+			)
+			const resolution = await resolveSkillArgs(
+				domia.id,
+				confirmCall.name,
+				confirmArgs,
+			)
+			if (!resolution.ok) {
+				const phrases = languageSetsFor(language).phrases
+				return {
+					reply: phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR,
+					toolNamesUsed,
+					serversUsed: [...serversUsed],
+					steps: step + 1,
+					skillPrompt: SKILLS_CLAUSE,
+					skillResponses,
+					decisionMs,
+					toolMs,
+					finalizeMs,
+					finalizeMode: "agent_loop",
+					stopReason: "completed",
+				}
+			}
+			const summary = summarizeConfirmAction(
+				confirmCall.name,
+				resolution.resolvedArgs,
+			)
 			parkConfirmation(
 				confirmationScope(domia.domiaKey, opts?.confirmationChannel),
 				{
 					tool: confirmCall.name,
-					args: pruneEmptyArgs(
-						filterToAllowed(
-							confirmCall.arguments,
-							allowedParams.get(confirmCall.name),
-						),
-					),
+					args: confirmArgs,
+					resolvedArgs: resolution.resolvedArgs,
 					language,
+					summary,
 				},
 				domia.llmModelConfig?.confirmationTtlMs ?? DEFAULT_CONFIRMATION_TTL_MS,
 			)
+			const confirmPhrase =
+				languageSetsFor(language).phrases.confirmAction ??
+				"Do you want me to go ahead with that?"
+			const siblingNote =
+				droppedSiblings.length > 0
+					? ` I'll hold off on the rest until you confirm.`
+					: ""
 			return {
-				reply:
-					languageSetsFor(language).phrases.confirmAction ??
-					"Do you want me to go ahead with that?",
+				reply: summary
+					? `${summary} ${confirmPhrase}${siblingNote}`
+					: `${confirmPhrase}${siblingNote}`,
 				toolNamesUsed,
 				serversUsed: [...serversUsed],
 				steps: step + 1,
@@ -542,6 +586,19 @@ export const runAgentTurn = async (
 			safeArgs: Record<string, unknown>
 		}[] = []
 		for (const call of out.calls) {
+			if (call.argsInvalid) {
+				allTemplate = false
+				messages.push({
+					role: "tool",
+					toolName: call.name,
+					content: `Error: the arguments for "${call.name}" were not valid JSON. Call it again with well-formed JSON arguments.`,
+				})
+				agentLogger.warn("agent tool call had unparseable args — rejected", {
+					domiaId: domia.id,
+					name: call.name,
+				})
+				continue
+			}
 			if (!knownToolNames.has(call.name)) {
 				allTemplate = false
 				messages.push({
@@ -561,21 +618,45 @@ export const runAgentTurn = async (
 			const missing = (requiredParams.get(call.name) ?? []).filter(
 				(k) => safeArgs[k] === undefined,
 			)
-			if (missing.length > 0 && !argCorrected.has(call.name)) {
-				argCorrected.add(call.name)
+			if (missing.length > 0) {
 				allTemplate = false
+				const retry = argCorrected.has(call.name)
+				argCorrected.add(call.name)
+				if (retry) forceNoTool = true
 				messages.push({
 					role: "tool",
 					toolName: call.name,
-					content: `Error: "${call.name}" is missing required argument(s): ${missing.join(", ")}. You sent ${JSON.stringify(safeArgs)}. Call "${call.name}" again with ${missing.join(" and ")} filled in.`,
+					content: retry
+						? `Error: "${call.name}" is still missing required argument(s): ${missing.join(", ")}. Do not call it again — tell the user you need ${missing.join(" and ")}.`
+						: `Error: "${call.name}" is missing required argument(s): ${missing.join(", ")}. You sent ${JSON.stringify(safeArgs)}. Call "${call.name}" again with ${missing.join(" and ")} filled in.`,
 				})
-				agentLogger.warn("agent tool call missing required args — corrected", {
+				agentLogger.warn("agent tool call missing required args", {
 					domiaId: domia.id,
 					name: call.name,
 					missing,
+					retry,
 				})
 				continue
 			}
+			const key = callKey(call.name, safeArgs)
+			if (erroredCalls.has(key)) {
+				allTemplate = false
+				forceNoTool = true
+				messages.push({
+					role: "tool",
+					toolName: call.name,
+					content: `Error: "${call.name}" was already attempted with these arguments and failed: ${erroredCalls.get(key)}. Do not retry it — tell the user it couldn't be done.`,
+				})
+				agentLogger.warn(
+					"agent re-issued an already-failed tool call — blocked",
+					{
+						domiaId: domia.id,
+						name: call.name,
+					},
+				)
+				continue
+			}
+			if (toRun.some((r) => callKey(r.call.name, r.safeArgs) === key)) continue
 			toolNamesUsed.push(call.name)
 			const sepIdx = call.name.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 			if (sepIdx > 0) serversUsed.add(call.name.slice(0, sepIdx))
@@ -764,10 +845,23 @@ export const runAgentTurn = async (
 				)
 				skillResponses.push(entry)
 				emitToolResult(call.name, mapSkillStatus(result.status), settled[i].ms)
+				if (result.status !== "ok" || result.isError)
+					erroredCalls.set(
+						callKey(call.name, safeArgs),
+						result.text.slice(0, 120),
+					)
+				const guarded = wrapUntrustedToolOutput(call.name, result.text)
+				if (guarded.flagged) {
+					agentLogger.warn("tool output flagged by injection guard", {
+						domiaId: domia.id,
+						name: call.name,
+						reasons: guarded.reasons,
+					})
+				}
 				messages.push({
 					role: "tool",
 					toolName: call.name,
-					content: result.text,
+					content: guarded.text,
 				})
 				const rule = resolveToolFinalize(domia.id, call.name)
 				if (rule?.mode === "template" || rule?.mode === "deadline") {

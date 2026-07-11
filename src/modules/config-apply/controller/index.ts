@@ -1,6 +1,6 @@
 import { type DomiaType, getOwnDomia, getHostedDomias } from "@/modules/core"
 import { persistConfig } from "@/modules/config"
-import { getActiveTurn, abortActiveTurn } from "@/modules/core-bus"
+import { getActiveTurn, abortAndWait } from "@/modules/core-bus"
 import {
 	activeVoiceReplies,
 	queuedVoiceReplies,
@@ -282,7 +282,7 @@ const quiesce = async (
 	while (Date.now() < deadline && domiaIds.some((id) => !isIdle(id)))
 		await sleep(100)
 	for (const id of domiaIds)
-		if (!isIdle(id)) abortActiveTurn(id, "config-reload")
+		if (!isIdle(id)) await abortAndWait(id, "config-reload")
 }
 
 const runReloader = async (

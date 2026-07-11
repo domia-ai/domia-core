@@ -11,12 +11,15 @@
 	},
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",
-		"build": "tsc && tsc-alias",
-		"start": "node ./build/index.js",
+		"build": "rm -rf build && tsc && tsc-alias",
+		"start": "dotenvx run -f ${DOMIA_ENV:-.env} -- node ./build/index.js",
 		"lint": "eslint . --ext .ts",
 		"lint:fix": "eslint . --ext .ts --fix",
 		"format": "prettier --check \"src/**/*.ts\"",
 		"format:fix": "prettier --write \"src/**/*.ts\"",
+		"typecheck": "tsc --noEmit",
+		"validate": "npm run typecheck && npm run lint && npm run format",
+		"validate:fix": "npm run lint:fix && npm run format:fix && npm run typecheck",
 		"prepare": "husky",
 		"dev": "dotenvx run -f ${DOMIA_ENV:-.env} -- nodemon --watch src --ext ts,js --ignore src/**/*.spec.ts --exec 'ts-node -r tsconfig-paths/register ./src/index.ts'",
 		"dev:b": "DOMIA_ENV=.env.b npm run dev",
@@ -50,6 +53,11 @@
 		"evals": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",
 		"evals:live": "EVAL_LIVE=1 dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",
 		"evals:parsing": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/parsing.ts",
+		"evals:protocols": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/protocol-replay.ts",
+		"evals:adversarial": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/adversarial.ts",
+		"evals:promote": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/promote-traces.ts",
+		"evals:conversation": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/conversation.ts",
+		"turn-logic": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/turn-logic.ts",
 		"typecheck:evals": "tsc --noEmit -p tsconfig.evals.json",
 		"check": "npm run build && npm run lint && npm run typecheck:evals",
 		"setup:models:kokoro-v1": "bash scripts/download-models.sh kokoro-v1"
@@ -94,6 +102,7 @@
 		"esphome-client": "^1.3.1",
 		"fastify": "^5.8.5",
 		"inquirer": "^13.4.3",
+		"livekit-server-sdk": "^2.16.0",
 		"minisearch": "^7.2.0",
 		"mqtt": "^5.15.1",
 		"nice-grpc": "^2.1.16",
@@ -104,5 +113,8 @@
 		"sherpa-onnx-node": "^1.13.3",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
+	},
+	"optionalDependencies": {
+		"@livekit/rtc-node": "^0.13.30"
 	}
 }

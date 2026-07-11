@@ -75,7 +75,22 @@ import {
 	DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,
 	DEFAULT_SHARED_MIC_STREAM_ENABLED,
 	DEFAULT_ENDPOINT_COMPLETE_MS,
+	DEFAULT_DYNAMIC_ENDPOINTING_ENABLED,
+	DEFAULT_DYNAMIC_ENDPOINT_MIN_MS,
+	DEFAULT_DYNAMIC_ENDPOINT_MAX_MS,
+	DEFAULT_DYNAMIC_ENDPOINT_ALPHA,
+	DEFAULT_DYNAMIC_ENDPOINT_MARGIN,
+	DEFAULT_PAUSE_BARGE_IN_ENABLED,
+	DEFAULT_FALSE_INTERRUPTION_TIMEOUT_MS,
+	DEFAULT_ECHO_SUPPRESS_ENABLED,
+	DEFAULT_ECHO_SUPPRESS_MARGIN_MS,
+	DEFAULT_PLAYBACK_PAUSE_ENABLED,
+	DEFAULT_WORD_LEVEL_HEARD_ENABLED,
+	DEFAULT_TTS_PACER_ENABLED,
+	DEFAULT_TTS_PACER_MIN_REMAINING_MS,
+	DEFAULT_TTS_PACER_MAX_CHARS,
 	DEFAULT_ENDPOINT_INCOMPLETE_MS,
+	DEFAULT_ENDPOINT_WAIT_MS,
 	DEFAULT_FOLLOW_UP_LEAD_PAD_MS,
 	DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS,
 	DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS,
@@ -160,6 +175,8 @@ import {
 	DEFAULT_AUDIO_PLAYBACK_VOLUME,
 	DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED,
 	DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS,
+	DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED,
+	DEFAULT_PLAYBACK_TRUNCATION_REPLAY_THRESHOLD_MS,
 	DEFAULT_FEEDBACK_SOUNDS_ENABLED,
 	DEFAULT_ACK_SOUND_ENABLED,
 	DEFAULT_ERROR_SOUND_ENABLED,
@@ -178,6 +195,7 @@ import {
 	MQTT_PROTOCOL_ENUM_VALUES,
 	CAPABILITY_ENUM_VALUES,
 	SATELLITE_PROTOCOL_ENUM_VALUES,
+	IMPLICIT_FEEDBACK_ENUM_VALUES,
 	DEFAULT_SATELLITE_PROTOCOL,
 	DEFAULT_SATELLITE_PORT,
 	DEFAULT_SATELLITE_ACTIVE,
@@ -643,6 +661,38 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	endpointIncompleteMs: integer("endpoint_incomplete_ms")
 		.notNull()
 		.default(DEFAULT_ENDPOINT_INCOMPLETE_MS),
+	endpointWaitMs: integer("endpoint_wait_ms")
+		.notNull()
+		.default(DEFAULT_ENDPOINT_WAIT_MS),
+	dynamicEndpointingEnabled: integer("dynamic_endpointing_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_DYNAMIC_ENDPOINTING_ENABLED),
+	dynamicEndpointMinMs: integer("dynamic_endpoint_min_ms")
+		.notNull()
+		.default(DEFAULT_DYNAMIC_ENDPOINT_MIN_MS),
+	dynamicEndpointMaxMs: integer("dynamic_endpoint_max_ms")
+		.notNull()
+		.default(DEFAULT_DYNAMIC_ENDPOINT_MAX_MS),
+	dynamicEndpointAlpha: real("dynamic_endpoint_alpha")
+		.notNull()
+		.default(DEFAULT_DYNAMIC_ENDPOINT_ALPHA),
+	dynamicEndpointMargin: real("dynamic_endpoint_margin")
+		.notNull()
+		.default(DEFAULT_DYNAMIC_ENDPOINT_MARGIN),
+	pauseBargeInEnabled: integer("pause_barge_in_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_PAUSE_BARGE_IN_ENABLED),
+	falseInterruptionTimeoutMs: integer("false_interruption_timeout_ms")
+		.notNull()
+		.default(DEFAULT_FALSE_INTERRUPTION_TIMEOUT_MS),
+	echoSuppressEnabled: integer("echo_suppress_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_ECHO_SUPPRESS_ENABLED),
+	echoSuppressMarginMs: integer("echo_suppress_margin_ms")
+		.notNull()
+		.default(DEFAULT_ECHO_SUPPRESS_MARGIN_MS),
 	followUpLeadPadMs: integer("follow_up_lead_pad_ms")
 		.notNull()
 		.default(DEFAULT_FOLLOW_UP_LEAD_PAD_MS),
@@ -854,6 +904,16 @@ export const ttsConfig = sqliteTable("tts_config", {
 	streamingEnabled: integer("streaming_enabled", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_TTS_STREAMING_ENABLED),
+	pacerEnabled: integer("pacer_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_TTS_PACER_ENABLED),
+	pacerMinRemainingMs: integer("pacer_min_remaining_ms")
+		.notNull()
+		.default(DEFAULT_TTS_PACER_MIN_REMAINING_MS),
+	pacerMaxChars: integer("pacer_max_chars")
+		.notNull()
+		.default(DEFAULT_TTS_PACER_MAX_CHARS),
+
 	poolWarmWorkers: integer("tts_pool_warm_workers")
 		.notNull()
 		.default(DEFAULT_TTS_POOL_WARM_WORKERS),
@@ -953,9 +1013,25 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	streamingEnabled: integer("streaming_enabled", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_AUDIO_PLAYBACK_STREAMING_ENABLED),
+	pauseEnabled: integer("pause_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_PLAYBACK_PAUSE_ENABLED),
+	wordLevelHeardEnabled: integer("word_level_heard_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_WORD_LEVEL_HEARD_ENABLED),
 	watchdogGraceMs: integer("watchdog_grace_ms")
 		.notNull()
 		.default(DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS),
+	truncationReplayEnabled: integer("truncation_replay_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED),
+	truncationReplayThresholdMs: integer("truncation_replay_threshold_ms")
+		.notNull()
+		.default(DEFAULT_PLAYBACK_TRUNCATION_REPLAY_THRESHOLD_MS),
 	outputDevice: text("output_device"),
 	feedbackSoundsEnabled: integer("feedback_sounds_enabled", { mode: "boolean" })
 		.notNull()
@@ -1083,6 +1159,10 @@ export const interactionTrace = sqliteTable(
 		llmTtftMs: integer("llm_ttft_ms"),
 		llmContextWindow: integer("llm_context_window"),
 		llmFinishReason: text("llm_finish_reason"),
+		llmRequestId: text("llm_request_id"),
+		transcriptionDelayMs: integer("transcription_delay_ms"),
+		eouDelayMs: integer("eou_delay_ms"),
+		endpointDebounceMs: integer("endpoint_debounce_ms"),
 		toolCallCount: integer("tool_call_count"),
 		toolErrorCount: integer("tool_error_count"),
 		inputAudioMs: integer("input_audio_ms"),
@@ -1109,6 +1189,9 @@ export const interactionTrace = sqliteTable(
 		satelliteId: text("satellite_id"),
 		satelliteProtocol: text("satellite_protocol", {
 			enum: SATELLITE_PROTOCOL_ENUM_VALUES,
+		}),
+		implicitFeedback: text("implicit_feedback", {
+			enum: IMPLICIT_FEEDBACK_ENUM_VALUES,
 		}),
 		domiaSnapshot: text("domia_snapshot", { mode: "json" }),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -1210,6 +1293,9 @@ export const satelliteConfig = sqliteTable(
 			.notNull()
 			.default(DEFAULT_SATELLITE_FOLLOW_UP),
 		desiredVolume: real("desired_volume"),
+		livekitApiKey: text("livekit_api_key"),
+		livekitApiSecret: text("livekit_api_secret"),
+		livekitRoom: text("livekit_room"),
 		isActive: integer("is_active", { mode: "boolean" })
 			.notNull()
 			.default(DEFAULT_SATELLITE_ACTIVE),

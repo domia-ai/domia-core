@@ -425,6 +425,13 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 				genericWordsFor(provider, language ?? null),
 			)
 		}
+		if (typeof out.name === "string") {
+			skillEngineLogger.warn(
+				"HA entity context not ready — failing closed rather than mis-target",
+				{ provider: provider.id, name: out.name },
+			)
+			throw new Error("device list not ready yet")
+		}
 		return out
 	},
 }

@@ -23,6 +23,8 @@ export const satelliteTurn = (
 			audioBegan: false,
 			audioFrames: 0,
 			audioEnded: false,
+			pauses: 0,
+			resumes: 0,
 			replyDone: null,
 			error: null,
 		}
@@ -77,6 +79,8 @@ export const satelliteTurn = (
 			} else if (msg.type === "transcript") result.transcript = msg.text ?? ""
 			else if (msg.type === "audio_stream_begin") result.audioBegan = true
 			else if (msg.type === "audio_stream_end") result.audioEnded = true
+			else if (msg.type === "audio_pause") result.pauses += 1
+			else if (msg.type === "audio_resume") result.resumes += 1
 			else if (msg.type === "reply_done") {
 				result.replyDone = {
 					reply: msg.reply ?? "",

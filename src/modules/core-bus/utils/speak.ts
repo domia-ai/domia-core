@@ -4,7 +4,7 @@ import { type DomiaType, safeOwnDomia, getHostedDomias } from "@/modules/core"
 import { resolveCoreBusFeatures } from "./features"
 import { playStreamedAudio } from "./playback"
 import { registerStreamingSink, clearStreamingSink } from "./streaming-sink"
-import { beginTurn } from "./turn-scope"
+import { beginTurn, getActiveTurn } from "./turn-scope"
 import {
 	getSatelliteSinkFor,
 	getSatelliteAnnouncerFor,
@@ -24,6 +24,8 @@ import type {
 	ResolvedTtsEngineType,
 	StreamingSinkFormatType,
 } from "../types"
+
+const SPEAK_WAIT_FOR_TURN_MS = 15000
 
 const renderTtsToServedUrl = async (
 	domia: DomiaType,
@@ -124,6 +126,13 @@ const streamAudioFileTo = async (
 	useSink: boolean,
 ): Promise<void> => {
 	const interactionId = generateUuid()
+	const active = getActiveTurn(domia.id)
+	if (active && !active.aborted()) {
+		await Promise.race([
+			active.settled,
+			new Promise((r) => setTimeout(r, SPEAK_WAIT_FOR_TURN_MS)),
+		])
+	}
 	const turn = beginTurn(domia.id, interactionId)
 	if (useSink) {
 		const sink = getSatelliteSinkFor(domia.domiaKey)

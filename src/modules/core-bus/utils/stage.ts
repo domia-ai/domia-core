@@ -1,9 +1,10 @@
 import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
+import type { TurnStageNameType } from "@/buses"
 import type { StageEnvelopeType } from "../types"
 
 export const stage = async <T>(
 	env: StageEnvelopeType,
-	stageName: string,
+	stageName: TurnStageNameType,
 	fn: () => Promise<T>,
 ): Promise<T> => {
 	const startedAt = Date.now()

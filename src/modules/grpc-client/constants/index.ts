@@ -13,6 +13,8 @@ export const UNHEALTHY_GRPC_STATES: ReadonlySet<number> = new Set([
 	GRPC_CONNECTIVITY_STATE.SHUTDOWN,
 ])
 
+export const GRPC_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+
 export const GRPC_UNAVAILABLE_CODE = 14
 export const GRPC_UNIMPLEMENTED_CODE = 12
 export const GRPC_RESOURCE_EXHAUSTED_CODE = 8

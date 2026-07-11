@@ -1,10 +1,6 @@
 import path from "path"
 
-import {
-	pipeline,
-	env,
-	type FeatureExtractionPipeline,
-} from "@huggingface/transformers"
+import type { FeatureExtractionPipeline } from "@huggingface/transformers"
 
 import { DEFAULT_EMBED_MODEL_PATH, EMBED_BACKEND_ENUM } from "@/db"
 import { embeddingsLogger } from "@/utils"
@@ -16,13 +12,18 @@ let loadedModelDir: string | null = null
 
 const getPipe = (modelDir: string): Promise<FeatureExtractionPipeline> => {
 	if (pipePromise && loadedModelDir === modelDir) return pipePromise
-	env.allowRemoteModels = false
-	env.allowLocalModels = true
-	env.localModelPath = path.resolve(path.dirname(modelDir))
 	loadedModelDir = modelDir
-	pipePromise = pipeline("feature-extraction", path.basename(modelDir), {
-		dtype: "q8",
-	})
+	// lazy: @huggingface/transformers costs ~46MB RSS at import — dumps never pay it
+	pipePromise = import("@huggingface/transformers").then(
+		({ pipeline, env }) => {
+			env.allowRemoteModels = false
+			env.allowLocalModels = true
+			env.localModelPath = path.resolve(path.dirname(modelDir))
+			return pipeline("feature-extraction", path.basename(modelDir), {
+				dtype: "q8",
+			})
+		},
+	)
 	return pipePromise
 }
 

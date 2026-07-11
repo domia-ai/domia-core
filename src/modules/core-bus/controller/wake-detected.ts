@@ -1,6 +1,10 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, setTraceContext, toError } from "@/utils"
-import { startAudioRecording, startAudioStream } from "@/modules/audio-capture"
+import {
+	observeBargeIn,
+	startAudioRecording,
+	startAudioStream,
+} from "@/modules/audio-capture"
 import { hasActivePlayback, stopActivePlayback } from "@/modules/audio-playback"
 import { playFeedbackSound } from "@/modules/feedback-sounds"
 import { admitVoiceReply } from "@/modules/voice-admission"
@@ -58,6 +62,7 @@ export const handleWakeDetected = async (
 		return
 	}
 
+	if (domia.wakeWordConfig) observeBargeIn(domiaId, domia.wakeWordConfig)
 	if (abortActiveTurn(domiaId, "wake-bargein")) {
 		domiaBusLogger.info(`🛑 barge-in: in-flight turn aborted by wake word`, {
 			domiaId,
@@ -143,7 +148,13 @@ export const handleWakeDetected = async (
 				`🎙️ streaming STT path: capturing live audio chunks`,
 				{ domiaId, interactionId },
 			)
-			const { chunks, filePathPromise, speechEndAt } = startAudioStream(domia)
+			const {
+				chunks,
+				filePathPromise,
+				speechEndAt,
+				endpointObservedMs,
+				debounceMs,
+			} = startAudioStream(domia)
 			const transcript = await stt.adapter.runStream(domia, chunks)
 
 			markPipelineStart(interactionId)
@@ -152,6 +163,8 @@ export const handleWakeDetected = async (
 				interactionId,
 				originDomiaKey: domia.domiaKey,
 				speechEndAt: speechEndAt() ?? undefined,
+				endpointDelayMs: endpointObservedMs() ?? undefined,
+				endpointDebounceMs: debounceMs,
 				liveVoice: true,
 			})
 

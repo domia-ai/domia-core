@@ -1,7 +1,11 @@
 import { domiaBusLogger } from "@/utils"
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
 import { type DomiaType, safeOwnDomia } from "@/modules/core"
-import { playAudioStream } from "@/modules/audio-playback"
+import {
+	playAudioStream,
+	pauseActivePlayback,
+	resumeActivePlayback,
+} from "@/modules/audio-playback"
 import {
 	getSatelliteSinkFor,
 	getSatelliteAnnouncerFor,
@@ -34,6 +38,14 @@ const makeLocalPlaybackSink = (domia: DomiaType): StreamingSinkType => {
 	let playback: Promise<unknown> | null = null
 
 	return {
+		capabilities: {
+			pause: (domia.audioPlaybackConfig?.pauseEnabled ?? false) === true,
+			position: "estimated",
+			urlPlayback: false,
+			captions: false,
+		},
+		pause: () => pauseActivePlayback(domia.id),
+		resume: () => resumeActivePlayback(domia.id),
 		begin: (format) => {
 			playback = playAudioStream(domia, chunks, {
 				sampleRate: format.sampleRate,

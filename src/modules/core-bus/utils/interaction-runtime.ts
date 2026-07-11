@@ -5,6 +5,8 @@ import type {
 	InteractionCompletionResultType,
 	PartialResultType,
 	CompletionHandleType,
+	InteractionAudioPatchType,
+	CompleteInteractionOptsType,
 } from "../types"
 
 const runtimes = new Map<string, InteractionRuntimeType>()
@@ -107,7 +109,7 @@ export const pushInteractionFirstAudio = (interactionId: string): void => {
 
 export const setInteractionAudio = (
 	interactionId: string,
-	audio: { ttsFilePath?: string; audioUrl?: string },
+	audio: InteractionAudioPatchType,
 ): void => {
 	if (!runtimes.has(interactionId)) return
 	const p = partialOf(interactionId)
@@ -141,10 +143,7 @@ const buildResult = (
 
 export const completeInteraction = (
 	interactionId: string,
-	opts: {
-		interrupted?: boolean
-		result?: Partial<InteractionCompletionResultType>
-	} = {},
+	opts: CompleteInteractionOptsType = {},
 ): void => {
 	const rt = runtimes.get(interactionId)
 	const handle = completions.get(interactionId)

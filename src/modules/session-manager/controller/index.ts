@@ -11,6 +11,7 @@ import {
 	type InsertAnnouncementType,
 	type InsertTurnEventType,
 	type SelectInteractionTraceType,
+	type ImplicitFeedbackType,
 } from "@/db"
 import {
 	emitTurnEvent,
@@ -422,6 +423,15 @@ export const updateInteraction = async (
 	client?: DBClientOrTxType,
 ) => {
 	await dbAdapter.updateInteractionTrace(data, client)
+}
+
+export const recordImplicitFeedback = (
+	interactionId: string,
+	signal: ImplicitFeedbackType,
+): void => {
+	void dbAdapter
+		.updateInteractionTrace({ id: interactionId, implicitFeedback: signal })
+		.catch(() => undefined)
 }
 
 export const getInteractionById = async (

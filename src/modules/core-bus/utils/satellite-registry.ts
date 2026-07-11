@@ -89,7 +89,20 @@ export const getSatelliteSinkFor = (
 	if (!set || set.size === 0) return null
 	const targets = [...set]
 	if (targets.length === 1) return targets[0]
+	const fidelities = ["none", "sentence", "estimated", "exact"] as const
+	const weakest = targets.reduce<(typeof fidelities)[number]>((acc, t) => {
+		const f = t.capabilities?.position ?? "none"
+		return fidelities.indexOf(f) < fidelities.indexOf(acc) ? f : acc
+	}, "exact")
 	return {
+		capabilities: {
+			pause: targets.every((t) => t.capabilities?.pause === true),
+			position: weakest,
+			urlPlayback: targets.every((t) => t.capabilities?.urlPlayback === true),
+			captions: targets.every((t) => t.capabilities?.captions === true),
+		},
+		pause: () => targets.every((t) => t.pause?.() === true),
+		resume: () => targets.every((t) => t.resume?.() === true),
 		begin: async (format) => {
 			for (const t of targets) await t.begin?.(format)
 		},

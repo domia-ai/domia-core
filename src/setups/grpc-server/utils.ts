@@ -4,7 +4,7 @@ import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import type { CoreBusFeaturesType } from "@/modules/core-bus/types"
 import {
 	splitSentences,
-	AsyncQueue,
+	createAsyncQueue,
 	concatStreams,
 	eagerTtsSlotsFromDomia,
 	pipelineDepthFromDomia,
@@ -197,7 +197,7 @@ export const pipelinedReplyChunks = async function* (
 	const llmRunStream = features.llm?.adapter.runStream
 	if (!llmRunStream) return
 	const tokens = llmRunStream(domia, promptContext, undefined, onUsage)
-	const ttsQueue = new AsyncQueue<AsyncIterable<Buffer>>()
+	const ttsQueue = createAsyncQueue<AsyncIterable<Buffer>>()
 	const queueDepth = pipelineDepthFromDomia(domia)
 	const eagerSlots = eagerTtsSlotsFromDomia(domia)
 	let consumerClosed = false

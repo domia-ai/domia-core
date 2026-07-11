@@ -1,6 +1,7 @@
 import type {
 	ChatMessageType,
 	ToolCallOrReplyType,
+	ToolChoiceType,
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
 } from "@/modules/llm-engine"
@@ -9,6 +10,7 @@ import type { ToolTraceEntryType } from "@/db"
 export type AgentInferenceType = (
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	toolChoice?: ToolChoiceType,
 ) => Promise<ToolCallOrReplyType>
 
 export type AgentStreamInferenceType = (
@@ -40,9 +42,11 @@ export type AgentStopReasonType =
 export type PendingConfirmationType = {
 	tool: string
 	args: Record<string, unknown>
+	resolvedArgs?: Record<string, unknown>
 	language: string | null
 	expiresAt: number
 	reasked?: boolean
+	summary?: string
 }
 
 export type AgentResultType = {

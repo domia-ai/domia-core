@@ -19,6 +19,7 @@ import {
 	emotionTagPattern,
 	emotionTagLoosePattern,
 	collapseSpeechWhitespace,
+	withIdleTimeout,
 } from "@/utils"
 import type {
 	TtsVoiceType,
@@ -48,6 +49,8 @@ export const sanitizeForSpeech = (text: string): string =>
 			.replace(EMOJI, ""),
 	)
 
+const TTS_STREAM_IDLE_MS = 30000
+
 export const ttsAdapterToPcmChunks = async function* (
 	domia: DomiaType,
 	adapter: TtsEngineAdapterType,
@@ -57,7 +60,11 @@ export const ttsAdapterToPcmChunks = async function* (
 	const speech = sanitizeForSpeech(text)
 	if (!speech) return
 	if (adapter.capabilities.streaming === true && adapter.runStream) {
-		yield* adapter.runStream(domia, speech, options)
+		yield* withIdleTimeout(
+			adapter.runStream(domia, speech, options),
+			TTS_STREAM_IDLE_MS,
+			"tts",
+		)
 		return
 	}
 	const result = await adapter.run(domia, speech, options)

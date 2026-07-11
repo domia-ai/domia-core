@@ -58,6 +58,7 @@ const loadCases = (): EvalCaseType[] => {
 		cases.push(...parsed.data)
 	}
 	return cases.filter((c) => {
+		if (c.suite === "conversation") return false
 		if (c.suite === "home-live" && !LIVE) return false
 		if (SUITES && !SUITES.includes(c.suite)) return false
 		return true

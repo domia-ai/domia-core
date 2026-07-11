@@ -19,9 +19,11 @@ import {
 	type FollowUpSpeculativeCaptureType,
 } from "../types"
 import {
+	adaptiveVadWindow,
 	attachSoxStderrFilter,
 	createStopSox,
 	createVadWindow,
+	observeIntraTurnPause,
 	ensureRecordingPath,
 	int16BufferToFloat32,
 	openMicSource,
@@ -75,7 +77,7 @@ export const startAudioRecording = async (
 	}
 	const outputPath = ensureRecordingPath(domia.id)
 	const sox = spawnSoxCapture(config)
-	const vad = createVadWindow(config)
+	const { vad, debounceMs } = adaptiveVadWindow(domia.id, config)
 	const stopSox = createStopSox(sox, "recording")
 	const captured: Buffer[] = []
 	const startedAt = Date.now()
@@ -98,9 +100,7 @@ export const startAudioRecording = async (
 
 	const watchdog = setTimeout(
 		() => stopSox("watchdog timeout"),
-		config.maxRecordingMs +
-			config.vadMinSilenceS * 1000 +
-			config.vadEndOfSpeechMs,
+		config.maxRecordingMs + debounceMs,
 	)
 	await once(sox, "close")
 	clearTimeout(watchdog)
@@ -124,16 +124,16 @@ export const startFollowUpRecording = async (
 	}
 	const outputPath = ensureRecordingPath(domia.id)
 	const sox = spawnSoxCapture(config)
-	const vad = createVadWindow(config)
+	const { vad, debounceMs } = adaptiveVadWindow(domia.id, config)
 	const stopSox = createStopSox(sox, "follow-up recording")
 	const captured: Buffer[] = []
 	const startedAt = Date.now()
 	const bytesPerMs =
 		(config.sampleRate * (config.bitsPerSample / 8) * config.channels) / 1000
-	const debounceMs = config.vadMinSilenceS * 1000 + config.vadEndOfSpeechMs
 	let bytesSeen = 0
 	let speechStartByte: number | null = null
 	let speechEndAt: number | null = null
+	let endpointObservedMs: number | null = null
 
 	attachSoxStderrFilter(sox)
 	audioCaptureLogger.info(
@@ -160,6 +160,7 @@ export const startFollowUpRecording = async (
 		}
 		if (vad.completed()) {
 			speechEndAt = Date.now() - debounceMs
+			endpointObservedMs = debounceMs
 			return stopSox("vad detected end of speech")
 		}
 		if (
@@ -184,7 +185,12 @@ export const startFollowUpRecording = async (
 		frameAlignedStart(speechStartByte, config),
 	)
 	await writePcmAsWav(outputPath, normalizeRmsToDbfs(pcm), config)
-	return { filePath: outputPath, speechEndAt }
+	return {
+		filePath: outputPath,
+		speechEndAt,
+		endpointObservedMs: () => endpointObservedMs,
+		debounceMs,
+	}
 }
 
 export const startSpeculativeCapture = (
@@ -206,14 +212,13 @@ export const startSpeculativeCapture = (
 		"speculative capture",
 		replaySinceTs,
 	)
-	const vad = createVadWindow(config)
+	const { vad, debounceMs } = adaptiveVadWindow(domia.id, config)
 	const fastVad = createVadWindow(config, {
 		minSilenceS: config.speculativeSilenceMs / 1000,
 	})
 	const stopSox = source.stop
 	const captured: Buffer[] = []
 	const startedAt = Date.now()
-	const debounceMs = config.vadMinSilenceS * 1000 + config.vadEndOfSpeechMs
 	const semantic = config.semanticEndpointingEnabled
 	const acoustic =
 		config.acousticEndpointingEnabled &&
@@ -264,7 +269,9 @@ export const startSpeculativeCapture = (
 		return base && acousticComplete
 	}
 	let speculated = false
+	let speculatedAt = 0
 	let speechEndAt: number | null = null
+	let endpointObservedMs: number | null = null
 
 	audioCaptureLogger.info(
 		`[🎙️] Speculative capture started (commit at ${config.speculativeSilenceMs}ms raw silence${semantic ? ", semantic endpointing" : ""}${acoustic ? ", acoustic gate" : ""})`,
@@ -278,6 +285,11 @@ export const startSpeculativeCapture = (
 		if (speculated && fastVad.speechActive()) {
 			speculated = false
 			currentDebounceMs = debounceMs
+			observeIntraTurnPause(
+				domia.id,
+				Date.now() - speculatedAt + config.speculativeSilenceMs,
+				config,
+			)
 			hooks.onResume(Buffer.concat(captured))
 		} else if (
 			!speculated &&
@@ -285,12 +297,13 @@ export const startSpeculativeCapture = (
 			!fastVad.speechActive()
 		) {
 			speculated = true
+			speculatedAt = Date.now()
 			hooks.onSpeculate(Buffer.concat(captured))
 		}
 		if (endpointReached()) {
-			speechEndAt = semantic
-				? Date.now() - vad.silenceMs()
-				: Date.now() - debounceMs
+			const observed = semantic ? vad.silenceMs() : debounceMs
+			speechEndAt = Date.now() - observed
+			endpointObservedMs = observed
 			return stopSox("vad detected end of speech")
 		}
 		if (Date.now() - startedAt > config.maxRecordingMs) {
@@ -300,9 +313,7 @@ export const startSpeculativeCapture = (
 
 	const watchdog = setTimeout(
 		() => stopSox("watchdog timeout"),
-		config.maxRecordingMs +
-			config.vadMinSilenceS * 1000 +
-			config.vadEndOfSpeechMs,
+		config.maxRecordingMs + debounceMs,
 	)
 	const closePromise = source.closed.then(() => clearTimeout(watchdog))
 	const finalPcmPromise = closePromise.then(() => Buffer.concat(captured))
@@ -315,8 +326,10 @@ export const startSpeculativeCapture = (
 		finalPcmPromise,
 		filePathPromise,
 		speechEndAt: () => speechEndAt,
+		endpointObservedMs: () => endpointObservedMs,
 		stop: () => stopSox("external stop"),
 		setDebounceMs,
+		debounceMs,
 	}
 }
 
@@ -334,7 +347,7 @@ export const startFollowUpSpeculativeCapture = (
 	}
 	const outputPath = ensureRecordingPath(domia.id)
 	const source = openMicSource(domia, config, "follow-up speculative capture")
-	const vad = createVadWindow(config)
+	const { vad, debounceMs } = adaptiveVadWindow(domia.id, config)
 	const fastVad = createVadWindow(config, {
 		minSilenceS: config.speculativeSilenceMs / 1000,
 	})
@@ -343,7 +356,6 @@ export const startFollowUpSpeculativeCapture = (
 	const startedAt = Date.now()
 	const bytesPerMs =
 		(config.sampleRate * (config.bitsPerSample / 8) * config.channels) / 1000
-	const debounceMs = config.vadMinSilenceS * 1000 + config.vadEndOfSpeechMs
 	const semantic = config.semanticEndpointingEnabled
 	let currentDebounceMs = debounceMs
 	const setDebounceMs = (ms: number): void => {
@@ -362,6 +374,8 @@ export const startFollowUpSpeculativeCapture = (
 	let speechStartByte: number | null = null
 	let speechEndAt: number | null = null
 	let speculated = false
+	let speculatedAt = 0
+	let endpointObservedMs: number | null = null
 	let pendingSpeculate = false
 	let hooks: SpeculativeCaptureHooksType | null = null
 	let resolveSpeechStarted: (spoke: boolean) => void = () => undefined
@@ -406,6 +420,11 @@ export const startFollowUpSpeculativeCapture = (
 			speculated = false
 			pendingSpeculate = false
 			currentDebounceMs = debounceMs
+			observeIntraTurnPause(
+				domia.id,
+				Date.now() - speculatedAt + config.speculativeSilenceMs,
+				config,
+			)
 			hooks?.onResume(trimmed())
 		} else if (
 			!speculated &&
@@ -413,13 +432,14 @@ export const startFollowUpSpeculativeCapture = (
 			!fastVad.speechActive()
 		) {
 			speculated = true
+			speculatedAt = Date.now()
 			if (hooks) hooks.onSpeculate(trimmed())
 			else pendingSpeculate = true
 		}
 		if (endpointReached()) {
-			speechEndAt = semantic
-				? Date.now() - vad.silenceMs()
-				: Date.now() - debounceMs
+			const observed = semantic ? vad.silenceMs() : debounceMs
+			speechEndAt = Date.now() - observed
+			endpointObservedMs = observed
 			return stopSox("vad detected end of speech")
 		}
 		if (
@@ -459,8 +479,10 @@ export const startFollowUpSpeculativeCapture = (
 				finalPcmPromise,
 				filePathPromise,
 				speechEndAt: () => speechEndAt,
+				endpointObservedMs: () => endpointObservedMs,
 				stop: () => stopSox("external stop"),
 				setDebounceMs,
+				debounceMs,
 			}
 		},
 	}
@@ -478,12 +500,12 @@ export const startAudioStream = (
 	}
 	const outputPath = ensureRecordingPath(domia.id)
 	const sox = spawnSoxCapture(config)
-	const vad = createVadWindow(config)
+	const { vad, debounceMs } = adaptiveVadWindow(domia.id, config)
 	const stopSox = createStopSox(sox, "streaming capture")
 	const captured: Buffer[] = []
 	const startedAt = Date.now()
-	const debounceMs = config.vadMinSilenceS * 1000 + config.vadEndOfSpeechMs
 	let speechEndAt: number | null = null
+	let endpointObservedMs: number | null = null
 
 	attachSoxStderrFilter(sox)
 	audioCaptureLogger.info(
@@ -507,7 +529,10 @@ export const startAudioStream = (
 			captured.push(buf)
 			vad.feed(buf)
 			if (vad.completed()) {
-				if (speechEndAt === null) speechEndAt = Date.now() - debounceMs
+				if (speechEndAt === null) {
+					speechEndAt = Date.now() - debounceMs
+					endpointObservedMs = debounceMs
+				}
 				stopSox("vad detected end of speech")
 			} else if (Date.now() - startedAt > config.maxRecordingMs) {
 				stopSox("max recording duration reached")
@@ -525,6 +550,8 @@ export const startAudioStream = (
 		chunks,
 		filePathPromise,
 		speechEndAt: () => speechEndAt,
+		endpointObservedMs: () => endpointObservedMs,
 		stop: () => stopSox("external stop"),
+		debounceMs,
 	}
 }

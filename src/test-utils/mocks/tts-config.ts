@@ -22,6 +22,9 @@ import {
 	DEFAULT_PIPELINE_MAX_QUEUE_DEPTH,
 	DEFAULT_PIPELINE_EAGER_TTS_SENTENCES,
 	DEFAULT_LANGUAGE,
+	DEFAULT_TTS_PACER_ENABLED,
+	DEFAULT_TTS_PACER_MIN_REMAINING_MS,
+	DEFAULT_TTS_PACER_MAX_CHARS,
 } from "@/db/constants"
 import { type SelectTtsConfigType } from "@/db"
 
@@ -45,6 +48,9 @@ export const baseTtsConfig = (domiaId?: string): SelectTtsConfigType => {
 		provider: DEFAULT_TTS_PROVIDER,
 		maxNumSentences: DEFAULT_TTS_MAX_NUM_SENTENCES,
 		streamingEnabled: DEFAULT_TTS_STREAMING_ENABLED,
+		pacerEnabled: DEFAULT_TTS_PACER_ENABLED,
+		pacerMinRemainingMs: DEFAULT_TTS_PACER_MIN_REMAINING_MS,
+		pacerMaxChars: DEFAULT_TTS_PACER_MAX_CHARS,
 		poolWarmWorkers: DEFAULT_TTS_POOL_WARM_WORKERS,
 		poolMaxWorkers: DEFAULT_TTS_POOL_MAX_WORKERS,
 		poolAutoScaleEnabled: DEFAULT_TTS_POOL_AUTO_SCALE_ENABLED,

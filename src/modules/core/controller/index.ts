@@ -28,6 +28,7 @@ const REDACTED = "__redacted__"
 const redactSatellite = (s: SelectSatelliteConfigType) => ({
 	...s,
 	encryptionKey: s.encryptionKey ? REDACTED : null,
+	livekitApiSecret: s.livekitApiSecret ? REDACTED : null,
 })
 
 export const transformDomia = (

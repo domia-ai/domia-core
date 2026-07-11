@@ -29,7 +29,6 @@ declare module "@modelcontextprotocol/sdk/client/index.js" {
 }
 
 declare module "@modelcontextprotocol/sdk/client/streamableHttp.js" {
-	/* eslint-disable-next-line @typescript-eslint/no-extraneous-class */
 	export class StreamableHTTPClientTransport {
 		constructor(
 			url: URL,
@@ -39,7 +38,6 @@ declare module "@modelcontextprotocol/sdk/client/streamableHttp.js" {
 }
 
 declare module "@modelcontextprotocol/sdk/client/sse.js" {
-	/* eslint-disable-next-line @typescript-eslint/no-extraneous-class */
 	export class SSEClientTransport {
 		constructor(
 			url: URL,

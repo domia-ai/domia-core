@@ -157,7 +157,17 @@ export const handlePostSatellite = async (
 	if (!parsed.success) {
 		return reply.code(400).send({ error: "Invalid satellite body" })
 	}
-	const { satelliteId, name, host, port, encryptionKey, protocol } = parsed.data
+	const {
+		satelliteId,
+		name,
+		host,
+		port,
+		encryptionKey,
+		protocol,
+		livekitApiKey,
+		livekitApiSecret,
+		livekitRoom,
+	} = parsed.data
 	const boundElsewhere = (await getActiveSatellites()).find(
 		(row) => row.satelliteId === satelliteId && row.domiaId !== domia.id,
 	)
@@ -178,6 +188,9 @@ export const handlePostSatellite = async (
 			DEFAULT_SATELLITE_PORT,
 		encryptionKey: encryptionKey ?? null,
 		protocol: resolvedProtocol,
+		livekitApiKey: livekitApiKey ?? null,
+		livekitApiSecret: livekitApiSecret ?? null,
+		livekitRoom: livekitRoom ?? null,
 	})
 	invalidateOwnDomia(domiaKey)
 	const apply = await reloadSubsystem("satellites", domiaKey)

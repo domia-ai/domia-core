@@ -14,6 +14,7 @@ import type {
 	LlmEngineAdapterType,
 	ToolCallType,
 	ToolCallOrReplyType,
+	ToolChoiceType,
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
 	LlmUsageType,
@@ -223,17 +224,20 @@ const toOllamaTools = (tools: ToolDefinitionType[]): Tool[] =>
 			}) as unknown as Tool,
 	)
 
-const normalizeArgs = (raw: unknown): Record<string, unknown> => {
+const normalizeArgs = (
+	raw: unknown,
+): { args: Record<string, unknown>; invalid: boolean } => {
 	if (typeof raw === "string") {
 		const { value } = parseLlmJson(raw)
-		if (value) return value
-		llmEngineLogger.warn("tool-call arguments failed to parse — using {}", {
+		if (value) return { args: value, invalid: false }
+		llmEngineLogger.warn("tool-call arguments failed to parse", {
 			raw: raw.slice(0, 200),
 		})
-		return {}
+		return { args: {}, invalid: true }
 	}
-	if (raw && typeof raw === "object") return raw as Record<string, unknown>
-	return {}
+	if (raw && typeof raw === "object")
+		return { args: raw as Record<string, unknown>, invalid: false }
+	return { args: {}, invalid: false }
 }
 
 const requireToolModel = (domia: DomiaType): string =>
@@ -244,15 +248,17 @@ const runOllamaWithTools = async (
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
 	onUsage?: LlmUsageSinkType,
+	toolChoice?: ToolChoiceType,
 ): Promise<ToolCallOrReplyType> => {
 	const modelName = requireToolModel(domia)
 	const release = await acquireSlot(domia)
 	const client = getClient(domia)
+	const effectiveTools = toolChoice === "none" ? [] : tools
 	try {
 		const response = await client.chat({
 			model: modelName,
 			messages: toOllamaMessages(messages),
-			tools: toOllamaTools(tools),
+			tools: toOllamaTools(effectiveTools),
 			stream: false,
 			keep_alive: resolveKeepAlive(domia),
 			options: {
@@ -266,7 +272,10 @@ const runOllamaWithTools = async (
 		if (toolCalls?.length) {
 			const calls: ToolCallType[] = toolCalls.map((c) => ({
 				name: c.function.name,
-				arguments: normalizeArgs(c.function.arguments),
+				...(() => {
+					const n = normalizeArgs(c.function.arguments)
+					return { arguments: n.args, argsInvalid: n.invalid || undefined }
+				})(),
 			}))
 			return { kind: "tool_calls", calls }
 		}
@@ -321,7 +330,10 @@ const runOllamaReplyStreamOrTools = async (
 		if (!first.done && first.value.message?.tool_calls?.length) {
 			const calls: ToolCallType[] = first.value.message.tool_calls.map((c) => ({
 				name: c.function.name,
-				arguments: normalizeArgs(c.function.arguments),
+				...(() => {
+					const n = normalizeArgs(c.function.arguments)
+					return { arguments: n.args, argsInvalid: n.invalid || undefined }
+				})(),
 			}))
 			let last = first.value
 			while (true) {

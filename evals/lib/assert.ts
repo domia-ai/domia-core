@@ -48,6 +48,18 @@ const deepSubset = (
 	})
 }
 
+const promptSectionBody = (prompt: string, section: string): string => {
+	const lines = prompt.split("\n")
+	const start = lines.findIndex((l) => l === `### ${section}`)
+	if (start < 0) return ""
+	const body: string[] = []
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^### /.test(lines[i])) break
+		body.push(lines[i])
+	}
+	return body.join("\n").trim()
+}
+
 export const assertTurn = (
 	rec: EvalTurnRecordType,
 	reply: string,
@@ -146,6 +158,46 @@ export const assertTurn = (
 				reply.toLowerCase().includes(s.toLowerCase()),
 				reply,
 			)
+
+	if (expect.replyExcludes)
+		for (const s of expect.replyExcludes)
+			add(
+				`replyExcludes:${s}`,
+				!reply.toLowerCase().includes(s.toLowerCase()),
+				reply,
+			)
+
+	const prompt = rec.llmPrompt ?? ""
+	if (expect.promptIncludes)
+		for (const s of expect.promptIncludes)
+			add(
+				`promptIncludes:${s}`,
+				prompt.toLowerCase().includes(s.toLowerCase()),
+				prompt ? "(not in prompt)" : "(no prompt stored)",
+			)
+
+	if (expect.promptSection) {
+		const { section, includes } = expect.promptSection
+		const body = promptSectionBody(prompt, section)
+		for (const s of includes)
+			add(
+				`promptSection[${section}]:${s}`,
+				body.toLowerCase().includes(s.toLowerCase()),
+				body ? `section="${body.slice(0, 80)}"` : "(section absent)",
+			)
+	}
+
+	if (expect.recallsFact) {
+		const body = promptSectionBody(prompt, "WHAT YOU KNOW")
+		const v = expect.recallsFact.value.toLowerCase()
+		const subj = expect.recallsFact.subject?.toLowerCase()
+		add(
+			`recallsFact:${expect.recallsFact.value}`,
+			body.toLowerCase().includes(v) &&
+				(!subj || body.toLowerCase().includes(subj)),
+			body ? `WHAT YOU KNOW="${body.slice(0, 100)}"` : "(no facts recalled)",
+		)
+	}
 
 	if (expect.maxTtfaMs != null)
 		add(

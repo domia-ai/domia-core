@@ -6,7 +6,11 @@ import { resolveLiveDomia, resolveLiveIdentity } from "@/setups/live-domia"
 import { safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import { speak as speakOnDomia } from "@/modules/core-bus"
 import { handleDeliverEvent } from "@/modules/grpc-event-handler"
-import { closeAllChannels, setLocalService } from "@/modules/grpc-client"
+import {
+	closeAllChannels,
+	setLocalService,
+	GRPC_MAX_MESSAGE_BYTES,
+} from "@/modules/grpc-client"
 import { registerShutdownTask } from "@/setups/shutdown"
 import { buildPromptFromPersona } from "@/modules/prompt-context-builder"
 import {
@@ -571,7 +575,10 @@ export const setupGrpcServer = async ({
 		return
 	}
 
-	server = createServer().use(async function* (call, context) {
+	server = createServer({
+		"grpc.max_receive_message_length": GRPC_MAX_MESSAGE_BYTES,
+		"grpc.max_send_message_length": GRPC_MAX_MESSAGE_BYTES,
+	}).use(async function* (call, context) {
 		if (!isValidMeshBearer(context.metadata.get("authorization"))) {
 			throw new ServerError(Status.UNAUTHENTICATED, "invalid mesh token")
 		}

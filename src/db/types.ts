@@ -28,6 +28,7 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM_VALUES,
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
 	CAPABILITY_ENUM_VALUES,
+	IMPLICIT_FEEDBACK_ENUM_VALUES,
 } from "./constants"
 
 export type DbClientType = BetterSQLite3Database<typeof schema> & {
@@ -296,3 +297,5 @@ export type AudioPlaybackEngineEnumType =
 export type InteractionInputTypeEnumType =
 	(typeof INTERACTION_INPUT_TYPE_ENUM_VALUES)[number]
 export type CapabilityEnumType = (typeof CAPABILITY_ENUM_VALUES)[number]
+export type ImplicitFeedbackType =
+	(typeof IMPLICIT_FEEDBACK_ENUM_VALUES)[number]

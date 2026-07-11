@@ -10,46 +10,42 @@ import { setSatelliteConnecting, setSatelliteError } from "@/modules/core-bus"
 import { satelliteWyomingLogger } from "@/utils"
 
 import type {
+	WyomingConnectionType,
 	WyomingEventHandlerType,
 	WyomingSatelliteHandleType,
 } from "../types"
 
 const WYOMING_VERSION = "1.6.0"
 const RECONNECT_MS = 3000
+const PING_INTERVAL_MS = 30_000
+const LIVENESS_TIMEOUT_MS = 120_000
 const MAX_HEADER_BYTES = 64 * 1024
 const MAX_EVENT_BYTES = 10 * 1024 * 1024
 
-class WyomingConnection {
-	private buf = Buffer.alloc(0)
+export const createWyomingConnection = (
+	socket: Socket,
+	onEvent: WyomingEventHandlerType,
+): WyomingConnectionType => {
+	let buf = Buffer.alloc(0)
 
-	constructor(
-		private readonly socket: Socket,
-		private readonly onEvent: WyomingEventHandlerType,
-	) {
-		socket.on("data", (chunk: Buffer) => {
-			this.buf = Buffer.concat([this.buf, chunk])
-			this.drain()
-		})
-	}
-
-	private fail(reason: string): void {
+	const fail = (reason: string): void => {
 		satelliteWyomingLogger.warn("wyoming framing error — closing", { reason })
-		this.buf = Buffer.alloc(0)
-		this.socket.destroy()
+		buf = Buffer.alloc(0)
+		socket.destroy()
 	}
 
-	private drain(): void {
+	const drain = (): void => {
 		for (;;) {
-			const nl = this.buf.indexOf(0x0a)
+			const nl = buf.indexOf(0x0a)
 			if (nl < 0) {
-				if (this.buf.length > MAX_HEADER_BYTES) this.fail("header too long")
+				if (buf.length > MAX_HEADER_BYTES) fail("header too long")
 				return
 			}
 			let header: Record<string, unknown>
 			try {
-				header = JSON.parse(this.buf.subarray(0, nl).toString("utf8"))
+				header = JSON.parse(buf.subarray(0, nl).toString("utf8"))
 			} catch {
-				this.buf = this.buf.subarray(nl + 1)
+				buf = buf.subarray(nl + 1)
 				continue
 			}
 			const dataLen = Number(header.data_length ?? 0)
@@ -61,11 +57,11 @@ class WyomingConnection {
 				payloadLen < 0 ||
 				dataLen + payloadLen > MAX_EVENT_BYTES
 			) {
-				this.fail("invalid event length")
+				fail("invalid event length")
 				return
 			}
 			const end = nl + 1 + dataLen + payloadLen
-			if (this.buf.length < end) return
+			if (buf.length < end) return
 			let data: Record<string, unknown> =
 				typeof header.data === "object" && header.data
 					? (header.data as Record<string, unknown>)
@@ -75,33 +71,38 @@ class WyomingConnection {
 					data = {
 						...data,
 						...JSON.parse(
-							this.buf.subarray(nl + 1, nl + 1 + dataLen).toString("utf8"),
+							buf.subarray(nl + 1, nl + 1 + dataLen).toString("utf8"),
 						),
 					}
 				} catch {
-					/* keep header data */
+					/* empty */
 				}
 			}
 			const payload =
-				payloadLen > 0
-					? Buffer.from(this.buf.subarray(nl + 1 + dataLen, end))
-					: null
-			this.buf = this.buf.subarray(end)
-			this.onEvent(String(header.type), data, payload)
+				payloadLen > 0 ? Buffer.from(buf.subarray(nl + 1 + dataLen, end)) : null
+			buf = buf.subarray(end)
+			onEvent(String(header.type), data, payload)
 		}
 	}
 
-	write(type: string, data?: Record<string, unknown>, payload?: Buffer): void {
-		const header: Record<string, unknown> = { type, version: WYOMING_VERSION }
-		let dataBytes: Buffer | null = null
-		if (data && Object.keys(data).length > 0) {
-			dataBytes = Buffer.from(JSON.stringify(data), "utf8")
-			header.data_length = dataBytes.length
-		}
-		if (payload && payload.length > 0) header.payload_length = payload.length
-		this.socket.write(JSON.stringify(header) + "\n")
-		if (dataBytes) this.socket.write(dataBytes)
-		if (payload && payload.length > 0) this.socket.write(payload)
+	socket.on("data", (chunk: Buffer) => {
+		buf = Buffer.concat([buf, chunk])
+		drain()
+	})
+
+	return {
+		write: (type, data, payload) => {
+			const header: Record<string, unknown> = { type, version: WYOMING_VERSION }
+			let dataBytes: Buffer | null = null
+			if (data && Object.keys(data).length > 0) {
+				dataBytes = Buffer.from(JSON.stringify(data), "utf8")
+				header.data_length = dataBytes.length
+			}
+			if (payload && payload.length > 0) header.payload_length = payload.length
+			socket.write(JSON.stringify(header) + "\n")
+			if (dataBytes) socket.write(dataBytes)
+			if (payload && payload.length > 0) socket.write(payload)
+		},
 	}
 }
 
@@ -155,6 +156,12 @@ export const connectWyomingSatellite = (
 				),
 			endAudio: () => conn.write("audio-stop", {}),
 			close: () => sock.end(),
+			outputCapabilities: {
+				pause: false,
+				position: "sentence",
+				urlPlayback: false,
+				captions: false,
+			},
 		}
 
 		const session = createSatelliteSession({
@@ -163,7 +170,9 @@ export const connectWyomingSatellite = (
 			protocol: "wyoming",
 		})
 
-		const conn = new WyomingConnection(sock, (type, data, payload) => {
+		let lastEventAt = Date.now()
+		const conn = createWyomingConnection(sock, (type, data, payload) => {
+			lastEventAt = Date.now()
 			if (type === "audio-start") {
 				session.setFormat(
 					Number(data.rate ?? 16000),
@@ -181,7 +190,22 @@ export const connectWyomingSatellite = (
 			}
 		})
 
+		const liveness = setInterval(() => {
+			if (Date.now() - lastEventAt > LIVENESS_TIMEOUT_MS) {
+				satelliteWyomingLogger.warn(
+					"wyoming satellite unresponsive — reconnecting",
+					{ address },
+				)
+				sock.destroy()
+				return
+			}
+			conn.write("ping", {})
+		}, PING_INTERVAL_MS)
+
 		sock.on("connect", () => {
+			scheduler.reset()
+			lastEventAt = Date.now()
+			sock.setKeepAlive(true, PING_INTERVAL_MS)
 			satelliteWyomingLogger.info("🛰️ connected to wyoming satellite", {
 				address,
 				domiaKey,
@@ -190,6 +214,7 @@ export const connectWyomingSatellite = (
 			conn.write("run-satellite", {})
 		})
 		sock.on("close", () => {
+			clearInterval(liveness)
 			session.onClose()
 			socket = null
 			if (!scheduler.isClosed()) scheduler.schedule(open)

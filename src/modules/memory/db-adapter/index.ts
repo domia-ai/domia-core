@@ -41,6 +41,12 @@ const dbAdapter = {
 			orderBy: desc(memoryFact.updatedAt),
 			limit,
 		}),
+	getFactsForDomia: (domiaId: string, client: DBClientOrTxType = dbClient) =>
+		client.query.memoryFact.findMany({
+			where: eq(memoryFact.domiaId, domiaId),
+		}),
+	deleteFactById: (id: string, client: DBClientOrTxType = dbClient) =>
+		client.delete(memoryFact).where(eq(memoryFact.id, id)),
 	getFactsSince: (
 		domiaId: string,
 		since: string,

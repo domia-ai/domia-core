@@ -26,6 +26,27 @@ export const withTimeout = <T>(
 		}),
 	])
 
+export const withIdleTimeout = async function* <T>(
+	source: AsyncIterable<T>,
+	ms: number,
+	label: string,
+): AsyncIterable<T> {
+	const it = source[Symbol.asyncIterator]()
+	try {
+		for (;;) {
+			const res = await withTimeout(it.next(), ms, `${label} stream idle`)
+			if (res.done) return
+			yield res.value
+		}
+	} finally {
+		try {
+			await it.return?.()
+		} catch {
+			/* source already closed */
+		}
+	}
+}
+
 export const createKeyedMutex = (): (<T>(
 	key: string,
 	fn: () => Promise<T>,

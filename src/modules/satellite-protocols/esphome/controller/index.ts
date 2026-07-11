@@ -127,6 +127,26 @@ export const connectEsphomeSatellite = (
 						})
 					: event(VoiceAssistantEvent.TTS_END, [{ name: "url", value: url }]),
 			announce: (url) => esp.sendVoiceAssistantAnnounce({ mediaId: url }),
+			pauseAudio: () => {
+				if (!mediaPlayerId) return false
+				esp.sendMediaPlayerCommand(mediaPlayerId, {
+					command: MediaPlayerCommand.PAUSE,
+				})
+				return true
+			},
+			resumeAudio: () => {
+				if (!mediaPlayerId) return false
+				esp.sendMediaPlayerCommand(mediaPlayerId, {
+					command: MediaPlayerCommand.PLAY,
+				})
+				return true
+			},
+			outputCapabilities: {
+				pause: true,
+				position: "sentence",
+				urlPlayback: true,
+				captions: false,
+			},
 			finishTurn: () => {
 				// RUN_END cancels an in-flight startConversation re-arm; skip on follow-up
 				if (!shouldFollowUp()) event(VoiceAssistantEvent.RUN_END)

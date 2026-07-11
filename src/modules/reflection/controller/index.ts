@@ -253,14 +253,23 @@ export const runReflection = async (
 					)
 					if (yielded) return empty
 					const parsed = parseLlmJson(raw)
+					const obj = parsed.value ?? {}
 					if (parsed.state === "repaired") {
+						const factsTruncated =
+							raw.includes('"facts"') &&
+							(!Array.isArray(obj.facts) || obj.facts.length === 0)
 						reflectionLogger.warn("llm-json repaired", {
 							site: "reflection",
 							model: reflector?.llmModelConfig?.modelName,
 							rawLength: raw.length,
+							factsTruncated,
+							salvaged: {
+								emotion: obj.emotion != null,
+								userEmotion: obj.userEmotion != null,
+								facts: Array.isArray(obj.facts) ? obj.facts.length : 0,
+							},
 						})
 					}
-					const obj = parsed.value ?? {}
 					const emotion: EmotionAppraisalType | null = flags.emotion
 						? parseEmotionFromObject(obj.emotion)
 						: null

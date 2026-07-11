@@ -1,3 +1,4 @@
+import type { SinkCapabilitiesType } from "@/modules/core-bus"
 import type { DomiaType } from "@/modules/core"
 import type {
 	StreamingSinkFormatType,
@@ -17,7 +18,7 @@ export type SatelliteTransportType = {
 	sendReplyDone: (reply: string, interactionId: string) => void
 	sendError: (message: string) => void
 	beginAudio: (format: StreamingSinkFormatType) => void
-	writeAudio: (chunk: Buffer) => void
+	writeAudio: (chunk: Buffer) => void | Promise<void>
 	endAudio: () => void
 	close: () => void
 	serverEndpointing?: boolean
@@ -26,6 +27,9 @@ export type SatelliteTransportType = {
 	announce?: (url: string) => void
 	finishTurn?: () => void
 	followUp?: boolean
+	pauseAudio?: () => boolean
+	resumeAudio?: () => boolean
+	outputCapabilities?: SinkCapabilitiesType
 }
 
 export type SatelliteSessionDepsType = {

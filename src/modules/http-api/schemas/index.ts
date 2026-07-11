@@ -14,6 +14,9 @@ export const postSatelliteBodySchema = z.object({
 	port: z.coerce.number().int().positive().max(65535).optional(),
 	encryptionKey: z.string().trim().min(1).max(200).optional(),
 	protocol: z.enum(SATELLITE_PROTOCOL_ENUM_VALUES).optional(),
+	livekitApiKey: z.string().trim().min(1).max(200).optional(),
+	livekitApiSecret: z.string().trim().min(1).max(200).optional(),
+	livekitRoom: z.string().trim().min(1).max(200).optional(),
 })
 
 export const postSatelliteWakeWordsBodySchema = z.object({

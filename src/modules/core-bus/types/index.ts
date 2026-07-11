@@ -120,10 +120,55 @@ export type StreamingSinkFormatType = {
 	channels: 1 | 2
 }
 
+export type SinkPositionFidelityType =
+	| "exact"
+	| "estimated"
+	| "sentence"
+	| "none"
+
+export type SinkCapabilitiesType = {
+	pause: boolean
+	position: SinkPositionFidelityType
+	urlPlayback: boolean
+	captions: boolean
+}
+
+export type LedgerAnchorType = {
+	text: string
+	startByte: number
+	endByte: number
+}
+
+export type PlaybackLedgerType = {
+	format: StreamingSinkFormatType
+	totalBytes: () => number
+	anchors: () => LedgerAnchorType[]
+	wordLevelHeard: boolean
+	markFirstChunk: () => void
+	addBytes: (n: number) => void
+	wrapSentence: (
+		text: string,
+		pcm: AsyncIterable<Buffer>,
+	) => AsyncIterable<Buffer>
+	pause: () => void
+	resume: () => void
+	isPaused: () => boolean
+	waitResume: () => Promise<void>
+	releaseGate: () => void
+	positionMs: () => number | undefined
+	heardTextAt: (
+		positionMs: number,
+		fidelity: SinkPositionFidelityType,
+	) => string
+}
+
 export type StreamingSinkType = {
 	begin?: (format: StreamingSinkFormatType) => void | Promise<void>
 	write: (chunk: Buffer) => void | Promise<void>
 	end?: () => void | Promise<void>
+	capabilities?: SinkCapabilitiesType
+	pause?: () => boolean
+	resume?: () => boolean
 }
 
 export type StreamMetaType = {
@@ -131,6 +176,7 @@ export type StreamMetaType = {
 	originDomiaKey: string | undefined
 	onFirstChunk?: () => void
 	aborted?: () => boolean
+	ledger?: PlaybackLedgerType
 }
 
 export type TurnSessionContextType = {
@@ -147,6 +193,7 @@ export type TurnScopeType = {
 	reason: () => string | null
 	abort: (reason: string) => void
 	end: () => void
+	settled: Promise<void>
 }
 
 export type IntercomLinkType = {
@@ -178,7 +225,12 @@ export type RenderedTtsType = {
 
 export type PresenceStatusType = "idle" | "listening" | "thinking" | "speaking"
 
-export type SatelliteProtocolType = "native" | "wyoming" | "esphome"
+export type SatelliteProtocolType =
+	| "native"
+	| "wyoming"
+	| "esphome"
+	| "livekit"
+	| "openai-realtime"
 
 export type SatelliteWakeWordType = {
 	id: string
@@ -301,7 +353,7 @@ export type FastIntentResultType = {
 }
 
 export type StreamingAudioType = {
-	queue: import("../utils/sentence-buffer").AsyncQueue<Buffer>
+	queue: import("./sentence-buffer").AsyncQueueType<Buffer>
 	sampleRate: number
 	channels: number
 }
@@ -546,6 +598,9 @@ export type PlaybackOutcomeType = {
 	filePath: string | undefined
 	interrupted: boolean
 	audioStarted: boolean
+	positionMs?: number
+	positionFidelity?: SinkPositionFidelityType
+	heardText?: string
 }
 
 export type MemoryBundleType = {
@@ -592,4 +647,86 @@ export type ExtractedEmotionTagsType = {
 export type SentenceEmotionTagsType = {
 	applyTags: string[]
 	carryTags: string[]
+}
+
+export type SpeculationStatsType = {
+	handedOff: number
+	wastedFirstUnit: number
+	discarded: number
+	wasteRate: number
+}
+
+export type BargeInStatsType = {
+	resumed: number
+	escalated: number
+	recoveryRate: number
+}
+
+export type EouMetricsType = {
+	transcriptionDelayMs: number | null
+	eouDelayMs: number | null
+	endpointDebounceMs: number | null
+}
+
+export type EouMetricsInputType = {
+	transcriptionDelayMs?: number | null
+	eouDelayMs?: number | null
+	endpointDebounceMs?: number | null
+}
+
+export type ForwardFailurePayloadType = {
+	interactionId: string | undefined
+	originDomiaKey: string | undefined
+	responseType: string | undefined
+	error: string
+	step: string | undefined
+}
+
+export type PersistTerminalOptsType = {
+	errorStep?: string
+	errorMessage?: string
+	errorCode?: string
+}
+
+export type InteractionAudioPatchType = {
+	ttsFilePath?: string
+	audioUrl?: string
+}
+
+export type CompleteInteractionOptsType = {
+	interrupted?: boolean
+	result?: Partial<InteractionCompletionResultType>
+}
+
+export type ReplyFallbackResultType = {
+	reply: string
+	usedFallback: boolean
+}
+
+export type HeardReplyPlaybackType = Pick<
+	PlaybackOutcomeType,
+	"audioStarted" | "interrupted" | "heardText"
+>
+
+export type DownloadAudioOptionsType = {
+	timeoutMs?: number
+}
+
+export type StreamAudioFormatType = {
+	sampleRate: number
+	channels: 1 | 2
+}
+
+export type TimerUnitType = {
+	re: RegExp
+	mult: number
+}
+
+export type SpokenPositionOptsType = {
+	wordLevelHeard: boolean
+}
+
+export type TurnCompletionGuardOptsType = {
+	status?: string
+	traceId?: string
 }

@@ -1,6 +1,11 @@
 import type { DomiaType } from "@/modules/core"
 import { embed } from "@/modules/embeddings"
-import { generateUuid, memoryLogger, languageSetsFor } from "@/utils"
+import {
+	generateUuid,
+	memoryLogger,
+	languageSetsFor,
+	sanitizeFactLine,
+} from "@/utils"
 
 import { FACT_KIND_ENUM, type FactKindEnumType } from "@/db"
 import dbAdapter from "../db-adapter"
@@ -84,15 +89,13 @@ export const rankFactsByRelevance = async (
 	queryText: string,
 	limit: number,
 ): Promise<string[]> => {
-	if (facts.length <= limit) return facts
+	if (facts.length === 0) return facts
+	const stopwords = languageSetsFor(domia.characterProfile?.language).stopwords
+	if (facts.length <= limit)
+		return rankFactsLexical(facts, queryText, limit, stopwords)
 	const vectors = await embed(domia, [queryText, ...facts])
 	if (!vectors || vectors.length !== facts.length + 1)
-		return rankFactsLexical(
-			facts,
-			queryText,
-			limit,
-			languageSetsFor(domia.characterProfile?.language).stopwords,
-		)
+		return rankFactsLexical(facts, queryText, limit, stopwords)
 	const query = vectors[0]
 	return facts
 		.map((fact, index) => ({
@@ -121,7 +124,16 @@ export const getUserModelSummary = async (
 ): Promise<string | null> => {
 	try {
 		const row = await dbAdapter.getUserModel(domia.id)
-		return row?.summary?.trim() || null
+		if (!row) return null
+		const parts: string[] = []
+		if (row.summary?.trim()) parts.push(row.summary.trim())
+		const interests = (row.interests ?? []).filter((s) => s?.trim())
+		if (interests.length) parts.push(`They're into ${interests.join(", ")}.`)
+		const prefs = (row.prefs ?? []).filter((s) => s?.trim())
+		if (prefs.length) parts.push(`They prefer ${prefs.join(", ")}.`)
+		if (row.moodTendencies?.trim())
+			parts.push(`They tend to be ${row.moodTendencies.trim()}.`)
+		return parts.length ? parts.join(" ") : null
 	} catch {
 		return null
 	}
@@ -214,8 +226,10 @@ export const getLastFactAt = async (domiaId: string) => {
 }
 
 export const buildFactExtractionLines = (): string[] => [
-	`Also look for a durable fact the person EXPLICITLY stated about themselves. Most turns have NONE — when unsure, use []. Format as objects {subject, relation, value, confidence}: "subject" is the person (e.g. "the user"); "relation" is short (e.g. "is named", "is allergic to", "prefers"); "value" is the detail; "confidence" is 0..1.`,
-	`Record a fact ONLY if the person literally declared personal information in "The person said" (a name they gave, a preference/allergy/relationship/plan they stated). NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas, "why's your name?" is NOT their name; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia — facts are only about the person. If they only asked a question or made small talk, return [].`,
+	`Also extract durable facts the person EXPLICITLY stated about themselves. Format as objects {subject, relation, value, confidence}: "subject" is ALWAYS exactly "the user" (never "the user said X", never their name as the subject); "relation" is short lowercase (e.g. "is named", "is allergic to", "likes", "dislikes"); "value" is the plain detail with NO brackets or quotes (e.g. Kevin, green tea); "confidence" is 0..1.`,
+	`DO capture clear first-person declarations: "my name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"}; "I love green tea" / "green tea is my favorite" → {subject:"the user", relation:"likes", value:"green tea"}; "I can't stand coffee" → {subject:"the user", relation:"dislikes", value:"coffee"}; "I'm allergic to peanuts" → {subject:"the user", relation:"is allergic to", value:"peanuts"}. Preferences, name, allergies, relationships, and plans they state ARE facts — capture them.`,
+	`When the person RETRACTS or REVERSES something ("I quit coffee", "I no longer like tea", "I switched from X to Y", "actually I can't stand it anymore"), emit a retraction with "op":"delete" for the OLD fact ({subject:"the user", relation:"likes", value:"coffee", op:"delete"}) — and for a switch also add the NEW fact. Default op is "add"; only set "delete" for an explicit retraction.`,
+	`NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia. If they only asked a question or made small talk, return [].`,
 ]
 
 export const parseFacts = (input: unknown): RawFactType[] => {
@@ -226,28 +240,99 @@ export const parseFacts = (input: unknown): RawFactType[] => {
 		.slice(0, MEMORY_FACT_EXTRACT_MAX)
 }
 
+const stripBrackets = (raw: string): string =>
+	raw
+		.trim()
+		.replace(/^[[("'“‘]+/, "")
+		.replace(/[\])"'”’]+$/, "")
+		.trim()
+
+const normalizeFactKey = (raw: string): string =>
+	stripBrackets(sanitizeFactLine(raw).text)
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.trim()
+
+const SPEAKER_SUBJECT = "the user"
+const SPEAKER_RE =
+	/^(the user|the person|the speaker|they|user|the user said[a-z ]*|the person said[a-z ]*)$/
+
+const canonicalSubject = (raw: string): string => {
+	const norm = normalizeFactKey(raw)
+	if (SPEAKER_RE.test(norm) || norm.startsWith("the user"))
+		return SPEAKER_SUBJECT
+	return norm
+}
+
+const IDENTITY_PROTECT_FLOOR = 0.85
+
+const reconcileDeletes = async (
+	domia: DomiaType,
+	deletes: { subject: string; value: string }[],
+): Promise<number> => {
+	if (!deletes.length) return 0
+	const rows = await dbAdapter.getFactsForDomia(domia.id)
+	let removed = 0
+	for (const del of deletes) {
+		for (const row of rows) {
+			if (canonicalSubject(row.subject) !== del.subject) continue
+			if (
+				(row.confidence ?? 0) >= IDENTITY_PROTECT_FLOOR &&
+				row.kind === FACT_KIND_ENUM.USER_FACT
+			)
+				continue
+			const rowVal = normalizeFactKey(row.value)
+			if (rowVal.includes(del.value) || del.value.includes(rowVal)) {
+				await dbAdapter.deleteFactById(row.id)
+				removed += 1
+			}
+		}
+	}
+	return removed
+}
+
 export const upsertFacts = async (
 	domia: DomiaType,
 	facts: RawFactType[],
 	sourceInteractionId?: string,
 ): Promise<void> => {
 	if (!facts.length) return
+	const deletes: { subject: string; value: string }[] = []
+	const seen = new Set<string>()
+	let stored = 0
 	for (const fact of facts) {
+		const subject = canonicalSubject(fact.subject)
+		const relation = normalizeFactKey(fact.relation)
+		const value = stripBrackets(sanitizeFactLine(fact.value).text)
+		if (!subject || !relation || !value) continue
+		if (fact.op === "delete") {
+			deletes.push({ subject, value: normalizeFactKey(value) })
+			continue
+		}
+		const dedupKey = `${subject}|${relation}`
+		if (seen.has(dedupKey)) continue
+		seen.add(dedupKey)
 		await dbAdapter.upsertFact({
 			id: generateUuid(),
 			domiaId: domia.id,
-			subject: fact.subject.trim(),
-			relation: fact.relation.trim(),
-			value: fact.value.trim(),
+			subject,
+			relation,
+			value,
 			confidence: fact.confidence ?? DEFAULT_FACT_CONFIDENCE,
 			kind: classifyFactKind(fact.relation),
 			sourceInteractionId: sourceInteractionId ?? null,
 		})
+		stored += 1
 	}
+	const removed = await reconcileDeletes(domia, deletes)
 	memoryLogger.info("🧠 facts stored", {
 		domiaId: domia.id,
-		count: facts.length,
-		facts: facts.map((f) => `${f.subject} ${f.relation} ${f.value}`),
+		count: stored,
+		removed,
+		facts: facts.map(
+			(f) =>
+				`${f.op === "delete" ? "-" : ""}${f.subject} ${f.relation} ${f.value}`,
+		),
 	})
 }
 
@@ -265,7 +350,10 @@ export const getFactStrings = async (domia: DomiaType): Promise<string[]> => {
 						(row.kind ?? FACT_KIND_ENUM.OBSERVATION) as FactKindEnumType,
 					),
 			)
-			.map((row) => `${row.subject} ${row.relation} ${row.value}`)
+			.map(
+				(row) =>
+					sanitizeFactLine(`${row.subject} ${row.relation} ${row.value}`).text,
+			)
 	} catch {
 		return []
 	}

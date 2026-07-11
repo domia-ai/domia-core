@@ -26,6 +26,8 @@ export type WakeWordEngineAdapterType = {
 }
 
 export type StartAudioStreamResultType = {
+	debounceMs: number
+	endpointObservedMs: () => number | null
 	chunks: AsyncIterable<Buffer>
 	filePathPromise: Promise<string>
 	speechEndAt: () => number | null
@@ -33,6 +35,8 @@ export type StartAudioStreamResultType = {
 }
 
 export type FollowUpRecordingResultType = {
+	debounceMs: number
+	endpointObservedMs: () => number | null
 	filePath: string
 	speechEndAt: number | null
 }
@@ -44,6 +48,8 @@ export type SpeculativeCaptureHooksType = {
 }
 
 export type SpeculativeCaptureResultType = {
+	debounceMs: number
+	endpointObservedMs: () => number | null
 	finalPcmPromise: Promise<Buffer>
 	filePathPromise: Promise<string>
 	speechEndAt: () => number | null
@@ -99,4 +105,8 @@ export type MicSourceType = {
 	stop: (reason: string) => void
 	closed: Promise<void>
 	viaTap: boolean
+}
+
+export type DynamicEndpointStateType = {
+	pauseEmaMs: number
 }

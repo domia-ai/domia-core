@@ -99,6 +99,8 @@ const runFollowUpSpeculative = async (
 			filePath,
 			originDomiaKey: domia.domiaKey,
 			speechEndAt: capture.speechEndAt() ?? undefined,
+			endpointDelayMs: capture.endpointObservedMs() ?? undefined,
+			endpointDebounceMs: capture.debounceMs,
 			liveVoice: true,
 		})
 		return
@@ -196,6 +198,8 @@ export const handlePlaybackFinished = async (
 			filePath: recording.filePath,
 			originDomiaKey: domia.domiaKey,
 			speechEndAt: recording.speechEndAt ?? undefined,
+			endpointDelayMs: recording.endpointObservedMs() ?? undefined,
+			endpointDebounceMs: recording.debounceMs,
 			liveVoice: true,
 		})
 	} catch (err) {

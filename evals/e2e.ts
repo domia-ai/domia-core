@@ -8,6 +8,7 @@ import {
 	makeChecker,
 	meshHeaders,
 	postJson,
+	realtimeTurn,
 	satelliteTurn,
 	sleep,
 } from "./lib"
@@ -219,6 +220,39 @@ const run = async (): Promise<void> => {
 		check("exactly one turn.completed", countType(rows, "turn.completed") === 1)
 	}
 
+	console.log("[6] AG-UI /chat/stream SSE endpoint")
+	{
+		const res = await fetch(`${BASE}/chat/stream`, {
+			method: "POST",
+			headers: { "content-type": "application/json", ...meshHeaders() },
+			body: JSON.stringify({
+				text: "what time is it",
+				domiaKey: env.EVAL_DOMIA_KEY,
+			}),
+		})
+		const raw = await res.text()
+		const events = raw
+			.split("\n\n")
+			.filter(Boolean)
+			.map((f) =>
+				f
+					.split("\n")
+					.find((l) => l.startsWith("event: "))
+					?.slice(7),
+			)
+			.filter(Boolean)
+		check("stream starts with RUN_STARTED", events[0] === "RUN_STARTED")
+		check("emits TEXT_MESSAGE_CONTENT", events.includes("TEXT_MESSAGE_CONTENT"))
+		check(
+			"ends with RUN_FINISHED",
+			events[events.length - 1] === "RUN_FINISHED",
+		)
+		check(
+			"reply delta present",
+			/TEXT_MESSAGE_CONTENT[\s\S]*"delta":"[^"]+"/.test(raw),
+		)
+	}
+
 	if (env.E2E_SAT === "1") {
 		console.log("[7] satellite native WS turn")
 		{
@@ -299,6 +333,39 @@ const run = async (): Promise<void> => {
 					term[0]?.payload ?? "no terminal",
 				)
 			}
+		}
+		console.log("[8b] openai-realtime endpoint (manual commit)")
+		{
+			const r = await realtimeTurn(path.resolve("evals/fixtures/g03.wav"))
+			check("session.created received", r.sessionCreated)
+			check("no realtime error", r.error === null, r.error ?? "")
+			check(
+				"realtime transcript received",
+				typeof r.transcript === "string" && r.transcript.length > 0,
+			)
+			check("response.created received", r.responseCreated)
+			check("audio deltas received", r.audioDeltas > 0)
+			check("output audio done", r.audioDone)
+			check(
+				"reply text received",
+				typeof r.replyText === "string" && r.replyText.length > 0,
+			)
+			check("response.done received", r.responseDone)
+		}
+
+		console.log("[8c] openai-realtime endpoint (server_vad)")
+		{
+			const r = await realtimeTurn(path.resolve("evals/fixtures/g05.wav"), {
+				serverVad: true,
+			})
+			check("vad: no realtime error", r.error === null, r.error ?? "")
+			check("vad: speech_stopped received", r.speechStopped)
+			check(
+				"vad: transcript received",
+				typeof r.transcript === "string" && r.transcript.length > 0,
+			)
+			check("vad: audio deltas received", r.audioDeltas > 0)
+			check("vad: response.done received", r.responseDone)
 		}
 	} else {
 		console.log("[7-8] ⏭  satellite sections skipped (set E2E_SAT=1)")

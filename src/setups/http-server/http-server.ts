@@ -9,13 +9,19 @@ import {
 	invalidateOwnDomia,
 	isHostedIdentity,
 } from "@/modules/core"
-import { sendHeartbeat } from "@/modules/heartbeat-manager"
+import {
+	sendHeartbeat,
+	publishConfigChanged,
+} from "@/modules/heartbeat-manager"
 import { setupSatelliteGateway } from "@/modules/satellite-gateway"
+import { setupRealtimeGateway } from "@/modules/realtime-gateway"
+import { registerShutdownTask } from "@/setups/shutdown"
 import {
 	handleGetRoot,
 	handleGetHealth,
 	handleGetAudio,
 	handlePostChat,
+	handlePostChatStream,
 	handlePostVoice,
 	handlePostSpeak,
 	handlePostAnnounceAudio,
@@ -45,6 +51,9 @@ import {
 	handlePostSatellite,
 	handleDeleteSatellite,
 	handleSetSatelliteWakeWords,
+	handleGetSatelliteLivekitToken,
+	handleDeleteIdentityData,
+	handleResetConversation,
 	handleSetSatelliteNumber,
 	handleSetSatelliteFollowUp,
 	handleSetSatelliteVolume,
@@ -64,6 +73,7 @@ import {
 
 const HTTP_SERVER_HOST = env?.HTTP_SERVER_HOST
 const HTTP_SERVER_PORT = Number(env?.HTTP_SERVER_PORT)
+const HTTP_BODY_LIMIT_BYTES = 32 * 1024 * 1024
 
 const liveDomia = async (
 	fallback: DomiaType,
@@ -109,6 +119,7 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	const fastify = Fastify({
 		logger: false,
+		bodyLimit: HTTP_BODY_LIMIT_BYTES,
 	})
 
 	fastify.addHook("onRequest", async (request, reply) => {
@@ -131,6 +142,14 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		handlePostChat(
 			await liveDomia(domia, bodyDomiaKey(request.body)),
 			request.body,
+		),
+	)
+
+	fastify.post<PostChatRouteType>("/chat/stream", async (request, reply) =>
+		handlePostChatStream(
+			await liveDomia(domia, bodyDomiaKey(request.body)),
+			request.body,
+			reply,
 		),
 	)
 
@@ -160,6 +179,7 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		const fresh = await liveDomia(domia)
 		setGrpcClientTunables(fresh)
 		void sendHeartbeat({ domia: fresh })
+		publishConfigChanged(fresh.domiaKey)
 		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
 		return { refreshed: true }
 	})
@@ -305,6 +325,24 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 			),
 	)
 
+	fastify.get<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/livekit-token",
+		async (request, reply) =>
+			handleGetSatelliteLivekitToken(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				reply,
+			),
+	)
+
+	fastify.delete("/identity-data", async (request, reply) =>
+		handleDeleteIdentityData(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.post("/admin/reset-conversation", async (request, reply) =>
+		handleResetConversation(queryDomiaKey(request.query), reply),
+	)
+
 	fastify.patch<{ Params: { satelliteId: string } }>(
 		"/satellites/:satelliteId/wake-words",
 		async (request, reply) =>
@@ -391,7 +429,24 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 			),
 	)
 
-	setupSatelliteGateway(fastify.server, domia)
+	const satelliteGateway = setupSatelliteGateway(domia)
+	const realtimeGateway = setupRealtimeGateway(domia)
+	registerShutdownTask("satellite-gateway", () => satelliteGateway.close())
+	registerShutdownTask("realtime-gateway", () => realtimeGateway.close())
+	fastify.server.on("upgrade", (request, socket, head) => {
+		const pathname = new URL(request.url ?? "/", "http://upgrade").pathname
+		if (pathname === "/satellite") {
+			satelliteGateway.server.handleUpgrade(request, socket, head, (ws) =>
+				satelliteGateway.server.emit("connection", ws, request),
+			)
+		} else if (pathname === "/v1/realtime") {
+			realtimeGateway.server.handleUpgrade(request, socket, head, (ws) =>
+				realtimeGateway.server.emit("connection", ws, request),
+			)
+		} else {
+			socket.destroy()
+		}
+	})
 
 	try {
 		await fastify.listen({ port: HTTP_SERVER_PORT, host: HTTP_SERVER_HOST })

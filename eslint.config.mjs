@@ -3,10 +3,10 @@ import eslint from "@eslint/js"
 import tseslint from "typescript-eslint"
 import prettierConfig from "eslint-config-prettier"
 import prettierPlugin from "eslint-plugin-prettier/recommended"
-import { globalIgnores } from "eslint/config"
+import { defineConfig, globalIgnores } from "eslint/config"
 import globals from "globals"
 
-export default tseslint.config(
+export default defineConfig(
 	eslint.configs.recommended,
 	tseslint.configs.strict,
 	tseslint.configs.stylistic,
@@ -21,5 +21,9 @@ export default tseslint.config(
 		files: ["evals/**/*.ts"],
 		languageOptions: { globals: globals.node },
 	},
-	globalIgnores(["build/**/*", ".venv/*", "tmp/**/*"]),
+	{
+		files: ["**/*.d.ts"],
+		rules: { "@typescript-eslint/no-extraneous-class": "off" },
+	},
+	globalIgnores(["build/**/*", ".venv/*", "tmp/**/*", "src/generated/**/*"]),
 )

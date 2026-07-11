@@ -25,6 +25,10 @@ import {
 	stopIntercom,
 	stopIntercomTo,
 	abortActiveTurn,
+	pauseActiveTurn,
+	resumeActiveTurn,
+	countBargeInResumed,
+	countBargeInEscalated,
 	buildAudioUrl,
 	registerAudioForServing,
 	getAudioFilePath,
@@ -37,7 +41,8 @@ import {
 import { getSttEngine, type SttStreamSessionType } from "@/modules/stt-engine"
 import {
 	RECORDINGS_DIR,
-	createVadWindow,
+	adaptiveVadWindow,
+	observeBargeIn,
 	type VadWindowType,
 } from "@/modules/audio-capture"
 import {
@@ -52,8 +57,22 @@ import {
 	DEFAULT_SATELLITE_CHANNELS,
 	MAX_UTTERANCE_BYTES,
 	NO_VAD_MAX_UTTERANCE_S,
+	PRE_SPEECH_ROLL_BYTES,
 } from "../constants"
 import type { SatelliteSessionDepsType, SatelliteSessionType } from "../types"
+
+const BARGE_IN_MIN_RMS = 0.008
+
+const frameRms = (pcm: Buffer): number => {
+	if (pcm.length < 2) return 0
+	let sum = 0
+	const samples = pcm.length >> 1
+	for (let i = 0; i < samples; i++) {
+		const v = pcm.readInt16LE(i << 1) / 32768
+		sum += v * v
+	}
+	return Math.sqrt(sum / samples)
+}
 
 const sendViaSink = async (
 	sink: StreamingSinkType,
@@ -87,6 +106,10 @@ export const createSatelliteSession = (
 	let bufferedBytes = 0
 	let helloReceived = false
 	let busy = false
+	let pausedBargeIn: ReturnType<typeof setTimeout> | null = null
+	let echoWindowUntil = 0
+	let ttsBytesSent = 0
+	let ttsFirstSentAt = 0
 	let activeInteractionId: string | null = null
 	let activeFinalize: (() => void) | null = null
 	let registeredKey: string | null = null
@@ -147,8 +170,15 @@ export const createSatelliteSession = (
 
 	const makeSink = (onWrite?: () => void): StreamingSinkType => {
 		let release: (() => void) | null = null
+		let sinkRate = 24000
+		let sinkChannels = 1
 		return {
+			capabilities: transport.outputCapabilities,
+			pause: transport.pauseAudio,
+			resume: transport.resumeAudio,
 			begin: async (format) => {
+				sinkRate = format.sampleRate
+				sinkChannels = format.channels
 				release = await acquireOutput()
 				try {
 					setPresenceStatus(identity.domiaKey, "speaking")
@@ -161,7 +191,13 @@ export const createSatelliteSession = (
 			},
 			write: (chunk) => {
 				onWrite?.()
-				transport.writeAudio(chunk)
+				if (ttsFirstSentAt === 0) ttsFirstSentAt = Date.now()
+				ttsBytesSent += chunk.length
+				echoWindowUntil =
+					ttsFirstSentAt +
+					ttsBytesSent / ((sinkRate * sinkChannels * 2) / 1000) +
+					(identity?.wakeWordConfig?.echoSuppressMarginMs ?? 500)
+				return transport.writeAudio(chunk)
 			},
 			end: () => {
 				try {
@@ -181,13 +217,16 @@ export const createSatelliteSession = (
 		let release: (() => void) | null = null
 		let announced = false
 		return {
+			capabilities: transport.outputCapabilities,
+			pause: transport.pauseAudio,
+			resume: transport.resumeAudio,
 			begin: async (format) => {
 				release = await acquireOutput()
 				setPresenceStatus(identity.domiaKey, "speaking")
 				openAudioStream(interactionId, format.sampleRate, format.channels)
 			},
-			write: (chunk) => {
-				writeAudioStream(interactionId, chunk)
+			write: async (chunk) => {
+				await writeAudioStream(interactionId, chunk)
 				if (!announced) {
 					announced = true
 					onFirstChunk()
@@ -223,6 +262,16 @@ export const createSatelliteSession = (
 			errorStep: message.includes("timeout") ? "timeout" : "satellite",
 			errorMessage: message,
 		})
+	}
+
+	const escalatePausedBargeIn = (): void => {
+		if (pausedBargeIn === null) return
+		clearTimeout(pausedBargeIn)
+		pausedBargeIn = null
+		countBargeInEscalated(identity.id)
+		abortActiveTurn(identity.id, "satellite-bargein")
+		activeFinalize?.()
+		busy = false
 	}
 
 	const handleUtterance = async (): Promise<void> => {
@@ -264,6 +313,8 @@ export const createSatelliteSession = (
 			: makeSink(() => {
 					framesSent++
 				})
+		ttsBytesSent = 0
+		ttsFirstSentAt = 0
 
 		let finalized = false
 		const finalize = (): void => {
@@ -271,6 +322,7 @@ export const createSatelliteSession = (
 			finalized = true
 			if (activeFinalize === finalize) activeFinalize = null
 			clearTimeout(turnTimeout)
+			closeAudioStream(interactionId)
 			turn?.end()
 			clearInteraction(interactionId)
 			if (activeInteractionId === interactionId) {
@@ -492,22 +544,82 @@ export const createSatelliteSession = (
 				void intercom.sink.write(pcm)
 				return
 			}
-			if (endpointed) return
+			if (
+				!busy &&
+				identity.wakeWordConfig?.echoSuppressEnabled === true &&
+				Date.now() < echoWindowUntil &&
+				frameRms(pcm) < BARGE_IN_MIN_RMS * 2
+			)
+				return
 			if (busy) {
 				if (!(identity.wakeWordConfig?.bargeInEnabled ?? true)) return
-				if (abortActiveTurn(identity.id, "satellite-bargein")) {
-					satelliteGatewayLogger.info("🛑 satellite barge-in — turn aborted", {
-						satelliteId,
-						domiaKey: identity.domiaKey,
-					})
+				if (pausedBargeIn === null && frameRms(pcm) < BARGE_IN_MIN_RMS) return
+				if (pausedBargeIn === null) {
+					if (identity.wakeWordConfig)
+						observeBargeIn(identity.id, identity.wakeWordConfig)
+					const pauseFirst =
+						identity.wakeWordConfig?.pauseBargeInEnabled === true
+					if (
+						pauseFirst &&
+						pauseActiveTurn(identity.id, "satellite-bargein-pause")
+					) {
+						satelliteGatewayLogger.info(
+							"⏸️ satellite barge-in — paused, awaiting confirmation",
+							{ satelliteId, domiaKey: identity.domiaKey },
+						)
+						endpointed = false
+						chunks = []
+						bufferedBytes = 0
+						resetVad()
+						closeSttSession()
+						setPresenceStatus(identity.domiaKey, "listening")
+						pausedBargeIn = setTimeout(() => {
+							pausedBargeIn = null
+							chunks = []
+							bufferedBytes = 0
+							resetVad()
+							closeSttSession()
+							resumeActiveTurn(identity.id)
+							countBargeInResumed(identity.id)
+							setPresenceStatus(identity.domiaKey, "speaking")
+							satelliteGatewayLogger.info(
+								"▶️ satellite false interruption — resumed",
+								{ satelliteId, domiaKey: identity.domiaKey },
+							)
+						}, identity.wakeWordConfig?.falseInterruptionTimeoutMs ?? 2000)
+					} else {
+						if (abortActiveTurn(identity.id, "satellite-bargein")) {
+							satelliteGatewayLogger.info(
+								"🛑 satellite barge-in — turn aborted",
+								{ satelliteId, domiaKey: identity.domiaKey },
+							)
+						}
+						activeFinalize?.()
+						busy = false
+						chunks = []
+						bufferedBytes = 0
+						resetVad()
+						closeSttSession()
+						setPresenceStatus(identity.domiaKey, "listening")
+					}
 				}
-				activeFinalize?.()
-				busy = false
-				chunks = []
-				bufferedBytes = 0
-				resetVad()
-				closeSttSession()
-				setPresenceStatus(identity.domiaKey, "listening")
+			}
+			if (endpointed) return
+			if (pausedBargeIn !== null && frameRms(pcm) >= BARGE_IN_MIN_RMS) {
+				clearTimeout(pausedBargeIn)
+				pausedBargeIn = setTimeout(() => {
+					pausedBargeIn = null
+					chunks = []
+					bufferedBytes = 0
+					resetVad()
+					closeSttSession()
+					resumeActiveTurn(identity.id)
+					setPresenceStatus(identity.domiaKey, "speaking")
+					satelliteGatewayLogger.info(
+						"▶️ satellite false interruption — resumed",
+						{ satelliteId, domiaKey: identity.domiaKey },
+					)
+				}, identity.wakeWordConfig?.falseInterruptionTimeoutMs ?? 2000)
 			}
 			bufferedBytes += pcm.length
 			if (bufferedBytes > MAX_UTTERANCE_BYTES) {
@@ -546,7 +658,7 @@ export const createSatelliteSession = (
 
 			if (!serverEndpointing) return
 			if (!vad && identity.wakeWordConfig) {
-				vad = createVadWindow(identity.wakeWordConfig)
+				vad = adaptiveVadWindow(identity.id, identity.wakeWordConfig).vad
 			}
 			if (!vad) {
 				const seconds = bufferedBytes / (sampleRate * channels * 2)
@@ -557,16 +669,33 @@ export const createSatelliteSession = (
 				return
 			}
 			vad.feed(pcm)
+			if (!vad.everDetected() && bufferedBytes > PRE_SPEECH_ROLL_BYTES) {
+				while (
+					chunks.length > 1 &&
+					bufferedBytes - (chunks[0]?.length ?? 0) >= PRE_SPEECH_ROLL_BYTES
+				) {
+					bufferedBytes -= chunks[0]?.length ?? 0
+					chunks.shift()
+				}
+			}
 			if (vad.completed()) {
 				resetVad()
+				escalatePausedBargeIn()
 				transport.notifySpeechEnd?.()
 				void handleUtterance()
 			}
 		},
 
-		onSpeechEnd: handleUtterance,
+		onSpeechEnd: async () => {
+			escalatePausedBargeIn()
+			await handleUtterance()
+		},
 
 		onCancel: () => {
+			if (pausedBargeIn !== null) {
+				clearTimeout(pausedBargeIn)
+				pausedBargeIn = null
+			}
 			chunks = []
 			bufferedBytes = 0
 			resetVad()
@@ -578,6 +707,10 @@ export const createSatelliteSession = (
 		},
 
 		onClose: () => {
+			if (pausedBargeIn !== null) {
+				clearTimeout(pausedBargeIn)
+				pausedBargeIn = null
+			}
 			chunks = []
 			bufferedBytes = 0
 			resetVad()

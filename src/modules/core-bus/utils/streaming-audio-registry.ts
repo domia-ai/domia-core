@@ -1,7 +1,9 @@
-import { AsyncQueue } from "./sentence-buffer"
+import { createAsyncQueue } from "./sentence-buffer"
 import type { StreamingAudioType } from "../types"
 
 const streams = new Map<string, StreamingAudioType>()
+
+const AUDIO_STREAM_MAX_QUEUED_CHUNKS = 64
 
 export const openAudioStream = (
 	interactionId: string,
@@ -9,7 +11,7 @@ export const openAudioStream = (
 	channels: number,
 ): StreamingAudioType => {
 	const stream: StreamingAudioType = {
-		queue: new AsyncQueue<Buffer>(),
+		queue: createAsyncQueue<Buffer>(),
 		sampleRate,
 		channels,
 	}
@@ -17,11 +19,14 @@ export const openAudioStream = (
 	return stream
 }
 
-export const writeAudioStream = (
+export const writeAudioStream = async (
 	interactionId: string,
 	chunk: Buffer,
-): void => {
-	streams.get(interactionId)?.queue.push(chunk)
+): Promise<void> => {
+	const stream = streams.get(interactionId)
+	if (!stream) return
+	await stream.queue.waitForSpace(AUDIO_STREAM_MAX_QUEUED_CHUNKS)
+	stream.queue.push(chunk)
 }
 
 export const closeAudioStream = (interactionId: string): void => {

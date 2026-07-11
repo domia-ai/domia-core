@@ -1,6 +1,6 @@
 {
 	"extends": "./tsconfig.json",
-	"include": ["evals/**/*.ts"],
+	"include": ["evals/**/*.ts", "src/types/**/*.d.ts"],
 	"exclude": ["drizzle.config.ts", "tmp"],
 	"compilerOptions": {
 		"noEmit": true,

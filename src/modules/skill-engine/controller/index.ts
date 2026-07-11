@@ -6,7 +6,7 @@ import {
 	type ToolFinalizeRuleType,
 	type ToolPolicyType,
 } from "@/db"
-import { skillEngineLogger, now } from "@/utils"
+import { skillEngineLogger, now, isExternalUrl, scanPiiEgress } from "@/utils"
 import type { DomiaType } from "@/modules/core"
 
 import dbAdapter from "../db-adapter"
@@ -278,11 +278,52 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 	return result
 }
 
+export const resolveSkillArgs = async (
+	domiaId: string,
+	namespacedName: string,
+	args: Record<string, unknown>,
+): Promise<{
+	ok: boolean
+	resolvedArgs: Record<string, unknown>
+	error?: string
+}> => {
+	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
+	const rawName =
+		sepIdx >= 0
+			? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
+			: namespacedName
+	const conn = [...connections.values()].find(
+		(c) =>
+			c.provider.domiaId === domiaId &&
+			c.providerSlug === providerSlug &&
+			c.allowedTools.has(rawName),
+	)
+	if (!conn) return { ok: false, resolvedArgs: args, error: "tool unavailable" }
+	if (!conn.specialization?.resolveArgs) return { ok: true, resolvedArgs: args }
+	try {
+		const resolvedArgs = await conn.specialization.resolveArgs(
+			conn.provider,
+			rawName,
+			args,
+			conn.language,
+		)
+		return { ok: true, resolvedArgs }
+	} catch (error) {
+		return {
+			ok: false,
+			resolvedArgs: args,
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
+}
+
 export const callTool = async (
 	domiaId: string,
 	namespacedName: string,
 	args: Record<string, unknown>,
 	signal?: AbortSignal,
+	preResolved = false,
 ): Promise<SkillCallResultType> => {
 	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
@@ -346,27 +387,39 @@ export const callTool = async (
 	}
 	let resolvedArgs: Record<string, unknown>
 	try {
-		resolvedArgs = conn.specialization?.resolveArgs
-			? await conn.specialization.resolveArgs(
-					conn.provider,
-					rawName,
-					args,
-					conn.language,
-				)
-			: args
+		resolvedArgs =
+			preResolved || !conn.specialization?.resolveArgs
+				? args
+				: await conn.specialization.resolveArgs(
+						conn.provider,
+						rawName,
+						args,
+						conn.language,
+					)
 	} catch (error) {
 		skillEngineLogger.warn("skill callTool resolveArgs failed", {
 			tool: namespacedName,
 			error,
 		})
 		return {
-			text: `Tool "${rawName}" failed.`,
+			text: `Could not resolve the target for "${rawName}": ${error instanceof Error ? error.message : String(error)}.`,
 			status: "error",
 			isError: true,
 			resolvedArgs: args,
 		}
 	}
 	skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
+
+	if (isExternalUrl(conn.provider.url)) {
+		const pii = scanPiiEgress(resolvedArgs)
+		if (pii.length) {
+			skillEngineLogger.warn("PII egress to external MCP provider", {
+				tool: namespacedName,
+				url: conn.provider.url,
+				kinds: pii,
+			})
+		}
+	}
 
 	let transportError: unknown = null
 	for (let attempt = 0; attempt < Math.max(1, retryMaxAttempts); attempt++) {

@@ -63,5 +63,8 @@ export const shortlistedToolsOf = async (
 			{ domiaId: domia.id },
 		)
 	}
-	return result.tools
+
+	return [...result.tools].sort((a, b) =>
+		a.namespacedName.localeCompare(b.namespacedName),
+	)
 }

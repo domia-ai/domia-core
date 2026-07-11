@@ -1,4 +1,5 @@
 import { parseLlmJson } from "@/utils/llm-json"
+import { downsamplePcm16, downmixToMonoPcm16 } from "@/utils"
 
 type ParsingCaseType = {
 	name: string
@@ -55,6 +56,46 @@ const cases: ParsingCaseType[] = [
 	},
 ]
 
+const pcmChecks = (): { pass: number; total: number } => {
+	const sine24k = Buffer.alloc(24000 * 2)
+	for (let i = 0; i < 24000; i++) {
+		sine24k.writeInt16LE(
+			Math.round(Math.sin((2 * Math.PI * 440 * i) / 24000) * 8000),
+			i * 2,
+		)
+	}
+	const down = downsamplePcm16(sine24k, 24000, 16000)
+	const stereo = Buffer.alloc(8)
+	stereo.writeInt16LE(1000, 0)
+	stereo.writeInt16LE(3000, 2)
+	stereo.writeInt16LE(-2000, 4)
+	stereo.writeInt16LE(2000, 6)
+	const mono = downmixToMonoPcm16(stereo, 2)
+	const checks: [string, boolean][] = [
+		[
+			"pcm: identity when rates equal",
+			downsamplePcm16(sine24k, 16000, 16000) === sine24k,
+		],
+		["pcm: 24k→16k sample count = 2/3", down.length === 16000 * 2],
+		["pcm: byte alignment even", down.length % 2 === 0],
+		[
+			"pcm: empty input → empty output",
+			downsamplePcm16(Buffer.alloc(0), 24000, 16000).length === 0,
+		],
+		[
+			"pcm: stereo downmix averages",
+			mono.readInt16LE(0) === 2000 && mono.readInt16LE(2) === 0,
+		],
+		["pcm: mono passthrough", downmixToMonoPcm16(mono, 1) === mono],
+	]
+	let pass = 0
+	for (const [name, ok] of checks) {
+		if (ok) pass++
+		console.log(`${ok ? "✅" : "❌"} ${name}`)
+	}
+	return { pass, total: checks.length }
+}
+
 const main = (): void => {
 	let pass = 0
 	for (const c of cases) {
@@ -65,8 +106,11 @@ const main = (): void => {
 			`${ok ? "✅" : "❌"} ${c.name}: got ${state} (expect ${c.expect})`,
 		)
 	}
-	console.log(`\n${pass}/${cases.length} parsing cases passed`)
-	process.exit(pass === cases.length ? 0 : 1)
+	const pcm = pcmChecks()
+	console.log(
+		`\n${pass}/${cases.length} parsing + ${pcm.pass}/${pcm.total} pcm cases passed`,
+	)
+	process.exit(pass === cases.length && pcm.pass === pcm.total ? 0 : 1)
 }
 
 main()

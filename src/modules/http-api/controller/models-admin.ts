@@ -7,6 +7,7 @@ import {
 	getTurnEventsSince,
 	getLatencyStats,
 } from "@/modules/session-manager"
+import { speculationStats, bargeInStats } from "@/modules/core-bus"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
 import { getFactsSince } from "@/modules/memory"
 import { listModels, startInstall, getModelJob } from "@/modules/model-manager"
@@ -24,7 +25,14 @@ export const handleGetHealth = () => {
 }
 
 export const handleGetLatencyStats = async (domia: DomiaType) => {
-	return { stats: await getLatencyStats(domia) }
+	const stats = await getLatencyStats(domia)
+	return {
+		stats: {
+			...stats,
+			speculation: speculationStats(domia.id),
+			bargeIn: bargeInStats(domia.id),
+		},
+	}
 }
 
 export const handleGetModels = async (domia: DomiaType) => {

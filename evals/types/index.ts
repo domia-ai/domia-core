@@ -4,9 +4,17 @@ export type EvalSuiteType =
 	| "chat"
 	| "fast"
 	| "memory"
+	| "conversation"
 	| "parsing"
 
 export type EvalRequirementType = "skills" | "ha" | "facts" | "multilingual"
+
+export type PromptSectionType =
+	| "WHAT YOU KNOW"
+	| "WHAT YOU KNOW ABOUT HERE"
+	| "RECENT TURNS"
+	| "WHO YOU'RE TALKING TO"
+	| "PREVIOUSLY"
 
 export type EvalExpectType = {
 	routed?: "skill" | "chat" | "fast"
@@ -16,8 +24,14 @@ export type EvalExpectType = {
 	argMatchers?: Record<string, string>
 	anyArgMatches?: string
 	replyIncludes?: string[]
+	replyExcludes?: string[]
 	maxTtfaMs?: number
 	status?: "ok"
+	promptIncludes?: string[]
+	promptSection?: { section: PromptSectionType; includes: string[] }
+	recallsFact?: { subject?: string; value: string }
+	factInDb?: { subject?: string; value: string }
+	noFactInDb?: { subject?: string; value: string }
 	expectEvents?: {
 		present?: string[]
 		toolResultStatus?: "ok" | "failed" | "timeout" | "cancelled"
@@ -40,7 +54,7 @@ export type EvalCaseType = {
 	runs?: number
 	passRatio?: number
 	mode?: EvalCaseModeType
-	isolate?: "facts"
+	isolate?: "facts" | "conversation"
 	turns: EvalTurnType[]
 }
 
@@ -53,6 +67,7 @@ export type EvalTurnRecordType = {
 	ttfaMs: number | null
 	status: string | null
 	skillResponse: unknown[] | null
+	llmPrompt: string | null
 	events: { type: string; seq: number; payload: string | null }[]
 }
 
@@ -89,7 +104,58 @@ export type SatelliteTurnResultType = {
 	audioBegan: boolean
 	audioFrames: number
 	audioEnded: boolean
+	pauses: number
+	resumes: number
 	replyDone: { reply: string; interactionId: string } | null
+	error: string | null
+}
+
+export type PromotionCandidateType = {
+	interactionId: string
+	utterance: string
+	signal: string
+	at: string
+}
+
+export type AttackRowType = {
+	name: string
+	type: string
+	text: string
+}
+
+export type ChatResponseType = {
+	interactionId: string
+	reply: string
+	transcript?: string
+}
+
+export type ReplayEventType = {
+	type: string
+	data: Record<string, unknown>
+	payloadBytes: number
+}
+
+export type ReplaySocketType = {
+	socket: import("net").Socket
+	feed: (chunk: Buffer) => void
+	written: () => Buffer
+	isDestroyed: () => boolean
+}
+
+export type RealtimeTurnOptionsType = {
+	serverVad?: boolean
+	wsUrl?: string
+}
+
+export type RealtimeTurnResultType = {
+	sessionCreated: boolean
+	speechStopped: boolean
+	transcript: string | null
+	responseCreated: boolean
+	audioDeltas: number
+	audioDone: boolean
+	replyText: string | null
+	responseDone: boolean
 	error: string | null
 }
 
@@ -127,4 +193,29 @@ export type CheckerType = {
 	check: (name: string, cond: boolean, detail?: string) => void
 	passCount: () => number
 	failCount: () => number
+}
+
+export type FakeAudioSegmentKindType = "speech" | "silence"
+
+export type FakeAudioSegmentType = {
+	kind: FakeAudioSegmentKindType
+	ms: number
+}
+
+export type FakeAudioScriptType = {
+	segments: FakeAudioSegmentType[]
+	sampleRate?: number
+	speedFactor?: number
+	chunkMs?: number
+}
+
+export type FakeAudioTickType = {
+	elapsedMs: number
+	kind: FakeAudioSegmentKindType
+}
+
+export type VadTickSampleType = FakeAudioTickType & {
+	speechActive: boolean
+	everDetected: boolean
+	completed: boolean
 }

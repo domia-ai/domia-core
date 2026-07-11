@@ -21,6 +21,9 @@ import {
 	isTurnAborted,
 	notifyTurnAborted,
 	emitTerminalCompletion,
+	createPlaybackLedger,
+	registerTurnLedger,
+	extractEmotionTags,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -46,7 +49,7 @@ import {
 	streamTtsFromTarget,
 	type DeliverEventTarget,
 } from "@/modules/grpc-client"
-import { getDomiaByDomiaKey } from "@/modules/core"
+import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import { reflectOnInteraction } from "@/modules/reflection"
 import type {
 	CoreBusContextType,
@@ -54,6 +57,23 @@ import type {
 	LlmFlowSessionType,
 	PlaybackOutcomeType,
 } from "../types"
+
+const singleReplyLedger = (
+	domia: DomiaType,
+	interactionId: string,
+	reply: string,
+	format: { sampleRate: number; channels: 1 | 2 },
+) => {
+	const ledger = createPlaybackLedger(format, {
+		wordLevelHeard: domia.audioPlaybackConfig?.wordLevelHeardEnabled ?? false,
+	})
+	registerTurnLedger(interactionId, ledger)
+	return {
+		ledger,
+		wrap: (audio: AsyncIterable<Buffer>) =>
+			ledger.wrapSentence(extractEmotionTags(reply).clean, audio),
+	}
+}
 
 const buildLlmFlowSession = (
 	payload: LlmDonePayloadType,
@@ -157,12 +177,22 @@ const tryLocalStreamingTtsPlayback = async (
 	let perceivedTtfaMs: number | undefined
 	const ttsStart = Date.now()
 	try {
+		const single = singleReplyLedger(
+			domia,
+			session.interactionId,
+			session.reply,
+			{
+				sampleRate: caps.sampleRate,
+				channels: caps.channels,
+			},
+		)
 		playback = await playStreamedAudio(
 			ctx,
-			ttsAdapterToPcmChunks(domia, tts.adapter, session.reply),
+			single.wrap(ttsAdapterToPcmChunks(domia, tts.adapter, session.reply)),
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				ledger: single.ledger,
 				aborted: () => isTurnAborted(domia.id, session.interactionId),
 				onFirstChunk: () => {
 					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
@@ -297,12 +327,22 @@ const runDelegatedStreamingTts = async (
 	let ttfaMs: number | undefined
 	let perceivedTtfaMs: number | undefined
 	try {
+		const single = singleReplyLedger(
+			domia,
+			session.interactionId,
+			session.reply,
+			{
+				sampleRate,
+				channels,
+			},
+		)
 		const playback = await playStreamedAudio(
 			ctx,
-			streamed.audio,
+			single.wrap(streamed.audio),
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
+				ledger: single.ledger,
 				aborted: () => isTurnAborted(domia.id, session.interactionId),
 				onFirstChunk: () => {
 					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined

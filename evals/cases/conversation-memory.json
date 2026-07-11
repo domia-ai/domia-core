@@ -1,0 +1,69 @@
+[
+	{
+		"name": "recalls name and preference across turns",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "My name is Kevin, please remember that.",
+				"expect": { "routed": "chat" }
+			},
+			{
+				"text": "I really love green tea.",
+				"expect": { "routed": "chat", "factInDb": { "value": "tea" } }
+			},
+			{
+				"text": "What's the weather like as a topic?",
+				"expect": { "routed": "chat" }
+			},
+			{
+				"text": "What is my name?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["Kevin"],
+					"recallsFact": { "value": "Kevin" }
+				}
+			},
+			{
+				"text": "What do I like to drink?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["tea"],
+					"recallsFact": { "value": "tea" }
+				}
+			}
+		]
+	},
+	{
+		"name": "contradiction supersedes the old preference",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "I love coffee, it's my favorite drink.",
+				"expect": { "routed": "chat", "factInDb": { "value": "coffee" } }
+			},
+			{
+				"text": "Tell me something interesting.",
+				"expect": { "routed": "chat" }
+			},
+			{
+				"text": "Actually I quit coffee, I can't stand it anymore.",
+				"expect": { "routed": "chat" }
+			},
+			{
+				"text": "Do I like coffee?",
+				"expect": {
+					"routed": "chat",
+					"replyExcludes": ["you love coffee", "your favorite"]
+				}
+			}
+		]
+	}
+]

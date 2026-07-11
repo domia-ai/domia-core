@@ -30,7 +30,10 @@ import type { SttStreamSessionType } from "@/modules/stt-engine"
 import { ttsAdapterToPcmChunks, ttsPoolBusy } from "@/modules/tts-engine"
 import {
 	takeMemoryBundle,
-	AsyncQueue,
+	createAsyncQueue,
+	countSpeculationHandoff,
+	countSpeculationWasted,
+	countSpeculationDiscarded,
 	sentenceTuningFromDomia,
 	cutFirstUnit,
 	isSpeakable,
@@ -42,6 +45,9 @@ import type {
 	SpeculationType,
 	SpeculativeTurnArgsType,
 } from "../types"
+
+const SPECULATION_MAX_ATTEMPTS = 3
+const SPECULATION_MAX_UTTERANCE_MS = 10000
 
 const collectPcm = async (
 	ctx: CoreBusContextType,
@@ -129,8 +135,8 @@ const startSpeculation = (
 		cancelled: false,
 		started: false,
 		handedOff: false,
-		queue: new AsyncQueue<string>(),
-		outQueue: specTts ? new AsyncQueue<string>() : null,
+		queue: createAsyncQueue<string>(),
+		outQueue: specTts ? createAsyncQueue<string>() : null,
 		firstUnitText: null,
 		firstUnitPcm: null,
 		prompt: null,
@@ -245,14 +251,18 @@ const COMPLETE_TAIL = /[.!?]["”'’]?$/
 const ORDINAL_TAIL = /(?:^|\s)\d+\.$/
 const INCOMPLETE_TAIL =
 	/(?:,|—|:|\b(?:and|or|but|so|to|the|a|an|of|in|on|at|with|for|my|your|his|her|their|our|if|that|then|please|could|would|can|will|is|are|was))$/i
+const FILLER_TAIL =
+	/\b(?:um+|uh+|er+|hmm+|mm+|uhh+|erm|well|like|actually|let me think|let me see|let's see|give me a (?:sec|second|moment)|hold on|one (?:sec|second|moment)|i think|i mean|you know|how do i (?:say|put) (?:this|it))$/i
 
 const endpointHintMs = (
 	partial: string,
 	completeMs: number,
 	incompleteMs: number,
+	waitMs: number,
 ): number | null => {
 	const t = partial.trim()
 	if (!t) return null
+	if (FILLER_TAIL.test(t)) return waitMs
 	if (COMPLETE_TAIL.test(t) && !ORDINAL_TAIL.test(t)) return completeMs
 	if (INCOMPLETE_TAIL.test(t)) return incompleteMs
 	return null
@@ -295,6 +305,7 @@ export const runSpeculativeTurn = async (
 	args: SpeculativeTurnArgsType,
 ): Promise<void> => {
 	const { domia, features } = ctx
+	const turnStartedAt = Date.now()
 	let generation = 0
 	let active: SpeculationType | null = null
 	const stt = { session: openSttSession(ctx) }
@@ -313,18 +324,21 @@ export const runSpeculativeTurn = async (
 	const cancelActive = (reason: string): void => {
 		if (!active) return
 		if (active.firstUnitPcm && !active.handedOff) {
+			countSpeculationWasted(domia.id)
 			domiaBusLogger.info(
 				`🔮 spec_tts_wasted g${active.generation} — first-unit synth discarded (${reason})`,
 				{ domiaId: domia.id, interactionId: args.interactionId },
 			)
 		}
-		if (active.started && !active.handedOff)
+		if (active.started && !active.handedOff) {
+			countSpeculationDiscarded(domia.id)
 			emitTurnEvent({
 				type: DOMIA_TURN_EVENT_ENUM.SPECULATION_DISCARDED,
 				interactionId: args.interactionId,
 				originDomiaKey: domia.domiaKey,
 				executorKey: active.executorKey ?? undefined,
 			})
+		}
 		domiaBusLogger.info(
 			`🔮 speculation g${active.generation} cancelled (${reason})`,
 			{ domiaId: domia.id, interactionId: args.interactionId },
@@ -343,6 +357,7 @@ export const runSpeculativeTurn = async (
 			partial,
 			config.endpointCompleteMs,
 			config.endpointIncompleteMs,
+			config.endpointWaitMs,
 		)
 		if (hint === null) return
 		domiaBusLogger.info(
@@ -361,6 +376,20 @@ export const runSpeculativeTurn = async (
 		onSpeculate: (pcm) => {
 			cancelActive("superseded")
 			generation += 1
+			if (generation > SPECULATION_MAX_ATTEMPTS) {
+				domiaBusLogger.info(
+					`🔮 speculation retry budget exhausted (g${generation}) — waiting for final`,
+					{ domiaId: domia.id, interactionId: args.interactionId },
+				)
+				return
+			}
+			if (Date.now() - turnStartedAt > SPECULATION_MAX_UTTERANCE_MS) {
+				domiaBusLogger.info(
+					`🔮 utterance too long for speculation (${Date.now() - turnStartedAt}ms) — waiting for final`,
+					{ domiaId: domia.id, interactionId: args.interactionId },
+				)
+				return
+			}
 			const session = stt.session
 			active = startSpeculation(
 				ctx,
@@ -423,6 +452,7 @@ export const runSpeculativeTurn = async (
 				)
 			} else if (winner.started) {
 				winner.handedOff = true
+				countSpeculationHandoff(domia.id)
 				emitTurnEvent({
 					type: DOMIA_TURN_EVENT_ENUM.SPECULATION_COMMITTED,
 					interactionId: args.interactionId,
@@ -447,6 +477,8 @@ export const runSpeculativeTurn = async (
 					prestartedFirstUnitText: winner.firstUnitText ?? undefined,
 					prestartedFirstUnitPcm: winner.firstUnitPcm ?? undefined,
 					speechEndAt: capture.speechEndAt() ?? undefined,
+					endpointDelayMs: capture.endpointObservedMs() ?? undefined,
+					endpointDebounceMs: capture.debounceMs,
 					liveVoice: true,
 				})
 				return
@@ -470,6 +502,8 @@ export const runSpeculativeTurn = async (
 		originDomiaKey: domia.domiaKey,
 		prestartedRelease: args.release,
 		speechEndAt: capture.speechEndAt() ?? undefined,
+		endpointDelayMs: capture.endpointObservedMs() ?? undefined,
+		endpointDebounceMs: capture.debounceMs,
 		liveVoice: true,
 	})
 }

@@ -25,6 +25,11 @@ export type PersistAnnouncementOptsType = {
 	result: SpeakResultType
 }
 
+export type AgUiEventType = {
+	event: string
+	data: Record<string, unknown>
+}
+
 export type PostChatBodyType = z.infer<typeof postChatBodySchema>
 
 export type PostChatResponseType = {

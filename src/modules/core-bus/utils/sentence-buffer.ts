@@ -9,6 +9,8 @@ import {
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import type {
+	AsyncQueueType,
+	EagerSlotsType,
 	FlushResultType,
 	SentenceFlushTuningType,
 } from "../types/sentence-buffer"
@@ -28,8 +30,8 @@ export const DEFAULT_SENTENCE_TUNING: SentenceFlushTuningType = {
 export const pipelineDepthFromDomia = (domia: DomiaType): number =>
 	domia.ttsConfig?.pipelineMaxQueueDepth ?? DEFAULT_PIPELINE_MAX_QUEUE_DEPTH
 
-export const eagerTtsSlotsFromDomia = (domia: DomiaType): EagerSlots =>
-	new EagerSlots(
+export const eagerTtsSlotsFromDomia = (domia: DomiaType): EagerSlotsType =>
+	createEagerSlots(
 		domia.ttsConfig?.pipelineEagerTtsSentences ??
 			DEFAULT_PIPELINE_EAGER_TTS_SENTENCES,
 	)
@@ -195,61 +197,61 @@ export const splitTextIntoSentences = (text: string): string[] => {
 	return isSpeakable(trimmed) ? [trimmed] : []
 }
 
-export class AsyncQueue<T> {
-	private buffer: T[] = []
-	private waiters: ((value: T | null) => void)[] = []
-	private spaceWaiters: (() => void)[] = []
-	private closed = false
-	private consuming = false
+export const createAsyncQueue = <T>(): AsyncQueueType<T> => {
+	const buffer: T[] = []
+	let waiters: ((value: T | null) => void)[] = []
+	let spaceWaiters: (() => void)[] = []
+	let closed = false
+	let consuming = false
 
-	push(item: T): void {
-		if (this.closed) return
-		const waiter = this.waiters.shift()
-		if (waiter) waiter(item)
-		else this.buffer.push(item)
+	const close = (): void => {
+		if (closed) return
+		closed = true
+		for (const waiter of waiters) waiter(null)
+		waiters = []
+		for (const resolve of spaceWaiters) resolve()
+		spaceWaiters = []
 	}
 
-	isClosed(): boolean {
-		return this.closed
-	}
-
-	async waitForSpace(maxDepth: number): Promise<void> {
-		while (!this.closed && this.buffer.length >= maxDepth) {
-			await new Promise<void>((resolve) => this.spaceWaiters.push(resolve))
-		}
-	}
-
-	close(): void {
-		if (this.closed) return
-		this.closed = true
-		for (const waiter of this.waiters) waiter(null)
-		this.waiters = []
-		for (const resolve of this.spaceWaiters) resolve()
-		this.spaceWaiters = []
-	}
-
-	async *iter(): AsyncIterable<T> {
-		if (this.consuming) throw new Error("AsyncQueue supports a single consumer")
-		this.consuming = true
+	async function* iter(): AsyncIterable<T> {
+		if (consuming) throw new Error("async queue supports a single consumer")
+		consuming = true
 		try {
 			while (true) {
-				const next = this.buffer.shift()
+				const next = buffer.shift()
 				if (next !== undefined) {
-					const space = this.spaceWaiters.shift()
+					const space = spaceWaiters.shift()
 					if (space) space()
 					yield next
 					continue
 				}
-				if (this.closed) return
+				if (closed) return
 				const item = await new Promise<T | null>((resolve) =>
-					this.waiters.push(resolve),
+					waiters.push(resolve),
 				)
 				if (item === null) return
 				yield item
 			}
 		} finally {
-			this.close()
+			close()
 		}
+	}
+
+	return {
+		push: (item) => {
+			if (closed) return
+			const waiter = waiters.shift()
+			if (waiter) waiter(item)
+			else buffer.push(item)
+		},
+		isClosed: () => closed,
+		waitForSpace: async (maxDepth) => {
+			while (!closed && buffer.length >= maxDepth) {
+				await new Promise<void>((resolve) => spaceWaiters.push(resolve))
+			}
+		},
+		close,
+		iter,
 	}
 }
 
@@ -261,30 +263,26 @@ export const concatStreams = async function* <T>(
 	}
 }
 
-export class EagerSlots {
-	private available: number
-
-	constructor(size: number) {
-		this.available = Math.max(0, size)
-	}
-
-	tryAcquire(): boolean {
-		if (this.available <= 0) return false
-		this.available--
-		return true
-	}
-
-	release(): void {
-		this.available++
+export const createEagerSlots = (size: number): EagerSlotsType => {
+	let available = Math.max(0, size)
+	return {
+		tryAcquire: () => {
+			if (available <= 0) return false
+			available--
+			return true
+		},
+		release: () => {
+			available++
+		},
 	}
 }
 
 export const primeStream = <T>(
 	src: AsyncIterable<T>,
-	slots: EagerSlots,
+	slots: EagerSlotsType,
 ): AsyncIterable<T> => {
 	if (!slots.tryAcquire()) return src
-	const queue = new AsyncQueue<T>()
+	const queue = createAsyncQueue<T>()
 	let pumpError: unknown = null
 	void (async () => {
 		try {

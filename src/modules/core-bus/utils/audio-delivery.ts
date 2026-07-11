@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises"
 
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { domiaBusLogger, toError } from "@/utils"
+import { getWavDurationMs, domiaBusLogger, toError } from "@/utils"
 import { CAPABILITY_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { playAudio } from "@/modules/audio-playback"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
@@ -15,6 +15,7 @@ import {
 	notifyTurnAborted,
 } from "./helpers"
 import { heardReplyOf } from "./fallback-messages"
+import { heardTextFromUniformRate } from "./spoken-position"
 import { isTurnAborted } from "./turn-scope"
 import type {
 	CoreBusContextType,
@@ -110,7 +111,20 @@ export const deliverLocalPlayback = async (
 		return
 	}
 	if (reply !== undefined) {
-		const heardReply = heardReplyOf(reply, { audioStarted: true, interrupted })
+		const wordLevel = domia.audioPlaybackConfig?.wordLevelHeardEnabled ?? false
+		const heardText =
+			interrupted && wordLevel && playResult?.playedMs !== undefined
+				? heardTextFromUniformRate(
+						reply,
+						playResult.playedMs,
+						(await getWavDurationMs(pathToPlay).catch(() => 0)) ?? 0,
+					)
+				: undefined
+		const heardReply = heardReplyOf(reply, {
+			audioStarted: true,
+			interrupted,
+			heardText,
+		})
 		await updateInteraction({ id: interactionId, heardReply })
 		if (heardReply && transcript) {
 			void reflectOnInteraction(

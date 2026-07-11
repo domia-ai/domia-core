@@ -20,6 +20,16 @@ export type TurnEventEnvelopeType = {
 	traceId?: string
 }
 
+export type TurnStageNameType =
+	| "stt"
+	| "llm"
+	| "tool"
+	| "tts"
+	| "playback"
+	| "satellite"
+	| "skills"
+	| "context"
+
 export type TurnEventBodyMapType = {
 	[DOMIA_TURN_EVENT_ENUM.TURN_STARTED]: {
 		inputType: "voice" | "text"
@@ -31,10 +41,10 @@ export type TurnEventBodyMapType = {
 		speculative?: boolean
 	}
 	[DOMIA_TURN_EVENT_ENUM.STAGE_STARTED]: {
-		stageName: string
+		stageName: TurnStageNameType
 	}
 	[DOMIA_TURN_EVENT_ENUM.STAGE_DONE]: {
-		stageName: string
+		stageName: TurnStageNameType
 		elapsedMs: number
 		status: "ok" | "failed"
 		errorMessage?: string

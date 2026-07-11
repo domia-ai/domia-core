@@ -2,6 +2,8 @@ import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import { getTraceContext } from "@/utils"
 import { getInteractionById } from "@/modules/session-manager"
 
+import type { TurnCompletionGuardOptsType } from "../types"
+
 const emitted = new Set<string>()
 const MAX_TRACKED = 512
 
@@ -18,7 +20,7 @@ export const claimTurnCompleted = (interactionId: string): boolean => {
 export const emitTerminalCompletion = async (
 	interactionId: string,
 	originDomiaKey: string,
-	opts: { status?: string; traceId?: string } = {},
+	opts: TurnCompletionGuardOptsType = {},
 ): Promise<void> => {
 	if (!claimTurnCompleted(interactionId)) return
 	const trace = await getInteractionById(interactionId)

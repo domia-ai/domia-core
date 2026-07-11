@@ -7,8 +7,9 @@ import {
 	unregisterHostedIdentity,
 	isHostedIdentity,
 } from "@/modules/core"
-import { abortActiveTurn, clearDomiaPresence } from "@/modules/core-bus"
+import { abortAndWait, clearDomiaPresence } from "@/modules/core-bus"
 import { clearVoiceAdmission } from "@/modules/voice-admission"
+import { resetDynamicEndpointing } from "@/modules/audio-capture"
 import { initialize, DEFAULT_CONFIG_VALUES } from "@/modules/config-engine"
 import { warmupOnBoot } from "@/modules/warmup"
 import { setupCoreBus, teardownCoreBus } from "@/setups/core-bus"
@@ -65,7 +66,10 @@ export const teardownHostedIdentity = (key: string): Promise<void> =>
 const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 	const domia = await getDomia(key).catch(() => null)
 	unregisterHostedIdentity(key)
-	if (domia) abortActiveTurn(domia.id, "identity-teardown")
+	if (domia) {
+		await abortAndWait(domia.id, "identity-teardown")
+		resetDynamicEndpointing(domia.id)
+	}
 	const handle = heartbeatHandles.get(key)
 	if (handle) clearInterval(handle)
 	heartbeatHandles.delete(key)

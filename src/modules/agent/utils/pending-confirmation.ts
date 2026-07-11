@@ -48,6 +48,11 @@ export const clearPendingConfirmation = (scope: string): void => {
 	store.delete(scope)
 }
 
+export const clearConfirmationsForDomia = (domiaKey: string): void => {
+	for (const key of store.keys())
+		if (key.startsWith(`${domiaKey}:`)) store.delete(key)
+}
+
 const normalizeReply = (transcript: string): string =>
 	transcript
 		.trim()

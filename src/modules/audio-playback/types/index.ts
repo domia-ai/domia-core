@@ -4,6 +4,15 @@ export type AudioPlaybackResult = {
 	success: boolean
 	engine: AudioPlaybackEngineEnumType
 	interrupted?: boolean
+	playedMs?: number
+	truncated?: boolean
+	expectedMs?: number
+}
+
+export type PlaybackControlsType = {
+	pause: () => boolean
+	resume: () => boolean
+	positionMs: () => number | null
 }
 
 export type SoxStreamOptionsType = {

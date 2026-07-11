@@ -1,5 +1,8 @@
+import { AccessToken } from "livekit-server-sdk"
+
 import {
 	getDomia,
+	getSatellitesForDomia,
 	invalidateOwnDomia,
 	setSatelliteDesiredWakeWords,
 	setSatelliteDesiredNumber,
@@ -7,6 +10,8 @@ import {
 	setSatelliteFollowUp,
 	getOwnDomia,
 } from "@/modules/core"
+import { SATELLITE_PROTOCOL_ENUM } from "@/db"
+import { generateUuid } from "@/utils"
 import {
 	postSatelliteWakeWordsBodySchema,
 	postSatelliteNumberBodySchema,
@@ -27,6 +32,53 @@ import type { FastifyReply } from "fastify"
 
 const SATELLITE_TEST_PHRASE =
 	"Hi, this is a test from Domia. If you can hear me, your speaker is working."
+
+export const handleGetSatelliteLivekitToken = async (
+	domiaKey: string | undefined,
+	satelliteId: string,
+	reply: FastifyReply,
+) => {
+	if (!domiaKey) {
+		return reply.code(400).send({ error: "missing domiaKey" })
+	}
+	const domia = await getDomia(domiaKey)
+	if (!domia) {
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
+	}
+	if (!domia.isHosted) {
+		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
+	}
+	const row = (await getSatellitesForDomia(domia.id)).find(
+		(s) => s.satelliteId === satelliteId,
+	)
+	if (
+		!row ||
+		row.protocol !== SATELLITE_PROTOCOL_ENUM.LIVEKIT ||
+		!row.isActive
+	) {
+		return reply
+			.code(404)
+			.send({ error: `no active livekit satellite: ${satelliteId}` })
+	}
+	if (!row.livekitApiKey || !row.livekitApiSecret) {
+		return reply.code(409).send({ error: "livekit credentials missing" })
+	}
+	const roomName = row.livekitRoom ?? row.satelliteId
+	const accessToken = new AccessToken(row.livekitApiKey, row.livekitApiSecret, {
+		identity: `lab-${generateUuid().slice(0, 8)}`,
+	})
+	accessToken.addGrant({
+		roomJoin: true,
+		room: roomName,
+		canPublish: true,
+		canSubscribe: true,
+	})
+	return {
+		url: `ws://${row.host}:${row.port}`,
+		roomName,
+		token: await accessToken.toJwt(),
+	}
+}
 
 export const handleSetSatelliteWakeWords = async (
 	domiaKey: string | undefined,

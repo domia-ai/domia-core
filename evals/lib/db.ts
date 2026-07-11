@@ -52,7 +52,7 @@ const readRecord = (
 	try {
 		const row = db
 			.prepare(
-				`SELECT intent_decision, tool_call_count, llm_ms, ttfa_ms, status, skill_response
+				`SELECT intent_decision, tool_call_count, llm_ms, ttfa_ms, status, skill_response, llm_prompt
 				 FROM interaction_trace WHERE id = ?`,
 			)
 			.get(interactionId) as
@@ -63,6 +63,7 @@ const readRecord = (
 					ttfa_ms: number | null
 					status: string | null
 					skill_response: string | null
+					llm_prompt: string | null
 			  }
 			| undefined
 		if (!row) return null
@@ -98,6 +99,7 @@ const readRecord = (
 			ttfaMs: row.ttfa_ms,
 			status: row.status,
 			skillResponse,
+			llmPrompt: row.llm_prompt,
 			events,
 		}
 	} finally {

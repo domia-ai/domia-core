@@ -29,7 +29,7 @@ download_and_extract() {
 }
 
 case "${1:-all}" in
-  zipformer|all)
+  zipformer)
     download_and_extract "streaming-zipformer-en" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-26.tar.bz2" \
       "sherpa-onnx-streaming-zipformer-en-2023-06-26"
@@ -60,8 +60,8 @@ case "${1:-}" in
     ;;
 esac
 
-case "${1:-}" in
-  parakeet|parakeet-tdt)
+case "${1:-all}" in
+  parakeet|parakeet-tdt|all)
     download_and_extract "parakeet-tdt-06b-v2" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2" \
       "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
@@ -77,7 +77,7 @@ case "${1:-}" in
 esac
 
 case "${1:-all}" in
-  kokoro|all)
+  kokoro)
     download_and_extract "kokoro-en-v0_19" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2" \
       "kokoro-en-v0_19"

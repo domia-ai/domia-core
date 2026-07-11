@@ -52,7 +52,40 @@ const connectBindings = async (
 					row.satelliteId,
 				).close
 				break
+			case SATELLITE_PROTOCOL_ENUM.LIVEKIT: {
+				if (!row.livekitApiKey || !row.livekitApiSecret) {
+					satelliteGatewayLogger.warn(
+						"livekit satellite missing api key/secret — skipped",
+						{ satelliteId: row.satelliteId },
+					)
+					break
+				}
+
+				try {
+					const { connectLivekitSatellite } =
+						await import("@/modules/satellite-protocols/livekit")
+					close = connectLivekitSatellite(
+						{
+							satelliteId: row.satelliteId,
+							name: row.name,
+							url: `ws://${row.host}:${row.port}`,
+							apiKey: row.livekitApiKey,
+							apiSecret: row.livekitApiSecret,
+							roomName: row.livekitRoom ?? row.satelliteId,
+						},
+						fallback,
+						row.domia.domiaKey,
+					).close
+				} catch (err) {
+					satelliteGatewayLogger.warn(
+						"livekit runtime unavailable on this platform — satellite skipped",
+						{ satelliteId: row.satelliteId, err },
+					)
+				}
+				break
+			}
 			case SATELLITE_PROTOCOL_ENUM.NATIVE:
+			case SATELLITE_PROTOCOL_ENUM.OPENAI_REALTIME:
 				break
 			default:
 				satelliteGatewayLogger.warn("unknown satellite protocol — skipped", {

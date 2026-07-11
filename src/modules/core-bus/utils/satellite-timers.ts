@@ -4,11 +4,12 @@ import type {
 	ActiveTimerType,
 	SatelliteTimerEventType,
 	TimerIntentType,
+	TimerUnitType,
 } from "../types"
 
 const timers = new Map<string, ActiveTimerType>()
 
-const UNIT_SECONDS: { re: RegExp; mult: number }[] = [
+const UNIT_SECONDS: TimerUnitType[] = [
 	{ re: /\b(hours?|horas?|hr|hrs)\b/i, mult: 3600 },
 	{ re: /\b(minutes?|minutos?|mins?|min)\b/i, mult: 60 },
 	{ re: /\b(seconds?|segundos?|secs?|sec)\b/i, mult: 1 },

@@ -1,5 +1,6 @@
 import { turnEventsLogger } from "@/utils"
 import { TURN_EVENT_SEQ_LRU_MAX } from "./constants"
+import { publishTurnEventDiagnostics } from "./diagnostics"
 import type {
 	DomiaTurnEventInputType,
 	DomiaTurnEventType,
@@ -58,6 +59,8 @@ export const emitTurnEvent = (input: DomiaTurnEventInputType): void => {
 		ts: Date.now(),
 		seq: nextSeq(input.interactionId),
 	} as DomiaTurnEventType
+
+	publishTurnEventDiagnostics(event)
 
 	setImmediate(() => {
 		for (const { filter, listener } of listeners) {

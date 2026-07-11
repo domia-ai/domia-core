@@ -11,6 +11,23 @@ const expectEventsSchema = z
 	})
 	.strict()
 
+const promptSectionSchema = z
+	.object({
+		section: z.enum([
+			"WHAT YOU KNOW",
+			"WHAT YOU KNOW ABOUT HERE",
+			"RECENT TURNS",
+			"WHO YOU'RE TALKING TO",
+			"PREVIOUSLY",
+		]),
+		includes: z.array(z.string()).min(1),
+	})
+	.strict()
+
+const factRefSchema = z
+	.object({ subject: z.string().optional(), value: z.string() })
+	.strict()
+
 const expectSchema = z
 	.object({
 		routed: z.enum(["skill", "chat", "fast"]).optional(),
@@ -20,8 +37,14 @@ const expectSchema = z
 		argMatchers: z.record(z.string(), z.string()).optional(),
 		anyArgMatches: z.string().optional(),
 		replyIncludes: z.array(z.string()).optional(),
+		replyExcludes: z.array(z.string()).optional(),
 		maxTtfaMs: z.number().positive().optional(),
 		status: z.literal("ok").optional(),
+		promptIncludes: z.array(z.string()).optional(),
+		promptSection: promptSectionSchema.optional(),
+		recallsFact: factRefSchema.optional(),
+		factInDb: factRefSchema.optional(),
+		noFactInDb: factRefSchema.optional(),
 		expectEvents: expectEventsSchema.optional(),
 	})
 	.strict()
@@ -39,13 +62,14 @@ export const evalCaseSchema = z
 			"chat",
 			"fast",
 			"memory",
+			"conversation",
 			"parsing",
 		]),
 		language: z.enum(["en", "es"]),
 		runs: z.number().int().positive().optional(),
 		passRatio: z.number().min(0).max(1).optional(),
 		mode: z.enum(["gate", "advisory"]).optional(),
-		isolate: z.literal("facts").optional(),
+		isolate: z.enum(["facts", "conversation"]).optional(),
 		turns: z.array(turnSchema).min(1),
 	})
 	.strict()

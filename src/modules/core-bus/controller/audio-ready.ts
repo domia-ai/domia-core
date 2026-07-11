@@ -50,6 +50,8 @@ const tryFusedVoiceReply = async (
 		originDomiaKey: string | undefined
 		audioPath: string
 		speechEndAt?: number
+		endpointDelayMs?: number
+		endpointDebounceMs?: number
 		liveVoice?: boolean
 	},
 	targets: DeliverEventTarget[],
@@ -303,6 +305,8 @@ export const handleAudioReady = async (
 				originDomiaKey,
 				responseType,
 				speechEndAt: payload.speechEndAt,
+				endpointDelayMs: payload.endpointDelayMs,
+				endpointDebounceMs: payload.endpointDebounceMs,
 				liveVoice: payload.liveVoice,
 			})
 			return
@@ -362,6 +366,8 @@ export const handleAudioReady = async (
 						originDomiaKey,
 						audioPath,
 						speechEndAt: payload.speechEndAt,
+						endpointDelayMs: payload.endpointDelayMs,
+						endpointDebounceMs: payload.endpointDebounceMs,
 						liveVoice: payload.liveVoice,
 					},
 					fusedTargets,
@@ -407,6 +413,8 @@ export const handleAudioReady = async (
 			originDomiaKey,
 			responseType,
 			speechEndAt: payload.speechEndAt,
+			endpointDelayMs: payload.endpointDelayMs,
+			endpointDebounceMs: payload.endpointDebounceMs,
 			liveVoice: payload.liveVoice,
 		})
 	} catch (err) {

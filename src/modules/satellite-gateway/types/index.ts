@@ -41,8 +41,8 @@ export type SatelliteAudioStreamEndType = {
 	type: "audio_stream_end"
 }
 
-export type SatelliteSpeechEndType = {
-	type: "speech_end"
+export type SatelliteSpeechStoppedType = {
+	type: "speech_stopped"
 }
 
 export type SatelliteErrorType = {
@@ -50,13 +50,19 @@ export type SatelliteErrorType = {
 	message: string
 }
 
+export type SatelliteAudioPauseType = { type: "audio_pause" }
+
+export type SatelliteAudioResumeType = { type: "audio_resume" }
+
 export type SatelliteDownMessageType =
 	| SatelliteReadyType
 	| SatelliteTranscriptType
 	| SatelliteReplyDoneType
 	| SatelliteAudioStreamBeginType
 	| SatelliteAudioStreamEndType
-	| SatelliteSpeechEndType
+	| SatelliteAudioPauseType
+	| SatelliteAudioResumeType
+	| SatelliteSpeechStoppedType
 	| SatelliteErrorType
 
 export type SatelliteGatewayHandleType = {

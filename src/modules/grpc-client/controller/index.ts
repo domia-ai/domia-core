@@ -41,6 +41,7 @@ import type {
 	OpenedServerStream,
 } from "../types"
 import {
+	GRPC_MAX_MESSAGE_BYTES,
 	GRPC_UNAVAILABLE_CODE,
 	GRPC_UNIMPLEMENTED_CODE,
 	GRPC_RESOURCE_EXHAUSTED_CODE,
@@ -98,7 +99,10 @@ const meshClientFactory = createClientFactory().use(
 )
 
 const createClientForAddr = (addr: string): DomiaNodeClient => {
-	const channel = createChannel(addr)
+	const channel = createChannel(addr, undefined, {
+		"grpc.max_receive_message_length": GRPC_MAX_MESSAGE_BYTES,
+		"grpc.max_send_message_length": GRPC_MAX_MESSAGE_BYTES,
+	})
 	channels.set(addr, channel)
 	const client = meshClientFactory.create(DomiaNodeDefinition, channel)
 	clients.set(addr, client)
