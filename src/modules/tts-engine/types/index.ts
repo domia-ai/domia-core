@@ -70,13 +70,74 @@ export type TtsWorkerEngineConfigType = {
 	espeakDataDir: string | null
 }
 
-export type TtsWorkerJobType = {
+export type PocketWorkerEngineConfigType = {
+	modelPath: string
+	numThreads: number
+	provider: string
+	maxNumSentences: number
+	referenceAudioPath: string | null
+	numSteps: number
+	voiceEmbeddingCacheCapacity: number
+}
+
+export type VitsWorkerEngineConfigType = {
+	modelPath: string
+	numThreads: number
+	provider: string
+	maxNumSentences: number
+	espeakDataDir: string | null
+}
+
+// synthesis must run in the worker pool — sync generate() on the main thread stalls streaming delivery
+export type KokoroWorkerJobType = {
+	engine: "KOKORO"
 	engineConfig: TtsWorkerEngineConfigType
 	text: string
 	sid: number
 	speed: number
 	silenceScale: number
 }
+
+export type PocketWorkerJobType = {
+	engine: "POCKET"
+	engineConfig: PocketWorkerEngineConfigType
+	text: string
+	speed: number
+}
+
+export type VitsWorkerJobType = {
+	engine: "VITS"
+	engineConfig: VitsWorkerEngineConfigType
+	text: string
+	sid: number
+	speed: number
+}
+
+export type KittenWorkerJobType = {
+	engine: "KITTEN"
+	engineConfig: TtsWorkerEngineConfigType & { lengthScale: number }
+	text: string
+	sid: number
+	speed: number
+}
+
+export type MatchaWorkerJobType = {
+	engine: "MATCHA"
+	engineConfig: TtsWorkerEngineConfigType & {
+		vocoderPath: string
+		lengthScale: number
+	}
+	text: string
+	sid: number
+	speed: number
+}
+
+export type TtsWorkerJobType =
+	| KokoroWorkerJobType
+	| PocketWorkerJobType
+	| VitsWorkerJobType
+	| KittenWorkerJobType
+	| MatchaWorkerJobType
 
 export type TtsWorkerResultType = {
 	pcm: Buffer

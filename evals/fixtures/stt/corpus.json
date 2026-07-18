@@ -1,0 +1,51 @@
+{
+	"note": "STT tournament corpus — WAVs are TTS-generated (piper-libritts) at 16kHz mono; synthetic speech is fine for RELATIVE model comparison. Regenerate with the gen-stt-corpus script.",
+	"cases": [
+		{ "id": "s01", "text": "What time is it right now?" },
+		{ "id": "s02", "text": "Turn on the kitchen lights please." },
+		{
+			"id": "s03",
+			"text": "Set a timer for twelve minutes and thirty seconds."
+		},
+		{ "id": "s04", "text": "What is the temperature outside today?" },
+		{
+			"id": "s05",
+			"text": "Remind me to call Kevin tomorrow at nine forty five."
+		},
+		{ "id": "s06", "text": "Play some jazz music in the living room." },
+		{
+			"id": "s07",
+			"text": "The wifi password is on the router card in the hallway."
+		},
+		{
+			"id": "s08",
+			"text": "Add eggs milk bread and two hundred grams of coffee to the shopping list."
+		},
+		{
+			"id": "s09",
+			"text": "Is the garage door closed and the front door locked?"
+		},
+		{
+			"id": "s10",
+			"text": "Tell me a short story about a lighthouse keeper in Costa Rica."
+		},
+		{
+			"id": "s11",
+			"text": "Lower the thermostat to sixty eight degrees at ten pm."
+		},
+		{
+			"id": "s12",
+			"text": "How many unread messages do I have from yesterday?"
+		},
+		{
+			"id": "s13",
+			"text": "Cancel the seven thirty alarm but keep the eight o'clock one."
+		},
+		{
+			"id": "s14",
+			"text": "What's the fastest route to the airport avoiding highways?"
+		},
+		{ "id": "s15", "text": "Switch the bedroom speaker to the news briefing." },
+		{ "id": "s16", "text": "Thanks for everything, talk to you later tonight." }
+	]
+}

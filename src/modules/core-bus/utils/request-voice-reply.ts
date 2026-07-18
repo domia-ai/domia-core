@@ -36,7 +36,10 @@ export const requestVoiceReply = async (
 		},
 		requestedOutput: { kind: speak ? "voice" : "text" },
 		source: satelliteId ? "satellite" : "http",
-		audioDelivery: "local-playback",
+		audioDelivery:
+			domia.runtimeCapabilities?.playback === true
+				? "local-playback"
+				: "audio-url",
 		interactionId: providedId,
 		satelliteId,
 		satelliteProtocol,

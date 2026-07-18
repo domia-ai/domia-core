@@ -76,6 +76,12 @@ export const handlePostChat = async (
 				? (registerAudioForServing(result.interactionId, result.ttsFilePath),
 					`/audio/${result.interactionId}`)
 				: null
+			if (result.ttsFilePath) {
+				await updateInteraction({
+					id: result.interactionId,
+					ttsAudioPath: result.ttsFilePath,
+				})
+			}
 			return {
 				interactionId: result.interactionId,
 				reply: result.reply,
@@ -140,6 +146,11 @@ export const handlePostVoice = async (
 			? (registerAudioForServing(result.interactionId, result.ttsFilePath),
 				`/audio/${result.interactionId}`)
 			: null
+		await updateInteraction({
+			id: result.interactionId,
+			inputAudioPath: audioPath,
+			...(result.ttsFilePath ? { ttsAudioPath: result.ttsFilePath } : {}),
+		})
 		return {
 			interactionId: result.interactionId,
 			transcript: result.transcript,

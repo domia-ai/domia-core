@@ -30,6 +30,7 @@ const openAiUsage = (
 	timings: LlamaTimingsType | undefined,
 	contextWindow?: number,
 	requestId?: string | null,
+	wall?: { ttftMs: number | null; tokensPerSec: number | null },
 ): LlmUsageType => ({
 	requestId: requestId ?? null,
 	promptTokens: usage?.prompt_tokens ?? null,
@@ -37,11 +38,34 @@ const openAiUsage = (
 	tokensPerSec:
 		timings?.predicted_per_second != null
 			? Math.round(timings.predicted_per_second * 100) / 100
-			: null,
-	ttftMs: timings?.prompt_ms != null ? Math.round(timings.prompt_ms) : null,
+			: (wall?.tokensPerSec ?? null),
+	ttftMs:
+		timings?.prompt_ms != null
+			? Math.round(timings.prompt_ms)
+			: (wall?.ttftMs ?? null),
 	contextWindow: contextWindow ?? null,
 	finishReason: finishReason ?? null,
 })
+
+// `timings` is llama.cpp-server specific — fall back to wall-clock stats when the server omits it
+const wallStats = (
+	startedAt: number,
+	firstTokenAt: number | null,
+	completionTokens: number | null | undefined,
+): { ttftMs: number | null; tokensPerSec: number | null } => {
+	const genMs = firstTokenAt != null ? Date.now() - firstTokenAt : 0
+	return {
+		ttftMs: firstTokenAt != null ? firstTokenAt - startedAt : null,
+		// the first token anchors the window, so only the remaining tokens arrived during genMs
+		tokensPerSec:
+			firstTokenAt != null &&
+			completionTokens != null &&
+			completionTokens > 1 &&
+			genMs > 0
+				? Math.round(((completionTokens - 1) / (genMs / 1000)) * 100) / 100
+				: null,
+	}
+}
 
 const timingsOf = (raw: unknown): LlamaTimingsType | undefined =>
 	raw && typeof raw === "object" && "timings" in raw
@@ -232,6 +256,8 @@ const runOpenAiCompatibleStream = async function* (
 	let finishReason: string | null = null
 	try {
 		if (shouldAbort?.()) return
+		const startedAt = Date.now()
+		let firstTokenAt: number | null = null
 		const stream = await client.chat.completions.create({
 			model: modelName,
 			messages: userMessages(promptContext),
@@ -249,7 +275,10 @@ const runOpenAiCompatibleStream = async function* (
 				return
 			}
 			const token = chunk.choices[0]?.delta?.content
-			if (token) yield token
+			if (token) {
+				firstTokenAt ??= Date.now()
+				yield token
+			}
 			if (chunk.choices[0]?.finish_reason)
 				finishReason = chunk.choices[0].finish_reason
 			if (chunk.usage && onUsage)
@@ -260,6 +289,7 @@ const runOpenAiCompatibleStream = async function* (
 						timingsOf(chunk),
 						domia.llmModelConfig?.contextWindow,
 						chunk.id,
+						wallStats(startedAt, firstTokenAt, chunk.usage.completion_tokens),
 					),
 				)
 		}
@@ -436,6 +466,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 		release()
 	}
 	try {
+		const startedAt = Date.now()
 		const stream = await client.chat.completions.create({
 			model: modelName,
 			messages: toOpenAiMessages(messages),
@@ -456,6 +487,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 		)
 			first = await iter.next()
 
+		const firstTokenAt = first.done ? null : Date.now()
 		const firstDelta = first.done ? undefined : first.value.choices[0]?.delta
 
 		if (firstDelta?.tool_calls?.length) {
@@ -489,6 +521,12 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 							toolFinishReason,
 							timingsOf(next.value),
 							domia.llmModelConfig?.contextWindow,
+							undefined,
+							wallStats(
+								startedAt,
+								firstTokenAt,
+								next.value.usage.completion_tokens,
+							),
 						),
 					)
 			}
@@ -520,6 +558,12 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 								finishReason,
 								timingsOf(next.value),
 								domia.llmModelConfig?.contextWindow,
+								undefined,
+								wallStats(
+									startedAt,
+									firstTokenAt,
+									next.value.usage.completion_tokens,
+								),
 							),
 						)
 				}

@@ -61,7 +61,7 @@ case "${1:-}" in
 esac
 
 case "${1:-all}" in
-  parakeet|parakeet-tdt|all)
+  parakeet|parakeet-tdt|all|jetson)
     download_and_extract "parakeet-tdt-06b-v2" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2" \
       "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
@@ -93,7 +93,7 @@ case "${1:-all}" in
 esac
 
 case "${1:-all}" in
-  vad|all)
+  vad|all|jetson)
     if [ ! -f "silero_vad.onnx" ]; then
       echo "[silero_vad] downloading"
       curl -fSL -o "silero_vad.onnx" \
@@ -106,7 +106,21 @@ case "${1:-all}" in
 esac
 
 case "${1:-all}" in
-  kws|all)
+  smart-turn|turn-detector|all|jetson)
+    if [ ! -f "smart-turn/smart-turn-v3.1-cpu.onnx" ]; then
+      echo "[smart-turn-v3.1-cpu] downloading"
+      mkdir -p "smart-turn"
+      curl -fSL -o "smart-turn/smart-turn-v3.1-cpu.onnx" \
+        "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.1-cpu.onnx"
+      echo "[smart-turn-v3.1-cpu] done"
+    else
+      echo "[smart-turn-v3.1-cpu] already present, skipping"
+    fi
+    ;;
+esac
+
+case "${1:-all}" in
+  kws|all|jetson)
     download_and_extract "kws-zipformer-gigaspeech-3.3M-2024-01-01" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2" \
       "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
@@ -114,7 +128,7 @@ case "${1:-all}" in
 esac
 
 case "${1:-all}" in
-  embeddings|bge|all)
+  embeddings|bge|all|jetson)
     if [ ! -d "bge-small-en-v1.5" ]; then
       echo "[bge-small-en-v1.5] downloading"
       base="https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main"
@@ -135,6 +149,46 @@ case "${1:-}" in
     download_and_extract "sherpa-onnx-pocket-tts-int8-2026-01-26" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2" \
       "sherpa-onnx-pocket-tts-int8-2026-01-26"
+    ;;
+esac
+
+case "${1:-}" in
+  piper-en|jetson)
+    download_and_extract "vits-piper-en_US-libritts_r-medium" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-libritts_r-medium.tar.bz2" \
+      "vits-piper-en_US-libritts_r-medium"
+    ;;
+esac
+
+case "${1:-}" in
+  piper-en)
+    download_and_extract "vits-piper-en_US-lessac-medium" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2" \
+      "vits-piper-en_US-lessac-medium"
+    ;;
+esac
+
+case "${1:-}" in
+  kitten)
+    download_and_extract "kitten-nano-en-v0_1-fp16" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kitten-nano-en-v0_1-fp16.tar.bz2" \
+      "kitten-nano-en-v0_1-fp16"
+    ;;
+esac
+
+case "${1:-}" in
+  matcha)
+    download_and_extract "matcha-icefall-en_US-ljspeech" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/matcha-icefall-en_US-ljspeech.tar.bz2" \
+      "matcha-icefall-en_US-ljspeech"
+    if [ ! -f "$MODELS_DIR/vocos-22khz-univ.onnx" ]; then
+      echo "[vocos vocoder] downloading"
+      curl -fL --progress-bar \
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos-22khz-univ.onnx" \
+        -o "$MODELS_DIR/vocos-22khz-univ.onnx"
+    else
+      echo "[vocos vocoder] already present, skipping"
+    fi
     ;;
 esac
 

@@ -20,6 +20,9 @@ export const CAPABILITY_RESOURCES: CapabilityResourcesType = {
 		],
 		tempDirs: ["tmp", "tmp/recordings"],
 	},
+	stt: {
+		tempDirs: ["tmp", "tmp/recordings"],
+	},
 	tts: {
 		tempDirs: ["tmp", "tmp/tts-output"],
 	},

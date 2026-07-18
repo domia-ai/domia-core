@@ -136,35 +136,42 @@ export const ttsVoiceFromDomia = (domia: DomiaType): TtsVoiceType | null => {
 	)
 }
 
-let ttsPool: InferencePoolType | null = null
+// one pool per engine family so a worker only ever holds one native engine resident
+const ttsPools = new Map<string, InferencePoolType>()
 
 export const getTtsPool = (
 	ttsConfig: SelectTtsConfigType,
 ): InferencePoolType => {
-	if (!ttsPool) {
-		const maxWorkers = ttsConfig.poolAutoScaleEnabled
-			? resolveMaxWorkers(ttsConfig.poolMaxWorkers, "tts")
-			: Math.max(1, ttsConfig.poolWarmWorkers)
-		ttsPool = createInferencePool({
-			label: "tts",
-			backend: createChildProcessBackend("tts-entry"),
-			warmWorkers: ttsConfig.poolWarmWorkers,
-			maxWorkers,
-			idleTimeoutMs: ttsConfig.poolIdleTimeoutMs,
-			queueMaxDepth: ttsConfig.poolQueueMaxDepth,
-			queueTimeoutMs: ttsConfig.poolQueueTimeoutMs,
-			executionTimeoutMs: ttsConfig.poolExecutionTimeoutMs,
-			recycleAfterJobs: ttsConfig.workerRecycleAfterJobs,
-		})
-	}
-	return ttsPool
+	const engine = ttsConfig.engine
+	const existing = ttsPools.get(engine)
+	if (existing) return existing
+	const maxWorkers = ttsConfig.poolAutoScaleEnabled
+		? resolveMaxWorkers(ttsConfig.poolMaxWorkers, "tts")
+		: Math.max(1, ttsConfig.poolWarmWorkers)
+	const pool = createInferencePool({
+		label: `tts:${engine.toLowerCase()}`,
+		backend: createChildProcessBackend("tts-entry"),
+		warmWorkers: ttsConfig.poolWarmWorkers,
+		maxWorkers,
+		idleTimeoutMs: ttsConfig.poolIdleTimeoutMs,
+		queueMaxDepth: ttsConfig.poolQueueMaxDepth,
+		queueTimeoutMs: ttsConfig.poolQueueTimeoutMs,
+		executionTimeoutMs: ttsConfig.poolExecutionTimeoutMs,
+		recycleAfterJobs: ttsConfig.workerRecycleAfterJobs,
+	})
+	ttsPools.set(engine, pool)
+	return pool
 }
 
-export const ttsPoolBusy = (): boolean =>
-	ttsPool !== null && (ttsPool.busyWorkers() > 0 || ttsPool.queuedJobs() > 0)
+export const ttsPoolBusy = (): boolean => {
+	for (const pool of ttsPools.values()) {
+		if (pool.busyWorkers() > 0 || pool.queuedJobs() > 0) return true
+	}
+	return false
+}
 
 export const reloadTtsPool = async (): Promise<void> => {
-	const old = ttsPool
-	ttsPool = null
-	if (old) await old.shutdown()
+	const old = [...ttsPools.values()]
+	ttsPools.clear()
+	await Promise.all(old.map((pool) => pool.shutdown()))
 }

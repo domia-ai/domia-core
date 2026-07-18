@@ -111,4 +111,6 @@ export type TtsEngineConfigType = {
 	referenceAudioPath?: string
 	numSteps?: number
 	voiceEmbeddingCacheCapacity?: number
+	vocoderPath?: string
+	lengthScale?: number
 }

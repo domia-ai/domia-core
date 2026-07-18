@@ -34,11 +34,14 @@ export const setupMqtt = ({
 	logger.info("📋 MQTT configuration validated")
 
 	logger.info("🔧 Creating MQTT client")
-	const client = mqtt.connect(config.host, {
+	// mqtt.connect() silently falls back to localhost when the first arg is a bare host (no scheme) — pass host via options instead
+	const hasScheme = /^\w+:\/\//.test(config.host)
+	const options: mqtt.IClientOptions = {
 		clientId: domiaKey,
 		username: config?.username || "",
 		password: config?.password || "",
 		protocol: config?.protocol,
+		...(hasScheme ? {} : { host: config.host, hostname: config.host }),
 		port: config?.port || 1883,
 		will: nodeId
 			? {
@@ -48,7 +51,10 @@ export const setupMqtt = ({
 					retain: false,
 				}
 			: undefined,
-	})
+	}
+	const client = hasScheme
+		? mqtt.connect(config.host, options)
+		: mqtt.connect(options)
 
 	client.on("connect", () => {
 		logger.success(`✅ MQTT client (${type}) ready and subscribed`)

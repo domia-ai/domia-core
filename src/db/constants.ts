@@ -45,7 +45,7 @@ export const TURN_DETECTOR_ENGINE_ENUM_VALUES = [
 ] as const
 export const DEFAULT_TURN_DETECTOR_ENGINE = TURN_DETECTOR_ENGINE_ENUM.SMART_TURN
 export const DEFAULT_TURN_DETECTOR_MODEL_PATH =
-	"data/models/smart-turn/smart-turn-v3.2-cpu.onnx"
+	"data/models/smart-turn/smart-turn-v3.1-cpu.onnx"
 export const DEFAULT_SPECULATIVE_TTS_ENABLED = false
 export const DEFAULT_SPECULATE_WITH_SKILLS = false
 export const DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE = 0
@@ -116,6 +116,7 @@ export const DEFAULT_POCKET_MODEL_PATH =
 export const DEFAULT_POCKET_NUM_STEPS = 5
 export const DEFAULT_POCKET_REFERENCE_WAV = "test_wavs/bria.wav"
 export const DEFAULT_POCKET_VOICE_CACHE = 50
+export const DEFAULT_MATCHA_VOCODER_PATH = "data/models/vocos-22khz-univ.onnx"
 export const DEFAULT_TTS_NUM_THREADS = 2
 export const DEFAULT_TTS_PROVIDER = "cpu"
 export const DEFAULT_TTS_MAX_NUM_SENTENCES = 1
@@ -327,11 +328,15 @@ export const TTS_ENGINE_ENUM = {
 	KOKORO: "KOKORO",
 	POCKET: "POCKET",
 	VITS: "VITS",
+	KITTEN: "KITTEN",
+	MATCHA: "MATCHA",
 } as const
 export const TTS_ENGINE_ENUM_VALUES = [
 	TTS_ENGINE_ENUM.KOKORO,
 	TTS_ENGINE_ENUM.POCKET,
 	TTS_ENGINE_ENUM.VITS,
+	TTS_ENGINE_ENUM.KITTEN,
+	TTS_ENGINE_ENUM.MATCHA,
 ] as const
 
 export const WAKE_WORD_FRAMEWORK_ENUM = {
@@ -454,7 +459,7 @@ export const DEFAULT_ESPHOME_DISCOVERY_MS = 4000
 export const DEFAULT_SATELLITE_RECONNECT_MS = 5000
 export const DEFAULT_SATELLITE_RECONNECT_MAX_MS = 60_000
 export const DEFAULT_SATELLITE_RECONNECT_JITTER = 0.3
-export const DEFAULT_SATELLITE_TURN_TIMEOUT_MS = 30_000
+export const DEFAULT_SATELLITE_TURN_TIMEOUT_MS = 120_000
 export const DEFAULT_DESIRED_WAKE_WORDS: string[] = []
 export const DEFAULT_SATELLITE_DESIRED_NUMBERS: Record<string, number> = {}
 export const DEFAULT_SATELLITE_FOLLOW_UP = false

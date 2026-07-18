@@ -5,8 +5,8 @@ import { ttsEngineLogger, TTS_ERRORS, domiaError } from "@/utils"
 import { createOfflineTts, type OfflineTtsInstance } from "@/utils/ml-runtime"
 import type {
 	KokoroPathsType,
+	KokoroWorkerJobType,
 	TtsWorkerEngineConfigType,
-	TtsWorkerJobType,
 	TtsWorkerResultType,
 } from "../../types"
 
@@ -152,7 +152,7 @@ const synthesizeKokoroSamples = (
 }
 
 export const synthesizeKokoroPcm = (
-	job: TtsWorkerJobType,
+	job: KokoroWorkerJobType,
 ): TtsWorkerResultType => {
 	const { samples, sampleRate } = synthesizeKokoroSamples(job.engineConfig, {
 		text: job.text,

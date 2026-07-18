@@ -43,8 +43,13 @@ import {
 	RECORDINGS_DIR,
 	adaptiveVadWindow,
 	observeBargeIn,
+	int16BufferToFloat32,
 	type VadWindowType,
 } from "@/modules/audio-capture"
+import {
+	predictTurnComplete,
+	turnDetectorAvailable,
+} from "@/modules/turn-detector"
 import {
 	wrapPcmToWav,
 	wavFileToPcmChunks,
@@ -118,6 +123,9 @@ export const createSatelliteSession = (
 	const connectionId = generateUuid()
 
 	const STT_SAMPLE_RATE = 16000
+	// live config must reach an already-connected satellite without a reconnect
+	const CONFIG_REFRESH_MS = 3000
+	const ACOUSTIC_GATE_COOLDOWN_MS = 250
 
 	const streamingSttCreate = ():
 		| ((domia: DomiaType) => SttStreamSessionType | null)
@@ -144,10 +152,54 @@ export const createSatelliteSession = (
 	const urlPlayback = !!transport.playAudioUrl
 	const serverEndpointing = !!transport.serverEndpointing
 	let vad: VadWindowType | null = null
+	let vadDebounceMs = 0
 	let endpointed = false
 	let micActiveFlag = false
+	let configRefreshTimer: ReturnType<typeof setInterval> | null = null
+	let acousticChecking = false
+	let acousticComplete = false
+	let lastAcousticRunAt = 0
+	let utteranceGen = 0
+	let gateHolding = false
+	let vadCompletedAt: number | null = null
 	const resetVad = (): void => {
 		vad = null
+		acousticComplete = false
+		utteranceGen += 1
+		gateHolding = false
+		vadCompletedAt = null
+	}
+	// on VAD silence the turn-detector judges completeness — hold while it says mid-sentence
+	const acousticGateActive = (): boolean => {
+		const wc = identity.wakeWordConfig
+		return (
+			!!wc?.acousticEndpointingEnabled &&
+			sampleRate === STT_SAMPLE_RATE &&
+			channels === 1 &&
+			turnDetectorAvailable(wc.turnDetectorModelPath, wc.turnDetectorEngine)
+		)
+	}
+	const runAcousticGate = (): void => {
+		if (acousticChecking || acousticComplete) return
+		if (Date.now() - lastAcousticRunAt < ACOUSTIC_GATE_COOLDOWN_MS) return
+		const wc = identity.wakeWordConfig
+		if (!wc) return
+		acousticChecking = true
+		lastAcousticRunAt = Date.now()
+		const gen = utteranceGen
+		const pcm = int16BufferToFloat32(Buffer.concat(chunks))
+		void predictTurnComplete(
+			pcm,
+			wc.turnDetectorModelPath,
+			wc.acousticEndpointCompleteThreshold,
+			wc.turnDetectorEngine,
+		)
+			.then((r) => {
+				if (r && gen === utteranceGen) acousticComplete = r.complete
+			})
+			.finally(() => {
+				acousticChecking = false
+			})
 	}
 	const setMicActive = (active: boolean): void => {
 		if (micActiveFlag === active || !registeredKey) return
@@ -274,7 +326,7 @@ export const createSatelliteSession = (
 		busy = false
 	}
 
-	const handleUtterance = async (): Promise<void> => {
+	const handleUtterance = async (speechEndAt?: number): Promise<void> => {
 		if (busy) return
 		const session = sttSession
 		sttSession = null
@@ -458,6 +510,8 @@ export const createSatelliteSession = (
 					interactionId,
 					originDomiaKey: identity.domiaKey,
 					responseType: RESPONSE_TYPE_ENUM.VOICE,
+					speechEndAt,
+					endpointDebounceMs: vadDebounceMs || undefined,
 				})
 			} else {
 				await writeFile(path, wav)
@@ -465,6 +519,8 @@ export const createSatelliteSession = (
 					filePath: path,
 					interactionId,
 					originDomiaKey: identity.domiaKey,
+					speechEndAt,
+					endpointDebounceMs: vadDebounceMs || undefined,
 				})
 			}
 		} catch (err) {
@@ -497,6 +553,16 @@ export const createSatelliteSession = (
 			}
 			identity = resolved
 			helloReceived = true
+			if (configRefreshTimer) clearInterval(configRefreshTimer)
+			configRefreshTimer = setInterval(() => {
+				if (busy) return
+				void safeOwnDomia(
+					identity.domiaKey,
+					"satellite-core config refresh",
+				).then((fresh) => {
+					if (fresh && !busy) identity = fresh
+				})
+			}, CONFIG_REFRESH_MS)
 			chunks = []
 			bufferedBytes = 0
 			if (registeredKey) {
@@ -623,6 +689,18 @@ export const createSatelliteSession = (
 			}
 			bufferedBytes += pcm.length
 			if (bufferedBytes > MAX_UTTERANCE_BYTES) {
+				if (gateHolding) {
+					const speechEndAt = vadCompletedAt ?? Date.now()
+					satelliteGatewayLogger.warn(
+						"satellite utterance hit max bytes during acoustic hold — forcing endpoint",
+						{ satelliteId, bufferedBytes },
+					)
+					resetVad()
+					escalatePausedBargeIn()
+					transport.notifySpeechEnd?.()
+					void handleUtterance(speechEndAt)
+					return
+				}
 				satelliteGatewayLogger.warn(
 					"satellite utterance exceeded max bytes — dropping",
 					{ satelliteId, bufferedBytes },
@@ -658,17 +736,24 @@ export const createSatelliteSession = (
 
 			if (!serverEndpointing) return
 			if (!vad && identity.wakeWordConfig) {
-				vad = adaptiveVadWindow(identity.id, identity.wakeWordConfig).vad
+				const win = adaptiveVadWindow(identity.id, identity.wakeWordConfig)
+				vad = win.vad
+				vadDebounceMs = win.debounceMs
 			}
 			if (!vad) {
 				const seconds = bufferedBytes / (sampleRate * channels * 2)
 				if (seconds >= NO_VAD_MAX_UTTERANCE_S) {
 					transport.notifySpeechEnd?.()
-					void handleUtterance()
+					void handleUtterance(Date.now())
 				}
 				return
 			}
 			vad.feed(pcm)
+			if (vad.speechActive()) {
+				acousticComplete = false
+				gateHolding = false
+				vadCompletedAt = null
+			}
 			if (!vad.everDetected() && bufferedBytes > PRE_SPEECH_ROLL_BYTES) {
 				while (
 					chunks.length > 1 &&
@@ -679,16 +764,24 @@ export const createSatelliteSession = (
 				}
 			}
 			if (vad.completed()) {
+				// the VAD fires after the silence debounce — actual speech end was debounceMs ago
+				vadCompletedAt ??= Date.now() - vadDebounceMs
+				if (acousticGateActive() && !acousticComplete) {
+					gateHolding = true
+					runAcousticGate()
+					return
+				}
+				const speechEndAt = vadCompletedAt
 				resetVad()
 				escalatePausedBargeIn()
 				transport.notifySpeechEnd?.()
-				void handleUtterance()
+				void handleUtterance(speechEndAt)
 			}
 		},
 
 		onSpeechEnd: async () => {
 			escalatePausedBargeIn()
-			await handleUtterance()
+			await handleUtterance(Date.now())
 		},
 
 		onCancel: () => {
@@ -707,6 +800,10 @@ export const createSatelliteSession = (
 		},
 
 		onClose: () => {
+			if (configRefreshTimer) {
+				clearInterval(configRefreshTimer)
+				configRefreshTimer = null
+			}
 			if (pausedBargeIn !== null) {
 				clearTimeout(pausedBargeIn)
 				pausedBargeIn = null

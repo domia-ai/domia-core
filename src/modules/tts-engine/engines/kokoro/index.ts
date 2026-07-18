@@ -124,6 +124,7 @@ const jobOf = (
 	voice: TtsVoiceType,
 	sid: number,
 ): TtsWorkerJobType => ({
+	engine: TTS_ENGINE_ENUM.KOKORO,
 	engineConfig: engineConfigOf(ttsConfig),
 	text,
 	sid,
@@ -173,7 +174,7 @@ export const runKokoro = async (
 			},
 		}
 	} catch (error) {
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
+		throw domiaError(TTS_ERRORS.TTS_FAILURE, {
 			logger: ttsEngineLogger,
 			meta: {
 				message: error instanceof Error ? error.message : String(error),

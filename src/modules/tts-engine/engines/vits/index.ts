@@ -1,4 +1,3 @@
-import { readdirSync } from "fs"
 import { mkdir, writeFile } from "fs/promises"
 import path from "path"
 
@@ -11,63 +10,26 @@ import {
 	wrapPcmToWav,
 	applyEdgeFade,
 } from "@/utils"
-import { createOfflineTts, type OfflineTtsInstance } from "@/utils/ml-runtime"
 import { type SelectTtsConfigType, TTS_ENGINE_ENUM } from "@/db"
 import { splitTextIntoSentences } from "@/modules/core-bus/utils/sentence-buffer"
 
-import { resolveTtsVoice } from "../../utils"
+import { resolveTtsVoice, getTtsPool } from "../../utils"
 import type {
 	RunTtsOptionsType,
 	RunTtsResultType,
 	TtsEngineAdapterType,
+	TtsWorkerJobType,
+	TtsWorkerResultType,
 } from "../../types"
 
-let cachedEngine: OfflineTtsInstance | null = null
-let cachedKey: string | null = null
-
-const floatToPcm16 = (samples: Float32Array): Buffer => {
-	const buf = Buffer.alloc(samples.length * 2)
-	for (let i = 0; i < samples.length; i++) {
-		const s = Math.max(-1, Math.min(1, samples[i]))
-		buf.writeInt16LE((s < 0 ? s * 0x8000 : s * 0x7fff) | 0, i * 2)
-	}
-	return buf
-}
-
-const findModelFile = (dir: string): string | null => {
-	const files = readdirSync(dir).filter(
-		(f) => f.endsWith(".onnx") && !f.includes("vocoder"),
-	)
-	return files.length > 0 ? path.join(dir, files[0]) : null
-}
-
-const getEngine = (ttsConfig: SelectTtsConfigType): OfflineTtsInstance => {
-	const dir = path.resolve(ttsConfig.modelPath)
-	const model = findModelFile(dir)
-	if (!model)
+const requireTtsConfig = (domia: DomiaType): SelectTtsConfigType => {
+	const ttsConfig = domia.ttsConfig
+	if (!ttsConfig?.modelPath)
 		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
 			logger: ttsEngineLogger,
-			meta: { message: "VITS model .onnx not found", dir },
+			meta: { message: "VITS requires ttsConfig.modelPath (model dir)" },
 		})
-	const key = `${dir}|${ttsConfig.numThreads}|${ttsConfig.provider}`
-	if (cachedEngine && cachedKey === key) return cachedEngine
-	cachedEngine = createOfflineTts({
-		model: {
-			vits: {
-				model,
-				tokens: path.join(dir, "tokens.txt"),
-				dataDir: ttsConfig.espeakNgDataPath?.trim()
-					? path.resolve(ttsConfig.espeakNgDataPath)
-					: path.join(dir, "espeak-ng-data"),
-			},
-			debug: false,
-			numThreads: ttsConfig.numThreads,
-			provider: ttsConfig.provider,
-		},
-		maxNumSentences: ttsConfig.maxNumSentences,
-	})
-	cachedKey = key
-	return cachedEngine
+	return ttsConfig
 }
 
 const sidOf = (voiceName: string): number => {
@@ -75,39 +37,42 @@ const sidOf = (voiceName: string): number => {
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
-const generateSentence = (
+const jobOf = (
 	ttsConfig: SelectTtsConfigType,
 	text: string,
 	sid: number,
 	speed: number,
-): { pcm: Buffer; sampleRate: number } => {
-	const engine = getEngine(ttsConfig)
-	const audio = engine.generate({
-		text,
-		generationConfig: { sid, speed },
-	})
-	return { pcm: floatToPcm16(audio.samples), sampleRate: audio.sampleRate }
-}
+): TtsWorkerJobType => ({
+	engine: TTS_ENGINE_ENUM.VITS,
+	engineConfig: {
+		modelPath: path.resolve(ttsConfig.modelPath),
+		numThreads: ttsConfig.numThreads,
+		provider: ttsConfig.provider,
+		maxNumSentences: ttsConfig.maxNumSentences,
+		espeakDataDir: ttsConfig.espeakNgDataPath ?? null,
+	},
+	text,
+	sid,
+	speed,
+})
 
 const runVits = async (
 	domia: DomiaType,
 	text: string,
 	options?: RunTtsOptionsType,
 ): Promise<RunTtsResultType> => {
-	const ttsConfig = domia.ttsConfig
-	if (!ttsConfig?.modelPath)
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
-			logger: ttsEngineLogger,
-			meta: { message: "VITS requires ttsConfig.modelPath (model dir)" },
-		})
+	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = sidOf(voice.voiceName)
 	try {
+		const pool = getTtsPool(ttsConfig)
 		const parts: Buffer[] = []
-		let sampleRate = 22050
+		let sampleRate = vitsEngine.capabilities.sampleRate
 		for (const sentence of splitTextIntoSentences(text)) {
-			const result = generateSentence(ttsConfig, sentence, sid, voice.speed)
-			if (result.pcm.length > 0) {
+			const result = await pool.submit<TtsWorkerResultType>(
+				jobOf(ttsConfig, sentence, sid, voice.speed),
+			)
+			if (result.pcm && result.pcm.length > 0) {
 				parts.push(applyEdgeFade(result.pcm, result.sampleRate))
 				sampleRate = result.sampleRate
 			}
@@ -125,7 +90,7 @@ const runVits = async (
 			metadata: { text, sampleRate, samples: pcm.length / 2, sid },
 		}
 	} catch (error) {
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
+		throw domiaError(TTS_ERRORS.TTS_FAILURE, {
 			logger: ttsEngineLogger,
 			meta: {
 				message: error instanceof Error ? error.message : String(error),
@@ -140,17 +105,15 @@ const runVitsStream = async function* (
 	text: string,
 	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
-	const ttsConfig = domia.ttsConfig
-	if (!ttsConfig?.modelPath)
-		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
-			logger: ttsEngineLogger,
-			meta: { message: "VITS requires ttsConfig.modelPath (model dir)" },
-		})
+	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = sidOf(voice.voiceName)
+	const pool = getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
-		const result = generateSentence(ttsConfig, sentence, sid, voice.speed)
-		if (result.pcm.length > 0)
+		const result = await pool.submit<TtsWorkerResultType>(
+			jobOf(ttsConfig, sentence, sid, voice.speed),
+		)
+		if (result.pcm && result.pcm.length > 0)
 			yield applyEdgeFade(result.pcm, result.sampleRate)
 	}
 }

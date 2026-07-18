@@ -10,17 +10,10 @@ import {
 	wrapPcmToWav,
 	applyEdgeFade,
 } from "@/utils"
-import {
-	type SelectTtsConfigType,
-	TTS_ENGINE_ENUM,
-	DEFAULT_POCKET_MODEL_PATH,
-	DEFAULT_POCKET_NUM_STEPS,
-	DEFAULT_POCKET_VOICE_CACHE,
-} from "@/db"
+import { type SelectTtsConfigType, TTS_ENGINE_ENUM } from "@/db"
 import { splitTextIntoSentences } from "@/modules/core-bus/utils/sentence-buffer"
 
 import { resolveTtsVoice, getTtsPool } from "../../utils"
-import { POCKET_SAMPLE_RATE } from "./inference"
 import type {
 	RunTtsOptionsType,
 	RunTtsResultType,
@@ -29,109 +22,114 @@ import type {
 	TtsWorkerResultType,
 } from "../../types"
 
+const DEFAULT_LENGTH_SCALE = 1.0
+
 const requireTtsConfig = (domia: DomiaType): SelectTtsConfigType => {
 	const ttsConfig = domia.ttsConfig
-	if (!ttsConfig)
+	if (!ttsConfig?.modelPath)
 		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
 			logger: ttsEngineLogger,
-			meta: { message: "Pocket requires a ttsConfig" },
+			meta: { message: "Kitten requires ttsConfig.modelPath (model dir)" },
 		})
 	return ttsConfig
+}
+
+const sidOf = (voiceName: string): number => {
+	const parsed = Number.parseInt(voiceName, 10)
+	return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
 }
 
 const jobOf = (
 	ttsConfig: SelectTtsConfigType,
 	text: string,
+	sid: number,
 	speed: number,
 ): TtsWorkerJobType => ({
-	engine: TTS_ENGINE_ENUM.POCKET,
+	engine: TTS_ENGINE_ENUM.KITTEN,
 	engineConfig: {
-		modelPath: path.resolve(ttsConfig.modelPath || DEFAULT_POCKET_MODEL_PATH),
+		modelPath: path.resolve(ttsConfig.modelPath),
 		numThreads: ttsConfig.numThreads,
 		provider: ttsConfig.provider,
 		maxNumSentences: ttsConfig.maxNumSentences,
-		referenceAudioPath: ttsConfig.engineConfig?.referenceAudioPath?.trim()
-			? path.resolve(ttsConfig.engineConfig.referenceAudioPath.trim())
-			: null,
-		numSteps: ttsConfig.engineConfig?.numSteps ?? DEFAULT_POCKET_NUM_STEPS,
-		voiceEmbeddingCacheCapacity:
-			ttsConfig.engineConfig?.voiceEmbeddingCacheCapacity ??
-			DEFAULT_POCKET_VOICE_CACHE,
+		espeakDataDir: ttsConfig.espeakNgDataPath ?? null,
+		lengthScale: ttsConfig.engineConfig?.lengthScale ?? DEFAULT_LENGTH_SCALE,
 	},
 	text,
+	sid,
 	speed,
 })
 
-const runPocket = async (
+const runKitten = async (
 	domia: DomiaType,
 	text: string,
 	options?: RunTtsOptionsType,
 ): Promise<RunTtsResultType> => {
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
+	const sid = sidOf(voice.voiceName)
 	try {
 		const pool = getTtsPool(ttsConfig)
 		const parts: Buffer[] = []
+		let sampleRate = kittenEngine.capabilities.sampleRate
 		for (const sentence of splitTextIntoSentences(text)) {
 			const result = await pool.submit<TtsWorkerResultType>(
-				jobOf(ttsConfig, sentence, voice.speed),
+				jobOf(ttsConfig, sentence, sid, voice.speed),
 			)
-			if (result.pcm && result.pcm.length > 0)
-				parts.push(applyEdgeFade(result.pcm, POCKET_SAMPLE_RATE))
+			if (result.pcm && result.pcm.length > 0) {
+				parts.push(applyEdgeFade(result.pcm, result.sampleRate))
+				sampleRate = result.sampleRate
+			}
 		}
 		const pcm = Buffer.concat(parts)
 		const outputDir = path.resolve("tmp/tts-output")
 		await mkdir(outputDir, { recursive: true })
 		const filePath = path.join(outputDir, `domia-${generateUuid()}.wav`)
-		await writeFile(filePath, wrapPcmToWav(pcm, POCKET_SAMPLE_RATE, 1, 16))
+		await writeFile(filePath, wrapPcmToWav(pcm, sampleRate, 1, 16))
 		return {
-			engineUsed: TTS_ENGINE_ENUM.POCKET,
+			engineUsed: TTS_ENGINE_ENUM.KITTEN,
 			voiceUsed: voice.voiceName,
 			format: "wav",
 			filePath,
-			metadata: {
-				text,
-				sampleRate: POCKET_SAMPLE_RATE,
-				samples: pcm.length / 2,
-			},
+			metadata: { text, sampleRate, samples: pcm.length / 2, sid },
 		}
 	} catch (error) {
 		throw domiaError(TTS_ERRORS.TTS_FAILURE, {
 			logger: ttsEngineLogger,
 			meta: {
 				message: error instanceof Error ? error.message : String(error),
-				engine: TTS_ENGINE_ENUM.POCKET,
+				engine: TTS_ENGINE_ENUM.KITTEN,
 			},
 		})
 	}
 }
 
-const runPocketStream = async function* (
+const runKittenStream = async function* (
 	domia: DomiaType,
 	text: string,
 	options?: RunTtsOptionsType,
 ): AsyncIterable<Buffer> {
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
+	const sid = sidOf(voice.voiceName)
 	const pool = getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
-			jobOf(ttsConfig, sentence, voice.speed),
+			jobOf(ttsConfig, sentence, sid, voice.speed),
 		)
 		if (result.pcm && result.pcm.length > 0)
-			yield applyEdgeFade(result.pcm, POCKET_SAMPLE_RATE)
+			yield applyEdgeFade(result.pcm, result.sampleRate)
 	}
 }
 
-export const pocketEngine: TtsEngineAdapterType = {
-	id: TTS_ENGINE_ENUM.POCKET,
+export const kittenEngine: TtsEngineAdapterType = {
+	id: TTS_ENGINE_ENUM.KITTEN,
 	capabilities: {
 		streaming: true,
-		sampleRate: POCKET_SAMPLE_RATE,
+		sampleRate: 24000,
 		sampleFormat: "PCM_S16LE",
 		channels: 1,
 		languages: ["en"],
 	},
-	run: runPocket,
-	runStream: runPocketStream,
+	run: runKitten,
+	runStream: runKittenStream,
 }

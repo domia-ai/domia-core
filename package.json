@@ -43,6 +43,8 @@
 		"setup:models:parakeet-streaming": "bash scripts/download-models.sh parakeet-streaming",
 		"setup:models:kws": "bash scripts/download-models.sh kws",
 		"setup:models:vad": "bash scripts/download-models.sh vad",
+		"setup:models:smart-turn": "bash scripts/download-models.sh smart-turn",
+		"setup:models:jetson": "bash scripts/download-models.sh jetson",
 		"setup:models:embeddings": "bash scripts/download-models.sh embeddings",
 		"setup:models:embeddings-multilingual": "bash scripts/download-models.sh embeddings-multilingual",
 		"setup:models:pocket": "bash scripts/download-models.sh pocket",
@@ -57,10 +59,14 @@
 		"evals:adversarial": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/adversarial.ts",
 		"evals:promote": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/promote-traces.ts",
 		"evals:conversation": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/conversation.ts",
+		"evals:stt": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/stt-wer.ts",
 		"turn-logic": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/turn-logic.ts",
 		"typecheck:evals": "tsc --noEmit -p tsconfig.evals.json",
 		"check": "npm run build && npm run lint && npm run typecheck:evals",
-		"setup:models:kokoro-v1": "bash scripts/download-models.sh kokoro-v1"
+		"setup:models:kokoro-v1": "bash scripts/download-models.sh kokoro-v1",
+		"setup:models:piper-en": "bash scripts/download-models.sh piper-en",
+		"setup:models:kitten": "bash scripts/download-models.sh kitten",
+		"setup:models:matcha": "bash scripts/download-models.sh matcha"
 	},
 	"devDependencies": {
 		"@dotenvx/dotenvx": "^1.67.0",

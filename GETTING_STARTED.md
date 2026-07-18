@@ -7,7 +7,7 @@ This guide takes you from a clean machine to a running Domia. All speech inferen
 ## 📋 Prerequisites
 
 - **Node.js ≥ 24** (nvm recommended)
-- **Docker** — runs Ollama (LLM) and Mosquitto (MQTT) — [install](https://www.docker.com/products/docker-desktop/)
+- **Docker with Compose v2** — runs Ollama (LLM) and Mosquitto (MQTT) — [install](https://www.docker.com/products/docker-desktop/). Docker Desktop bundles Compose; on Linux with the distro's `docker.io` package install it separately (`sudo apt install docker-compose-v2`) — `make doctor` checks for it.
 - **sox** — audio playback (installed for you by `make install-deps`)
 
 ## 🛠️ Installation
@@ -175,6 +175,10 @@ npm run dev-cli -- config import templates/espanol.json
 ```
 
 Every spoken fixed string (confirmations, timers, fallbacks) comes from a language catalog; skill matching, memory recall, and Home Assistant entity resolution all follow the configured language. English stays the base/default, and the wake word stays English for now. Adding a language = one catalog entry in `src/utils/language-catalogs/` + a config template.
+
+## 🤖 Running Domia on a Jetson
+
+Domia runs great as a dedicated hub on an NVIDIA Jetson Orin Nano. The short version is `make jetson-setup` + `config import templates/jetson.json` — see **[docs/JETSON.md](./docs/JETSON.md)** for the full guide (prerequisites, LLM serving choices, tuning notes and measured benchmarks).
 
 ## 🆘 Troubleshooting
 
