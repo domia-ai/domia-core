@@ -44,6 +44,7 @@
 		"setup:models:kws": "bash scripts/download-models.sh kws",
 		"setup:models:vad": "bash scripts/download-models.sh vad",
 		"setup:models:smart-turn": "bash scripts/download-models.sh smart-turn",
+		"setup:models:qwen3-asr": "bash scripts/download-models.sh qwen3-asr",
 		"setup:models:jetson": "bash scripts/download-models.sh jetson",
 		"setup:models:embeddings": "bash scripts/download-models.sh embeddings",
 		"setup:models:embeddings-multilingual": "bash scripts/download-models.sh embeddings-multilingual",
@@ -66,7 +67,8 @@
 		"setup:models:kokoro-v1": "bash scripts/download-models.sh kokoro-v1",
 		"setup:models:piper-en": "bash scripts/download-models.sh piper-en",
 		"setup:models:kitten": "bash scripts/download-models.sh kitten",
-		"setup:models:matcha": "bash scripts/download-models.sh matcha"
+		"setup:models:matcha": "bash scripts/download-models.sh matcha",
+		"setup:models:nemotron-streaming": "bash scripts/download-models.sh nemotron-streaming"
 	},
 	"devDependencies": {
 		"@dotenvx/dotenvx": "^1.67.0",
@@ -116,11 +118,14 @@
 		"ollama": "^0.6.3",
 		"onnxruntime-node": "^1.27.0",
 		"openai": "^6.43.0",
-		"sherpa-onnx-node": "^1.13.3",
+		"sherpa-onnx-node": "^1.13.4",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},
 	"optionalDependencies": {
 		"@livekit/rtc-node": "^0.13.30"
+	},
+	"overrides": {
+		"onnxruntime-node": "$onnxruntime-node"
 	}
 }

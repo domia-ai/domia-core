@@ -9,8 +9,8 @@ import type { SttEngineAdapterType } from "../../types"
 
 const SAMPLE_RATE = 16000
 
-export const parakeetStreamingEngine: SttEngineAdapterType = {
-	id: STT_ENGINE_ENUM.PARAKEET_STREAMING,
+export const streamingTransducerEngine: SttEngineAdapterType = {
+	id: STT_ENGINE_ENUM.STREAMING_TRANSDUCER,
 	capabilities: {
 		streaming: true,
 		expectedSampleRate: SAMPLE_RATE,

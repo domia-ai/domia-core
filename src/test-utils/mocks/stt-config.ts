@@ -32,6 +32,8 @@ export const baseSttConfig = (domiaId?: string): SelectSttConfigType => {
 		isActive: true,
 		domiaId: domiaId ?? generateUuid(),
 		engine: STT_ENGINE_ENUM.ZIPFORMER,
+		baseUrl: null,
+		apiKey: null,
 		modelName: DEFAULT_STT_MODEL_NAME,
 		language: DEFAULT_LANGUAGE,
 		modelPath: DEFAULT_STT_MODEL_PATH,

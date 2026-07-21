@@ -215,6 +215,27 @@ llm-service: ##🔁 Install llama-server as a systemd service (Linux, needs sudo
 	@sudo systemctl daemon-reload && sudo systemctl enable --now llama-server
 	@echo "✅ llama-server service installed (port $(LLM_PORT)). Logs: journalctl -fu llama-server"
 
+ASR_GGUF ?= data/models/gguf/qwen3-asr-0.6b-q8.gguf
+ASR_MMPROJ ?= data/models/gguf/mmproj-qwen3-asr-0.6b-q8.gguf
+ASR_PORT ?= 11436
+
+asr-server: ##🎤 Run the GPU ASR server (Qwen3-ASR via llama.cpp) in the foreground on :$(ASR_PORT)
+	@$(MAKE) llama-cpp
+	@npm run setup:models:qwen3-asr
+	@echo "🎤 ASR server on http://127.0.0.1:$(ASR_PORT)/v1 — point stt.baseUrl there (engine OPENAI_COMPATIBLE)"
+	@"$(LLAMA_SERVER_BIN)" -m "$(ASR_GGUF)" --mmproj "$(ASR_MMPROJ)" \
+		--host 127.0.0.1 --port $(ASR_PORT) -ngl 99 -c 2048
+
+asr-service: ##🔁 Install the GPU ASR server as a systemd service (Linux, needs sudo)
+	@[ "$$(uname -s)" = "Linux" ] || { echo "❌ systemd is Linux-only — use: make asr-server"; exit 1; }
+	@$(MAKE) llama-cpp
+	@npm run setup:models:qwen3-asr
+	@printf '[Unit]\nDescription=Qwen3-ASR server (Domia STT)\nAfter=network-online.target\n\n[Service]\nType=simple\nUser=%s\nExecStart=%s -m %s --mmproj %s --host 127.0.0.1 --port %s -ngl 99 -c 2048\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' \
+		"$$(id -un)" "$(LLAMA_SERVER_BIN)" "$(abspath $(ASR_GGUF))" "$(abspath $(ASR_MMPROJ))" "$(ASR_PORT)" > /tmp/domia-asr.service
+	@sudo cp /tmp/domia-asr.service /etc/systemd/system/domia-asr.service
+	@sudo systemctl daemon-reload && sudo systemctl enable --now domia-asr
+	@echo "✅ domia-asr service on :$(ASR_PORT). Logs: journalctl -fu domia-asr"
+
 ##@ Jetson (Orin-class hub — see docs/JETSON.md and templates/jetson.json)
 
 jetson-doctor: ##🔬 Verify Jetson prerequisites (CUDA toolkit, power mode, memory, swap)

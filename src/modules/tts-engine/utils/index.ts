@@ -136,7 +136,6 @@ export const ttsVoiceFromDomia = (domia: DomiaType): TtsVoiceType | null => {
 	)
 }
 
-// one pool per engine family so a worker only ever holds one native engine resident
 const ttsPools = new Map<string, InferencePoolType>()
 
 export const getTtsPool = (

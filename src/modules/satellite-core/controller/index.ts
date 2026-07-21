@@ -10,6 +10,7 @@ import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { RESPONSE_TYPE_ENUM } from "@/db"
 import {
 	beginInteraction,
+	prefetchMemoryBundle,
 	clearInteraction,
 	persistTerminal,
 	clearStreamingSink,
@@ -123,9 +124,9 @@ export const createSatelliteSession = (
 	const connectionId = generateUuid()
 
 	const STT_SAMPLE_RATE = 16000
-	// live config must reach an already-connected satellite without a reconnect
 	const CONFIG_REFRESH_MS = 3000
 	const ACOUSTIC_GATE_COOLDOWN_MS = 250
+	const ACOUSTIC_MAX_HOLD_MS = 2000
 
 	const streamingSttCreate = ():
 		| ((domia: DomiaType) => SttStreamSessionType | null)
@@ -145,7 +146,7 @@ export const createSatelliteSession = (
 		try {
 			session.abort()
 		} catch {
-			/* worker already released */
+			return
 		}
 	}
 
@@ -162,6 +163,7 @@ export const createSatelliteSession = (
 	let utteranceGen = 0
 	let gateHolding = false
 	let vadCompletedAt: number | null = null
+	let pendingInteractionId: string | null = null
 	const resetVad = (): void => {
 		vad = null
 		acousticComplete = false
@@ -169,7 +171,6 @@ export const createSatelliteSession = (
 		gateHolding = false
 		vadCompletedAt = null
 	}
-	// on VAD silence the turn-detector judges completeness — hold while it says mid-sentence
 	const acousticGateActive = (): boolean => {
 		const wc = identity.wakeWordConfig
 		return (
@@ -348,7 +349,8 @@ export const createSatelliteSession = (
 		}
 		const wav = wrapPcmToWav(pcm, sampleRate, channels, 16)
 		const path = join(RECORDINGS_DIR, `satellite-${generateUuid()}.wav`)
-		const interactionId = generateUuid()
+		const interactionId = pendingInteractionId ?? generateUuid()
+		pendingInteractionId = null
 		activeInteractionId = interactionId
 		let turn: TurnScopeType | null = null
 		const turnStart = Date.now()
@@ -707,6 +709,7 @@ export const createSatelliteSession = (
 				)
 				chunks = []
 				bufferedBytes = 0
+				pendingInteractionId = null
 				resetVad()
 				closeSttSession()
 				transport.sendError("utterance too long")
@@ -715,7 +718,15 @@ export const createSatelliteSession = (
 			chunks.push(pcm)
 			setMicActive(true)
 
-			if (!sttSession && !sttSessionTried) {
+			if (!pendingInteractionId && !busy) {
+				pendingInteractionId = generateUuid()
+				prefetchMemoryBundle(identity, pendingInteractionId)
+			}
+
+			// gate on detected speech so ambient noise never pins a streaming pool worker
+			const speechSeen =
+				!serverEndpointing || (vad !== null && vad.everDetected())
+			if (!sttSession && !sttSessionTried && speechSeen) {
 				sttSessionTried = true
 				const create = streamingSttCreate()
 				if (create) {
@@ -724,15 +735,18 @@ export const createSatelliteSession = (
 					} catch {
 						sttSession = null
 					}
-					if (!sttSession) {
+					if (sttSession) {
+						for (const buffered of chunks) sttSession.pushChunk(buffered)
+					} else {
 						satelliteGatewayLogger.info(
 							"🛰️ streaming STT slot unavailable — batch fallback",
 							{ satelliteId, domiaKey: identity.domiaKey },
 						)
 					}
 				}
+			} else {
+				sttSession?.pushChunk(pcm)
 			}
-			sttSession?.pushChunk(pcm)
 
 			if (!serverEndpointing) return
 			if (!vad && identity.wakeWordConfig) {
@@ -764,9 +778,12 @@ export const createSatelliteSession = (
 				}
 			}
 			if (vad.completed()) {
-				// the VAD fires after the silence debounce — actual speech end was debounceMs ago
 				vadCompletedAt ??= Date.now() - vadDebounceMs
-				if (acousticGateActive() && !acousticComplete) {
+				if (
+					acousticGateActive() &&
+					!acousticComplete &&
+					Date.now() - vadCompletedAt < ACOUSTIC_MAX_HOLD_MS
+				) {
 					gateHolding = true
 					runAcousticGate()
 					return
@@ -791,6 +808,7 @@ export const createSatelliteSession = (
 			}
 			chunks = []
 			bufferedBytes = 0
+			pendingInteractionId = null
 			resetVad()
 			closeSttSession()
 			endpointed = false
@@ -804,6 +822,7 @@ export const createSatelliteSession = (
 				clearInterval(configRefreshTimer)
 				configRefreshTimer = null
 			}
+			pendingInteractionId = null
 			if (pausedBargeIn !== null) {
 				clearTimeout(pausedBargeIn)
 				pausedBargeIn = null

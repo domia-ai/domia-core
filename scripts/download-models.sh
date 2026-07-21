@@ -107,14 +107,14 @@ esac
 
 case "${1:-all}" in
   smart-turn|turn-detector|all|jetson)
-    if [ ! -f "smart-turn/smart-turn-v3.1-cpu.onnx" ]; then
-      echo "[smart-turn-v3.1-cpu] downloading"
+    if [ ! -f "smart-turn/smart-turn-v3.2-cpu.onnx" ]; then
+      echo "[smart-turn-v3.2-cpu] downloading"
       mkdir -p "smart-turn"
-      curl -fSL -o "smart-turn/smart-turn-v3.1-cpu.onnx" \
-        "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.1-cpu.onnx"
-      echo "[smart-turn-v3.1-cpu] done"
+      curl -fSL -o "smart-turn/smart-turn-v3.2-cpu.onnx" \
+        "https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/main/smart-turn-v3.2-cpu.onnx"
+      echo "[smart-turn-v3.2-cpu] done"
     else
-      echo "[smart-turn-v3.1-cpu] already present, skipping"
+      echo "[smart-turn-v3.2-cpu] already present, skipping"
     fi
     ;;
 esac
@@ -214,6 +214,34 @@ case "${1:-}" in
     else
       echo "[paraphrase-multilingual-minilm] already present, skipping"
     fi
+    ;;
+esac
+
+case "${1:-}" in
+  qwen3-asr)
+    mkdir -p gguf
+    if [ ! -f "gguf/qwen3-asr-0.6b-q8.gguf" ]; then
+      echo "[qwen3-asr] downloading model"
+      curl -fSL -o "gguf/qwen3-asr-0.6b-q8.gguf" \
+        "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/main/Qwen3-ASR-0.6B-Q8_0.gguf"
+    else
+      echo "[qwen3-asr] model present, skipping"
+    fi
+    if [ ! -f "gguf/mmproj-qwen3-asr-0.6b-q8.gguf" ]; then
+      echo "[qwen3-asr] downloading mmproj"
+      curl -fSL -o "gguf/mmproj-qwen3-asr-0.6b-q8.gguf" \
+        "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/main/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
+    else
+      echo "[qwen3-asr] mmproj present, skipping"
+    fi
+    ;;
+esac
+
+case "${1:-all}" in
+  nemotron-streaming|all|jetson)
+    download_and_extract "nemotron-3.5-streaming-560" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2" \
+      "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11"
     ;;
 esac
 

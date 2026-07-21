@@ -62,7 +62,7 @@ const buildZipformer = (config: SttWorkerEngineConfigType) => {
 	})
 }
 
-const buildParakeetStreaming = (config: SttWorkerEngineConfigType) => {
+const buildStreamingTransducer = (config: SttWorkerEngineConfigType) => {
 	const dir = path.resolve(config.modelPath)
 	if (!fs.existsSync(dir)) missing(dir)
 	const q = resolveQuantization(config.quantization)
@@ -210,8 +210,8 @@ const getRecognizer = (
 	})
 	if (config.engine === STT_ENGINE_ENUM.ZIPFORMER) {
 		cached = { online: true, rec: buildZipformer(config) }
-	} else if (config.engine === STT_ENGINE_ENUM.PARAKEET_STREAMING) {
-		cached = { online: true, rec: buildParakeetStreaming(config) }
+	} else if (config.engine === STT_ENGINE_ENUM.STREAMING_TRANSDUCER) {
+		cached = { online: true, rec: buildStreamingTransducer(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.WHISPER) {
 		cached = { online: false, rec: buildWhisper(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.PARAKEET) {
@@ -239,8 +239,15 @@ const transcribe = (
 	if (entry.online) {
 		const rec = entry.rec
 		const stream = rec.createStream()
-		stream.acceptWaveform({ sampleRate, samples })
 		const padSamples = Math.round((sampleRate * decodePaddingMs) / 1000)
+		// online engines start cold with no left-context — lead with silence so the first word isn't clipped
+		if (padSamples > 0) {
+			stream.acceptWaveform({
+				sampleRate,
+				samples: new Float32Array(padSamples),
+			})
+		}
+		stream.acceptWaveform({ sampleRate, samples })
 		if (padSamples > 0) {
 			stream.acceptWaveform({
 				sampleRate,

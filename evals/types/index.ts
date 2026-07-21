@@ -25,6 +25,8 @@ export type EvalExpectType = {
 	anyArgMatches?: string
 	replyIncludes?: string[]
 	replyExcludes?: string[]
+	noRepeat?: boolean
+	noEcho?: boolean
 	maxTtfaMs?: number
 	status?: "ok"
 	promptIncludes?: string[]
@@ -54,7 +56,7 @@ export type EvalCaseType = {
 	runs?: number
 	passRatio?: number
 	mode?: EvalCaseModeType
-	isolate?: "facts" | "conversation"
+	isolate?: "facts" | "conversation" | "session"
 	turns: EvalTurnType[]
 }
 

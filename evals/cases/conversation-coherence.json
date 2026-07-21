@@ -1,0 +1,63 @@
+[
+	{
+		"name": "multi-turn coherence: no repetition loops, no user echo, no time non-sequiturs",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 3,
+		"passRatio": 0.67,
+		"turns": [
+			{
+				"text": "Are you awake?",
+				"expect": { "routed": "chat", "noEcho": true }
+			},
+			{
+				"text": "What do you know about Costa Rica?",
+				"expect": {
+					"routed": "chat",
+					"noRepeat": true,
+					"noEcho": true,
+					"replyExcludes": [
+						"in the morning",
+						"in the afternoon",
+						"in the evening"
+					]
+				}
+			},
+			{
+				"text": "Tell me a joke.",
+				"expect": { "routed": "chat", "noRepeat": true, "noEcho": true }
+			},
+			{
+				"text": "What is your favorite fruit?",
+				"expect": {
+					"routed": "chat",
+					"noRepeat": true,
+					"noEcho": true,
+					"replyExcludes": [
+						"in the morning",
+						"in the afternoon",
+						"in the evening"
+					]
+				}
+			},
+			{
+				"text": "Tell me something about Costa Rica.",
+				"expect": {
+					"routed": "chat",
+					"noRepeat": true,
+					"noEcho": true,
+					"replyExcludes": [
+						"in the morning",
+						"in the afternoon",
+						"in the evening"
+					]
+				}
+			},
+			{
+				"text": "What did we just talk about?",
+				"expect": { "routed": "chat", "noRepeat": true, "noEcho": true }
+			}
+		]
+	}
+]

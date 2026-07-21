@@ -16,9 +16,10 @@ sudo apt install -y nvidia-jetpack cmake
 make jetson-setup
 
 # 3. Download the local models the Jetson template needs (idempotent).
-#    Fetches STT (parakeet), TTS (piper libritts_r), Silero VAD, KWS, embeddings
+#    Fetches STT (nemotron streaming + parakeet fallback), TTS (piper),
+#    Silero VAD, KWS, embeddings
 #    and the smart-turn turn-detector — the template enables acoustic
-#    endpointing, which is a no-op unless smart-turn-v3.1-cpu.onnx is present.
+#    endpointing, which is a no-op unless smart-turn-v3.2-cpu.onnx is present.
 npm run setup:models:jetson
 
 # 4. Give your Domia the Jetson role (LLM via OPENAI_COMPATIBLE → :11435/v1)
@@ -76,11 +77,28 @@ At MAXN_SUPER the Orin Nano has 102 GB/s of memory bandwidth → a 3B Q4 model t
 
 ## STT choice (validated, not assumed)
 
-**Parakeet TDT 0.6b v2 int8** (the default) survived a 5-model tournament on this hardware (WER-gated, 16-utterance corpus — rerun it anytime with `npm run evals:stt <label>` against a node running the candidate STT config): whisper-tiny (+8pt WER), moonshine-tiny (+10pt), zipformer-2023 (+15pt) all fail the accuracy gate; parakeet-unified streaming decodes 4x slower than real-time on this CPU (unusable). 2026 research confirms it globally: 3.19% LibriSpeech test-other is unbeaten at this size on CPU — Moonshine v2 base (6.78%) and parakeet-v3 (3.59% en, multilingual) both regress English. Streaming STT on this CPU is a dead end today (no viable engine); revisit if sherpa ships parakeet-unified stateful streaming (upstream FR #3573) or a GPU toolchain for this JetPack.
+**Nemotron-3.5-ASR-streaming 0.6b int8 @560ms** (`STREAMING_TRANSDUCER` engine, the default) is a cache-aware streaming recognizer — it decodes DURING speech, so the transcript is ~ready at the endpoint instead of after it. Measured on this hardware (WER-gated, 16-utterance corpus — rerun with `npm run evals:stt <label>`): **WER 10.3% via the /voice batch path, ~6.5% on the live satellite** (which supplies extra pre-roll), both **beating parakeet-tdt (11.5%)**. It replaced parakeet as the default on 2026-07 once (a) sherpa shipped stateful streaming for the nemotron/parakeet line (upstream PRs #3575/#3728, FR #3573 — the earlier "buffered" parakeet-unified was 4× slower than real-time and is NOT this model) and (b) we added a cache warm-up so it stops clipping onsets (see below).
 
-Endpointing (measured over the WS satellite path with server VAD): the template ships `wakeWord.vadMinSilenceS: 0.4` + `vadEndOfSpeechMs: 150` = a **550ms** silence debounce (down from the 700ms default). Pure silence-VAD caps out there — pushing lower cuts anyone who pauses mid-sentence (pauses ≥600ms split utterances at any setting). To get past that floor the template also enables the **smart-turn v3.1 turn-detector** (`acousticEndpointingEnabled: true`, `acousticEndpointCompleteThreshold: 0.7`): when the VAD hits silence it asks the model whether the utterance is acoustically complete and _holds_ (keeps listening) if you're mid-sentence, so the debounce can stay aggressive without clipping natural pauses. Validated on real voice — it reliably held mid-sentence pauses ("Set a timer for… thirty seconds") that pure VAD split, with no measurable added latency on complete phrases. The gate runs on the CPU (~12ms/inference), holds are bounded by `MAX_UTTERANCE_BYTES`, and it works on any satellite protocol where the hub owns endpointing (ESPHome, native `?live=1`, LiveKit) — not device-endpointed ones (Wyoming).
+**Streaming onset warm-up (required for any online engine).** Streaming recognizers start with a cold cache and no left-context, so the first word of a bare utterance gets clipped ("Turn on" → "On"). `transcribe()` in `stt-engine/utils/inference.ts` prepends `decodePaddingMs` (600ms) of leading silence for `entry.online` engines only — offline parakeet sees the whole utterance at once and is untouched. This makes the streaming engine robust on every path, not just the satellite (whose pre-speech roll already supplied context). Keyed on the engine class, not the model name.
 
-**The smart-turn model is required by the template default.** `npm run setup:models:jetson` (or `npm run setup:models:smart-turn`) fetches `data/models/smart-turn/smart-turn-v3.1-cpu.onnx` from `pipecat-ai/smart-turn-v3`. Without it, `turnDetectorAvailable` returns false and acoustic endpointing silently stays dormant — you keep the raw 550ms VAD with no pause protection.
+**Fallback — Parakeet TDT 0.6b v2 int8** (offline/batch) stays downloaded and is the safe revert: set `stt.engine = PARAKEET`, `stt.modelPath = data/models/parakeet-tdt-06b-v2` (2 fields, no re-download). It survived the original 5-model tournament (whisper-tiny +8pt, moonshine-tiny +10pt, zipformer-2023 +15pt all failed the gate; 3.19% LibriSpeech test-other, unbeaten at its size on CPU) and is more robust (no onset dependence). Keep it if streaming ever misbehaves. The streaming default needs `poolWarmWorkers ≥ 2` + `maxConcurrentStreamingSessions ≥ 2` (a session pins a pool worker) — the template ships 2/3 and a 2s `sessionIdleTimeoutMs` so ambient noise doesn't strand workers.
+
+Endpointing (measured over the WS satellite path with server VAD): the template ships `wakeWord.vadMinSilenceS: 0.3` + `vadEndOfSpeechMs: 150` = a **450ms** silence debounce (down from the 700ms default). Pure silence-VAD caps out there — pushing lower cuts anyone who pauses mid-sentence (pauses ≥600ms split utterances at any setting). To get past that floor the template also enables the **smart-turn v3.2 turn-detector** (`acousticEndpointingEnabled: true`, `acousticEndpointCompleteThreshold: 0.7`): when the VAD hits silence it asks the model whether the utterance is acoustically complete and _holds_ (keeps listening) if you're mid-sentence, so the debounce can stay aggressive without clipping natural pauses. Validated on real voice — it reliably held mid-sentence pauses ("Set a timer for… thirty seconds") that pure VAD split, with no measurable added latency on complete phrases. The gate runs on the CPU (~12ms/inference), holds are hard-capped at 2s after VAD silence (`ACOUSTIC_MAX_HOLD_MS` — an uncertain verdict fires with what it has instead of stranding the utterance), and it works on any satellite protocol where the hub owns endpointing (ESPHome, native `?live=1`, LiveKit) — not device-endpointed ones (Wyoming).
+
+**The smart-turn model is required by the template default.** `npm run setup:models:jetson` (or `npm run setup:models:smart-turn`) fetches `data/models/smart-turn/smart-turn-v3.2-cpu.onnx` from `pipecat-ai/smart-turn-v3`. Without it, `turnDetectorAvailable` returns false and acoustic endpointing silently stays dormant — you keep the raw 550ms VAD with no pause protection.
+
+### Optional: GPU ASR via llama.cpp (Qwen3-ASR)
+
+The default STT is parakeet on CPU — on this 8GB box the whole GPU belongs to the LLM (measured: a resident ASR shaves LLM tok/s, and in-pipeline latency ties with CPU parakeet). But Domia ships an `OPENAI_COMPATIBLE` STT engine for boxes with GPU headroom (or a remote ASR server):
+
+```bash
+npm run setup:models:qwen3-asr   # fetch the GGUFs (~1GB)
+make asr-service                 # install the ASR server as systemd (:11436)
+# then point the identity at it:
+#   stt.engine = OPENAI_COMPATIBLE, stt.baseUrl = http://127.0.0.1:11436/v1
+```
+
+Qwen3-ASR-0.6B halves the synthetic-corpus WER vs parakeet (5.9% vs 11.5%) but field A/B on real voice was a tie — keep parakeet unless it mishears names in daily use. Revert = set `stt.engine = PARAKEET` and stop `domia-asr`.
 
 ## Alternatives evaluated (and why they lost)
 

@@ -256,3 +256,45 @@ export const assertTurn = (
 
 	return out
 }
+
+const normalizeReply = (s: string): string =>
+	s
+		.toLowerCase()
+		.replace(/[^\w\s]/g, "")
+		.replace(/\s+/g, " ")
+		.trim()
+
+export const assertCoherence = (
+	reply: string,
+	userText: string,
+	priorReplies: string[],
+	expect: EvalExpectType,
+): EvalAssertionType[] => {
+	const out: EvalAssertionType[] = []
+	const norm = normalizeReply(reply)
+	if (expect.noRepeat) {
+		const repeated = priorReplies.some((p) => {
+			const pn = normalizeReply(p)
+			if (pn.length === 0) return false
+			if (pn === norm) return true
+			if (pn.length > 20 && norm.includes(pn)) return true
+			return norm.length > 20 && pn.includes(norm)
+		})
+		out.push({
+			name: "noRepeat",
+			ok: !repeated,
+			detail: repeated ? reply : undefined,
+		})
+	}
+	if (expect.noEcho) {
+		const un = normalizeReply(userText)
+		const echoed =
+			un.length > 0 && (norm === un || (un.length > 12 && norm.includes(un)))
+		out.push({
+			name: "noEcho",
+			ok: !echoed,
+			detail: echoed ? reply : undefined,
+		})
+	}
+	return out
+}

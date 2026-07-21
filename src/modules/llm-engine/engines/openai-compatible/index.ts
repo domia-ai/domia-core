@@ -47,7 +47,6 @@ const openAiUsage = (
 	finishReason: finishReason ?? null,
 })
 
-// `timings` is llama.cpp-server specific — fall back to wall-clock stats when the server omits it
 const wallStats = (
 	startedAt: number,
 	firstTokenAt: number | null,
@@ -56,7 +55,6 @@ const wallStats = (
 	const genMs = firstTokenAt != null ? Date.now() - firstTokenAt : 0
 	return {
 		ttftMs: firstTokenAt != null ? firstTokenAt - startedAt : null,
-		// the first token anchors the window, so only the remaining tokens arrived during genMs
 		tokensPerSec:
 			firstTokenAt != null &&
 			completionTokens != null &&
@@ -64,6 +62,14 @@ const wallStats = (
 			genMs > 0
 				? Math.round(((completionTokens - 1) / (genMs / 1000)) * 100) / 100
 				: null,
+	}
+}
+
+const safeAbort = (abort: (() => void) | null): void => {
+	try {
+		abort?.()
+	} catch {
+		return
 	}
 }
 
@@ -300,11 +306,7 @@ const runOpenAiCompatibleStream = async function* (
 			meta: { error },
 		})
 	} finally {
-		try {
-			abortStream?.()
-		} catch {
-			/* already finished */
-		}
+		safeAbort(abortStream)
 		release()
 	}
 }
@@ -568,11 +570,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 						)
 				}
 			} finally {
-				try {
-					stream.controller.abort()
-				} catch {
-					/* already finished */
-				}
+				safeAbort(() => stream.controller.abort())
 				releaseOnce()
 			}
 		})()

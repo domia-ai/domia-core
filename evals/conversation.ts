@@ -7,6 +7,7 @@ import {
 	postChat,
 	pollRecord,
 	assertTurn,
+	assertCoherence,
 	evalCaseFileSchema,
 	configSnapshot,
 	execWrite,
@@ -140,7 +141,8 @@ type ConversationTranscriptType = {
 const runConversation = async (
 	c: EvalCaseType,
 ): Promise<{ passed: boolean; transcript: ConversationTranscriptType }> => {
-	await isolateConversation()
+	if (c.isolate === "session") await resetConversation()
+	else await isolateConversation()
 	const transcript: ConversationTranscriptType = { name: c.name, turns: [] }
 	let passed = true
 	for (const turn of c.turns) {
@@ -154,6 +156,14 @@ const runConversation = async (
 			assertions.push({ name: "record", ok: false, detail: "no trace row" })
 		} else {
 			assertions.push(...assertTurn(rec, reply, turn.expect))
+			assertions.push(
+				...assertCoherence(
+					reply,
+					turn.text,
+					transcript.turns.map((t) => t.reply),
+					turn.expect,
+				),
+			)
 			assertions.push(...(await dbFactAssertions(turn)))
 		}
 		if (assertions.some((a) => !a.ok)) passed = false
@@ -219,7 +229,9 @@ const main = async (): Promise<void> => {
 	console.log(`\n=== conversation eval · ${env.EVAL_URL} ===`)
 	console.log(`flags: ${snap.flags}\n`)
 
-	const cases = loadConversationCases()
+	let cases = loadConversationCases()
+	const caseFilter = env.EVAL_CASE_FILTER
+	if (caseFilter) cases = cases.filter((c) => c.name.includes(caseFilter))
 	if (cases.length === 0) {
 		console.error("no conversation-*.json cases found")
 		process.exit(1)

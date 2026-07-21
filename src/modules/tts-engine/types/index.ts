@@ -88,7 +88,6 @@ export type VitsWorkerEngineConfigType = {
 	espeakDataDir: string | null
 }
 
-// synthesis must run in the worker pool — sync generate() on the main thread stalls streaming delivery
 export type KokoroWorkerJobType = {
 	engine: "KOKORO"
 	engineConfig: TtsWorkerEngineConfigType

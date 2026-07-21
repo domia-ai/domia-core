@@ -4,6 +4,7 @@ const envSchema = z.object({
 	EVAL_URL: z.string().default("http://localhost:3100"),
 	EVAL_DB: z.string().default("data/db/a.db"),
 	EVAL_DOMIA_KEY: z.string().default("DOMIA_A"),
+	EVAL_CASE_FILTER: z.string().optional(),
 	EVAL_POLL_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
 	EVAL_SUITES: z.string().optional(),
 	EVAL_LIVE: z.string().optional(),

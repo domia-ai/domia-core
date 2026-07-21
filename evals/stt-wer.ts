@@ -21,7 +21,6 @@ const main = async (): Promise<void> => {
 	const rows: Record<string, unknown>[] = []
 	let failed = 0
 	for (const c of corpus.cases) {
-		// repo-relative so the node resolves it against its own checkout (works against remote nodes)
 		const filePath = path.join("evals/fixtures/stt", `${c.id}.wav`)
 		const res = await fetch(`${env.EVAL_URL}/voice`, {
 			method: "POST",

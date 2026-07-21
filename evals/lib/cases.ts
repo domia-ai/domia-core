@@ -38,6 +38,8 @@ const expectSchema = z
 		anyArgMatches: z.string().optional(),
 		replyIncludes: z.array(z.string()).optional(),
 		replyExcludes: z.array(z.string()).optional(),
+		noRepeat: z.boolean().optional(),
+		noEcho: z.boolean().optional(),
 		maxTtfaMs: z.number().positive().optional(),
 		status: z.literal("ok").optional(),
 		promptIncludes: z.array(z.string()).optional(),
@@ -69,7 +71,7 @@ export const evalCaseSchema = z
 		runs: z.number().int().positive().optional(),
 		passRatio: z.number().min(0).max(1).optional(),
 		mode: z.enum(["gate", "advisory"]).optional(),
-		isolate: z.enum(["facts", "conversation"]).optional(),
+		isolate: z.enum(["facts", "conversation", "session"]).optional(),
 		turns: z.array(turnSchema).min(1),
 	})
 	.strict()

@@ -131,6 +131,7 @@ import {
 	DEFAULT_WARMUP_ON_BOOT,
 	DEFAULT_IS_HOSTED,
 	DEFAULT_STT_MODEL_NAME,
+	DEFAULT_STT_TIMEOUT_MS,
 	DEFAULT_STT_MODEL_PATH,
 	DEFAULT_STT_ENABLE_ENDPOINT,
 	DEFAULT_STT_RULE1_MIN_TRAILING_SILENCE,
@@ -711,12 +712,14 @@ export const sttConfig = sqliteTable("stt_config", {
 		.notNull()
 		.default(STT_ENGINE_ENUM.PARAKEET),
 	modelName: text("model_name").notNull().default(DEFAULT_STT_MODEL_NAME),
+	baseUrl: text("base_url"),
+	apiKey: text("api_key"),
 	language: text("language").notNull().default(DEFAULT_LANGUAGE),
 	modelPath: text("model_path").notNull().default(DEFAULT_STT_MODEL_PATH),
 	quantization: text("quantization").notNull().default(DEFAULT_QUANTIZATION),
 	silenceThreshold: real("silence_threshold"),
 	bufferSize: integer("buffer_size"),
-	timeoutMs: integer("timeout_ms").notNull().default(5000),
+	timeoutMs: integer("timeout_ms").notNull().default(DEFAULT_STT_TIMEOUT_MS),
 	enableEndpoint: integer("enable_endpoint", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_STT_ENABLE_ENDPOINT),

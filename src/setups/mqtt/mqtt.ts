@@ -34,7 +34,6 @@ export const setupMqtt = ({
 	logger.info("📋 MQTT configuration validated")
 
 	logger.info("🔧 Creating MQTT client")
-	// mqtt.connect() silently falls back to localhost when the first arg is a bare host (no scheme) — pass host via options instead
 	const hasScheme = /^\w+:\/\//.test(config.host)
 	const options: mqtt.IClientOptions = {
 		clientId: domiaKey,

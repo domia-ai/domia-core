@@ -90,6 +90,9 @@ export const takeMemoryBundle = async (
 	const cached = cache.get(interactionId)
 	if (!cached) return loadMemoryBundle(domia, interactionId)
 	cache.delete(interactionId)
+	if (Date.now() - cached.at > PREFETCH_TTL_MS) {
+		return loadMemoryBundle(domia, interactionId)
+	}
 	try {
 		return await cached.promise
 	} catch {
