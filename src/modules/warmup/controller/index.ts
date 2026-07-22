@@ -3,7 +3,7 @@ import { rm } from "fs/promises"
 import { type DomiaType } from "@/modules/core"
 import { warmupLogger } from "@/utils"
 import { runTTS } from "@/modules/tts-engine"
-import { runSttPcmPooled } from "@/modules/stt-engine"
+import { runSttPcmPooled, getSttEngine } from "@/modules/stt-engine"
 import { warmTurnDetector } from "@/modules/turn-detector"
 import { warmupLLM } from "@/modules/llm-engine"
 import type { RuntimeCapabilitiesType } from "@/setups/environment"
@@ -31,6 +31,20 @@ const warmStt = (domia: DomiaType): Promise<void> =>
 		for (let i = 0; i < ONNX_WARM_PASSES; i++) {
 			await runSttPcmPooled(domia, STT_WARM_SILENCE)
 		}
+		// streaming sessions pin one worker each — warm them concurrently so every worker is hot
+		const engine = domia.sttConfig?.engine
+			? getSttEngine(domia.sttConfig.engine)
+			: null
+		if (!engine?.createSession) return
+		const sessions = Math.max(1, domia.sttConfig?.poolWarmWorkers ?? 1)
+		await Promise.all(
+			Array.from({ length: sessions }, async () => {
+				const session = engine.createSession?.(domia)
+				if (!session) return
+				session.pushChunk(STT_WARM_SILENCE)
+				await session.finish()
+			}),
+		)
 	})
 
 const warmTts = (domia: DomiaType): Promise<void> =>

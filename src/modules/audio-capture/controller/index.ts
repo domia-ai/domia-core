@@ -29,14 +29,13 @@ import {
 	openMicSource,
 	spawnSoxCapture,
 	writePcmAsWav,
+	clampEndpointDebounceMs,
 } from "../utils"
 import {
 	predictTurnComplete,
 	turnDetectorAvailable,
 } from "@/modules/turn-detector"
 
-const ENDPOINT_DEBOUNCE_MIN_MS = 150
-const ENDPOINT_DEBOUNCE_MAX_MS = 2000
 const ACOUSTIC_GATE_COOLDOWN_MS = 250
 
 const frameAlignedStart = (
@@ -229,10 +228,7 @@ export const startSpeculativeCapture = (
 		)
 	let currentDebounceMs = debounceMs
 	const setDebounceMs = (ms: number): void => {
-		currentDebounceMs = Math.max(
-			ENDPOINT_DEBOUNCE_MIN_MS,
-			Math.min(ENDPOINT_DEBOUNCE_MAX_MS, ms),
-		)
+		currentDebounceMs = clampEndpointDebounceMs(ms)
 	}
 	let acousticChecking = false
 	let acousticComplete = false
@@ -260,7 +256,7 @@ export const startSpeculativeCapture = (
 		semantic
 			? vad.everDetected() &&
 				!vad.speechActive() &&
-				vad.silenceMs() >= currentDebounceMs
+				vad.holdMs() + vad.silenceMs() >= currentDebounceMs
 			: vad.completed()
 	const endpointReached = (): boolean => {
 		const base = baseSilenceReached()
@@ -359,16 +355,13 @@ export const startFollowUpSpeculativeCapture = (
 	const semantic = config.semanticEndpointingEnabled
 	let currentDebounceMs = debounceMs
 	const setDebounceMs = (ms: number): void => {
-		currentDebounceMs = Math.max(
-			ENDPOINT_DEBOUNCE_MIN_MS,
-			Math.min(ENDPOINT_DEBOUNCE_MAX_MS, ms),
-		)
+		currentDebounceMs = clampEndpointDebounceMs(ms)
 	}
 	const endpointReached = (): boolean =>
 		semantic
 			? vad.everDetected() &&
 				!vad.speechActive() &&
-				vad.silenceMs() >= currentDebounceMs
+				vad.holdMs() + vad.silenceMs() >= currentDebounceMs
 			: vad.completed()
 	let bytesSeen = 0
 	let speechStartByte: number | null = null

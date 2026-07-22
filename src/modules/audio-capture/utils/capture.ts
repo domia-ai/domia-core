@@ -82,6 +82,9 @@ export const createVadWindow = (
 		...tuningOverrides,
 	})
 	const windowBytes = engine.capabilities.windowSize * 2
+	const holdMs = Math.round(
+		(tuningOverrides?.minSilenceS ?? config.vadMinSilenceS) * 1000,
+	)
 	let leftover = Buffer.alloc(0)
 
 	return {
@@ -96,6 +99,7 @@ export const createVadWindow = (
 		completed: () => session.hasCompletedSegment(),
 		speechActive: () => session.isSpeechActive(),
 		silenceMs: () => session.silenceMs(),
+		holdMs: () => holdMs,
 		everDetected: () => session.everDetected(),
 	}
 }

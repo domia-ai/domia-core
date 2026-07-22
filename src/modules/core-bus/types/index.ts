@@ -6,7 +6,10 @@ import type {
 import { INTERACTION_STATUS_ENUM_VALUES } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
-import type { SttEngineAdapterType } from "@/modules/stt-engine"
+import type {
+	SttEngineAdapterType,
+	SttStreamSessionType,
+} from "@/modules/stt-engine"
 import type { TtsEngineAdapterType } from "@/modules/tts-engine"
 import type { LlmEngineAdapterType } from "@/modules/llm-engine"
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
@@ -573,6 +576,7 @@ export type SpeculationType = {
 	handedOff: boolean
 	queue: TokenQueueType
 	outQueue: TokenQueueType | null
+	tokenSource: AsyncIterable<string> | null
 	firstUnitText: string | null
 	firstUnitPcm: Promise<Buffer | null> | null
 	prompt: string | null
@@ -585,10 +589,17 @@ export type PipelinePrefixType = {
 	pcm: Promise<Buffer | null>
 }
 
+export type SpeculativeTurnPublishType = {
+	responseType?: string
+	liveVoice?: boolean
+}
+
 export type SpeculativeTurnArgsType = {
 	interactionId: string
 	release: () => void
 	replaySinceTs?: number
+	existingSttSession?: () => SttStreamSessionType | null
+	publish?: SpeculativeTurnPublishType
 	captureFactory?: (
 		hooks: SpeculativeCaptureHooksType,
 	) => SpeculativeCaptureResultType

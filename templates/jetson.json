@@ -13,9 +13,9 @@
 	},
 	"modules": {
 		"emotionEngine": true,
-		"emotionCapture": false,
+		"emotionCapture": true,
 		"memoryEngine": true,
-		"factCapture": false,
+		"factCapture": true,
 		"factRecall": true,
 		"collectiveMind": true,
 		"narrativeEngine": true,
@@ -108,7 +108,10 @@
 		"sampleRate": 16000,
 		"bitsPerSample": 16,
 		"channels": 1,
-		"maxRecordingMs": 15000
+		"maxRecordingMs": 15000,
+		"satelliteSpeculationEnabled": true,
+		"speculativeSilenceMs": 400,
+		"semanticEndpointingEnabled": true
 	},
 	"playback": {
 		"name": "Default",

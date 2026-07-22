@@ -52,6 +52,7 @@
 		"setup:models:vits-es": "bash scripts/download-models.sh vits-es",
 		"bench:voice": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/bench-voice.ts",
 		"bench:layers": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/bench-layers.ts",
+		"bench:satellite": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/satellite-bench.ts",
 		"e2e": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/e2e.ts",
 		"evals": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",
 		"evals:live": "EVAL_LIVE=1 dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",

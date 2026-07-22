@@ -1,4 +1,5 @@
 export * from "./wake-detected"
+export * from "./speculative-turn"
 export * from "./audio-ready"
 export * from "./stt-done"
 export * from "./llm-done"

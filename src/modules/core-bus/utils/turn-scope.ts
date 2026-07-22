@@ -45,6 +45,7 @@ export const beginTurn = (
 	interactionId: string,
 ): TurnScopeType => {
 	const existing = turns.get(domiaId)
+	if (existing?.interactionId === interactionId) return existing
 	if (existing) existing.abort("superseded")
 	abortedInteractions.delete(interactionId)
 

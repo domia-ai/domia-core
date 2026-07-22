@@ -478,7 +478,7 @@ const mapRowsToTurns = (
 	excludeInteractionId: string | undefined,
 ): RecentTurnType[] => {
 	const now = Date.now()
-	return rows
+	const eligible = rows
 		.filter((row) => row.id !== excludeInteractionId)
 		.filter((row) => withinMaxAge(row, now, maxAgeMs))
 		.map((row) => ({
@@ -490,8 +490,10 @@ const mapRowsToTurns = (
 			createdAt: row.createdAt,
 		}))
 		.filter((turn) => turn.userText && turn.domiaText)
-		.slice(0, limit)
-		.reverse()
+	// grow to 2·limit−1 then trim in limit-sized jumps — a hard sliding cap would re-shift the section (and kill the prefix cache) every turn
+	const take =
+		eligible.length <= limit ? limit : limit + (eligible.length % limit)
+	return eligible.slice(0, take).reverse()
 }
 
 export const getRecentUserMoods = async (

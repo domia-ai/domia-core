@@ -113,4 +113,5 @@ export type TtsEngineConfigType = {
 	voiceEmbeddingCacheCapacity?: number
 	vocoderPath?: string
 	lengthScale?: number
+	chunkStreaming?: boolean
 }

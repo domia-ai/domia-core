@@ -71,6 +71,7 @@ import {
 	DEFAULT_TURN_DETECTOR_ENGINE,
 	TURN_DETECTOR_ENGINE_ENUM_VALUES,
 	DEFAULT_SPECULATIVE_TTS_ENABLED,
+	DEFAULT_SATELLITE_SPECULATION_ENABLED,
 	DEFAULT_SPECULATE_WITH_SKILLS,
 	DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,
 	DEFAULT_SHARED_MIC_STREAM_ENABLED,
@@ -617,6 +618,11 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	speculativeSilenceMs: integer("speculative_silence_ms")
 		.notNull()
 		.default(DEFAULT_SPECULATIVE_SILENCE_MS),
+	satelliteSpeculationEnabled: integer("satellite_speculation_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_SATELLITE_SPECULATION_ENABLED),
 	semanticEndpointingEnabled: integer("semantic_endpointing_enabled", {
 		mode: "boolean",
 	})

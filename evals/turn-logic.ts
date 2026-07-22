@@ -11,9 +11,21 @@ import {
 	type VadWindowType,
 } from "@/modules/audio-capture"
 import { runSpeculativeTurn } from "@/modules/core-bus/controller/speculative-turn"
+import { startSatelliteSpeculation } from "@/modules/satellite-core/controller/speculation"
+import {
+	subscribeToDomiaBus,
+	unsubscribeFromDomiaBus,
+	DOMIA_EVENT_BUS_ENUM,
+} from "@/buses"
+import type { SttDonePayloadType } from "@/modules/core-bus"
+import type { SttStreamSessionType } from "@/modules/stt-engine"
 import type { CoreBusFeaturesType } from "@/modules/core-bus"
 import type { SttEngineAdapterType } from "@/modules/stt-engine"
-import { STT_ENGINE_ENUM, type SelectWakeWordConfigType } from "@/db"
+import {
+	STT_ENGINE_ENUM,
+	RESPONSE_TYPE_ENUM,
+	type SelectWakeWordConfigType,
+} from "@/db"
 import { baseWakeWordConfig, getDomia } from "@/test-utils"
 
 import { fabricateSegmentPcm, feedVadTimeline, makeChecker, sleep } from "./lib"
@@ -233,6 +245,7 @@ const runAdaptiveWindowChecks = async (): Promise<void> => {
 		completed: () => seeded.vad.completed(),
 		speechActive: () => seeded.vad.speechActive(),
 		silenceMs: () => seeded.vad.silenceMs(),
+		holdMs: () => seeded.vad.holdMs(),
 		everDetected: () => seeded.vad.everDetected(),
 	}
 	const speechEndMs = 1140
@@ -369,9 +382,7 @@ const runSpeculationChecks = async (): Promise<void> => {
 	console.log(
 		"\nspeculation guards (real runSpeculativeTurn via captureFactory)",
 	)
-	console.log(
-		"  ~ endpointHintMs is module-private: covered via onPartial → setDebounceMs seam",
-	)
+	console.log("  ~ endpointHintMs covered via onPartial → setDebounceMs seam")
 	console.log(
 		"  ~ SPECULATION_MAX_* constants module-private: asserted behaviorally",
 	)
@@ -405,8 +416,8 @@ const runSpeculationChecks = async (): Promise<void> => {
 	a.speculate()
 	await sleep(SETTLE_MS)
 	checker.check(
-		"semantic hint: neutral tail → no debounce hint",
-		a.debounceCalls.length === 2,
+		"semantic hint: neutral tail → endpointCompleteMs (streaming STT emits no terminal punctuation)",
+		a.debounceCalls.length === 3 && a.debounceCalls[2] === ENDPOINT_COMPLETE_MS,
 		`calls=${JSON.stringify(a.debounceCalls)}`,
 	)
 	checker.check(
@@ -463,10 +474,235 @@ const runSpeculationChecks = async (): Promise<void> => {
 	)
 }
 
+const makeFakeStreamSession = (script: {
+	partial: () => string
+	final: () => string
+}) => {
+	let flushPartialCalls = 0
+	let finishCalls = 0
+	let partialCalls = 0
+	const session: SttStreamSessionType = {
+		pushChunk: () => undefined,
+		partial: () => {
+			partialCalls += 1
+			return script.partial()
+		},
+		flushPartial: () => {
+			flushPartialCalls += 1
+			return Promise.resolve(script.partial())
+		},
+		finish: () => {
+			finishCalls += 1
+			return Promise.resolve(script.final())
+		},
+		reset: () => undefined,
+		abort: () => undefined,
+	}
+	return {
+		session,
+		flushPartialCalls: () => flushPartialCalls,
+		finishCalls: () => finishCalls,
+		partialCalls: () => partialCalls,
+	}
+}
+
+const satSpecDomia = () =>
+	getDomia({
+		wakeWordConfigOverrides: {
+			satelliteSpeculationEnabled: true,
+			speculativeSilenceMs: 300,
+			speculativeTtsEnabled: false,
+			vadMinSilenceS: 0.5,
+			vadEndOfSpeechMs: 250,
+			vadThreshold: 0.35,
+			numThreads: 1,
+			provider: "cpu",
+			sampleRate: 16000,
+		},
+		runtimeCapabilitiesOverrides: { llm: false },
+		moduleSettingsOverrides: {
+			memoryEngine: false,
+			emotionEngine: false,
+			factRecall: false,
+			skillsEngine: false,
+		},
+	})
+
+const feedSilenceUntilSpeculated = async (
+	feed: (pcm: Buffer) => void,
+	isSpeculated: () => boolean,
+): Promise<boolean> => {
+	for (let i = 0; i < 20 && !isSpeculated(); i++) {
+		feed(fabricateSegmentPcm("silence", 100))
+		await sleep(100)
+	}
+	return isSpeculated()
+}
+
+const runSatelliteSpeculationChecks = async (): Promise<void> => {
+	console.log(
+		"\nsatellite speculation (startSatelliteSpeculation, real silero + fake stt session)",
+	)
+	const domia = satSpecDomia()
+	const speech = fabricateSegmentPcm("speech", 700)
+
+	const offDomia = getDomia({
+		wakeWordConfigOverrides: { satelliteSpeculationEnabled: false },
+	})
+	const fakeOff = makeFakeStreamSession({
+		partial: () => "x",
+		final: () => "x",
+	})
+	const offSpec = await startSatelliteSpeculation({
+		identity: offDomia,
+		interactionId: randomUUID(),
+		sttSession: () => fakeOff.session,
+		vadDebounceMs: 750,
+		bufferedPcm: () => speech,
+	})
+	checker.check("flag off → speculation not armed", offSpec === null)
+
+	const noSession = await startSatelliteSpeculation({
+		identity: domia,
+		interactionId: randomUUID(),
+		sttSession: () => null,
+		vadDebounceMs: 750,
+		bufferedPcm: () => speech,
+	})
+	checker.check(
+		"no live stt session → speculation not armed",
+		noSession === null,
+	)
+
+	const fake = makeFakeStreamSession({
+		partial: () => "turn off the lamp",
+		final: () => "turn off the lamp",
+	})
+	const iid = randomUUID()
+	const published: SttDonePayloadType[] = []
+	const capture = (payload: SttDonePayloadType): void => {
+		published.push(payload)
+	}
+	subscribeToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture)
+	const spec = await startSatelliteSpeculation({
+		identity: domia,
+		interactionId: iid,
+		sttSession: () => fake.session,
+		vadDebounceMs: 750,
+		bufferedPcm: () => speech,
+	})
+	checker.check("speculation armed with live session", spec !== null)
+	if (!spec) {
+		unsubscribeFromDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture)
+		return
+	}
+	await sleep(SETTLE_MS)
+	let speculatedSeen = false
+	const fired = await feedSilenceUntilSpeculated(
+		(pcm) => {
+			spec.feed(pcm, () => speech)
+			if (fake.partialCalls() > 0 || published.length > 0) speculatedSeen = true
+		},
+		() => speculatedSeen || fake.partialCalls() > 0,
+	)
+	checker.check(
+		"fast-VAD silence fires onSpeculate (partial snapshot, no pad flush)",
+		fired && fake.partialCalls() >= 1 && fake.flushPartialCalls() === 0,
+		`partialCalls=${fake.partialCalls()} flushPartialCalls=${fake.flushPartialCalls()}`,
+	)
+	await sleep(SETTLE_MS)
+	checker.check("no publish before handoff", published.length === 0)
+	spec.handoff({
+		pcm: speech,
+		speechEndAt: Date.now(),
+		filePathPromise: Promise.resolve("/tmp/turn-logic-sat.wav"),
+	})
+	await spec.done
+	await sleep(SETTLE_MS)
+	checker.check(
+		"handoff → exactly one STT_DONE publish",
+		published.length === 1,
+		`published=${published.length}`,
+	)
+	const payload = published[0]
+	checker.check(
+		"published transcript comes from session.finish()",
+		payload?.transcript === "turn off the lamp" && fake.finishCalls() === 1,
+		`transcript="${payload?.transcript}" finishCalls=${fake.finishCalls()}`,
+	)
+	checker.check(
+		"satellite publish shape: liveVoice false + responseType VOICE",
+		payload?.liveVoice === false &&
+			payload?.responseType === RESPONSE_TYPE_ENUM.VOICE,
+		`liveVoice=${String(payload?.liveVoice)} responseType=${String(payload?.responseType)}`,
+	)
+	checker.check(
+		"speech-end anchoring travels in the payload",
+		typeof payload?.speechEndAt === "number",
+	)
+	payload?.prestartedRelease?.()
+	unsubscribeFromDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture)
+
+	const fake2 = makeFakeStreamSession({
+		partial: () => "never mind",
+		final: () => "never mind",
+	})
+	const iid2 = randomUUID()
+	const published2: SttDonePayloadType[] = []
+	const capture2 = (payload2: SttDonePayloadType): void => {
+		published2.push(payload2)
+	}
+	subscribeToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture2)
+	const spec2 = await startSatelliteSpeculation({
+		identity: domia,
+		interactionId: iid2,
+		sttSession: () => fake2.session,
+		vadDebounceMs: 750,
+		bufferedPcm: () => speech,
+	})
+	checker.check("second speculation armed (slot was released)", spec2 !== null)
+	if (spec2) {
+		await sleep(SETTLE_MS)
+		await feedSilenceUntilSpeculated(
+			(pcm) => spec2.feed(pcm, () => speech),
+			() => fake2.partialCalls() > 0,
+		)
+		const afterG1 = fake2.partialCalls()
+		for (let i = 0; i < 6; i++) {
+			spec2.feed(fabricateSegmentPcm("speech", 100), () => speech)
+			await sleep(100)
+		}
+		await feedSilenceUntilSpeculated(
+			(pcm) => spec2.feed(pcm, () => speech),
+			() => fake2.partialCalls() > afterG1,
+		)
+		checker.check(
+			"speech resume → onResume → second speculation generation",
+			fake2.partialCalls() > afterG1,
+			`partialCalls=${fake2.partialCalls()} afterG1=${afterG1}`,
+		)
+		spec2.abort("turn-logic cancel")
+		await spec2.done
+		await sleep(SETTLE_MS)
+		checker.check(
+			"abort → tail exits with zero publishes",
+			published2.length === 0,
+			`published=${published2.length}`,
+		)
+		checker.check(
+			"abort → finish() never called on the shared session",
+			fake2.finishCalls() === 0,
+			`finishCalls=${fake2.finishCalls()}`,
+		)
+	}
+	unsubscribeFromDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture2)
+}
+
 const main = async (): Promise<void> => {
 	runFabricatorChecks()
 	runDynamicEndpointingChecks()
 	await runSpeculationChecks()
+	await runSatelliteSpeculationChecks()
 	await runVadWindowChecks()
 	await runAdaptiveWindowChecks()
 	const pass = checker.passCount()

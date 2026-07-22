@@ -3,6 +3,7 @@ import { audioCaptureLogger } from "@/utils"
 
 import type { DynamicEndpointStateType, VadWindowType } from "../types"
 import { createVadWindow } from "./capture"
+import { clampEndpointDebounceMs } from "./endpoint-hint"
 
 const states = new Map<string, DynamicEndpointStateType>()
 const playbackStartedAt = new Map<string, number>()
@@ -80,8 +81,22 @@ export const adaptiveVadWindow = (
 ): { vad: VadWindowType; debounceMs: number } => {
 	const debounceMs = resolveDebounceMs(domiaId, config)
 	const baseMs = config.vadMinSilenceS * 1000 + config.vadEndOfSpeechMs
+	const semanticFloorS = config.semanticEndpointingEnabled
+		? clampEndpointDebounceMs(config.endpointCompleteMs) / 1000
+		: null
+	const floorS = (minSilenceS: number): number =>
+		semanticFloorS === null
+			? minSilenceS
+			: Math.min(minSilenceS, semanticFloorS)
 	if (debounceMs === baseMs) {
-		return { vad: createVadWindow(config), debounceMs }
+		const minS = floorS(config.vadMinSilenceS)
+		return {
+			vad:
+				minS === config.vadMinSilenceS
+					? createVadWindow(config)
+					: createVadWindow(config, { minSilenceS: minS }),
+			debounceMs,
+		}
 	}
 	const silenceShare = (config.vadMinSilenceS * 1000) / baseMs
 	audioCaptureLogger.info(
@@ -90,7 +105,7 @@ export const adaptiveVadWindow = (
 	)
 	return {
 		vad: createVadWindow(config, {
-			minSilenceS: (debounceMs * silenceShare) / 1000,
+			minSilenceS: floorS((debounceMs * silenceShare) / 1000),
 			endOfSpeechMs: Math.max(50, Math.round(debounceMs * (1 - silenceShare))),
 		}),
 		debounceMs,

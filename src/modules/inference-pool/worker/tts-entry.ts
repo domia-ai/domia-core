@@ -1,5 +1,8 @@
 import { synthesizeKokoroPcm } from "@/modules/tts-engine/engines/kokoro/inference"
-import { synthesizePocketPcm } from "@/modules/tts-engine/engines/pocket/inference"
+import {
+	synthesizePocketPcm,
+	synthesizePocketPcmStream,
+} from "@/modules/tts-engine/engines/pocket/inference"
 import { synthesizeVitsPcm } from "@/modules/tts-engine/engines/vits/inference"
 import { synthesizeKittenPcm } from "@/modules/tts-engine/engines/kitten/inference"
 import { synthesizeMatchaPcm } from "@/modules/tts-engine/engines/matcha/inference"
@@ -44,8 +47,23 @@ process.on("message", (msg: WorkerRequestMessageType) => {
 		process.exit(0)
 	}
 	if (msg.type === "job") {
+		const job = msg.payload as TtsWorkerJobType
+		if (job.engine === "POCKET" && job.stream === true) {
+			void synthesizePocketPcmStream(job, (pcm) =>
+				send({ type: "chunk", id: msg.id, chunk: pcm }),
+			)
+				.then((result) => send({ type: "result", id: msg.id, result }))
+				.catch((err: unknown) =>
+					send({
+						type: "error",
+						id: msg.id,
+						message: err instanceof Error ? err.message : String(err),
+					}),
+				)
+			return
+		}
 		try {
-			const result = synthesize(msg.payload as TtsWorkerJobType)
+			const result = synthesize(job)
 			send({ type: "result", id: msg.id, result })
 		} catch (err) {
 			send({

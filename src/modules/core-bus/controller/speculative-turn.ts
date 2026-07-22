@@ -14,6 +14,7 @@ import {
 import { prewarmSoxPlayer } from "@/modules/audio-playback"
 import {
 	startSpeculativeCapture,
+	endpointHintMs,
 	type SpeculativeCaptureHooksType,
 } from "@/modules/audio-capture"
 import { markPipelineStart, updateInteraction } from "@/modules/session-manager"
@@ -30,6 +31,7 @@ import type { SttStreamSessionType } from "@/modules/stt-engine"
 import { ttsAdapterToPcmChunks, ttsPoolBusy } from "@/modules/tts-engine"
 import {
 	takeMemoryBundle,
+	prefetchMemoryBundle,
 	createAsyncQueue,
 	countSpeculationHandoff,
 	countSpeculationWasted,
@@ -137,6 +139,7 @@ const startSpeculation = (
 		handedOff: false,
 		queue: createAsyncQueue<string>(),
 		outQueue: specTts ? createAsyncQueue<string>() : null,
+		tokenSource: null,
 		firstUnitText: null,
 		firstUnitPcm: null,
 		prompt: null,
@@ -163,6 +166,7 @@ const startSpeculation = (
 		}
 		if (me.cancelled) return null
 		const bundle = await takeMemoryBundle(domia, args.interactionId)
+		prefetchMemoryBundle(domia, args.interactionId)
 		if (me.cancelled) return null
 		me.prompt = buildPromptContext(domia, transcript, bundle)
 		const tokens = llmTargets
@@ -194,9 +198,14 @@ const startSpeculation = (
 					() => me.cancelled || me.queue.isClosed(),
 				)
 		if (!tokens || me.cancelled) {
+			if (tokens)
+				void (tokens as AsyncGenerator<string>)
+					.return?.(undefined)
+					.catch(() => undefined)
 			me.queue.close()
 			return me.cancelled ? null : transcript
 		}
+		me.tokenSource = tokens
 		me.started = true
 		emitTurnEvent({
 			type: DOMIA_TURN_EVENT_ENUM.SPECULATION_STARTED,
@@ -247,27 +256,6 @@ const startSpeculation = (
 	return me
 }
 
-const COMPLETE_TAIL = /[.!?]["”'’]?$/
-const ORDINAL_TAIL = /(?:^|\s)\d+\.$/
-const INCOMPLETE_TAIL =
-	/(?:,|—|:|\b(?:and|or|but|so|to|the|a|an|of|in|on|at|with|for|my|your|his|her|their|our|if|that|then|please|could|would|can|will|is|are|was))$/i
-const FILLER_TAIL =
-	/\b(?:um+|uh+|er+|hmm+|mm+|uhh+|erm|well|like|actually|let me think|let me see|let's see|give me a (?:sec|second|moment)|hold on|one (?:sec|second|moment)|i think|i mean|you know|how do i (?:say|put) (?:this|it))$/i
-
-const endpointHintMs = (
-	partial: string,
-	completeMs: number,
-	incompleteMs: number,
-	waitMs: number,
-): number | null => {
-	const t = partial.trim()
-	if (!t) return null
-	if (FILLER_TAIL.test(t)) return waitMs
-	if (COMPLETE_TAIL.test(t) && !ORDINAL_TAIL.test(t)) return completeMs
-	if (INCOMPLETE_TAIL.test(t)) return incompleteMs
-	return null
-}
-
 const normalizeWords = (text: string): string =>
 	text
 		.toLowerCase()
@@ -308,7 +296,11 @@ export const runSpeculativeTurn = async (
 	const turnStartedAt = Date.now()
 	let generation = 0
 	let active: SpeculationType | null = null
-	const stt = { session: openSttSession(ctx) }
+	const stt = {
+		session: args.existingSttSession
+			? args.existingSttSession()
+			: openSttSession(ctx),
+	}
 	const llmTargets = features.canRunLlm
 		? null
 		: await resolveCapabilityDelegations(domia, CAPABILITY_ENUM.LLM).then(
@@ -346,6 +338,9 @@ export const runSpeculativeTurn = async (
 		active.cancelled = true
 		active.queue.close()
 		active.outQueue?.close()
+		void (active.tokenSource as AsyncGenerator<string> | null)
+			?.return?.(undefined)
+			.catch(() => undefined)
 		active = null
 	}
 
@@ -428,7 +423,19 @@ export const runSpeculativeTurn = async (
 			}),
 		)
 
-	const finalPcm = await capture.finalPcmPromise
+	let finalPcm: Buffer
+	try {
+		finalPcm = await capture.finalPcmPromise
+	} catch (err) {
+		cancelActive("capture aborted")
+		args.release()
+		domiaBusLogger.info(`🔮 speculative turn aborted before endpoint`, {
+			domiaId: domia.id,
+			interactionId: args.interactionId,
+			err,
+		})
+		return
+	}
 	const finalTranscript = stt.session ? await stt.session.finish() : null
 	const winner = active as SpeculationType | null
 	if (winner && !winner.cancelled) {
@@ -479,7 +486,8 @@ export const runSpeculativeTurn = async (
 					speechEndAt: capture.speechEndAt() ?? undefined,
 					endpointDelayMs: capture.endpointObservedMs() ?? undefined,
 					endpointDebounceMs: capture.debounceMs,
-					liveVoice: true,
+					responseType: args.publish?.responseType,
+					liveVoice: args.publish?.liveVoice ?? true,
 				})
 				return
 			}
@@ -504,6 +512,7 @@ export const runSpeculativeTurn = async (
 		speechEndAt: capture.speechEndAt() ?? undefined,
 		endpointDelayMs: capture.endpointObservedMs() ?? undefined,
 		endpointDebounceMs: capture.debounceMs,
-		liveVoice: true,
+		responseType: args.publish?.responseType,
+		liveVoice: args.publish?.liveVoice ?? true,
 	})
 }

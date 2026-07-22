@@ -342,18 +342,23 @@ export const getFactStrings = async (domia: DomiaType): Promise<string[]> => {
 			domia.id,
 			MEMORY_FACT_CANDIDATE_LIMIT,
 		)
-		return rows
-			.filter(
-				(row) =>
-					(row.confidence ?? 0) >=
-					confFloor(
-						(row.kind ?? FACT_KIND_ENUM.OBSERVATION) as FactKindEnumType,
-					),
-			)
-			.map(
-				(row) =>
-					sanitizeFactLine(`${row.subject} ${row.relation} ${row.value}`).text,
-			)
+		return (
+			rows
+				.filter(
+					(row) =>
+						(row.confidence ?? 0) >=
+						confFloor(
+							(row.kind ?? FACT_KIND_ENUM.OBSERVATION) as FactKindEnumType,
+						),
+				)
+				.map(
+					(row) =>
+						sanitizeFactLine(`${row.subject} ${row.relation} ${row.value}`)
+							.text,
+				)
+				// oldest-first so a new fact appends instead of reshuffling — keeps the prompt prefix cache-stable
+				.reverse()
+		)
 	} catch {
 		return []
 	}

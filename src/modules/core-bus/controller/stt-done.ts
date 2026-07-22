@@ -124,6 +124,24 @@ import type {
 	PipelinePrefixType,
 } from "../types"
 
+const LATIN_SCRIPT_LANGUAGES = new Set([
+	"en",
+	"es",
+	"fr",
+	"de",
+	"pt",
+	"it",
+	"nl",
+])
+
+const scriptMatchesLanguage = (text: string, language: string): boolean => {
+	if (!LATIN_SCRIPT_LANGUAGES.has(language)) return true
+	const letters = text.match(/\p{L}/gu) ?? []
+	if (letters.length === 0) return true
+	const latin = text.match(/[a-zA-Z\u00C0-\u024F]/g) ?? []
+	return latin.length * 2 >= letters.length
+}
+
 const numOrUndef = (v: unknown): number | undefined =>
 	typeof v === "number" ? v : undefined
 
@@ -1367,7 +1385,14 @@ const handleSttDoneFlow = async (
 ): Promise<void> => {
 	const { domia, features } = ctx
 	const domiaId = domia.id
-	const { transcript, originDomiaKey, responseType } = payload
+	const { transcript: rawTranscript, originDomiaKey, responseType } = payload
+	// wrong-script transcript for the configured language = decoder noise ("係。") — treat as silence
+	const transcript = scriptMatchesLanguage(
+		rawTranscript,
+		domia.sttConfig?.language ?? "en",
+	)
+		? rawTranscript
+		: ""
 
 	const interactionId = await getOrCreateInteractionId(
 		domia,
@@ -1602,6 +1627,17 @@ const handleSttDoneFlow = async (
 					)
 				)
 					return
+				if (payload.prestartedTokens) {
+					domiaBusLogger.info(
+						"🔮 prestarted stream unconsumable — cancelling before sync LLM",
+						{ domiaId: domia.id, interactionId: session.interactionId },
+					)
+					const stale = payload.prestartedTokens as AsyncGenerator<string>
+					void stale.return?.(undefined).catch(() => undefined)
+					payload.prestartedTokens = undefined
+					payload.prestartedFirstUnitText = undefined
+					payload.prestartedFirstUnitPcm = undefined
+				}
 				await runLocalSyncLlm(ctx, session)
 				return
 			} finally {

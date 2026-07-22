@@ -106,6 +106,56 @@ const runPocket = async (
 	}
 }
 
+const streamSentenceChunks = (
+	pool: ReturnType<typeof getTtsPool>,
+	job: TtsWorkerJobType,
+): AsyncIterable<Buffer> => {
+	const chunks: Buffer[] = []
+	let notify: (() => void) | null = null
+	let done = false
+	let failure: unknown = null
+	const wake = (): void => {
+		notify?.()
+		notify = null
+	}
+	void pool
+		.submit<TtsWorkerResultType>(
+			{ ...job, stream: true },
+			undefined,
+			(chunk) => {
+				if (Buffer.isBuffer(chunk) && chunk.length > 0) chunks.push(chunk)
+				wake()
+			},
+		)
+		.then(
+			() => {
+				done = true
+				wake()
+			},
+			(err: unknown) => {
+				failure = err
+				done = true
+				wake()
+			},
+		)
+	return {
+		[Symbol.asyncIterator]: async function* () {
+			for (;;) {
+				const chunk = chunks.shift()
+				if (chunk) {
+					yield chunk
+					continue
+				}
+				if (done) break
+				await new Promise<void>((resolve) => {
+					notify = resolve
+				})
+			}
+			if (failure) throw failure
+		},
+	}
+}
+
 const runPocketStream = async function* (
 	domia: DomiaType,
 	text: string,
@@ -114,12 +164,18 @@ const runPocketStream = async function* (
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const pool = getTtsPool(ttsConfig)
+	// chunkStreaming requires the patched sherpa addon — stock generateAsync callbacks abort the worker
+	const chunked = ttsConfig.engineConfig?.chunkStreaming === true
 	for (const sentence of splitTextIntoSentences(text)) {
-		const result = await pool.submit<TtsWorkerResultType>(
-			jobOf(ttsConfig, sentence, voice.speed),
-		)
-		if (result.pcm && result.pcm.length > 0)
-			yield applyEdgeFade(result.pcm, POCKET_SAMPLE_RATE)
+		if (!chunked) {
+			const result = await pool.submit<TtsWorkerResultType>(
+				jobOf(ttsConfig, sentence, voice.speed),
+			)
+			if (result.pcm && result.pcm.length > 0)
+				yield applyEdgeFade(result.pcm, POCKET_SAMPLE_RATE)
+			continue
+		}
+		yield* streamSentenceChunks(pool, jobOf(ttsConfig, sentence, voice.speed))
 	}
 }
 

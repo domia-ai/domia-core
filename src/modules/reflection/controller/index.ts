@@ -44,6 +44,7 @@ import {
 import {
 	REFLECTION_TIMEOUT_MS,
 	REFLECTION_IDLE_POLL_MS,
+	REFLECTION_IDLE_GRACE_MS,
 	REFLECTION_MAX_IDLE_WAIT_MS,
 	REFLECTION_SLOT_TIMEOUT_MS,
 	REFLECTION_YIELD_MAX_ATTEMPTS,
@@ -97,6 +98,10 @@ const isPureQuestion = (text: string): boolean => {
 	return interrogative && !FIRST_PERSON.test(t)
 }
 
+// what the user is doing right now is conversation, not durable memory — ephemeral captures poison recall and churn the prompt prefix
+const EPHEMERAL_FACT =
+	/\b(is (asking|saying|doing|trying|requesting|telling|wondering|testing)|asked (for|to|about)|wants? (the|to turn|to set|to play)|turn(ing|ed)? (on|off)|has recently|right now|currently|just (said|asked|did)|is aware of|talks later|will call at)\b/i
+
 const filterReflectionFacts = (
 	facts: RawFactType[],
 	userText: string,
@@ -108,6 +113,7 @@ const filterReflectionFacts = (
 	const reply = replyText.toLowerCase()
 	const personaName = (persona.characterProfile?.name ?? "domia").toLowerCase()
 	return facts.filter((fact) => {
+		if (EPHEMERAL_FACT.test(`${fact.relation} ${fact.value}`)) return false
 		const subject = fact.subject.toLowerCase()
 		if (
 			subject.includes(personaName) ||
@@ -156,11 +162,24 @@ const waitForIdle = async (onlyWhenIdle: boolean): Promise<boolean> => {
 		)
 	}
 	const deadline = Date.now() + REFLECTION_MAX_IDLE_WAIT_MS
-	while (activeVoiceReplies() > 0) {
-		if (Date.now() >= deadline) return false
-		await sleep(REFLECTION_IDLE_POLL_MS)
+	for (;;) {
+		while (activeVoiceReplies() > 0) {
+			if (Date.now() >= deadline) return false
+			await sleep(REFLECTION_IDLE_POLL_MS)
+		}
+		// mid-conversation the next turn lands seconds after a reply — only reflect after a real pause
+		const graceEnd = Date.now() + REFLECTION_IDLE_GRACE_MS
+		let interrupted = false
+		while (Date.now() < graceEnd) {
+			if (activeVoiceReplies() > 0) {
+				interrupted = true
+				break
+			}
+			if (Date.now() >= deadline) return false
+			await sleep(REFLECTION_IDLE_POLL_MS)
+		}
+		if (!interrupted) return true
 	}
-	return true
 }
 
 const runGated = async <T>(

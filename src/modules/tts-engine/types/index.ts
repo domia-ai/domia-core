@@ -102,6 +102,7 @@ export type PocketWorkerJobType = {
 	engineConfig: PocketWorkerEngineConfigType
 	text: string
 	speed: number
+	stream?: boolean
 }
 
 export type VitsWorkerJobType = {

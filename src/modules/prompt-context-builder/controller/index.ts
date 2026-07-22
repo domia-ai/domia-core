@@ -450,19 +450,6 @@ export const buildPromptFromPersona = (
 		}
 	}
 
-	if (moduleSettings?.emotionEngine !== false) {
-		const mood = renderEmotionalState(persona)
-		if (mood) sections.push(["CURRENT MOOD", mood])
-	}
-
-	const userMoodTrend = persona.userMoodTrend ?? options?.userMoodTrend
-	if (moduleSettings?.emotionEngine !== false && userMoodTrend?.length) {
-		sections.push([
-			"RECENT USER MOOD",
-			`You can tell the person has recently seemed: ${userMoodTrend.join(" → ")}. This is something you perceive, not something you become. React as ${name} would — from your own mood and character; never copy or mirror their mood, and don't mention it mechanically.`,
-		])
-	}
-
 	const knownFacts = persona.knownFacts ?? options?.knownFacts
 	if (moduleSettings?.factRecall !== false && knownFacts?.length) {
 		sections.push([
@@ -479,6 +466,20 @@ export const buildPromptFromPersona = (
 	if (moduleSettings?.memoryEngine !== false && recentTurns?.length) {
 		const turns = renderRecentTurns(recentTurns)
 		if (turns) sections.push(["RECENT TURNS", turns])
+	}
+
+	// mood shifts every turn — keep it in the dynamic tail so it can't invalidate the stable prefix cache
+	if (moduleSettings?.emotionEngine !== false) {
+		const mood = renderEmotionalState(persona)
+		if (mood) sections.push(["CURRENT MOOD", mood])
+	}
+
+	const userMoodTrend = persona.userMoodTrend ?? options?.userMoodTrend
+	if (moduleSettings?.emotionEngine !== false && userMoodTrend?.length) {
+		sections.push([
+			"RECENT USER MOOD",
+			`You can tell the person has recently seemed: ${userMoodTrend.join(" → ")}. This is something you perceive, not something you become. React as ${name} would — from your own mood and character; never copy or mirror their mood, and don't mention it mechanically.`,
+		])
 	}
 
 	if (moduleSettings?.environmentTimeEnabled !== false) {

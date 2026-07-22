@@ -40,11 +40,18 @@ import {
 	type TurnScopeType,
 } from "@/modules/core-bus"
 import { getSttEngine, type SttStreamSessionType } from "@/modules/stt-engine"
+import { runLLM } from "@/modules/llm-engine"
+import {
+	personaContextFromDomia,
+	buildPromptFromPersona,
+} from "@/modules/prompt-context-builder"
 import {
 	RECORDINGS_DIR,
 	adaptiveVadWindow,
 	observeBargeIn,
 	int16BufferToFloat32,
+	endpointHintMs,
+	clampEndpointDebounceMs,
 	type VadWindowType,
 } from "@/modules/audio-capture"
 import {
@@ -65,7 +72,12 @@ import {
 	NO_VAD_MAX_UTTERANCE_S,
 	PRE_SPEECH_ROLL_BYTES,
 } from "../constants"
-import type { SatelliteSessionDepsType, SatelliteSessionType } from "../types"
+import { startSatelliteSpeculation } from "./speculation"
+import type {
+	SatelliteSessionDepsType,
+	SatelliteSessionType,
+	SatelliteSpeculationType,
+} from "../types"
 
 const BARGE_IN_MIN_RMS = 0.008
 
@@ -78,6 +90,24 @@ const frameRms = (pcm: Buffer): number => {
 		sum += v * v
 	}
 	return Math.sqrt(sum / samples)
+}
+
+// prime the static persona prefix into the LLM cache at speech start, so the real request hits a warm prefill
+const LLM_PRIME_MIN_INTERVAL_MS = 60_000
+const lastLlmPrimeAt = new Map<string, number>()
+const primeLlmPrefix = (domia: DomiaType): void => {
+	const now = Date.now()
+	if (now - (lastLlmPrimeAt.get(domia.id) ?? 0) < LLM_PRIME_MIN_INTERVAL_MS)
+		return
+	lastLlmPrimeAt.set(domia.id, now)
+	const cfg = domia.llmModelConfig
+	if (!cfg) return
+	const prompt = buildPromptFromPersona(personaContextFromDomia(domia), "", {
+		omitUserInput: true,
+	})
+	void runLLM({ ...domia, llmModelConfig: { ...cfg, numPredict: 1 } }, prompt)
+		.then(() => satelliteGatewayLogger.info("🔥 llm prefix primed"))
+		.catch(() => undefined)
 }
 
 const sendViaSink = async (
@@ -139,6 +169,7 @@ export const createSatelliteSession = (
 	}
 
 	const closeSttSession = (): void => {
+		abortSpeculation("session closed")
 		sttSessionTried = false
 		if (!sttSession) return
 		const session = sttSession
@@ -154,6 +185,7 @@ export const createSatelliteSession = (
 	const serverEndpointing = !!transport.serverEndpointing
 	let vad: VadWindowType | null = null
 	let vadDebounceMs = 0
+	let effectiveDebounceMs = 0
 	let endpointed = false
 	let micActiveFlag = false
 	let configRefreshTimer: ReturnType<typeof setInterval> | null = null
@@ -163,13 +195,25 @@ export const createSatelliteSession = (
 	let utteranceGen = 0
 	let gateHolding = false
 	let vadCompletedAt: number | null = null
+	// a semantic hint outranks the acoustic gate — stacking smart-turn after it only adds latency
+	let semanticHintApplied = false
 	let pendingInteractionId: string | null = null
+	let spec: SatelliteSpeculationType | null = null
+	let specStarting = false
+	const abortSpeculation = (reason: string): void => {
+		if (!spec) return
+		const s = spec
+		spec = null
+		s.abort(reason)
+	}
 	const resetVad = (): void => {
 		vad = null
+		effectiveDebounceMs = vadDebounceMs
 		acousticComplete = false
 		utteranceGen += 1
 		gateHolding = false
 		vadCompletedAt = null
+		semanticHintApplied = false
 	}
 	const acousticGateActive = (): boolean => {
 		const wc = identity.wakeWordConfig
@@ -329,6 +373,8 @@ export const createSatelliteSession = (
 
 	const handleUtterance = async (speechEndAt?: number): Promise<void> => {
 		if (busy) return
+		const owned = spec
+		spec = null
 		const session = sttSession
 		sttSession = null
 		sttSessionTried = false
@@ -336,6 +382,7 @@ export const createSatelliteSession = (
 		chunks = []
 		bufferedBytes = 0
 		if (pcm.length === 0) {
+			owned?.abort("empty utterance")
 			session?.abort()
 			return
 		}
@@ -351,6 +398,10 @@ export const createSatelliteSession = (
 		const path = join(RECORDINGS_DIR, `satellite-${generateUuid()}.wav`)
 		const interactionId = pendingInteractionId ?? generateUuid()
 		pendingInteractionId = null
+		if (owned && owned.interactionId !== interactionId)
+			owned.abort("interaction mismatch")
+		const ownedTurn =
+			owned && owned.interactionId === interactionId ? owned : null
 		activeInteractionId = interactionId
 		let turn: TurnScopeType | null = null
 		const turnStart = Date.now()
@@ -492,6 +543,7 @@ export const createSatelliteSession = (
 			},
 		)
 		if (!handle) {
+			owned?.abort("begin-interaction failed")
 			transport.sendError("satellite: failed to create interaction")
 			finalize()
 			return
@@ -499,8 +551,31 @@ export const createSatelliteSession = (
 		turn = handle.turn
 
 		try {
-			if (session) {
+			if (ownedTurn) {
+				const archived = writeFile(path, wav).then(() => path)
+				ownedTurn.handoff({ pcm, speechEndAt, filePathPromise: archived })
+				void ownedTurn.done.catch((err) => {
+					satelliteGatewayLogger.warn(
+						"speculative turn failed post-handoff — batch fallback",
+						{ err, interactionId },
+					)
+					ownedTurn.release()
+					publishToDomiaBus(identity.id, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
+						filePath: path,
+						interactionId,
+						originDomiaKey: identity.domiaKey,
+						speechEndAt,
+						endpointDebounceMs: vadDebounceMs || undefined,
+					})
+				})
+			} else if (session) {
+				const flushStart = Date.now()
 				const transcript = await session.finish()
+				satelliteGatewayLogger.info("⏱️ stt flush breakdown", {
+					flushMs: Date.now() - flushStart,
+					sinceSpeechEndMs: speechEndAt ? flushStart - speechEndAt : null,
+					interactionId,
+				})
 				void writeFile(path, wav).catch((err) =>
 					satelliteGatewayLogger.warn("satellite audio archive write failed", {
 						path,
@@ -526,7 +601,8 @@ export const createSatelliteSession = (
 				})
 			}
 		} catch (err) {
-			session?.abort()
+			if (ownedTurn) ownedTurn.abort("utterance handling failed")
+			else session?.abort()
 			await persistTurnFailure(interactionId, err)
 			transport.sendError(String(err))
 			finalize()
@@ -557,14 +633,15 @@ export const createSatelliteSession = (
 			helloReceived = true
 			if (configRefreshTimer) clearInterval(configRefreshTimer)
 			configRefreshTimer = setInterval(() => {
-				if (busy) return
+				if (busy || spec || specStarting) return
 				void safeOwnDomia(
 					identity.domiaKey,
 					"satellite-core config refresh",
 				).then((fresh) => {
-					if (fresh && !busy) identity = fresh
+					if (fresh && !busy && !spec && !specStarting) identity = fresh
 				})
 			}, CONFIG_REFRESH_MS)
+			abortSpeculation("re-hello")
 			chunks = []
 			bufferedBytes = 0
 			if (registeredKey) {
@@ -609,6 +686,7 @@ export const createSatelliteSession = (
 			if (!helloReceived) return
 			const intercom = getIntercom(identity.domiaKey)
 			if (intercom) {
+				abortSpeculation("intercom")
 				void intercom.sink.write(pcm)
 				return
 			}
@@ -721,6 +799,7 @@ export const createSatelliteSession = (
 			if (!pendingInteractionId && !busy) {
 				pendingInteractionId = generateUuid()
 				prefetchMemoryBundle(identity, pendingInteractionId)
+				primeLlmPrefix(identity)
 			}
 
 			// gate on detected speech so ambient noise never pins a streaming pool worker
@@ -753,6 +832,7 @@ export const createSatelliteSession = (
 				const win = adaptiveVadWindow(identity.id, identity.wakeWordConfig)
 				vad = win.vad
 				vadDebounceMs = win.debounceMs
+				effectiveDebounceMs = win.debounceMs
 			}
 			if (!vad) {
 				const seconds = bufferedBytes / (sampleRate * channels * 2)
@@ -763,6 +843,19 @@ export const createSatelliteSession = (
 				return
 			}
 			vad.feed(pcm)
+			const wc = identity.wakeWordConfig
+			const semantic = !!wc?.semanticEndpointingEnabled && sttSession !== null
+			if (semantic && wc) {
+				const hint = endpointHintMs(
+					sttSession?.partial() ?? "",
+					wc.endpointCompleteMs,
+					wc.endpointIncompleteMs,
+					wc.endpointWaitMs,
+				)
+				effectiveDebounceMs =
+					hint === null ? vadDebounceMs : clampEndpointDebounceMs(hint)
+				semanticHintApplied = hint !== null
+			}
 			if (vad.speechActive()) {
 				acousticComplete = false
 				gateHolding = false
@@ -777,9 +870,24 @@ export const createSatelliteSession = (
 					chunks.shift()
 				}
 			}
-			if (vad.completed()) {
-				vadCompletedAt ??= Date.now() - vadDebounceMs
+			const silenceDone = semantic
+				? vad.everDetected() &&
+					!vad.speechActive() &&
+					vad.holdMs() + vad.silenceMs() >= effectiveDebounceMs
+				: vad.completed()
+			if (silenceDone) {
+				if (vadCompletedAt === null)
+					satelliteGatewayLogger.info("⏱️ endpoint decision", {
+						semantic,
+						effectiveDebounceMs,
+						vadDebounceMs,
+						partialTail: (sttSession?.partial() ?? "").slice(-30),
+					})
+				vadCompletedAt ??=
+					Date.now() -
+					(semantic ? vad.holdMs() + vad.silenceMs() : vadDebounceMs)
 				if (
+					!semanticHintApplied &&
 					acousticGateActive() &&
 					!acousticComplete &&
 					Date.now() - vadCompletedAt < ACOUSTIC_MAX_HOLD_MS
@@ -793,7 +901,51 @@ export const createSatelliteSession = (
 				escalatePausedBargeIn()
 				transport.notifySpeechEnd?.()
 				void handleUtterance(speechEndAt)
+				return
 			}
+			if (
+				!busy &&
+				!spec &&
+				!specStarting &&
+				pausedBargeIn === null &&
+				pendingInteractionId !== null &&
+				sttSession !== null &&
+				vad.everDetected() &&
+				(wc?.satelliteSpeculationEnabled ?? false)
+			) {
+				specStarting = true
+				const gen = utteranceGen
+				const iid = pendingInteractionId
+				startSatelliteSpeculation({
+					identity,
+					interactionId: iid,
+					sttSession: () => sttSession,
+					vadDebounceMs,
+					bufferedPcm: () => Buffer.concat(chunks),
+				})
+					.then((started) => {
+						specStarting = false
+						if (!started) return
+						if (gen !== utteranceGen || busy || pendingInteractionId !== iid) {
+							started.abort("stale")
+							return
+						}
+						spec = started
+						started.done.catch(() => {
+							if (spec === started) {
+								spec = null
+								started.release()
+							}
+						})
+					})
+					.catch((err) => {
+						specStarting = false
+						satelliteGatewayLogger.warn("satellite speculation start failed", {
+							err,
+						})
+					})
+			}
+			spec?.feed(pcm, () => Buffer.concat(chunks))
 		},
 
 		onSpeechEnd: async () => {

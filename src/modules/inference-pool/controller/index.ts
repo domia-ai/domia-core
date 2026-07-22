@@ -10,6 +10,7 @@ import type {
 	InferencePoolConfigType,
 	InferencePoolType,
 	PendingJobType,
+	PoolJobChunkCbType,
 	PoolJobTimingCbType,
 	PoolSessionType,
 	WorkerStateType,
@@ -82,6 +83,17 @@ export const createInferencePool = (
 				ws.ready = true
 				consecutiveCrashes = 0
 				pump()
+				return
+			}
+			if (msg.type === "chunk") {
+				const job = ws.currentJob
+				if (job && job.id === msg.id) {
+					job.pending.onChunk?.(msg.chunk)
+					if (job.execTimer && executionTimeoutMs > 0) {
+						clearTimeout(job.execTimer)
+						job.execTimer = armExecTimer(ws, job.id)
+					}
+				}
 				return
 			}
 			if (msg.type === "result") {
@@ -185,6 +197,19 @@ export const createInferencePool = (
 		pump()
 	}
 
+	const armExecTimer = (
+		ws: WorkerStateType,
+		id: number,
+	): ReturnType<typeof setTimeout> =>
+		setTimeout(() => {
+			if (ws.currentJob?.id !== id) return
+			inferencePoolLogger.error(
+				`⏱️ ${label} job exceeded ${executionTimeoutMs}ms — killing hung worker`,
+				{ jobId: id },
+			)
+			ws.handle.kill()
+		}, executionTimeoutMs)
+
 	const assign = (ws: WorkerStateType, pending: PendingJobType): void => {
 		if (ws.idleTimer) {
 			clearTimeout(ws.idleTimer)
@@ -196,17 +221,7 @@ export const createInferencePool = (
 		}
 		pending.startedAt = Date.now()
 		const id = nextJobId++
-		const execTimer =
-			executionTimeoutMs > 0
-				? setTimeout(() => {
-						if (ws.currentJob?.id !== id) return
-						inferencePoolLogger.error(
-							`⏱️ ${label} job exceeded ${executionTimeoutMs}ms — killing hung worker`,
-							{ jobId: id },
-						)
-						ws.handle.kill()
-					}, executionTimeoutMs)
-				: null
+		const execTimer = executionTimeoutMs > 0 ? armExecTimer(ws, id) : null
 		ws.currentJob = { id, pending, execTimer }
 		const sent = ws.handle.send({ type: "job", id, payload: pending.payload })
 		if (!sent) {
@@ -238,6 +253,7 @@ export const createInferencePool = (
 	const submit = <T>(
 		payload: unknown,
 		onTiming?: PoolJobTimingCbType,
+		onChunk?: PoolJobChunkCbType,
 	): Promise<T> => {
 		if (shuttingDown) {
 			return Promise.reject(poolBusyError(`${label} pool is shutting down`))
@@ -254,6 +270,7 @@ export const createInferencePool = (
 				enqueuedAt: Date.now(),
 				startedAt: null,
 				onTiming: onTiming ?? null,
+				onChunk: onChunk ?? null,
 			}
 			if (queueTimeoutMs > 0) {
 				pending.timer = setTimeout(() => {
@@ -327,6 +344,7 @@ export const createInferencePool = (
 					enqueuedAt: Date.now(),
 					startedAt: null,
 					onTiming: null,
+					onChunk: null,
 				})
 			})
 		}

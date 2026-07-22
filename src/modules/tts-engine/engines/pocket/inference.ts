@@ -70,6 +70,32 @@ const getReference = (config: PocketWorkerEngineConfigType): Waveform => {
 	return cachedReference
 }
 
+export const synthesizePocketPcmStream = async (
+	job: PocketWorkerJobType,
+	emit: (pcm: Buffer) => void,
+): Promise<TtsWorkerResultType> => {
+	const engine = getEngine(job.engineConfig)
+	const reference = getReference(job.engineConfig)
+	await engine.generateAsync({
+		text: job.text,
+		generationConfig: {
+			speed: job.speed,
+			referenceAudio: reference.samples,
+			referenceSampleRate: reference.sampleRate,
+			numSteps: job.engineConfig.numSteps,
+		},
+		onProgress: (info) => {
+			if (info.samples.length > 0) emit(float32ToInt16Buffer(info.samples))
+			return 1
+		},
+	})
+	return {
+		pcm: Buffer.alloc(0),
+		sampleRate: POCKET_SAMPLE_RATE,
+		channels: 1,
+	}
+}
+
 export const synthesizePocketPcm = (
 	job: PocketWorkerJobType,
 ): TtsWorkerResultType => {

@@ -77,6 +77,7 @@ export type VadWindowType = {
 	completed: () => boolean
 	speechActive: () => boolean
 	silenceMs: () => number
+	holdMs: () => number
 	everDetected: () => boolean
 }
 

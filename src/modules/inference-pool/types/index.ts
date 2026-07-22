@@ -15,6 +15,7 @@ export type WorkerRequestMessageType =
 
 export type WorkerResponseMessageType =
 	| { type: "ready" }
+	| { type: "chunk"; id: number; chunk: unknown }
 	| { type: "result"; id: number; result: unknown }
 	| { type: "error"; id: number; message: string }
 
@@ -39,13 +40,19 @@ export type PoolJobTimingType = {
 
 export type PoolJobTimingCbType = (timing: PoolJobTimingType) => void
 
+export type PoolJobChunkCbType = (chunk: unknown) => void
+
 export type PoolSessionType = {
 	exchange: <T>(payload: unknown) => Promise<T>
 	release: () => void
 }
 
 export type InferencePoolType = {
-	submit: <T>(payload: unknown, onTiming?: PoolJobTimingCbType) => Promise<T>
+	submit: <T>(
+		payload: unknown,
+		onTiming?: PoolJobTimingCbType,
+		onChunk?: PoolJobChunkCbType,
+	) => Promise<T>
 	acquireSession: () => PoolSessionType | null
 	activeWorkers: () => number
 	busyWorkers: () => number
@@ -62,6 +69,7 @@ export type PendingJobType = {
 	enqueuedAt: number
 	startedAt: number | null
 	onTiming: PoolJobTimingCbType | null
+	onChunk: PoolJobChunkCbType | null
 }
 
 export type WorkerStateType = {

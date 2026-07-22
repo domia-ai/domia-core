@@ -1,5 +1,6 @@
 import type { SinkCapabilitiesType } from "@/modules/core-bus"
 import type { DomiaType } from "@/modules/core"
+import type { SttStreamSessionType } from "@/modules/stt-engine"
 import type {
 	StreamingSinkFormatType,
 	SatelliteProtocolType,
@@ -62,4 +63,27 @@ export type ReconnectSchedulerType = {
 	reset: () => void
 	schedule: (fn: () => void) => void
 	close: (onClose?: () => void) => void
+}
+
+export type SatelliteSpeculationArgsType = {
+	identity: DomiaType
+	interactionId: string
+	sttSession: () => SttStreamSessionType | null
+	vadDebounceMs: number
+	bufferedPcm: () => Buffer
+}
+
+export type SatelliteSpeculationHandoffType = {
+	pcm: Buffer
+	speechEndAt?: number
+	filePathPromise: Promise<string>
+}
+
+export type SatelliteSpeculationType = {
+	interactionId: string
+	feed: (pcm: Buffer, cumulativePcm: () => Buffer) => void
+	handoff: (args: SatelliteSpeculationHandoffType) => void
+	abort: (reason: string) => void
+	release: () => void
+	done: Promise<void>
 }
