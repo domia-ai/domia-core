@@ -581,6 +581,8 @@ export type SpeculationType = {
 	firstUnitPcm: Promise<Buffer | null> | null
 	prompt: string | null
 	executorKey: string | null
+	llmQueuedAt: number | null
+	llmFirstTokenAt: number | null
 	ready: Promise<string | null>
 }
 
@@ -684,6 +686,19 @@ export type EouMetricsInputType = {
 	eouDelayMs?: number | null
 	endpointDebounceMs?: number | null
 }
+
+export type LadderStageType =
+	| "speechEndAt"
+	| "endpointDecisionAt"
+	| "sttFinalAt"
+	| "promptReadyAt"
+	| "llmQueuedAt"
+	| "llmFirstTokenAt"
+	| "ttsFirstUnitAt"
+	| "audioDeliveredAt"
+	| "audioAudibleAt"
+
+export type LadderTimestampsType = Partial<Record<LadderStageType, number>>
 
 export type ForwardFailurePayloadType = {
 	interactionId: string | undefined

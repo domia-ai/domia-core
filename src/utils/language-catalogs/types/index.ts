@@ -3,6 +3,7 @@ export type LanguageCatalogType = {
 	deviceGenericWords: string[]
 	numberWords: Record<string, number>
 	timerKeywords: string[]
+	memoryCommandKeywords: string[]
 	unitWords: { hour: string; minute: string; second: string; plural: string }
 	affirmations: string[]
 	negations: string[]
@@ -14,6 +15,7 @@ export type ResolvedLanguageSetsType = {
 	deviceGenericWords: Set<string>
 	numberWords: Record<string, number>
 	timerKeywordsRe: RegExp
+	memoryCommandRe: RegExp
 	unitWords: { hour: string; minute: string; second: string; plural: string }
 	affirmations: Set<string>
 	negations: Set<string>

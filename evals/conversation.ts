@@ -63,7 +63,8 @@ const isolateConversation = async (): Promise<void> => {
 const factRows = (): { subject: string; relation: string; value: string }[] =>
 	queryAll<{ subject: string; relation: string; value: string }>(
 		`SELECT subject, relation, value FROM memory_fact
-		 WHERE domia_id = (SELECT id FROM domia WHERE domia_key = ?)`,
+		 WHERE domia_id = (SELECT id FROM domia WHERE domia_key = ?)
+		   AND superseded_at IS NULL AND confidence >= 0.35`,
 		[env.EVAL_DOMIA_KEY],
 	)
 
@@ -78,7 +79,9 @@ const factMatches = (
 				r.subject.toLowerCase().includes(ref.subject.toLowerCase())),
 	)
 
-const FACT_CAPTURE_TIMEOUT_MS = 12000
+// reflection is idle-only with an idle grace — facts land well after the turn on a busy hub
+const FACT_CAPTURE_TIMEOUT_MS = 120000
+const NEGATIVE_SETTLE_MS = 18000
 
 const dbFactAssertions = async (
 	turn: EvalTurnType,
@@ -104,11 +107,45 @@ const dbFactAssertions = async (
 	}
 	if (turn.expect.noFactInDb) {
 		const ref = turn.expect.noFactInDb
-		const rows = factRows()
+		const settleDeadline = Date.now() + NEGATIVE_SETTLE_MS
+		let rows = factRows()
+		while (!factMatches(rows, ref) && Date.now() < settleDeadline) {
+			await sleep(1500)
+			rows = factRows()
+		}
 		out.push({
 			name: `noFactInDb:${ref.value}`,
 			ok: !factMatches(rows, ref),
 			detail: rows.map((r) => `${r.subject}|${r.value}`).join(", "),
+		})
+	}
+	if (turn.expect.factCountAtMost) {
+		const ref = turn.expect.factCountAtMost
+		const matchesOf = () =>
+			factRows().filter((r) =>
+				r.value.toLowerCase().includes(ref.value.toLowerCase()),
+			)
+		const start = Date.now()
+		while (
+			matchesOf().length === 0 &&
+			Date.now() - start < FACT_CAPTURE_TIMEOUT_MS
+		) {
+			await sleep(400)
+		}
+		const settleDeadline = Date.now() + FACT_CAPTURE_TIMEOUT_MS
+		let matches = matchesOf()
+		while (
+			matches.length > 0 &&
+			matches.length <= ref.count &&
+			Date.now() < settleDeadline
+		) {
+			await sleep(1500)
+			matches = matchesOf()
+		}
+		out.push({
+			name: `factCountAtMost:${ref.value}<=${ref.count}`,
+			ok: matches.length > 0 && matches.length <= ref.count,
+			detail: matches.map((r) => `${r.subject}|${r.value}`).join(", "),
 		})
 	}
 	return out
@@ -146,6 +183,16 @@ const runConversation = async (
 	const transcript: ConversationTranscriptType = { name: c.name, turns: [] }
 	let passed = true
 	for (const turn of c.turns) {
+		if (turn.expect.recallsFact) {
+			const ref = turn.expect.recallsFact
+			const start = Date.now()
+			while (
+				!factMatches(factRows(), ref) &&
+				Date.now() - start < FACT_CAPTURE_TIMEOUT_MS
+			) {
+				await sleep(500)
+			}
+		}
 		const { interactionId, reply } = await postChat(turn.text)
 		const needsTool = Boolean(
 			turn.expect.tool || turn.expect.argsSubset || turn.expect.argMatchers,

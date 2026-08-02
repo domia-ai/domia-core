@@ -67,7 +67,8 @@ export const handleGetSync = async (
 	domia: DomiaType,
 	query: GetSyncQueryType,
 ): Promise<GetSyncResponseType> => {
-	const { since, turnSince, turnId, limit } = getSyncQuerySchema.parse(query)
+	const { since, turnSince, turnId, factsSince, factsId, limit } =
+		getSyncQuerySchema.parse(query)
 	const domiaId = domia.id
 
 	const [
@@ -81,7 +82,7 @@ export const handleGetSync = async (
 		getInteractionsSince(domiaId, since, limit),
 		getSessionsSince(domiaId, since, limit),
 		getEmotionEventsSince(domiaId, since, limit),
-		getFactsSince(domiaId, since, limit),
+		getFactsSince(domiaId, factsSince || since, factsId, limit),
 		getAnnouncementsSince(domiaId, since, limit),
 		getTurnEventsSince(domiaId, turnSince, turnId, limit),
 	])
@@ -121,6 +122,11 @@ export const handleGetSync = async (
 		? { since: lastTurn.createdAt, id: lastTurn.id }
 		: null
 
+	const lastFact = facts[facts.length - 1]
+	const nextFactsCursor = lastFact
+		? { since: lastFact.updatedAt, id: lastFact.id }
+		: null
+
 	return {
 		interactions,
 		sessions,
@@ -130,5 +136,6 @@ export const handleGetSync = async (
 		turnEvents,
 		nextCursor,
 		nextTurnCursor,
+		nextFactsCursor,
 	}
 }

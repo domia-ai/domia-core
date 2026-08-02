@@ -1,5 +1,6 @@
 import WebSocket from "ws"
 import { env } from "./env"
+import { fabricateSegmentPcm } from "./fake-audio"
 import { parseWavPcm } from "./wav"
 import type {
 	SatelliteTurnOptionsType,
@@ -51,9 +52,55 @@ export const satelliteTurn = (
 				}),
 			)
 		})
+		let bargeInStarted = false
+		const runBargeIn = async (): Promise<void> => {
+			const cfg = opts.bargeIn
+			if (!cfg || bargeInStarted) return
+			bargeInStarted = true
+			const frameMs = 200
+			const frameBytes = Math.round(
+				(sampleRate * channels * 2 * frameMs) / 1000,
+			)
+			const speech = fabricateSegmentPcm("speech", cfg.speechMs, sampleRate)
+			for (let i = 0; i < speech.length; i += frameBytes) {
+				ws.send(speech.subarray(i, Math.min(i + frameBytes, speech.length)))
+				await new Promise((r) => setTimeout(r, frameMs))
+			}
+			const silence = Buffer.alloc(frameBytes)
+			for (let ms = 0; ms < (cfg.thenSilenceMs ?? 0); ms += frameMs) {
+				ws.send(silence)
+				await new Promise((r) => setTimeout(r, frameMs))
+			}
+		}
+		let replyRate = sampleRate
+		let audioInteractionId: string | undefined
+		const echoBack = (frame: Buffer): void => {
+			const ratio = replyRate / sampleRate
+			const inSamples = frame.length >> 1
+			const outSamples = Math.floor(inSamples / ratio)
+			const out = Buffer.alloc(outSamples * 2)
+			for (let i = 0; i < outSamples; i++)
+				out.writeInt16LE(frame.readInt16LE(Math.floor(i * ratio) << 1), i << 1)
+			ws.send(out)
+		}
 		ws.on("message", (data, isBinary) => {
 			if (isBinary) {
 				result.audioFrames++
+				if (result.audioFrames === 1)
+					ws.send(
+						JSON.stringify({
+							type: "audio_played",
+							...(audioInteractionId
+								? { interactionId: audioInteractionId }
+								: {}),
+						}),
+					)
+				if (opts.echoLoopback) echoBack(Buffer.from(data as Buffer))
+				if (
+					opts.bargeIn &&
+					result.audioFrames === (opts.bargeIn.afterFrames ?? 3)
+				)
+					void runBargeIn()
 				return
 			}
 			const msg = JSON.parse(data.toString()) as {
@@ -76,9 +123,17 @@ export const satelliteTurn = (
 						setTimeout(finish, 100)
 					}, 150)
 				}
-			} else if (msg.type === "transcript") result.transcript = msg.text ?? ""
-			else if (msg.type === "audio_stream_begin") result.audioBegan = true
-			else if (msg.type === "audio_stream_end") result.audioEnded = true
+			} else if (msg.type === "transcript") {
+				result.transcript = msg.text ?? ""
+				if (opts.bargeIn && (opts.bargeIn.afterFrames ?? 3) === 0)
+					void runBargeIn()
+			} else if (msg.type === "audio_stream_begin") {
+				result.audioBegan = true
+				replyRate = (msg as { sampleRate?: number }).sampleRate ?? replyRate
+				audioInteractionId = (msg as { interactionId?: string }).interactionId
+				if (opts.bargeIn && (opts.bargeIn.afterFrames ?? 3) === 0)
+					void runBargeIn()
+			} else if (msg.type === "audio_stream_end") result.audioEnded = true
 			else if (msg.type === "audio_pause") result.pauses += 1
 			else if (msg.type === "audio_resume") result.resumes += 1
 			else if (msg.type === "reply_done") {

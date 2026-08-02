@@ -434,7 +434,17 @@ const buildImplementation = ({
 				}
 				if (request.factsJson) {
 					try {
-						const facts = parseFacts(JSON.parse(request.factsJson))
+						const raw = JSON.parse(request.factsJson)
+						const explicitKeys = new Set(
+							(Array.isArray(raw) ? raw : [])
+								.filter((f) => f?.explicit === true)
+								.map((f) => `${f.subject}|${f.relation}|${f.value}`),
+						)
+						const facts = parseFacts(raw).map((f) =>
+							explicitKeys.has(`${f.subject}|${f.relation}|${f.value}`)
+								? { ...f, explicit: true }
+								: f,
+						)
 						await upsertFacts(domia, facts, request.interactionId)
 					} catch (err) {
 						grpcServerLogger.warn("⚠️ reflection facts failed", { err })

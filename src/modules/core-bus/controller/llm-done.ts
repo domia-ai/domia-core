@@ -24,6 +24,7 @@ import {
 	createPlaybackLedger,
 	registerTurnLedger,
 	extractEmotionTags,
+	markLadderStage,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -176,6 +177,7 @@ const tryLocalStreamingTtsPlayback = async (
 	let ttfaMs: number | undefined
 	let perceivedTtfaMs: number | undefined
 	const ttsStart = Date.now()
+	markLadderStage(session.interactionId, "ttsFirstUnitAt", ttsStart)
 	try {
 		const single = singleReplyLedger(
 			domia,
@@ -239,6 +241,7 @@ const runLocalSyncTts = async (
 	const { domia } = ctx
 	let response: Awaited<ReturnType<typeof runTTS>>
 	const ttsStart = Date.now()
+	markLadderStage(session.interactionId, "ttsFirstUnitAt", ttsStart)
 	try {
 		response = await runTTS(domia, session.reply)
 	} catch (err) {

@@ -37,6 +37,9 @@ const ollamaUsage = (
 		: null,
 	contextWindow: contextWindow ?? null,
 	finishReason: r.done_reason ?? null,
+	// ollama reports prompt_eval_count as tokens actually processed (cached prefix excluded)
+	freshTokens: r.prompt_eval_count ?? null,
+	cachedTokens: null,
 })
 
 const clients = new Map<string, Ollama>()

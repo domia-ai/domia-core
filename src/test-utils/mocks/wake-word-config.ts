@@ -78,6 +78,7 @@ export const baseWakeWordConfig = (
 		semanticEndpointingEnabled: DEFAULT_SEMANTIC_ENDPOINTING_ENABLED,
 		acousticEndpointingEnabled: DEFAULT_ACOUSTIC_ENDPOINTING_ENABLED,
 		acousticEndpointCompleteThreshold: DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD,
+		suppressWakeWhilePeerSpeaks: true,
 		speculativeTtsEnabled: DEFAULT_SPECULATIVE_TTS_ENABLED,
 		speculateWithSkills: DEFAULT_SPECULATE_WITH_SKILLS,
 		speculationSkillGateMaxScore: DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,

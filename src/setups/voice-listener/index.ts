@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from "fs"
 import { resolve } from "path"
 import { startCapture, type CaptureHandleType } from "@/modules/audio-capture"
+import { isAnyPeerSpeaking } from "@/modules/core-bus"
 import { DOMIA_EVENT_BUS_ENUM, publishToDomiaBus } from "@/buses"
 import { type DomiaType } from "@/modules/core"
 import { setBootStatus } from "@/modules/runtime-control"
@@ -42,8 +43,16 @@ const startVoiceListener = async (
 	domia: DomiaType,
 ): Promise<CaptureHandleType> =>
 	startCapture(domia, {
-		onWake: () =>
-			publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED),
+		onWake: () => {
+			if (
+				domia.wakeWordConfig?.suppressWakeWhilePeerSpeaks !== false &&
+				isAnyPeerSpeaking()
+			) {
+				appLogger.info("🙉 wake suppressed — a mesh peer is speaking")
+				return
+			}
+			publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED)
+		},
 		onRecordingEnd: (filePath) =>
 			publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 				filePath,

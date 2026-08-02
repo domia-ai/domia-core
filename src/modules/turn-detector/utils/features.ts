@@ -76,7 +76,8 @@ export const computeWhisperLogMel = (
 ): { data: Float32Array; frames: number } => {
 	const N = SR * 8
 	const x = new Float32Array(N)
-	x.set(audio.subarray(0, Math.min(audio.length, N)))
+	const take = Math.min(audio.length, N)
+	x.set(audio.subarray(audio.length - take), N - take)
 	let mean = 0
 	for (let i = 0; i < N; i++) mean += x[i]
 	mean /= N

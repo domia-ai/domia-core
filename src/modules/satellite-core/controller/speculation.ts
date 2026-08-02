@@ -60,6 +60,7 @@ export const startSatelliteSpeculation = async (
 	let speculated = false
 	let speculatedAt = 0
 	let speechEndAtVal: number | null = null
+	let endpointDecisionAtVal: number | null = null
 	let settleFinal!: {
 		resolve: (pcm: Buffer) => void
 		reject: (err: Error) => void
@@ -95,6 +96,7 @@ export const startSatelliteSpeculation = async (
 					finalPcmPromise,
 					filePathPromise,
 					speechEndAt: () => speechEndAtVal,
+					endpointDecisionAt: () => endpointDecisionAtVal,
 					stop: () => undefined,
 				}
 			},
@@ -128,8 +130,14 @@ export const startSatelliteSpeculation = async (
 				hooks.onSpeculate(cumulativePcm())
 			}
 		},
-		handoff: ({ pcm, speechEndAt, filePathPromise: archived }) => {
+		handoff: ({
+			pcm,
+			speechEndAt,
+			endpointDecisionAt,
+			filePathPromise: archived,
+		}) => {
 			speechEndAtVal = speechEndAt ?? null
+			endpointDecisionAtVal = endpointDecisionAt ?? null
 			archived.then(settleFile.resolve, settleFile.reject)
 			settleFinal.resolve(pcm)
 		},

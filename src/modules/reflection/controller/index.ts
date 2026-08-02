@@ -24,6 +24,9 @@ import {
 	buildFactExtractionLines,
 	parseFacts,
 	upsertFacts,
+	isEphemeralFact,
+	isExplicitMemoryCommand,
+	getActiveFactRefs,
 	type RawFactType,
 } from "@/modules/memory"
 import {
@@ -61,6 +64,8 @@ const buildReflectionPrompt = (
 	replyText: string,
 	trajectory: EmotionTrajectoryEntryType[],
 	flags: ReflectionFlagsType,
+	explicitMemory: boolean,
+	knownFacts: { subject: string; relation: string; value: string }[] = [],
 ): string => {
 	const name = persona.characterProfile?.name ?? "Domia"
 	const lines: string[] = []
@@ -84,10 +89,19 @@ const buildReflectionPrompt = (
 		lines.push(...userEmotionInstructionLines())
 	}
 	if (flags.facts) lines.push(...buildFactExtractionLines())
+	if (flags.facts && explicitMemory) {
+		lines.push(
+			`This exchange contains an EXPLICIT memory command from the person (remember/forget). The fact they asked to remember — or the "op":"delete" retraction they asked to forget — MUST appear in "facts", built strictly from THEIR words in THIS exchange. Do not return [] and do not substitute other known facts for it.`,
+		)
+		if (knownFacts.length)
+			lines.push(
+				`Currently stored facts about the person:\n${knownFacts.map((f) => `- ${JSON.stringify(f)}`).join("\n")}`,
+				`If they asked to FORGET something ("forget my name", "olvida donde vivo"), find the stored fact(s) it refers to above and emit each as {"subject","relation","value","op":"delete"} copying subject, relation and value EXACTLY as stored. Never emit these stored facts as new additions.`,
+			)
+	}
 	return lines.join("\n")
 }
 
-const SIG_WORD = /[a-z]{4,}/g
 const FIRST_PERSON = /\b(i|i'm|i am|i've|i have|my|mine)\b/i
 const QUESTION_START =
 	/^(what|why|how|when|where|who|which|whose|do|does|did|can|could|would|will|shall|should|is|are|am|was|were|may|might|have|has)\b/i
@@ -98,22 +112,34 @@ const isPureQuestion = (text: string): boolean => {
 	return interrogative && !FIRST_PERSON.test(t)
 }
 
-// what the user is doing right now is conversation, not durable memory — ephemeral captures poison recall and churn the prompt prefix
-const EPHEMERAL_FACT =
-	/\b(is (asking|saying|doing|trying|requesting|telling|wondering|testing)|asked (for|to|about)|wants? (the|to turn|to set|to play)|turn(ing|ed)? (on|off)|has recently|right now|currently|just (said|asked|did)|is aware of|talks later|will call at)\b/i
+const foldText = (s: string): string =>
+	s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "")
+
+const valueTokens = (s: string): string[] =>
+	foldText(s)
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((w) => w.length >= 2)
+
+const tokenOverlap = (a: string[], b: string[]): boolean =>
+	a.some((w) =>
+		b.some((u) =>
+			w.length >= 3 && u.length >= 3
+				? w.startsWith(u) || u.startsWith(w)
+				: w === u,
+		),
+	)
 
 const filterReflectionFacts = (
 	facts: RawFactType[],
 	userText: string,
-	replyText: string,
 	persona: PersonaContextType,
 ): RawFactType[] => {
 	if (isPureQuestion(userText)) return []
-	const user = userText.toLowerCase()
-	const reply = replyText.toLowerCase()
+	const user = foldText(userText)
+	const userWords = valueTokens(userText)
 	const personaName = (persona.characterProfile?.name ?? "domia").toLowerCase()
-	return facts.filter((fact) => {
-		if (EPHEMERAL_FACT.test(`${fact.relation} ${fact.value}`)) return false
+	const kept = facts.filter((fact) => {
+		if (isEphemeralFact(fact.relation, fact.value)) return false
 		const subject = fact.subject.toLowerCase()
 		if (
 			subject.includes(personaName) ||
@@ -123,20 +149,41 @@ const filterReflectionFacts = (
 		) {
 			return false
 		}
-		const words = fact.value.toLowerCase().match(SIG_WORD) ?? []
-		if (words.length > 0) {
-			const fromReply = words.some((w) => reply.includes(w))
-			const fromUser = words.some((w) => user.includes(w))
-			if (fromReply && !fromUser) return false
-		}
-		return true
+		if (fact.op === "delete") return true
+		const words = valueTokens(fact.value)
+		if (words.length === 0) return false
+		return words.some((w) => user.includes(w))
 	})
+	const deleteGrounded = (fact: RawFactType): boolean =>
+		tokenOverlap(valueTokens(`${fact.relation} ${fact.value}`), userWords)
+	const deletes = kept.filter((f) => f.op === "delete")
+	const grounded = deletes.filter(deleteGrounded)
+	if (grounded.length === deletes.length) return kept
+	if (grounded.length === 0 && deletes.length > 0)
+		reflectionLogger.warn("ungrounded deletes dropped (over-deletion guard)", {
+			dropped: deletes.map((f) => `${f.relation} ${f.value}`),
+		})
+	return kept.filter((f) => f.op !== "delete" || deleteGrounded(f))
 }
 
-const reflectionSemaphore = createAsyncSemaphore(
-	DEFAULT_REFLECTION_CONCURRENCY,
-	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
-)
+const reflectionSemaphores = new Map<
+	string,
+	ReturnType<typeof createAsyncSemaphore>
+>()
+const pendingByIdentity = new Map<string, number>()
+
+const semaphoreFor = (
+	identityId: string,
+): ReturnType<typeof createAsyncSemaphore> => {
+	const existing = reflectionSemaphores.get(identityId)
+	if (existing) return existing
+	const fresh = createAsyncSemaphore(
+		DEFAULT_REFLECTION_CONCURRENCY,
+		DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
+	)
+	reflectionSemaphores.set(identityId, fresh)
+	return fresh
+}
 
 const gateSettings = (domia: DomiaType): ReflectionGateSettingsType => ({
 	onlyWhenIdle:
@@ -182,26 +229,42 @@ const waitForIdle = async (onlyWhenIdle: boolean): Promise<boolean> => {
 	}
 }
 
+const IDLE_REVALIDATE_MAX_ATTEMPTS = 3
+
 const runGated = async <T>(
+	identityId: string,
 	settings: ReflectionGateSettingsType,
 	fn: () => Promise<T>,
 	skipValue: T,
 ): Promise<T> => {
-	reflectionSemaphore.setLimit(settings.concurrency)
-	reflectionSemaphore.setMaxWaiters(settings.queueMaxDepth)
-	let release!: () => void
-	try {
-		release = await reflectionSemaphore.acquire({
-			timeoutMs: REFLECTION_SLOT_TIMEOUT_MS,
+	const semaphore = semaphoreFor(identityId)
+	semaphore.setLimit(settings.concurrency)
+	semaphore.setMaxWaiters(settings.queueMaxDepth)
+	const pending = pendingByIdentity.get(identityId) ?? 0
+	if (pending >= settings.concurrency + settings.queueMaxDepth) {
+		reflectionLogger.info("reflection backlog full — skipping (best-effort)", {
+			identityId,
+			pending,
 		})
-	} catch (err) {
-		if (isSemaphoreBusyError(err)) {
-			reflectionLogger.info("reflection gate full — skipping (best-effort)")
-			return skipValue
-		}
-		throw err
+		return skipValue
 	}
+	pendingByIdentity.set(identityId, pending + 1)
 	try {
+		return await runGatedInner(semaphore, settings, fn, skipValue)
+	} finally {
+		const now = pendingByIdentity.get(identityId) ?? 1
+		if (now <= 1) pendingByIdentity.delete(identityId)
+		else pendingByIdentity.set(identityId, now - 1)
+	}
+}
+
+const runGatedInner = async <T>(
+	semaphore: ReturnType<typeof createAsyncSemaphore>,
+	settings: ReflectionGateSettingsType,
+	fn: () => Promise<T>,
+	skipValue: T,
+): Promise<T> => {
+	for (let attempt = 1; attempt <= IDLE_REVALIDATE_MAX_ATTEMPTS; attempt++) {
 		const idle = await waitForIdle(settings.onlyWhenIdle)
 		if (!idle) {
 			reflectionLogger.info(
@@ -209,10 +272,29 @@ const runGated = async <T>(
 			)
 			return skipValue
 		}
-		return await fn()
-	} finally {
-		release()
+		let release!: () => void
+		try {
+			release = await semaphore.acquire({
+				timeoutMs: REFLECTION_SLOT_TIMEOUT_MS,
+			})
+		} catch (err) {
+			if (isSemaphoreBusyError(err)) {
+				reflectionLogger.info("reflection gate full — skipping (best-effort)")
+				return skipValue
+			}
+			throw err
+		}
+		try {
+			if (settings.onlyWhenIdle && activeVoiceReplies() > 0) continue
+			return await fn()
+		} finally {
+			release()
+		}
 	}
+	reflectionLogger.info(
+		"reflection deferred after repeated busy revalidations — skipping (best-effort)",
+	)
+	return skipValue
 }
 
 export const runReflection = async (
@@ -222,14 +304,23 @@ export const runReflection = async (
 	replyText: string,
 	trajectory: EmotionTrajectoryEntryType[],
 	flags: ReflectionFlagsType,
+	knownFacts: { subject: string; relation: string; value: string }[] = [],
 ): Promise<ReflectionResultType> => {
 	if (!userText?.trim() || !replyText?.trim())
 		return { emotion: null, userEmotion: null, facts: [] }
 
 	const key = responder?.id ?? ""
+	const explicitMemory =
+		flags.facts &&
+		isExplicitMemoryCommand(userText, responder?.characterProfile?.language)
 	const reflectionModel = responder?.llmModelConfig?.reflectionModelName?.trim()
+	if (explicitMemory && reflectionModel)
+		reflectionLogger.info(
+			"🧠 explicit memory command — reflecting with main model",
+			{ responderId: key },
+		)
 	const reflector =
-		reflectionModel && responder?.llmModelConfig
+		reflectionModel && responder?.llmModelConfig && !explicitMemory
 			? {
 					...responder,
 					llmModelConfig: {
@@ -249,14 +340,22 @@ export const runReflection = async (
 			persona,
 			userText,
 			replyText,
-			trajectory,
+			explicitMemory ? [] : trajectory,
 			flags,
+			explicitMemory,
+			knownFacts,
 		)
 		for (let attempt = 1; attempt <= REFLECTION_YIELD_MAX_ATTEMPTS; attempt++) {
 			let yielded = false
 			const result = await runGated(
+				key,
 				settings,
 				async () => {
+					if (settings.onlyWhenIdle && activeVoiceReplies() > 0)
+						reflectionLogger.warn(
+							"⚠️ reflectionOnlyWhenIdle invariant breach — voice active at reflection start",
+							{ responderId: responder.id },
+						)
 					const deadline = Date.now() + REFLECTION_TIMEOUT_MS
 					const shouldAbort = (): boolean => {
 						if (Date.now() > deadline) return true
@@ -295,14 +394,50 @@ export const runReflection = async (
 					const userEmotion: UserEmotionType | null = flags.emotion
 						? parseUserEmotionFromObject(obj.userEmotion)
 						: null
-					const facts: RawFactType[] = flags.facts
-						? filterReflectionFacts(
-								parseFacts(obj.facts),
+					let facts: RawFactType[] = flags.facts
+						? filterReflectionFacts(parseFacts(obj.facts), userText, persona)
+						: []
+					if (explicitMemory && facts.length === 0)
+						reflectionLogger.warn("explicit memory command yielded no facts", {
+							parsed: parseFacts(obj.facts).length,
+							rawFacts: JSON.stringify(obj.facts)?.slice(0, 400),
+						})
+					const declarationMissed =
+						flags.facts &&
+						!explicitMemory &&
+						!!reflectionModel &&
+						facts.length === 0 &&
+						FIRST_PERSON.test(userText) &&
+						!isPureQuestion(userText)
+					if (explicitMemory)
+						facts = facts.map((f) => ({ ...f, explicit: true }))
+					if (declarationMissed) {
+						reflectionLogger.info(
+							"🧠 first-person declaration missed by reflector — retrying with main model",
+							{ responderId: key },
+						)
+						const retryPrompt = buildReflectionPrompt(
+							persona,
+							userText,
+							replyText,
+							[],
+							{ ...flags, emotion: false },
+							false,
+						)
+						const retryRaw = await withTimeout(
+							runLLMJson(responder, retryPrompt, shouldAbort),
+							REFLECTION_TIMEOUT_MS,
+							"reflection-retry",
+						)
+						if (!yielded) {
+							const retryObj = parseLlmJson(retryRaw).value ?? {}
+							facts = filterReflectionFacts(
+								parseFacts(retryObj.facts),
 								userText,
-								replyText,
 								persona,
 							)
-						: []
+						}
+					}
 					return { emotion, userEmotion, facts }
 				},
 				empty,
@@ -322,7 +457,9 @@ export const runReflection = async (
 	} catch (err) {
 		reflectionLogger.warn("Reflection failed (skipping)", {
 			responderId: responder?.id,
-			err,
+			err: err instanceof Error ? `${err.message}` : String(err),
+			stack:
+				err instanceof Error ? err.stack?.split("\n")[1]?.trim() : undefined,
 		})
 		return { emotion: null, userEmotion: null, facts: [] }
 	}
@@ -431,6 +568,12 @@ export const reflectOnInteraction = async (
 	const isRemote = !!originDomiaKey && originDomiaKey !== domia.domiaKey
 	const trajectory =
 		flags.emotion && !isRemote ? await getRecentTrajectory(domia.id) : []
+	const knownFacts =
+		flags.facts &&
+		!isRemote &&
+		isExplicitMemoryCommand(userText, domia.characterProfile?.language)
+			? await getActiveFactRefs(domia)
+			: []
 	const result = await runReflection(
 		domia,
 		personaContextFromDomia(domia),
@@ -438,6 +581,7 @@ export const reflectOnInteraction = async (
 		replyText,
 		trajectory,
 		flags,
+		knownFacts,
 	)
 	await routeReflectionResult(domia, originDomiaKey, result, interactionId)
 }

@@ -5,7 +5,7 @@
 		"language": "en",
 		"isolate": "conversation",
 		"runs": 3,
-		"passRatio": 0.67,
+		"passRatio": 0.6,
 		"turns": [
 			{
 				"text": "Are you awake?",

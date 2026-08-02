@@ -83,7 +83,8 @@
 		"numPredict": 80,
 		"llmConcurrency": 2,
 		"useCompactPrompt": false,
-		"reflectionModelName": null
+		"reflectionModelName": null,
+		"slotAffinityEnabled": true
 	},
 	"wakeWord": {
 		"name": "Default",
@@ -111,13 +112,16 @@
 		"maxRecordingMs": 15000,
 		"satelliteSpeculationEnabled": true,
 		"speculativeSilenceMs": 400,
-		"semanticEndpointingEnabled": true
+		"semanticEndpointingEnabled": true,
+		"pauseBargeInEnabled": true
 	},
 	"playback": {
 		"name": "Default",
 		"engine": "SOX",
 		"volume": 100,
 		"streamingEnabled": true,
-		"outputDevice": null
+		"outputDevice": null,
+		"pauseEnabled": true,
+		"wordLevelHeardEnabled": true
 	}
 }

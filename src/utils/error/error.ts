@@ -57,3 +57,12 @@ export const toError = (value: unknown): Error => {
 	if (typeof value === "string") return new Error(value)
 	return new Error(String(value))
 }
+
+export const serializeFatal = (reason: unknown) => ({
+	message: reason instanceof Error ? reason.message : String(reason),
+	stack:
+		reason instanceof Error
+			? reason.stack?.split("\n").slice(1, 4).join(" | ")
+			: undefined,
+	...(typeof reason === "object" && reason !== null ? reason : {}),
+})

@@ -19,8 +19,10 @@ while the model is still writing (per-sentence pipelining). Playback, barge-in (
 the turn), follow-up mode, and feedback sounds are part of the same flow.
 
 - **Measured latency:** ~0.6–0.7s from end-of-speech to first audio (TTFA p50) with **all companion layers
-  on** (persona, emotion, memory, knowledge base). Measured on the dev machine (Apple M4 Max); absolute
-  numbers vary by hardware, the shape does not.
+  on** (persona, emotion, memory, knowledge base) on the dev machine (Apple M4 Max). On the reference
+  always-on hub (Jetson Orin Nano 8GB, GPU-hosted 3B LLM with slot-affinity KV reuse), conversational
+  perceived latency lands around ~1.4s with LLM time-to-first-token in the low hundreds of milliseconds —
+  validated live on hardware. Absolute numbers vary by machine, the shape does not.
 - **Observability:** every turn persists ~20 stage timings (`stt_ms`, `llm_queue_ms`, `llm_ttft_ms`,
   `tts_first_chunk_ms`, `ttfa_ms`, `rss_mb`, …) to `interaction_trace`, emits one greppable `TURN_COMPLETE`
   log line, and `npm run bench:voice` runs a golden corpus end-to-end and prints a labeled, comparable
@@ -54,12 +56,32 @@ protocols are implemented behind one adapter contract:
 1. **ESPHome** — stock Home Assistant voice hardware (e.g. the Voice PE) connects with **factory firmware,
    no reflash**, over the native ESPHome API. Verified end-to-end on real hardware.
 2. **Wyoming** — the Home Assistant satellite protocol; Domia connects out to the satellite.
-3. **WebSocket** — Domia's reference protocol for custom satellite builds.
+3. **WebSocket** — Domia's reference protocol for custom satellite builds. Clients may send a
+   `{"type": "audio_played", "interactionId": "..."}` control message when the reply's first audio actually
+   starts on their speaker. The `interactionId` (echoed from `audio_stream_begin`) is required for the
+   stamp: a message whose id is missing, mismatched, or stale is ignored. (`audio_stream_begin` carries an
+   `interactionId` only for turn replies — announce/intercom streams have no turn, so there the field is
+   absent and `audio_played` has nothing to confirm.) The node stamps it as the turn's
+   `audio_audible_at` — the only transport able to prove
+   audibility (ESPHome only reports announce-finished, Wyoming has no playback confirmation). Domia's eval
+   clients send it on first frame received, which on loopback approximates delivery, not true audibility —
+   real devices must send it at actual playback start.
 
 Wake word runs on the device; audio streams to the node; satellites bind **per identity** (a hub hosting five
 room-identities routes each satellite to its room's Domia). Discovery + binding + wake words + timers + volume
 are managed from the web console. Presence, announcements (`POST /speak`, broadcast), and intercom ride the
 same layer.
+
+**Continued conversation (follow-up)** works on stock ESPHome hardware: after a reply, the device re-opens its
+microphone and the user speaks again without repeating the wake word — chains of several exchanges validated on
+a factory-firmware Voice PE. The node side is a per-connection run controller that owns the ESPHome voice
+assistant event ladder end to end: generation counters for runs and playbacks (a late event from a closed run
+can never affect the next one), exactly-once run termination, per-phase watchdogs (the firmware has none), a
+single playback arbiter per device (replies before announcements, no overlapping audio), and playback-end
+detection from the media-player entity state cross-checked against the known reply duration. Capture hygiene is
+data-driven: the first instants of each capture window are gated so neither the device's own wake chime nor the
+tail of the previous reply reaches the recognizer. All windows and trims are per-satellite database
+configuration.
 
 (protocol details), `domia-satellite-architecture.md` (design + as-built).
 
@@ -139,8 +161,11 @@ production code.
   every spoken fixed string, per-identity language config — each room can speak its own language), and adding
   a language is a catalog entry + a config template — but only EN/ES exist today and the wake word stays
   English for now.
-- **No test suite / CI** — verification is end-to-end benches, gates, and corpus scorecards by convention.
-- **Jetson (GPU hub) not yet validated on hardware** — a tuned config template (`templates/jetson.json`)
-  and deploy checklist are ready; validation runs when the device arrives.
+- **No CI pipeline** — verification is deterministic local suites (turn logic, protocol replay, controller
+  invariants, parsing, adversarial inputs, per-class STT noise gates) plus end-to-end benches and corpus
+  scorecards, run by convention rather than automation.
+- **Satellite configuration does not yet survive re-registration** — if a satellite re-appears under a new IP,
+  its row can be re-created with defaults and per-device flags need re-applying.
 - **Pool-job cancellation** (aborting an in-flight TTS pool job) pending; barge-in already stops new work.
-- Live soak of the companion layers is just beginning — defaults may retune with real usage.
+- Reply _quality_ on small models is its own upcoming chapter (model gauntlet + persona work); this document
+  covers the mechanics, which are stable.

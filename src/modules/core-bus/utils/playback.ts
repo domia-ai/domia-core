@@ -5,6 +5,7 @@ import { DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED } from "@/db"
 import { createWavStreamWriter, domiaBusLogger } from "@/utils"
 import { registerAudioForServing } from "./audio"
 import { getStreamingSink } from "./streaming-sink"
+import { markLadderStage } from "./stage-ladder"
 import type {
 	CoreBusContextType,
 	PlaybackOutcomeType,
@@ -89,6 +90,7 @@ const streamToSink = async (
 					firstChunkEmitted = true
 					meta.ledger?.markFirstChunk()
 					notePlaybackStarted(ctx.domia.id)
+					markLadderStage(meta.interactionId, "audioDeliveredAt")
 					meta.onFirstChunk?.()
 					publishToDomiaBus(
 						ctx.domia.id,
@@ -162,6 +164,7 @@ export const playStreamedAudio = async (
 				firstChunkEmitted = true
 				meta.ledger?.markFirstChunk()
 				notePlaybackStarted(ctx.domia.id)
+				markLadderStage(meta.interactionId, "audioDeliveredAt")
 				meta.onFirstChunk?.()
 				publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
 					interactionId: meta.interactionId,

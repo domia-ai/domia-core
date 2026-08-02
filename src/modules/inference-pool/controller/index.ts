@@ -1,6 +1,8 @@
 import { inferencePoolLogger } from "@/utils"
 
 import { poolBusyError } from "../utils"
+
+const SHUTDOWN_KILL_GRACE_MS = 3000
 import {
 	RESPAWN_BACKOFF_BASE_MS,
 	RESPAWN_BACKOFF_MAX_MS,
@@ -405,7 +407,27 @@ export const createInferencePool = (
 		}
 		for (const ws of [...workers]) {
 			if (ws.idleTimer) clearTimeout(ws.idleTimer)
-			ws.handle.send({ type: "shutdown" })
+			try {
+				ws.handle.send({ type: "shutdown" })
+			} catch {
+				ws.handle.kill()
+			}
+		}
+		await new Promise<void>((resolve) => {
+			const deadline = Date.now() + SHUTDOWN_KILL_GRACE_MS
+			const poll = setInterval(() => {
+				if (workers.length === 0 || Date.now() >= deadline) {
+					clearInterval(poll)
+					resolve()
+				}
+			}, 50)
+			poll.unref?.()
+		})
+		for (const ws of [...workers]) {
+			inferencePoolLogger.warn(
+				`💥 ${label} worker survived shutdown grace — killing`,
+			)
+			ws.handle.kill()
 		}
 	}
 

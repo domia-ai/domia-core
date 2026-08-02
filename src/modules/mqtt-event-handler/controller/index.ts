@@ -1,6 +1,12 @@
 import type { handleMqttMessageArgsType } from "../types"
 import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
-import { type DomiaType, invalidateOwnDomia, getOwnDomia } from "@/modules/core"
+import {
+	type DomiaType,
+	invalidateOwnDomia,
+	getOwnDomia,
+	getNodeId,
+} from "@/modules/core"
+import { setPeerSpeaking, clearPeerSpeech } from "@/modules/core-bus"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
 import { markPeerOfflineByNodeId } from "@/modules/network-sync"
@@ -57,7 +63,26 @@ export const handleMqttMessage = ({
 			case MQTT_EVENT_ENUM.OFFLINE: {
 				const nodeId =
 					typeof payload?.nodeId === "string" ? payload.nodeId : domiaKey
-				if (nodeId) markPeerOfflineByNodeId(nodeId)
+				if (nodeId) {
+					markPeerOfflineByNodeId(nodeId)
+					clearPeerSpeech(nodeId)
+				}
+				break
+			}
+			case MQTT_EVENT_ENUM.SPEAKING: {
+				const peerNodeId =
+					typeof payload?.nodeId === "string" ? payload.nodeId : null
+				const peerDomiaKey =
+					typeof payload?.domiaKey === "string" ? payload.domiaKey : ""
+				if (!peerNodeId || typeof payload?.speaking !== "boolean") break
+				void getNodeId()
+					.then((own) => {
+						if (peerNodeId !== own)
+							setPeerSpeaking(peerNodeId, peerDomiaKey, payload.speaking)
+					})
+					.catch(() =>
+						setPeerSpeaking(peerNodeId, peerDomiaKey, payload.speaking),
+					)
 				break
 			}
 			default:

@@ -31,6 +31,8 @@ export const usageCols = (usage: LlmUsageType | null) =>
 				llmContextWindow: usage.contextWindow ?? null,
 				llmFinishReason: usage.finishReason ?? null,
 				llmRequestId: usage.requestId ?? null,
+				llmFreshTokens: usage.freshTokens ?? null,
+				llmCachedTokens: usage.cachedTokens ?? null,
 			}
 		: {}
 

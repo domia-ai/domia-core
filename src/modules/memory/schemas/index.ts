@@ -7,5 +7,3 @@ export const factSchema = z.object({
 	confidence: z.number().min(0).max(1).optional(),
 	op: z.enum(["add", "delete"]).optional(),
 })
-
-export const factsArraySchema = z.array(factSchema)

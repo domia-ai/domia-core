@@ -12,6 +12,7 @@ import { RESPONSE_TYPE_ENUM } from "@/db"
 
 import { takeMemoryBundle } from "./prefetch-memory"
 import { beginTurn } from "./turn-scope"
+import { markLadderStage } from "./stage-ladder"
 import type {
 	SttDonePayloadType,
 	SttFlowSessionType,
@@ -90,6 +91,7 @@ export const buildTurnSession = async (
 		userModel,
 	)
 
+	markLadderStage(interactionId, "promptReadyAt")
 	const scope =
 		session.isVoice && session.liveVoice === true
 			? beginTurn(domiaId, interactionId)

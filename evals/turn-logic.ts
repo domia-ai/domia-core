@@ -1,4 +1,13 @@
 import { randomUUID } from "crypto"
+import { createServer } from "http"
+
+import {
+	acquireSlotLease,
+	invalidateSlots,
+	isIdentitySlotBusy,
+	resetSlotCoordinator,
+} from "@/modules/llm-slots"
+import { LLM_ENGINE_ENUM } from "@/db"
 
 import {
 	adaptiveVadWindow,
@@ -11,12 +20,28 @@ import {
 	type VadWindowType,
 } from "@/modules/audio-capture"
 import { runSpeculativeTurn } from "@/modules/core-bus/controller/speculative-turn"
+import {
+	markLadderStage,
+	ladderCols,
+	clearLadder,
+	stampFirstTokenIterable,
+	extractEmotionTags,
+	splitSentenceEmotionTags,
+} from "@/modules/core-bus/utils"
+import { sentenceVoiceForTags } from "@/modules/tts-engine"
 import { startSatelliteSpeculation } from "@/modules/satellite-core/controller/speculation"
 import {
 	subscribeToDomiaBus,
 	unsubscribeFromDomiaBus,
 	DOMIA_EVENT_BUS_ENUM,
+	onTurnEvent,
+	DOMIA_TURN_EVENT_ENUM,
+	type DomiaTurnEventType,
 } from "@/buses"
+import {
+	acknowledgeEndpoint,
+	wasEndpointAcknowledged,
+} from "@/modules/feedback-sounds"
 import type { SttDonePayloadType } from "@/modules/core-bus"
 import type { SttStreamSessionType } from "@/modules/stt-engine"
 import type { CoreBusFeaturesType } from "@/modules/core-bus"
@@ -28,7 +53,13 @@ import {
 } from "@/db"
 import { baseWakeWordConfig, getDomia } from "@/test-utils"
 
-import { fabricateSegmentPcm, feedVadTimeline, makeChecker, sleep } from "./lib"
+import {
+	fabricateSegmentPcm,
+	feedVadTimeline,
+	makeChecker,
+	sleep,
+	ladderViolations,
+} from "./lib"
 import type { FakeAudioScriptType, VadTickSampleType } from "./types"
 
 const checker = makeChecker()
@@ -698,13 +729,345 @@ const runSatelliteSpeculationChecks = async (): Promise<void> => {
 	unsubscribeFromDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture2)
 }
 
+const runStageLadderChecks = async (): Promise<void> => {
+	console.log("\nstage ladder store (markLadderStage/ladderCols)")
+	const id = `turn-logic-ladder-${randomUUID()}`
+	checker.check(
+		"unknown interaction → empty cols (null semantics, never zero)",
+		Object.keys(ladderCols(id)).length === 0,
+	)
+	markLadderStage(id, "speechEndAt", 1000)
+	markLadderStage(id, "endpointDecisionAt", 1450)
+	markLadderStage(id, "speechEndAt", 2000)
+	const cols = ladderCols(id)
+	checker.check(
+		"first write wins per stage",
+		cols.speechEndAt === 1000 && cols.endpointDecisionAt === 1450,
+		JSON.stringify(cols),
+	)
+	checker.check(
+		"unset stages stay absent (persist as null)",
+		!("llmQueuedAt" in cols) && !("audioAudibleAt" in cols),
+	)
+	const rowShape: Record<string, unknown> = {
+		speech_end_at: 1000,
+		endpoint_decision_at: 1450,
+		stt_final_at: 1400,
+		audio_audible_at: null,
+	}
+	checker.check(
+		"ladderViolations flags non-monotonic present stages",
+		ladderViolations(rowShape).length === 1,
+		JSON.stringify(ladderViolations(rowShape)),
+	)
+	checker.check(
+		"ladderViolations accepts monotonic rows with gaps",
+		ladderViolations({
+			speech_end_at: 1000,
+			stt_final_at: 1600,
+			audio_delivered_at: 2500,
+		}).length === 0,
+	)
+	checker.check(
+		"ladderViolations flags zero timestamps",
+		ladderViolations({ speech_end_at: 0 }).length === 1,
+	)
+	clearLadder(id)
+	checker.check(
+		"clearLadder drops the interaction",
+		Object.keys(ladderCols(id)).length === 0,
+	)
+
+	const tokenId = `turn-logic-ladder-tokens-${randomUUID()}`
+	const source = (async function* (): AsyncIterable<string> {
+		yield "hello"
+		yield "world"
+	})()
+	const before = ladderCols(tokenId)
+	const stamped = stampFirstTokenIterable(tokenId, source)
+	checker.check(
+		"token wrap does not stamp before consumption",
+		!("llmFirstTokenAt" in before) &&
+			!("llmFirstTokenAt" in ladderCols(tokenId)),
+	)
+	const seen: string[] = []
+	for await (const t of stamped) seen.push(t)
+	const after = ladderCols(tokenId)
+	checker.check(
+		"first consumed token stamps llmFirstTokenAt exactly once",
+		seen.length === 2 && typeof after.llmFirstTokenAt === "number",
+		JSON.stringify({ seen, after }),
+	)
+	clearLadder(tokenId)
+}
+
+const runEndpointAckChecks = async (): Promise<void> => {
+	console.log("\nendpoint acknowledgment (acknowledgeEndpoint)")
+	const domia = getDomia({})
+	const events: DomiaTurnEventType[] = []
+	const off = onTurnEvent(
+		{ types: [DOMIA_TURN_EVENT_ENUM.ENDPOINT_ACCEPTED] },
+		(e) => {
+			events.push(e)
+		},
+	)
+	const id = `turn-logic-ack-${randomUUID()}`
+	const first = acknowledgeEndpoint(domia, id, {
+		playSound: false,
+		sinceSpeechEndMs: 420,
+	})
+	await sleep(SETTLE_MS)
+	const firstEvent = events[0] as
+		| { sinceSpeechEndMs?: number; interactionId?: string }
+		| undefined
+	checker.check(
+		"endpoint ack emits endpoint.accepted with sinceSpeechEndMs",
+		first &&
+			events.length === 1 &&
+			firstEvent?.interactionId === id &&
+			firstEvent?.sinceSpeechEndMs === 420,
+		JSON.stringify(events),
+	)
+	const second = acknowledgeEndpoint(domia, id, { playSound: false })
+	await sleep(SETTLE_MS)
+	checker.check(
+		"duplicate ack suppressed (exactly-once per interaction)",
+		!second && events.length === 1,
+	)
+	checker.check(
+		"wasEndpointAcknowledged reflects the claim",
+		wasEndpointAcknowledged(id),
+	)
+	const otherId = `turn-logic-ack-${randomUUID()}`
+	const third = acknowledgeEndpoint(domia, otherId, { playSound: false })
+	await sleep(SETTLE_MS)
+	checker.check(
+		"distinct interaction acks independently",
+		third && events.length === 2,
+	)
+	off()
+}
+
+const runProsodyTagChecks = (): void => {
+	console.log("\nemotion/prosody tags → TTS (sentence streaming contract)")
+	const tagged = "[joy] Good morning! [surprise] The sun is out."
+	const extracted = extractEmotionTags(tagged)
+	checker.check(
+		"extractEmotionTags strips every tag from spoken text",
+		!/\[/.test(extracted.clean) &&
+			extracted.tags.join(",") === "joy,surprise" &&
+			extracted.clean.startsWith("Good morning!"),
+		JSON.stringify(extracted),
+	)
+	const midSentence = splitSentenceEmotionTags("[joy] Hello there.")
+	checker.check(
+		"tag before text applies to the sentence",
+		midSentence.applyTags.join(",") === "joy" &&
+			midSentence.carryTags.length === 0,
+	)
+	const trailing = splitSentenceEmotionTags("See you soon. [trust]")
+	checker.check(
+		"trailing tag carries to the next sentence",
+		trailing.carryTags.join(",") === "trust" && trailing.applyTags.length === 0,
+	)
+	const domia = getDomia({})
+	const voice = sentenceVoiceForTags(domia, ["joy"])
+	checker.check(
+		"sentenceVoiceForTags yields a per-sentence voice (or null without shades) without throwing",
+		voice === null || typeof voice.speed === "number",
+		JSON.stringify(voice),
+	)
+}
+
+const runSlotCoordinatorChecks = async (): Promise<void> => {
+	console.log(
+		"\nslot lease coordinator (atomic leases, single-flight discovery)",
+	)
+	let propsHits = 0
+	let slotCount = 3
+	const server = createServer((req, res) => {
+		if (req.url === "/props") {
+			propsHits += 1
+			res.writeHead(200, { "content-type": "application/json" })
+			res.end(JSON.stringify({ total_slots: slotCount }))
+			return
+		}
+		res.writeHead(404)
+		res.end()
+	})
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+	const port = (server.address() as { port: number }).port
+	const slotDomia = (id: string) =>
+		getDomia({
+			domiaOverrides: { id },
+			llmModelConfigOverrides: {
+				engine: LLM_ENGINE_ENUM.OPENAI_COMPATIBLE,
+				baseUrl: `http://127.0.0.1:${port}/v1`,
+				slotAffinityEnabled: true,
+			},
+		})
+
+	resetSlotCoordinator()
+	const a = slotDomia("slot-test-identity-a")
+	const slotIds: (number | null)[] = []
+	await Promise.all(
+		Array.from({ length: 5 }, async () => {
+			const lease = await acquireSlotLease(a, "interactive")
+			slotIds.push(lease?.slotId ?? null)
+			await sleep(10)
+			lease?.release()
+		}),
+	)
+	checker.check(
+		"single-flight discovery (5 concurrent acquires → 1 /props hit)",
+		propsHits === 1,
+		`hits=${propsHits}`,
+	)
+	checker.check(
+		"concurrent same-identity acquires all serialize onto one slot",
+		slotIds.length === 5 &&
+			slotIds.every((s) => s !== null) &&
+			new Set(slotIds).size === 1,
+		JSON.stringify(slotIds),
+	)
+
+	const held = await acquireSlotLease(a, "interactive")
+	let secondResolved = false
+	const secondPromise = acquireSlotLease(a, "interactive").then((l) => {
+		secondResolved = true
+		return l
+	})
+	await sleep(150)
+	checker.check(
+		"same-identity second acquire waits while first is in flight",
+		!secondResolved,
+	)
+	held?.release()
+	const second = await secondPromise
+	checker.check(
+		"waiter acquires after release (same slot)",
+		second !== null && second.slotId === held?.slotId,
+	)
+	second?.release()
+
+	const background = await acquireSlotLease(a, "background")
+	checker.check(
+		"background purpose gets the reserved last slot",
+		background?.slotId === 2,
+		`slot=${background?.slotId}`,
+	)
+	const b = slotDomia("slot-test-identity-b")
+	const leaseB = await acquireSlotLease(b, "interactive")
+	checker.check(
+		"second identity gets a distinct interactive slot",
+		leaseB !== null && leaseB.slotId !== held?.slotId,
+		`b=${leaseB?.slotId}`,
+	)
+	const staleLease = await acquireSlotLease(a, "interactive")
+	invalidateSlots(a)
+	const postInvalidate = await acquireSlotLease(a, "interactive")
+	checker.check(
+		"post-invalidation acquire rediscovers and succeeds",
+		postInvalidate !== null,
+	)
+	staleLease?.release()
+	const afterStaleRelease = await acquireSlotLease(b, "interactive")
+	checker.check(
+		"stale-generation release does not corrupt the new state",
+		afterStaleRelease !== null,
+	)
+	background?.release()
+	leaseB?.release()
+	postInvalidate?.release()
+	afterStaleRelease?.release()
+
+	slotCount = 1
+	resetSlotCoordinator()
+	const heldA = await acquireSlotLease(a, "interactive")
+	const doubleWaiter = acquireSlotLease(a, "interactive")
+	await sleep(60)
+	invalidateSlots(a)
+	const leaseB2 = await acquireSlotLease(b, "interactive")
+	await sleep(60)
+	invalidateSlots(a)
+	leaseB2?.release()
+	const doubleWaiterLease = await doubleWaiter
+	checker.check(
+		"double invalidation mid-wait: lease lands on the current generation",
+		doubleWaiterLease !== null && isIdentitySlotBusy(a),
+	)
+	doubleWaiterLease?.release()
+	checker.check(
+		"post-release the current generation shows the slot free",
+		!isIdentitySlotBusy(a),
+	)
+	heldA?.release()
+
+	resetSlotCoordinator()
+	server.close()
+	let flakyHealthy = false
+	let flakyHits = 0
+	const badServer = createServer((req, res) => {
+		if (req.url === "/props" && flakyHealthy) {
+			flakyHits += 1
+			res.writeHead(200, { "content-type": "application/json" })
+			res.end(JSON.stringify({ total_slots: 3 }))
+			return
+		}
+		res.writeHead(500)
+		res.end()
+	})
+	await new Promise<void>((resolve) =>
+		badServer.listen(0, "127.0.0.1", resolve),
+	)
+	const badPort = (badServer.address() as { port: number }).port
+	const flakyDomia = getDomia({
+		llmModelConfigOverrides: {
+			engine: LLM_ENGINE_ENUM.OPENAI_COMPATIBLE,
+			baseUrl: `http://127.0.0.1:${badPort}/v1`,
+			slotAffinityEnabled: true,
+		},
+	})
+	const degraded = await acquireSlotLease(flakyDomia, "interactive")
+	checker.check(
+		"failed discovery degrades to unpinned (null lease), no throw",
+		degraded === null,
+	)
+	flakyHealthy = true
+	const withinTtl = await acquireSlotLease(flakyDomia, "interactive")
+	checker.check(
+		"degraded state cached within TTL (no rediscovery hammering)",
+		withinTtl === null && flakyHits === 0,
+		`hits=${flakyHits}`,
+	)
+	const realNow = Date.now.bind(Date)
+	Date.now = () => realNow() + 31_000
+	try {
+		const recovered = await acquireSlotLease(flakyDomia, "interactive")
+		checker.check(
+			"degraded state retries after TTL and recovers affinity",
+			recovered !== null && flakyHits === 1,
+			`lease=${recovered?.slotId} hits=${flakyHits}`,
+		)
+		recovered?.release()
+	} finally {
+		Date.now = realNow
+	}
+	badServer.close()
+	resetSlotCoordinator()
+}
+
 const main = async (): Promise<void> => {
 	runFabricatorChecks()
+	runProsodyTagChecks()
+	await runSlotCoordinatorChecks()
 	runDynamicEndpointingChecks()
 	await runSpeculationChecks()
 	await runSatelliteSpeculationChecks()
 	await runVadWindowChecks()
 	await runAdaptiveWindowChecks()
+	await runStageLadderChecks()
+	await runEndpointAckChecks()
 	const pass = checker.passCount()
 	const fail = checker.failCount()
 	console.log(`\n${pass}/${pass + fail} turn-logic checks passed`)

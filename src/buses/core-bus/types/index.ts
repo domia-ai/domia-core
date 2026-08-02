@@ -19,6 +19,7 @@ export type DomiaEventBusPayloadMapType = {
 		interactionId?: string
 		responseType?: string
 		speechEndAt?: number
+		endpointDecisionAt?: number
 		endpointDelayMs?: number
 		endpointDebounceMs?: number
 		liveVoice?: boolean
@@ -35,6 +36,7 @@ export type DomiaEventBusPayloadMapType = {
 		prestartedFirstUnitText?: string
 		prestartedFirstUnitPcm?: Promise<Buffer | null>
 		speechEndAt?: number
+		endpointDecisionAt?: number
 		endpointDelayMs?: number
 		endpointDebounceMs?: number
 	}

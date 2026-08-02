@@ -34,6 +34,7 @@ export type EvalExpectType = {
 	recallsFact?: { subject?: string; value: string }
 	factInDb?: { subject?: string; value: string }
 	noFactInDb?: { subject?: string; value: string }
+	factCountAtMost?: { subject?: string; value: string; count: number }
 	expectEvents?: {
 		present?: string[]
 		toolResultStatus?: "ok" | "failed" | "timeout" | "cancelled"
@@ -98,6 +99,12 @@ export type SatelliteTurnOptionsType = {
 	disconnectAfterSpeechEnd?: boolean
 	token?: string
 	wsUrl?: string
+	bargeIn?: {
+		afterFrames?: number
+		speechMs: number
+		thenSilenceMs?: number
+	}
+	echoLoopback?: boolean
 }
 
 export type SatelliteTurnResultType = {
@@ -180,10 +187,61 @@ export type BenchSummaryType = {
 	expected: number
 	failed: number
 	transcriptMismatches: number
+	ladderViolations: number
 	runs: number
 	snapshot: Record<string, string>
+	runtime: RuntimeSnapshotType
 	all: Record<string, BenchStatsType>
 	warm?: Record<string, BenchStatsType>
+}
+
+export type RuntimeSnapshotType = {
+	node: string
+	platform: string
+	cpu: string
+	cores: number
+	totalMemGb: number
+	hostname: string
+	hardwareLabel: string
+	gitCommit: string
+	gitDirty: boolean
+	sherpaOnnxNode: string
+	evalUrl: string
+	evalDb: string
+	evalDomiaKey: string
+	capturedAt: string
+}
+
+export type LadderDeltasType = Record<string, number | null>
+
+export type EndpointAckStatsType = {
+	ackCount: number
+	beforeSttFinal: boolean | null
+}
+
+export type FactDedupPairType = {
+	relation: string
+	a: string
+	b: string
+	duplicate: boolean
+}
+
+export type TtsTournamentCandidateType = {
+	label: string
+	config: Record<string, unknown>
+	generation: () => { speed: number } & Record<string, unknown>
+}
+
+export type TtsTournamentRowType = {
+	candidate: string
+	textClass: string
+	loadMs: number
+	wallMsP50: number
+	wallMsMax: number
+	audioSec: number
+	rtf: number
+	wer: number
+	rssAfterMb: number
 }
 
 export type MockHaServerType = {
@@ -220,4 +278,16 @@ export type VadTickSampleType = FakeAudioTickType & {
 	speechActive: boolean
 	everDetected: boolean
 	completed: boolean
+}
+
+export type SyncFactType = { id: string; value: string; updatedAt: string }
+
+export type SyncPageType = {
+	facts: SyncFactType[]
+	nextFactsCursor: { since: string; id: string } | null
+}
+
+export type EsphomeSentEventType = {
+	type: number
+	data?: { name: string; value: string }[]
 }

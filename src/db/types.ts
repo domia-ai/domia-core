@@ -236,6 +236,13 @@ export type UpdateMemoryFactType = Partial<Omit<InsertMemoryFactType, "id">> & {
 	id: string
 }
 
+export type SelectFactEvidenceType = InferSelectModel<
+	typeof schema.factEvidence
+>
+export type InsertFactEvidenceType = InferInsertModel<
+	typeof schema.factEvidence
+>
+
 export type SelectKnowledgeEntryType = InferSelectModel<
 	typeof schema.knowledgeEntry
 >

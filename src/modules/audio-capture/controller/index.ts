@@ -1,6 +1,7 @@
 import { once } from "events"
 
 import { type DomiaType } from "@/modules/core"
+import { playFeedbackSound } from "@/modules/feedback-sounds"
 import { WAKE_WORD_ENGINE_ENUM_VALUES } from "@/db"
 import {
 	AUDIO_ERRORS,
@@ -84,10 +85,17 @@ export const startAudioRecording = async (
 	attachSoxStderrFilter(sox)
 	audioCaptureLogger.info(`[🎙️] Starting VAD-gated recording to: ${outputPath}`)
 
+	let endpointAnnounced = false
 	sox.stdout.on("data", (data: Buffer) => {
 		captured.push(data)
 		vad.feed(data)
-		if (vad.completed()) return stopSox("vad detected end of speech")
+		if (vad.completed()) {
+			if (!endpointAnnounced) {
+				endpointAnnounced = true
+				playFeedbackSound(domia, "endpoint")
+			}
+			return stopSox("vad detected end of speech")
+		}
 		if (Date.now() - startedAt > config.maxRecordingMs) {
 			stopSox("max recording duration reached")
 		}
@@ -158,8 +166,11 @@ export const startFollowUpRecording = async (
 			return
 		}
 		if (vad.completed()) {
-			speechEndAt = Date.now() - debounceMs
-			endpointObservedMs = debounceMs
+			if (speechEndAt === null) {
+				speechEndAt = Date.now() - debounceMs
+				endpointObservedMs = debounceMs
+				playFeedbackSound(domia, "endpoint")
+			}
 			return stopSox("vad detected end of speech")
 		}
 		if (
@@ -297,9 +308,12 @@ export const startSpeculativeCapture = (
 			hooks.onSpeculate(Buffer.concat(captured))
 		}
 		if (endpointReached()) {
-			const observed = semantic ? vad.silenceMs() : debounceMs
-			speechEndAt = Date.now() - observed
-			endpointObservedMs = observed
+			if (speechEndAt === null) {
+				const observed = semantic ? vad.silenceMs() : debounceMs
+				speechEndAt = Date.now() - observed
+				endpointObservedMs = observed
+				playFeedbackSound(domia, "endpoint")
+			}
 			return stopSox("vad detected end of speech")
 		}
 		if (Date.now() - startedAt > config.maxRecordingMs) {
@@ -430,9 +444,12 @@ export const startFollowUpSpeculativeCapture = (
 			else pendingSpeculate = true
 		}
 		if (endpointReached()) {
-			const observed = semantic ? vad.silenceMs() : debounceMs
-			speechEndAt = Date.now() - observed
-			endpointObservedMs = observed
+			if (speechEndAt === null) {
+				const observed = semantic ? vad.silenceMs() : debounceMs
+				speechEndAt = Date.now() - observed
+				endpointObservedMs = observed
+				playFeedbackSound(domia, "endpoint")
+			}
 			return stopSox("vad detected end of speech")
 		}
 		if (
@@ -525,6 +542,7 @@ export const startAudioStream = (
 				if (speechEndAt === null) {
 					speechEndAt = Date.now() - debounceMs
 					endpointObservedMs = debounceMs
+					playFeedbackSound(domia, "endpoint")
 				}
 				stopSox("vad detected end of speech")
 			} else if (Date.now() - startedAt > config.maxRecordingMs) {

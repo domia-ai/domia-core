@@ -1,7 +1,11 @@
 import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import { getTraceContext } from "@/utils"
-import { getInteractionById } from "@/modules/session-manager"
+import {
+	getInteractionById,
+	updateInteraction,
+} from "@/modules/session-manager"
 
+import { ladderCols } from "./stage-ladder"
 import type { TurnCompletionGuardOptsType } from "../types"
 
 const emitted = new Set<string>()
@@ -23,6 +27,11 @@ export const emitTerminalCompletion = async (
 	opts: TurnCompletionGuardOptsType = {},
 ): Promise<void> => {
 	if (!claimTurnCompleted(interactionId)) return
+	const ladder = ladderCols(interactionId)
+	if (Object.keys(ladder).length > 0)
+		await updateInteraction({ id: interactionId, ...ladder }).catch(
+			() => undefined,
+		)
 	const trace = await getInteractionById(interactionId)
 	const traceId = opts.traceId ?? getTraceContext()?.traceId
 	if (trace?.llmMs != null) {

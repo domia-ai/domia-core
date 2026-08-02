@@ -47,6 +47,9 @@ const expectSchema = z
 		recallsFact: factRefSchema.optional(),
 		factInDb: factRefSchema.optional(),
 		noFactInDb: factRefSchema.optional(),
+		factCountAtMost: factRefSchema
+			.extend({ count: z.number().int().positive() })
+			.optional(),
 		expectEvents: expectEventsSchema.optional(),
 	})
 	.strict()

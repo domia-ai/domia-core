@@ -53,6 +53,7 @@ export type SpeculativeCaptureResultType = {
 	finalPcmPromise: Promise<Buffer>
 	filePathPromise: Promise<string>
 	speechEndAt: () => number | null
+	endpointDecisionAt?: () => number | null
 	stop: () => void
 	setDebounceMs?: (ms: number) => void
 }

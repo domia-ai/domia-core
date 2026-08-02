@@ -6,6 +6,7 @@ import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
 import { getBootStatus } from "@/modules/runtime-control"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { resolveSkillAdapter } from "@/modules/skill-engine"
+import { slotStats } from "@/modules/llm-slots"
 import { configEngineLogger } from "@/utils"
 import dbAdapter from "../db-adapter"
 import { CONFIG_BUNDLE_VERSION, configBundleSchema } from "../schemas"
@@ -153,7 +154,11 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			detail,
 		})
 	}
-	return { ok: entries.every((e) => e.status !== "missing"), entries }
+	return {
+		ok: entries.every((e) => e.status !== "missing"),
+		entries,
+		llmSlots: { ...slotStats() },
+	}
 }
 
 const SECTION_META_KEYS = new Set([

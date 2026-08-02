@@ -13,6 +13,8 @@ import {
 	takeMemoryBundle,
 	getInteractionRuntime,
 	DEFAULT_SAMPLE_RATE,
+	markLadderStage,
+	ladderCols,
 } from "../utils"
 import { peekPendingConfirmation, confirmationScope } from "@/modules/agent"
 import {
@@ -27,6 +29,7 @@ import {
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
 import { runSTT } from "@/modules/stt-engine"
+import { acknowledgeEndpoint } from "@/modules/feedback-sounds"
 import {
 	buildDelegationPersona,
 	buildPromptFromPersona,
@@ -176,6 +179,7 @@ const tryFusedVoiceReply = async (
 
 	await audioIter.return?.().catch(() => undefined)
 	const transcript = (await streamed.transcriptPromise) ?? ""
+	if (transcript.trim()) markLadderStage(interactionId, "sttFinalAt")
 	const reply = (await streamed.finalReplyPromise) ?? ""
 	domiaBusLogger.info(`⏱️ fused voice reply timings`, {
 		domiaId: domia.id,
@@ -199,6 +203,7 @@ const tryFusedVoiceReply = async (
 		ttsAudioPath: playback.filePath,
 		ttfaMs: ttfaMs != null && ttfaMs > 0 ? ttfaMs : null,
 		perceivedTtfaMs,
+		...ladderCols(interactionId),
 		totalMs: Date.now() - startTime,
 	}).catch((err) =>
 		domiaBusLogger.error("fused voice reply: persistence failed", {
@@ -258,6 +263,22 @@ export const handleAudioReady = async (
 		},
 	)
 	if (!interactionId) return
+	if (payload.speechEndAt) {
+		markLadderStage(interactionId, "speechEndAt", payload.speechEndAt)
+		acknowledgeEndpoint(domia, interactionId, {
+			playSound: false,
+			originDomiaKey,
+			sinceSpeechEndMs: payload.endpointDecisionAt
+				? payload.endpointDecisionAt - payload.speechEndAt
+				: (payload.endpointDelayMs ?? undefined),
+		})
+	}
+	if (payload.endpointDecisionAt)
+		markLadderStage(
+			interactionId,
+			"endpointDecisionAt",
+			payload.endpointDecisionAt,
+		)
 	if (filePath)
 		void updateInteraction({
 			id: interactionId,
@@ -305,6 +326,7 @@ export const handleAudioReady = async (
 				originDomiaKey,
 				responseType,
 				speechEndAt: payload.speechEndAt,
+				endpointDecisionAt: payload.endpointDecisionAt,
 				endpointDelayMs: payload.endpointDelayMs,
 				endpointDebounceMs: payload.endpointDebounceMs,
 				liveVoice: payload.liveVoice,
@@ -413,6 +435,7 @@ export const handleAudioReady = async (
 			originDomiaKey,
 			responseType,
 			speechEndAt: payload.speechEndAt,
+			endpointDecisionAt: payload.endpointDecisionAt,
 			endpointDelayMs: payload.endpointDelayMs,
 			endpointDebounceMs: payload.endpointDebounceMs,
 			liveVoice: payload.liveVoice,

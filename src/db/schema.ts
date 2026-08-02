@@ -66,6 +66,7 @@ import {
 	DEFAULT_SPECULATIVE_SILENCE_MS,
 	DEFAULT_SEMANTIC_ENDPOINTING_ENABLED,
 	DEFAULT_ACOUSTIC_ENDPOINTING_ENABLED,
+	DEFAULT_SUPPRESS_WAKE_WHILE_PEER_SPEAKS,
 	DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD,
 	DEFAULT_TURN_DETECTOR_MODEL_PATH,
 	DEFAULT_TURN_DETECTOR_ENGINE,
@@ -141,6 +142,7 @@ import {
 	DEFAULT_STT_NUM_THREADS,
 	DEFAULT_STT_PROVIDER,
 	DEFAULT_STT_DECODE_PADDING_MS,
+	DEFAULT_STT_PARTIAL_AT_ENDPOINT_ENABLED,
 	DEFAULT_STT_POOL_WARM_WORKERS,
 	DEFAULT_STT_POOL_MAX_WORKERS,
 	DEFAULT_STT_POOL_AUTO_SCALE_ENABLED,
@@ -184,6 +186,8 @@ import {
 	DEFAULT_ERROR_SOUND_ENABLED,
 	DEFAULT_DONE_SOUND_ENABLED,
 	DEFAULT_THINKING_SOUND_ENABLED,
+	DEFAULT_ENDPOINT_SOUND_ENABLED,
+	DEFAULT_ENDPOINT_SOUND_PATH,
 	DEFAULT_ACK_SOUND_PATH,
 	DEFAULT_ERROR_SOUND_PATH,
 	DEFAULT_DONE_SOUND_PATH,
@@ -204,6 +208,11 @@ import {
 	DEFAULT_DESIRED_WAKE_WORDS,
 	DEFAULT_SATELLITE_DESIRED_NUMBERS,
 	DEFAULT_SATELLITE_FOLLOW_UP,
+	DEFAULT_SATELLITE_FOLLOW_UP_NO_SPEECH_MS,
+	DEFAULT_SATELLITE_PLAYBACK_DRAIN_MARGIN_MS,
+	DEFAULT_SATELLITE_RUN_LISTENING_MAX_MS,
+	DEFAULT_SATELLITE_FOLLOW_UP_REQUEST_MAX_MS,
+	DEFAULT_SATELLITE_CAPTURE_HEAD_TRIM_MS,
 	SKILL_PROTOCOL_ENUM_VALUES,
 	MCP_TRANSPORT_ENUM_VALUES,
 	AGENT_PROMPT_MODE_ENUM_VALUES,
@@ -222,6 +231,7 @@ import {
 	DEFAULT_MATCHER_SEMANTIC_THRESHOLD,
 	DEFAULT_MATCHER_RRF_K,
 	DEFAULT_MATCHER_CASCADE_EXIT,
+	DEFAULT_LLM_SLOT_AFFINITY_ENABLED,
 	EMBED_BACKEND_ENUM_VALUES,
 	DEFAULT_EMBED_BACKEND,
 	DEFAULT_EMBED_MODEL_PATH,
@@ -239,6 +249,7 @@ import {
 } from "./constants"
 
 export const DEFAULT_TIMESTAMP = sql`CURRENT_TIMESTAMP`
+export const MS_TIMESTAMP = sql`(strftime('%Y-%m-%d %H:%M:%f','now'))`
 
 export const hostNode = sqliteTable("host_node", {
 	id: text("id").primaryKey(),
@@ -370,18 +381,34 @@ export const memoryFact = sqliteTable(
 		subject: text("subject").notNull(),
 		relation: text("relation").notNull(),
 		value: text("value").notNull(),
+		valueKey: text("value_key").notNull().default(""),
 		confidence: real("confidence").notNull().default(0.7),
 		kind: text("kind", { enum: FACT_KIND_ENUM_VALUES })
 			.notNull()
 			.default(DEFAULT_FACT_KIND),
 		sourceInteractionId: text("source_interaction_id"),
+		supersededAt: text("superseded_at"),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
 	(t) => [
-		unique().on(t.domiaId, t.subject, t.relation),
+		unique().on(t.domiaId, t.subject, t.relation, t.valueKey),
 		index("idx_memory_fact_domia_updated").on(t.domiaId, t.updatedAt),
+		index("idx_memory_fact_domia_created").on(t.domiaId, t.createdAt),
 	],
+)
+
+export const factEvidence = sqliteTable(
+	"fact_evidence",
+	{
+		id: text("id").primaryKey(),
+		factId: text("fact_id")
+			.notNull()
+			.references(() => memoryFact.id, { onDelete: "cascade" }),
+		sourceInteractionId: text("source_interaction_id").notNull(),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [unique().on(t.factId, t.sourceInteractionId)],
 )
 
 export const knowledgeEntry = sqliteTable(
@@ -638,6 +665,11 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	)
 		.notNull()
 		.default(DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD),
+	suppressWakeWhilePeerSpeaks: integer("suppress_wake_while_peer_speaks", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_SUPPRESS_WAKE_WHILE_PEER_SPEAKS),
 	turnDetectorEngine: text("turn_detector_engine", {
 		enum: TURN_DETECTOR_ENGINE_ENUM_VALUES,
 	})
@@ -745,6 +777,11 @@ export const sttConfig = sqliteTable("stt_config", {
 	decodePaddingMs: integer("stt_decode_padding_ms")
 		.notNull()
 		.default(DEFAULT_STT_DECODE_PADDING_MS),
+	partialAtEndpointEnabled: integer("stt_partial_at_endpoint_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_STT_PARTIAL_AT_ENDPOINT_ENABLED),
 	poolWarmWorkers: integer("stt_pool_warm_workers")
 		.notNull()
 		.default(DEFAULT_STT_POOL_WARM_WORKERS),
@@ -876,6 +913,9 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	embedModelPath: text("embed_model_path")
 		.notNull()
 		.default(DEFAULT_EMBED_MODEL_PATH),
+	slotAffinityEnabled: integer("slot_affinity_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_LLM_SLOT_AFFINITY_ENABLED),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -1057,6 +1097,9 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	thinkingSoundEnabled: integer("thinking_sound_enabled", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_THINKING_SOUND_ENABLED),
+	endpointSoundEnabled: integer("endpoint_sound_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_ENDPOINT_SOUND_ENABLED),
 	ackSoundPath: text("ack_sound_path")
 		.notNull()
 		.default(DEFAULT_ACK_SOUND_PATH),
@@ -1069,6 +1112,9 @@ export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
 	thinkingSoundPath: text("thinking_sound_path")
 		.notNull()
 		.default(DEFAULT_THINKING_SOUND_PATH),
+	endpointSoundPath: text("endpoint_sound_path")
+		.notNull()
+		.default(DEFAULT_ENDPOINT_SOUND_PATH),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -1169,9 +1215,20 @@ export const interactionTrace = sqliteTable(
 		llmContextWindow: integer("llm_context_window"),
 		llmFinishReason: text("llm_finish_reason"),
 		llmRequestId: text("llm_request_id"),
+		llmFreshTokens: integer("llm_fresh_tokens"),
+		llmCachedTokens: integer("llm_cached_tokens"),
 		transcriptionDelayMs: integer("transcription_delay_ms"),
 		eouDelayMs: integer("eou_delay_ms"),
 		endpointDebounceMs: integer("endpoint_debounce_ms"),
+		speechEndAt: integer("speech_end_at"),
+		endpointDecisionAt: integer("endpoint_decision_at"),
+		sttFinalAt: integer("stt_final_at"),
+		promptReadyAt: integer("prompt_ready_at"),
+		llmQueuedAt: integer("llm_queued_at"),
+		llmFirstTokenAt: integer("llm_first_token_at"),
+		ttsFirstUnitAt: integer("tts_first_unit_at"),
+		audioDeliveredAt: integer("audio_delivered_at"),
+		audioAudibleAt: integer("audio_audible_at"),
 		toolCallCount: integer("tool_call_count"),
 		toolErrorCount: integer("tool_error_count"),
 		inputAudioMs: integer("input_audio_ms"),
@@ -1301,6 +1358,21 @@ export const satelliteConfig = sqliteTable(
 		followUpEnabled: integer("follow_up_enabled", { mode: "boolean" })
 			.notNull()
 			.default(DEFAULT_SATELLITE_FOLLOW_UP),
+		followUpNoSpeechMs: integer("follow_up_no_speech_ms")
+			.notNull()
+			.default(DEFAULT_SATELLITE_FOLLOW_UP_NO_SPEECH_MS),
+		playbackDrainMarginMs: integer("playback_drain_margin_ms")
+			.notNull()
+			.default(DEFAULT_SATELLITE_PLAYBACK_DRAIN_MARGIN_MS),
+		runListeningMaxMs: integer("run_listening_max_ms")
+			.notNull()
+			.default(DEFAULT_SATELLITE_RUN_LISTENING_MAX_MS),
+		followUpRequestMaxMs: integer("follow_up_request_max_ms")
+			.notNull()
+			.default(DEFAULT_SATELLITE_FOLLOW_UP_REQUEST_MAX_MS),
+		captureHeadTrimMs: integer("capture_head_trim_ms")
+			.notNull()
+			.default(DEFAULT_SATELLITE_CAPTURE_HEAD_TRIM_MS),
 		desiredVolume: real("desired_volume"),
 		livekitApiKey: text("livekit_api_key"),
 		livekitApiSecret: text("livekit_api_secret"),

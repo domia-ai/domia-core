@@ -35,6 +35,9 @@ export type TurnEventBodyMapType = {
 		inputType: "voice" | "text"
 		source: TurnEventInputSourceType
 	}
+	[DOMIA_TURN_EVENT_ENUM.ENDPOINT_ACCEPTED]: {
+		sinceSpeechEndMs?: number
+	}
 	[DOMIA_TURN_EVENT_ENUM.STT_FINAL]: {
 		transcript: string
 		sttMs?: number

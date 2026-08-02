@@ -61,6 +61,7 @@
 		"evals:adversarial": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/adversarial.ts",
 		"evals:promote": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/promote-traces.ts",
 		"evals:conversation": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/conversation.ts",
+		"evals:stt-noise": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/stt-noise.ts",
 		"evals:stt": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/stt-wer.ts",
 		"turn-logic": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/turn-logic.ts",
 		"typecheck:evals": "tsc --noEmit -p tsconfig.evals.json",
@@ -69,7 +70,12 @@
 		"setup:models:piper-en": "bash scripts/download-models.sh piper-en",
 		"setup:models:kitten": "bash scripts/download-models.sh kitten",
 		"setup:models:matcha": "bash scripts/download-models.sh matcha",
-		"setup:models:nemotron-streaming": "bash scripts/download-models.sh nemotron-streaming"
+		"setup:models:nemotron-streaming": "bash scripts/download-models.sh nemotron-streaming",
+		"evals:fact-dedup": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/fact-dedup.ts",
+		"evals:esphome-controller": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/esphome-controller.ts",
+		"evals:fact-sync": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/fact-sync-cursor.ts",
+		"evals:tts-tournament": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/tts-tournament.ts",
+		"evals:voice-feel": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/voice-feel-soak.ts"
 	},
 	"devDependencies": {
 		"@dotenvx/dotenvx": "^1.67.0",
@@ -119,7 +125,7 @@
 		"ollama": "^0.6.3",
 		"onnxruntime-node": "^1.27.0",
 		"openai": "^6.43.0",
-		"sherpa-onnx-node": "^1.13.4",
+		"sherpa-onnx-node": "1.13.3",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},
@@ -127,6 +133,12 @@
 		"@livekit/rtc-node": "^0.13.30"
 	},
 	"overrides": {
-		"onnxruntime-node": "$onnxruntime-node"
+		"onnxruntime-node": "$onnxruntime-node",
+		"sherpa-onnx-darwin-arm64": "1.13.3",
+		"sherpa-onnx-darwin-x64": "1.13.3",
+		"sherpa-onnx-linux-arm64": "1.13.3",
+		"sherpa-onnx-linux-x64": "1.13.3",
+		"sherpa-onnx-win-x64": "1.13.3",
+		"sherpa-onnx-win-ia32": "1.13.3"
 	}
 }

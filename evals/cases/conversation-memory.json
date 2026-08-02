@@ -38,6 +38,49 @@
 		]
 	},
 	{
+		"name": "commands, questions and small talk leave no fact",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Turn on the kitchen lights please.",
+				"expect": { "noFactInDb": { "value": "lights" } }
+			},
+			{
+				"text": "Do you have a spa around here?",
+				"expect": { "noFactInDb": { "value": "spa" } }
+			},
+			{
+				"text": "Nice weather today, isn't it?",
+				"expect": { "noFactInDb": { "value": "weather" } }
+			}
+		]
+	},
+	{
+		"name": "duplicate statement corroborates instead of duplicating",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "I really love green tea.",
+				"expect": { "routed": "chat", "factInDb": { "value": "tea" } }
+			},
+			{
+				"text": "Like I said, green tea is my favorite drink.",
+				"expect": {
+					"routed": "chat",
+					"factCountAtMost": { "value": "tea", "count": 1 }
+				}
+			}
+		]
+	},
+	{
 		"name": "contradiction supersedes the old preference",
 		"suite": "conversation",
 		"language": "en",

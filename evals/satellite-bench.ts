@@ -1,7 +1,20 @@
 import WebSocket from "ws"
 import { writeFileSync, mkdirSync, readFileSync } from "fs"
 import path from "path"
-import { env, parseWavPcm, sleep, queryOne } from "./lib"
+import {
+	env,
+	parseWavPcm,
+	sleep,
+	queryOne,
+	configSnapshot,
+	runtimeSnapshot,
+	ladderDeltas,
+	ladderViolations,
+	wasSpeculationCommitted,
+	endpointAckStats,
+	uniqueArtifactPath,
+	LADDER_STAGE_COLS,
+} from "./lib"
 
 const LABEL = process.argv[2] ?? "sat-bench"
 const SPEED = Number(process.env.SATBENCH_SPEED ?? "1")
@@ -89,12 +102,29 @@ const drive = (satelliteId: string, wavPath: string): Promise<string | null> =>
 				ws.send(JSON.stringify({ type: "speech_end" }))
 			}
 		}
+		let playedSent = false
+		let audioInteractionId: string | undefined
 		ws.on("message", (data, isBinary) => {
-			if (isBinary) return
+			if (isBinary) {
+				if (!playedSent) {
+					playedSent = true
+					ws.send(
+						JSON.stringify({
+							type: "audio_played",
+							...(audioInteractionId
+								? { interactionId: audioInteractionId }
+								: {}),
+						}),
+					)
+				}
+				return
+			}
 			const msg = JSON.parse(data.toString()) as {
 				type: string
 				interactionId?: string
 			}
+			if (msg.type === "audio_stream_begin")
+				audioInteractionId = msg.interactionId
 			if (msg.type === "ready") void stream()
 			else if (msg.type === "reply_done") {
 				clearTimeout(timeout)
@@ -112,7 +142,7 @@ const drive = (satelliteId: string, wavPath: string): Promise<string | null> =>
 
 const traceRow = (id: string): TraceMetricsType | undefined =>
 	queryOne<TraceMetricsType>(
-		"SELECT perceived_ttfa_ms, ttfa_ms, tts_first_chunk_ms, stt_ms, total_ms, stt_result, status FROM interaction_trace WHERE id = ?",
+		`SELECT perceived_ttfa_ms, ttfa_ms, tts_first_chunk_ms, stt_ms, total_ms, llm_ttft_ms, llm_fresh_tokens, llm_cached_tokens, stt_result, status, ${LADDER_STAGE_COLS.join(", ")} FROM interaction_trace WHERE id = ?`,
 		[id],
 	)
 
@@ -135,7 +165,8 @@ const main = async (): Promise<void> => {
 	console.log(
 		`=== bench:satellite · label="${LABEL}" · ${wsUrl()} · runs=${RUNS} · speed=${SPEED}x ===`,
 	)
-	const rows: (TraceMetricsType & { id: string; cold: boolean })[] = []
+	const rows: Record<string, unknown>[] = []
+	let driveFailures = 0
 	for (let run = 1; run <= RUNS; run++) {
 		for (const c of corpus.cases) {
 			const id = await drive(
@@ -144,6 +175,12 @@ const main = async (): Promise<void> => {
 			)
 			if (!id) {
 				console.log(`  ${c.id}#${run}  FAILED (no interactionId)`)
+				driveFailures += 1
+				rows.push({
+					id: `${c.id}#${run}`,
+					cold: run === 1,
+					status: "drive_failed",
+				})
 				continue
 			}
 			let row: TraceMetricsType | undefined
@@ -152,42 +189,96 @@ const main = async (): Promise<void> => {
 				row = traceRow(id)
 			}
 			if (!row) continue
-			rows.push({ ...row, id: `${c.id}#${run}`, cold: run === 1 })
+			const speculative = wasSpeculationCommitted(id)
+			const issues = speculative
+				? []
+				: ladderViolations(row as unknown as Record<string, unknown>)
+			const ack = endpointAckStats(id)
+			if (LIVE && ack.ackCount !== 1)
+				issues.push(`endpoint.accepted count=${ack.ackCount} (expected 1)`)
+			if (LIVE && ack.beforeSttFinal === false)
+				issues.push("endpoint.accepted ordered after stt.final")
+			if (issues.length)
+				console.warn(
+					`  ⚠️ ladder violations ${c.id}#${run}: ${issues.join("; ")}`,
+				)
+			rows.push({
+				...row,
+				...ladderDeltas(row as unknown as Record<string, unknown>),
+				speculative,
+				endpointAckCount: ack.ackCount,
+				endpointAckBeforeSttFinal: ack.beforeSttFinal,
+				ladderIssues: issues,
+				id: `${c.id}#${run}`,
+				cold: run === 1,
+			})
 			console.log(
 				`  ${c.id}#${run}  stt:${row.stt_ms}  ttfa:${row.ttfa_ms}  perceived:${row.perceived_ttfa_ms}  total:${row.total_ms}  "${(row.stt_result ?? "").slice(0, 40)}"`,
 			)
 		}
 	}
-	const warm = rows.filter((r) => !r.cold && r.status === "ok")
+	const warm = rows.filter((r) => r.cold !== true && r.status === "ok")
 	const cols = [
 		"stt_ms",
 		"tts_first_chunk_ms",
 		"ttfa_ms",
 		"perceived_ttfa_ms",
 		"total_ms",
+		"llm_ttft_ms",
+		"llm_fresh_tokens",
+		"llm_cached_tokens",
+		"d_endpoint_ms",
+		"d_stt_final_ms",
+		"d_prompt_ready_ms",
+		"d_llm_queued_ms",
+		"d_first_token_ms",
+		"d_tts_first_unit_ms",
+		"d_audio_delivered_ms",
+		"d_audible_ms",
+		"d_speech_to_delivered_ms",
 	] as const
 	const summary: Record<string, Record<string, number>> = {}
 	for (const col of cols) {
-		const xs = warm.map((r) => r[col]).filter((v): v is number => v != null)
+		const xs = warm
+			.map((r) => r[col])
+			.filter((v): v is number => typeof v === "number")
 		if (xs.length) summary[col] = stat(xs)
 	}
+	const violationCount = rows.reduce(
+		(acc, r) => acc + ((r.ladderIssues as string[] | undefined)?.length ?? 0),
+		0,
+	)
+	if (violationCount > 0)
+		console.error(`❌ ladder monotonicity violations: ${violationCount}`)
 	console.log(`\n=== warm p50/p95 (n=${warm.length}) ===`)
 	for (const [k, v] of Object.entries(summary))
 		console.log(
-			`  ${k.padEnd(20)} p50=${String(v.p50).padStart(5)}  p95=${String(v.p95).padStart(5)}`,
+			`  ${k.padEnd(24)} p50=${String(v.p50).padStart(5)}  p95=${String(v.p95).padStart(5)}`,
 		)
 	mkdirSync(OUT_DIR, { recursive: true })
-	const outFile = path.join(OUT_DIR, `${LABEL}.json`)
+	const outFile = uniqueArtifactPath(OUT_DIR, LABEL)
 	writeFileSync(
 		outFile,
 		JSON.stringify(
-			{ label: LABEL, live: LIVE, speed: SPEED, summary, rows },
+			{
+				label: LABEL,
+				live: LIVE,
+				speed: SPEED,
+				runs: RUNS,
+				n: warm.length,
+				failed: driveFailures,
+				ladderViolations: violationCount,
+				snapshot: configSnapshot(),
+				runtime: runtimeSnapshot(),
+				summary,
+				rows,
+			},
 			null,
 			"\t",
 		),
 	)
 	console.log(`results → ${outFile}`)
-	process.exit(0)
+	process.exit(violationCount > 0 ? 1 : 0)
 }
 
 void main()

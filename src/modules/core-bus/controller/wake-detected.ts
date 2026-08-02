@@ -6,7 +6,10 @@ import {
 	startAudioStream,
 } from "@/modules/audio-capture"
 import { hasActivePlayback, stopActivePlayback } from "@/modules/audio-playback"
-import { playFeedbackSound } from "@/modules/feedback-sounds"
+import {
+	playFeedbackSound,
+	acknowledgeEndpoint,
+} from "@/modules/feedback-sounds"
 import { admitVoiceReply } from "@/modules/voice-admission"
 import { isSemaphoreBusyError, onceFn } from "@/utils"
 import {
@@ -155,15 +158,28 @@ export const handleWakeDetected = async (
 				endpointObservedMs,
 				debounceMs,
 			} = startAudioStream(domia)
-			const transcript = await stt.adapter.runStream(domia, chunks)
+			const ackedChunks = (async function* (): AsyncIterable<Buffer> {
+				for await (const chunk of chunks) yield chunk
+				acknowledgeEndpoint(domia, interactionId, {
+					playSound: false,
+					sinceSpeechEndMs: endpointObservedMs() ?? undefined,
+				})
+			})()
+			const transcript = await stt.adapter.runStream(domia, ackedChunks)
 
 			markPipelineStart(interactionId)
+			const speechEndVal = speechEndAt() ?? undefined
+			const observedVal = endpointObservedMs() ?? undefined
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 				transcript,
 				interactionId,
 				originDomiaKey: domia.domiaKey,
-				speechEndAt: speechEndAt() ?? undefined,
-				endpointDelayMs: endpointObservedMs() ?? undefined,
+				speechEndAt: speechEndVal,
+				endpointDecisionAt:
+					speechEndVal != null && observedVal != null
+						? speechEndVal + observedVal
+						: undefined,
+				endpointDelayMs: observedVal,
 				endpointDebounceMs: debounceMs,
 				liveVoice: true,
 			})

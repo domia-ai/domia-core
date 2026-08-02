@@ -95,11 +95,17 @@ const runFollowUpSpeculative = async (
 			onResume: () => undefined,
 		})
 		const filePath = await capture.filePathPromise
+		const speechEndVal = capture.speechEndAt() ?? undefined
+		const observedVal = capture.endpointObservedMs() ?? undefined
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath,
 			originDomiaKey: domia.domiaKey,
-			speechEndAt: capture.speechEndAt() ?? undefined,
-			endpointDelayMs: capture.endpointObservedMs() ?? undefined,
+			speechEndAt: speechEndVal,
+			endpointDecisionAt:
+				speechEndVal != null && observedVal != null
+					? speechEndVal + observedVal
+					: undefined,
+			endpointDelayMs: observedVal,
 			endpointDebounceMs: capture.debounceMs,
 			liveVoice: true,
 		})
@@ -194,11 +200,17 @@ export const handlePlaybackFinished = async (
 			playFeedbackSound(domia, "done")
 			return
 		}
+		const speechEndVal = recording.speechEndAt ?? undefined
+		const observedVal = recording.endpointObservedMs() ?? undefined
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath: recording.filePath,
 			originDomiaKey: domia.domiaKey,
-			speechEndAt: recording.speechEndAt ?? undefined,
-			endpointDelayMs: recording.endpointObservedMs() ?? undefined,
+			speechEndAt: speechEndVal,
+			endpointDecisionAt:
+				speechEndVal != null && observedVal != null
+					? speechEndVal + observedVal
+					: undefined,
+			endpointDelayMs: observedVal,
 			endpointDebounceMs: recording.debounceMs,
 			liveVoice: true,
 		})

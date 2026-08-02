@@ -14,6 +14,7 @@ import {
 import { prewarmSoxPlayer } from "@/modules/audio-playback"
 import {
 	startSpeculativeCapture,
+	type SpeculativeCaptureResultType,
 	endpointHintMs,
 	type SpeculativeCaptureHooksType,
 } from "@/modules/audio-capture"
@@ -29,6 +30,8 @@ import {
 } from "@/modules/grpc-client"
 import type { SttStreamSessionType } from "@/modules/stt-engine"
 import { ttsAdapterToPcmChunks, ttsPoolBusy } from "@/modules/tts-engine"
+import { acknowledgeEndpoint } from "@/modules/feedback-sounds"
+import { isIdentitySlotBusy } from "@/modules/llm-slots"
 import {
 	takeMemoryBundle,
 	prefetchMemoryBundle,
@@ -41,6 +44,7 @@ import {
 	isSpeakable,
 	skillsMayIntercept,
 	looksSkillish,
+	markLadderStage,
 } from "../utils"
 import type {
 	CoreBusContextType,
@@ -50,6 +54,18 @@ import type {
 
 const SPECULATION_MAX_ATTEMPTS = 3
 const SPECULATION_MAX_UTTERANCE_MS = 10000
+
+const resolveEndpointDecisionAt = (
+	capture: SpeculativeCaptureResultType,
+): number | undefined => {
+	const explicit = capture.endpointDecisionAt?.()
+	if (explicit != null) return explicit
+	const speechEnd = capture.speechEndAt()
+	const observed = capture.endpointObservedMs()
+	return speechEnd != null && observed != null
+		? speechEnd + observed
+		: undefined
+}
 
 const collectPcm = async (
 	ctx: CoreBusContextType,
@@ -144,6 +160,8 @@ const startSpeculation = (
 		firstUnitPcm: null,
 		prompt: null,
 		executorKey: null,
+		llmQueuedAt: null,
+		llmFirstTokenAt: null,
 		ready: Promise.resolve(null),
 	}
 	me.ready = (async (): Promise<string | null> => {
@@ -169,6 +187,15 @@ const startSpeculation = (
 		prefetchMemoryBundle(domia, args.interactionId)
 		if (me.cancelled) return null
 		me.prompt = buildPromptContext(domia, transcript, bundle)
+		if (isIdentitySlotBusy(domia)) {
+			domiaBusLogger.info(
+				`🔮 speculation g${generation} rejected — identity slot busy`,
+				{ domiaId: domia.id, interactionId: args.interactionId },
+			)
+			me.queue.close()
+			return transcript
+		}
+		me.llmQueuedAt = Date.now()
 		const tokens = llmTargets
 			? await (async () => {
 					const streamed = await streamLlmFromTarget(
@@ -233,6 +260,7 @@ const startSpeculation = (
 			try {
 				for await (const token of tokens) {
 					if (me.cancelled || me.queue.isClosed()) break
+					me.llmFirstTokenAt ??= Date.now()
 					me.queue.push(token)
 				}
 			} catch (err) {
@@ -409,6 +437,15 @@ export const runSpeculativeTurn = async (
 	})
 	setDebounce = capture.setDebounceMs ?? null
 
+	void capture.finalPcmPromise.then(
+		() =>
+			acknowledgeEndpoint(domia, args.interactionId, {
+				playSound: false,
+				sinceSpeechEndMs: capture.endpointObservedMs() ?? undefined,
+			}),
+		() => undefined,
+	)
+
 	void capture.filePathPromise
 		.then((filePath) =>
 			updateInteraction({
@@ -436,7 +473,17 @@ export const runSpeculativeTurn = async (
 		})
 		return
 	}
-	const finalTranscript = stt.session ? await stt.session.finish() : null
+	const finalTranscript = await (async (): Promise<string | null> => {
+		if (!stt.session) return null
+		if (domia.sttConfig?.partialAtEndpointEnabled === true) {
+			const partial = (await stt.session.flushPartial(0)).trim()
+			if (partial) {
+				stt.session.abort()
+				return partial
+			}
+		}
+		return await stt.session.finish()
+	})()
 	const winner = active as SpeculationType | null
 	if (winner && !winner.cancelled) {
 		const transcript = await winner.ready
@@ -471,6 +518,14 @@ export const runSpeculativeTurn = async (
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
 				markPipelineStart(args.interactionId)
+				if (winner.llmQueuedAt)
+					markLadderStage(args.interactionId, "llmQueuedAt", winner.llmQueuedAt)
+				if (winner.llmFirstTokenAt)
+					markLadderStage(
+						args.interactionId,
+						"llmFirstTokenAt",
+						winner.llmFirstTokenAt,
+					)
 				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 					transcript: final || transcript,
 					interactionId: args.interactionId,
@@ -484,6 +539,7 @@ export const runSpeculativeTurn = async (
 					prestartedFirstUnitText: winner.firstUnitText ?? undefined,
 					prestartedFirstUnitPcm: winner.firstUnitPcm ?? undefined,
 					speechEndAt: capture.speechEndAt() ?? undefined,
+					endpointDecisionAt: resolveEndpointDecisionAt(capture),
 					endpointDelayMs: capture.endpointObservedMs() ?? undefined,
 					endpointDebounceMs: capture.debounceMs,
 					responseType: args.publish?.responseType,
@@ -510,6 +566,7 @@ export const runSpeculativeTurn = async (
 		originDomiaKey: domia.domiaKey,
 		prestartedRelease: args.release,
 		speechEndAt: capture.speechEndAt() ?? undefined,
+		endpointDecisionAt: resolveEndpointDecisionAt(capture),
 		endpointDelayMs: capture.endpointObservedMs() ?? undefined,
 		endpointDebounceMs: capture.debounceMs,
 		responseType: args.publish?.responseType,

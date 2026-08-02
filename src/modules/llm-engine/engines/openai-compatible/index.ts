@@ -1,6 +1,11 @@
 import OpenAI from "openai"
 
 import { DomiaType } from "@/modules/core"
+import {
+	acquireSlotLease,
+	invalidateSlots,
+	type LlmSlotPurposeType,
+} from "@/modules/llm-slots"
 import { llmEngineLogger, createAsyncSemaphore, parseLlmJson } from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
 import { LLM_ENGINE_ENUM, DEFAULT_LLM_CONCURRENCY } from "@/db"
@@ -45,6 +50,8 @@ const openAiUsage = (
 			: (wall?.ttftMs ?? null),
 	contextWindow: contextWindow ?? null,
 	finishReason: finishReason ?? null,
+	freshTokens: timings?.prompt_n ?? null,
+	cachedTokens: timings?.cache_n ?? null,
 })
 
 const wallStats = (
@@ -89,11 +96,46 @@ const clients = new Map<string, OpenAI>()
 
 export const clearOpenAiClients = (): void => clients.clear()
 
-const acquireSlot = (domia: DomiaType): Promise<() => void> => {
+const acquireSlot = async (
+	domia: DomiaType,
+	purpose: LlmSlotPurposeType = "interactive",
+): Promise<{ release: () => void; slotId: number | null }> => {
 	llmSemaphore.setLimit(
 		domia?.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
 	)
-	return llmSemaphore.acquire()
+	const releaseSemaphore = await llmSemaphore.acquire()
+	let lease: { slotId: number; release: () => void } | null = null
+	try {
+		lease = await acquireSlotLease(domia, purpose)
+	} catch (error) {
+		releaseSemaphore()
+		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
+			logger: llmEngineLogger,
+			meta: { error, reason: "slot lease acquisition" },
+		})
+	}
+	let released = false
+	return {
+		slotId: lease?.slotId ?? null,
+		release: () => {
+			if (released) return
+			released = true
+			lease?.release()
+			releaseSemaphore()
+		},
+	}
+}
+
+const slotBody = (slotId: number | null): { id_slot?: number } =>
+	slotId !== null ? { id_slot: slotId } : {}
+
+const CONNECTION_ERROR_RE =
+	/ECONNREFUSED|ECONNRESET|fetch failed|connection error|APIConnectionError|socket hang up/i
+
+const maybeInvalidateSlots = (domia: DomiaType, error: unknown): void => {
+	const err = error as Error & { cause?: Error }
+	const text = `${err?.constructor?.name ?? ""} ${err?.name ?? ""} ${err?.message ?? ""} ${err?.cause?.message ?? ""}`
+	if (CONNECTION_ERROR_RE.test(text)) invalidateSlots(domia)
 }
 
 const requireModel = (domia: DomiaType): string => {
@@ -220,13 +262,14 @@ export const runOpenAiCompatible = async (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const release = await acquireSlot(domia)
+	const lease = await acquireSlot(domia)
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
 			messages: userMessages(promptContext),
 			temperature: cfg.temperature,
 			max_tokens: cfg.maxTokens,
+			...slotBody(lease.slotId),
 		})
 		onUsage?.(
 			openAiUsage(
@@ -239,12 +282,13 @@ export const runOpenAiCompatible = async (
 		)
 		return response.choices[0]?.message?.content?.trim() || ""
 	} catch (error) {
+		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },
 		})
 	} finally {
-		release()
+		lease.release()
 	}
 }
 
@@ -257,7 +301,8 @@ const runOpenAiCompatibleStream = async function* (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const release = await acquireSlot(domia)
+	const lease = await acquireSlot(domia)
+	const release = lease.release
 	let abortStream: (() => void) | null = null
 	let finishReason: string | null = null
 	try {
@@ -273,6 +318,7 @@ const runOpenAiCompatibleStream = async function* (
 			...(domia.llmModelConfig?.streamUsage !== false
 				? { stream_options: { include_usage: true } }
 				: {}),
+			...slotBody(lease.slotId),
 		})
 		abortStream = () => stream.controller.abort()
 		for await (const chunk of stream) {
@@ -301,6 +347,7 @@ const runOpenAiCompatibleStream = async function* (
 		}
 		abortStream = null
 	} catch (error) {
+		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },
@@ -319,7 +366,7 @@ const runOpenAiCompatibleJson = async (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const release = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "background")
 	try {
 		if (shouldAbort?.()) return ""
 		const stream = await client.chat.completions.create({
@@ -329,6 +376,7 @@ const runOpenAiCompatibleJson = async (
 			max_tokens: JSON_NUM_PREDICT,
 			response_format: { type: "json_object" },
 			stream: true,
+			...slotBody(lease.slotId),
 		})
 		let out = ""
 		for await (const chunk of stream) {
@@ -340,12 +388,13 @@ const runOpenAiCompatibleJson = async (
 		}
 		return out.trim()
 	} catch (error) {
+		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },
 		})
 	} finally {
-		release()
+		lease.release()
 	}
 }
 
@@ -356,7 +405,7 @@ const runOpenAiCompatibleIntent = async (
 ): Promise<string> => {
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const release = await acquireSlot(domia)
+	const lease = await acquireSlot(domia)
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
@@ -364,23 +413,30 @@ const runOpenAiCompatibleIntent = async (
 			temperature: 0,
 			max_tokens: INTENT_NUM_PREDICT,
 			response_format: { type: "json_object" },
+			...slotBody(lease.slotId),
 		})
 		return response.choices[0]?.message?.content?.trim() || ""
 	} catch (error) {
+		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },
 		})
 	} finally {
-		release()
+		lease.release()
 	}
 }
 
-const warmupModel = (client: OpenAI, modelName: string): Promise<unknown> =>
+const warmupModel = (
+	client: OpenAI,
+	modelName: string,
+	slotId: number | null,
+): Promise<unknown> =>
 	client.chat.completions.create({
 		model: modelName,
 		messages: userMessages("Hi"),
 		max_tokens: 1,
+		...slotBody(slotId),
 	})
 
 const warmupOpenAiCompatible = async (domia: DomiaType): Promise<void> => {
@@ -392,8 +448,13 @@ const warmupOpenAiCompatible = async (domia: DomiaType): Promise<void> => {
 	const models = [...new Set([main, reflection || null, tool || null])].filter(
 		(m): m is string => Boolean(m),
 	)
-	for (const model of models) {
-		await warmupModel(client, model)
+	const lease = await acquireSlot(domia)
+	try {
+		for (const model of models) {
+			await warmupModel(client, model, lease.slotId)
+		}
+	} finally {
+		lease.release()
 	}
 }
 
@@ -407,7 +468,7 @@ const runOpenAiCompatibleWithTools = async (
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const release = await acquireSlot(domia)
+	const lease = await acquireSlot(domia)
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
@@ -416,6 +477,7 @@ const runOpenAiCompatibleWithTools = async (
 			tool_choice: toolChoice === "none" ? "none" : "auto",
 			temperature: TOOL_CALL_TEMPERATURE,
 			max_tokens: TOOL_CALL_NUM_PREDICT,
+			...slotBody(lease.slotId),
 		})
 		onUsage?.(
 			openAiUsage(
@@ -442,12 +504,13 @@ const runOpenAiCompatibleWithTools = async (
 		}
 		return { kind: "reply", text: message?.content?.trim() || "" }
 	} catch (error) {
+		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },
 		})
 	} finally {
-		release()
+		lease.release()
 	}
 }
 
@@ -460,13 +523,8 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const release = await acquireSlot(domia)
-	let released = false
-	const releaseOnce = () => {
-		if (released) return
-		released = true
-		release()
-	}
+	const lease = await acquireSlot(domia)
+	const releaseOnce = lease.release
 	try {
 		const startedAt = Date.now()
 		const stream = await client.chat.completions.create({
@@ -479,6 +537,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 			...(domia.llmModelConfig?.streamUsage !== false
 				? { stream_options: { include_usage: true } }
 				: {}),
+			...slotBody(lease.slotId),
 		})
 		const iter = stream[Symbol.asyncIterator]()
 		let first = await iter.next()
@@ -577,6 +636,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 		return { kind: "reply", tokens }
 	} catch (error) {
 		releaseOnce()
+		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
 			meta: { error },

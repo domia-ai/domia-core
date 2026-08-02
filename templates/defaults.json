@@ -43,7 +43,7 @@
 		"factRecall": true,
 		"reflectionOnlyWhenIdle": true,
 		"reflectionConcurrency": 2,
-		"reflectionQueueMaxDepth": 4,
+		"reflectionQueueMaxDepth": 12,
 		"collectiveMind": true,
 		"remoteAccessEngine": true,
 		"narrativeEngine": true,

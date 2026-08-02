@@ -21,6 +21,7 @@ import {
 } from "@/modules/session-manager"
 import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { claimTurnCompleted } from "./turn-completion-guard"
+import { ladderCols } from "./stage-ladder"
 import { playAudio } from "@/modules/audio-playback"
 import { runTTS } from "@/modules/tts-engine"
 import { deliverEvent } from "@/modules/grpc-client"
@@ -196,6 +197,7 @@ export const persistTerminal = async (
 		await updateInteraction({
 			id: interactionId,
 			status,
+			...ladderCols(interactionId),
 			...(opts.errorStep !== undefined ? { errorStep: opts.errorStep } : {}),
 			...(opts.errorMessage !== undefined
 				? { errorMessage: opts.errorMessage }

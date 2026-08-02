@@ -1,5 +1,10 @@
 import { env } from "@/config"
-import { appLogger, CORE_ERRORS, getErrorMessage } from "@/utils"
+import {
+	appLogger,
+	CORE_ERRORS,
+	getErrorMessage,
+	serializeFatal,
+} from "@/utils"
 import { initialize } from "./modules/config-engine"
 import { setGrpcClientTunables } from "./modules/grpc-client"
 import { isHostedIdentity, getNodeId } from "./modules/core"
@@ -24,7 +29,7 @@ import {
 } from "./setups"
 
 process.on("uncaughtException", (err) => {
-	appLogger.error("Uncaught Exception:", err)
+	appLogger.error("Uncaught Exception:", serializeFatal(err))
 	if (env.NODE_ENV === "production") {
 		appLogger.error("Exiting on uncaughtException (supervisor will restart)")
 		process.exit(1)
@@ -32,7 +37,7 @@ process.on("uncaughtException", (err) => {
 })
 
 process.on("unhandledRejection", (reason) => {
-	appLogger.error("Unhandled Rejection:", reason)
+	appLogger.error("Unhandled Rejection:", serializeFatal(reason))
 })
 
 async function main() {

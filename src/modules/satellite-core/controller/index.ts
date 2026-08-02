@@ -36,10 +36,12 @@ import {
 	openAudioStream,
 	writeAudioStream,
 	closeAudioStream,
+	markLadderStage,
 	type StreamingSinkType,
 	type TurnScopeType,
 } from "@/modules/core-bus"
 import { getSttEngine, type SttStreamSessionType } from "@/modules/stt-engine"
+import { acknowledgeEndpoint } from "@/modules/feedback-sounds"
 import { runLLM } from "@/modules/llm-engine"
 import {
 	personaContextFromDomia,
@@ -157,6 +159,7 @@ export const createSatelliteSession = (
 	const CONFIG_REFRESH_MS = 3000
 	const ACOUSTIC_GATE_COOLDOWN_MS = 250
 	const ACOUSTIC_MAX_HOLD_MS = 2000
+	let minListenUntil = 0
 
 	const streamingSttCreate = ():
 		| ((domia: DomiaType) => SttStreamSessionType | null)
@@ -279,7 +282,7 @@ export const createSatelliteSession = (
 				release = await acquireOutput()
 				try {
 					setPresenceStatus(identity.domiaKey, "speaking")
-					transport.beginAudio(format)
+					transport.beginAudio(format, activeInteractionId ?? undefined)
 				} catch (err) {
 					release?.()
 					release = null
@@ -373,6 +376,7 @@ export const createSatelliteSession = (
 
 	const handleUtterance = async (speechEndAt?: number): Promise<void> => {
 		if (busy) return
+		const endpointDecisionAt = Date.now()
 		const owned = spec
 		spec = null
 		const session = sttSession
@@ -398,6 +402,14 @@ export const createSatelliteSession = (
 		const path = join(RECORDINGS_DIR, `satellite-${generateUuid()}.wav`)
 		const interactionId = pendingInteractionId ?? generateUuid()
 		pendingInteractionId = null
+		minListenUntil = 0
+		transport.onTurnStarted?.(interactionId)
+		acknowledgeEndpoint(identity, interactionId, {
+			playSound: false,
+			sinceSpeechEndMs: speechEndAt
+				? endpointDecisionAt - speechEndAt
+				: undefined,
+		})
 		if (owned && owned.interactionId !== interactionId)
 			owned.abort("interaction mismatch")
 		const ownedTurn =
@@ -436,6 +448,7 @@ export const createSatelliteSession = (
 				busy = false
 				endpointed = false
 			}
+			transport.onTurnFinished?.(interactionId)
 			transport.finishTurn?.()
 		}
 		activeFinalize = finalize
@@ -469,7 +482,8 @@ export const createSatelliteSession = (
 				liveTurn: true,
 				wantsTranscript: true,
 				sink: turnSink,
-				onTranscript: (transcript) => transport.sendTranscript(transcript),
+				onTranscript: (transcript) =>
+					transport.sendTranscript(transcript, interactionId),
 				onComplete: (result) => {
 					void (async () => {
 						try {
@@ -553,7 +567,12 @@ export const createSatelliteSession = (
 		try {
 			if (ownedTurn) {
 				const archived = writeFile(path, wav).then(() => path)
-				ownedTurn.handoff({ pcm, speechEndAt, filePathPromise: archived })
+				ownedTurn.handoff({
+					pcm,
+					speechEndAt,
+					endpointDecisionAt,
+					filePathPromise: archived,
+				})
 				void ownedTurn.done.catch((err) => {
 					satelliteGatewayLogger.warn(
 						"speculative turn failed post-handoff — batch fallback",
@@ -565,15 +584,23 @@ export const createSatelliteSession = (
 						interactionId,
 						originDomiaKey: identity.domiaKey,
 						speechEndAt,
+						endpointDecisionAt,
 						endpointDebounceMs: vadDebounceMs || undefined,
 					})
 				})
 			} else if (session) {
 				const flushStart = Date.now()
-				const transcript = await session.finish()
+				const usePartial = identity.sttConfig?.partialAtEndpointEnabled === true
+				let transcript = usePartial ? session.partial().trim() : ""
+				if (usePartial && transcript) {
+					session.abort()
+				} else {
+					transcript = await session.finish()
+				}
 				satelliteGatewayLogger.info("⏱️ stt flush breakdown", {
 					flushMs: Date.now() - flushStart,
 					sinceSpeechEndMs: speechEndAt ? flushStart - speechEndAt : null,
+					partialAtEndpoint: usePartial && !!transcript,
 					interactionId,
 				})
 				void writeFile(path, wav).catch((err) =>
@@ -588,6 +615,7 @@ export const createSatelliteSession = (
 					originDomiaKey: identity.domiaKey,
 					responseType: RESPONSE_TYPE_ENUM.VOICE,
 					speechEndAt,
+					endpointDecisionAt,
 					endpointDebounceMs: vadDebounceMs || undefined,
 				})
 			} else {
@@ -597,6 +625,7 @@ export const createSatelliteSession = (
 					interactionId,
 					originDomiaKey: identity.domiaKey,
 					speechEndAt,
+					endpointDecisionAt,
 					endpointDebounceMs: vadDebounceMs || undefined,
 				})
 			}
@@ -610,6 +639,10 @@ export const createSatelliteSession = (
 	}
 
 	return {
+		setMinListenUntil: (ts: number) => {
+			minListenUntil = ts
+		},
+		hasPendingUtterance: () => !!vad?.everDetected(),
 		onHello: async ({
 			domiaKey,
 			satelliteId: id,
@@ -875,6 +908,12 @@ export const createSatelliteSession = (
 					!vad.speechActive() &&
 					vad.holdMs() + vad.silenceMs() >= effectiveDebounceMs
 				: vad.completed()
+			if (
+				silenceDone &&
+				Date.now() < minListenUntil &&
+				!(sttSession?.partial() ?? "").trim()
+			)
+				return
 			if (silenceDone) {
 				if (vadCompletedAt === null)
 					satelliteGatewayLogger.info("⏱️ endpoint decision", {
@@ -953,6 +992,12 @@ export const createSatelliteSession = (
 			await handleUtterance(Date.now())
 		},
 
+		onAudioPlayed: (interactionId) => {
+			if (!activeInteractionId) return
+			if (interactionId !== activeInteractionId) return
+			markLadderStage(activeInteractionId, "audioAudibleAt")
+		},
+
 		onCancel: () => {
 			if (pausedBargeIn !== null) {
 				clearTimeout(pausedBargeIn)
@@ -965,6 +1010,7 @@ export const createSatelliteSession = (
 			closeSttSession()
 			endpointed = false
 			setMicActive(false)
+			minListenUntil = 0
 			if (activeInteractionId) abortActiveTurn(identity.id, "satellite-cancel")
 			activeFinalize?.()
 		},

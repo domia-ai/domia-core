@@ -33,6 +33,9 @@ import {
 	recordLlmUsage,
 	recordEouMetrics,
 	eouCols,
+	markLadderStage,
+	ladderCols,
+	stampFirstTokenIterable,
 	createPlaybackLedger,
 	registerTurnLedger,
 	takeLlmUsage,
@@ -155,7 +158,9 @@ const persistTurnComplete = async (
 	const claimed =
 		emitCompletion && earlyId ? claimTurnCompleted(earlyId) : false
 	const result = await updateInteraction(
-		earlyId ? { ...payload, ...eouCols(earlyId) } : payload,
+		earlyId
+			? { ...payload, ...eouCols(earlyId), ...ladderCols(earlyId) }
+			: payload,
 	)
 	if (!emitCompletion) return result
 	const ctx = getTraceContext()
@@ -268,7 +273,37 @@ const publishStreamedReplyComplete = (
 	})
 }
 
+const closeTokenStream = (tokens: AsyncIterable<string>): void => {
+	void (tokens as AsyncGenerator<string>).return
+		?.call(tokens, undefined)
+		.catch(() => undefined)
+}
+
 const pipelineVoiceFromTokens = async (
+	ctx: CoreBusContextType,
+	session: SttFlowSessionType,
+	tokens: AsyncIterable<string>,
+	executors: {
+		llmExecutorKey: string | undefined
+		llmModelUsed: string | null
+	},
+	prefix?: PipelinePrefixType,
+): Promise<boolean> => {
+	try {
+		return await pipelineVoiceFromTokensInner(
+			ctx,
+			session,
+			tokens,
+			executors,
+			prefix,
+		)
+	} catch (err) {
+		closeTokenStream(tokens)
+		throw err
+	}
+}
+
+const pipelineVoiceFromTokensInner = async (
 	ctx: CoreBusContextType,
 	session: SttFlowSessionType,
 	tokens: AsyncIterable<string>,
@@ -314,6 +349,7 @@ const pipelineVoiceFromTokens = async (
 			elapsedMs: llmFirstSentenceMs ?? 0,
 		})
 	}
+	const stampedTokens = stampFirstTokenIterable(session.interactionId, tokens)
 	let playbackGone = false
 	const ledger = createPlaybackLedger(
 		{ sampleRate: caps.sampleRate, channels: caps.channels },
@@ -374,6 +410,7 @@ const pipelineVoiceFromTokens = async (
 		if (prefix) {
 			firstSentenceAt = Date.now()
 			llmFirstSentenceMs = 0
+			markLadderStage(session.interactionId, "ttsFirstUnitAt", firstSentenceAt)
 			emitFirstSentence()
 			fullReply = prefix.text
 			carriedTags = splitSentenceEmotionTags(prefix.text).carryTags
@@ -397,7 +434,7 @@ const pipelineVoiceFromTokens = async (
 			)
 		}
 		for await (const sentence of splitSentences(
-			tokens,
+			stampedTokens,
 			sentenceTuningFromDomia(domia),
 			prefix !== undefined,
 		)) {
@@ -405,6 +442,11 @@ const pipelineVoiceFromTokens = async (
 			if (firstSentenceAt === undefined) {
 				firstSentenceAt = Date.now()
 				llmFirstSentenceMs = firstSentenceAt - startTime
+				markLadderStage(
+					session.interactionId,
+					"ttsFirstUnitAt",
+					firstSentenceAt,
+				)
 				emitFirstSentence()
 			}
 			fullReply += (fullReply.length > 0 ? " " : "") + sentence
@@ -1340,12 +1382,21 @@ export const handleSttDone = async (
 
 	if (payload.interactionId && transcript.trim()) {
 		pushInteractionTranscript(payload.interactionId, transcript)
+		markLadderStage(payload.interactionId, "sttFinalAt")
 		if (payload.speechEndAt) {
+			markLadderStage(payload.interactionId, "speechEndAt", payload.speechEndAt)
 			recordEouMetrics(payload.interactionId, {
 				transcriptionDelayMs: Date.now() - payload.speechEndAt,
 				eouDelayMs: payload.endpointDelayMs ?? null,
 				endpointDebounceMs: payload.endpointDebounceMs ?? null,
 			})
+		}
+		if (payload.endpointDecisionAt) {
+			markLadderStage(
+				payload.interactionId,
+				"endpointDecisionAt",
+				payload.endpointDecisionAt,
+			)
 		}
 		emitTurnEvent({
 			type: DOMIA_TURN_EVENT_ENUM.STT_FINAL,
@@ -1601,6 +1652,7 @@ const handleSttDoneFlow = async (
 					if (isSemaphoreBusyError(err)) return null
 					throw err
 				}))
+			markLadderStage(interactionId, "llmQueuedAt", admitStart)
 			if (!payload.prestartedRelease) {
 				recordReplyQueueWait(interactionId, Date.now() - admitStart)
 			}

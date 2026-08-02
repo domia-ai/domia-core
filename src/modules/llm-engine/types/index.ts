@@ -35,6 +35,8 @@ export type LlmUsageType = {
 	ttftMs?: number | null
 	contextWindow?: number | null
 	finishReason?: string | null
+	freshTokens?: number | null
+	cachedTokens?: number | null
 }
 
 export type LlmUsageSinkType = (usage: LlmUsageType) => void

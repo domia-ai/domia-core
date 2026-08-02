@@ -89,6 +89,7 @@ const EN: LanguageCatalogType = {
 		sixty: 60,
 	},
 	timerKeywords: ["timer", "alarm"],
+	memoryCommandKeywords: ["remember", "memorize", "forget", "don't forget"],
 	unitWords: { hour: "hour", minute: "minute", second: "second", plural: "s" },
 	affirmations: [
 		"yes",
@@ -224,6 +225,18 @@ const ES: LanguageCatalogType = {
 		sesenta: 60,
 	},
 	timerKeywords: ["temporizador", "alarma", "cronometro"],
+	memoryCommandKeywords: [
+		"recuerda",
+		"recuérdalo",
+		"recuerdalo",
+		"acuérdate",
+		"acuerdate",
+		"memoriza",
+		"olvida",
+		"olvídate",
+		"olvidate",
+		"no olvides",
+	],
 	unitWords: { hour: "hora", minute: "minuto", second: "segundo", plural: "s" },
 	affirmations: [
 		"si",
@@ -299,6 +312,10 @@ export const languageSetsFor = (
 		numberWords: { ...EN.numberWords, ...(extra?.numberWords ?? {}) },
 		timerKeywordsRe: new RegExp(
 			`\\b(${[...EN.timerKeywords, ...(extra?.timerKeywords ?? [])].join("|")})\\b`,
+			"i",
+		),
+		memoryCommandRe: new RegExp(
+			`\\b(${[...EN.memoryCommandKeywords, ...(extra?.memoryCommandKeywords ?? [])].join("|")})\\b`,
 			"i",
 		),
 		unitWords: extra?.unitWords ?? EN.unitWords,

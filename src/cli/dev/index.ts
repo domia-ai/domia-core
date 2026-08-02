@@ -27,6 +27,8 @@ import {
 	configHealthCommand,
 	configExportCommand,
 	configImportCommand,
+	factsAuditCommand,
+	factsCleanupCommand,
 } from "./commands"
 
 const program = new Command()
@@ -236,6 +238,21 @@ config
 	.command("import <file>")
 	.description("Import a config bundle (partial or full) from a JSON file")
 	.action((file) => configImportCommand(file))
+
+const facts = program
+	.command("facts")
+	.description("🧠 Audit and clean stored memory facts")
+
+facts
+	.command("audit")
+	.description("List stored facts failing the quality guard")
+	.action(factsAuditCommand)
+
+facts
+	.command("cleanup")
+	.description("Back up and delete facts failing the quality guard")
+	.option("--apply", "Actually delete (default is dry run)")
+	.action((options) => factsCleanupCommand(options))
 
 program
 	.parseAsync()

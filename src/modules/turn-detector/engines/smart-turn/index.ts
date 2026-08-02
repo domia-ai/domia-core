@@ -57,7 +57,7 @@ export const smartTurnDetector: TurnDetectorEngineAdapterType = {
 			])
 			const res = await session.run({ input_features: tensor })
 			const probability = (res.logits.data as Float32Array)[0]
-			return { probability, complete: probability >= threshold }
+			return { probability, complete: probability > threshold }
 		} catch (err) {
 			audioCaptureLogger.warn("turn-detector inference failed", { err })
 			return null

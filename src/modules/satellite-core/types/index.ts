@@ -15,10 +15,12 @@ export type SatelliteHelloArgsType = {
 
 export type SatelliteTransportType = {
 	sendReady: (domiaKey: string, name: string) => void
-	sendTranscript: (text: string) => void
+	sendTranscript: (text: string, interactionId: string) => void
+	onTurnStarted?: (interactionId: string) => void
+	onTurnFinished?: (interactionId: string) => void
 	sendReplyDone: (reply: string, interactionId: string) => void
 	sendError: (message: string) => void
-	beginAudio: (format: StreamingSinkFormatType) => void
+	beginAudio: (format: StreamingSinkFormatType, interactionId?: string) => void
 	writeAudio: (chunk: Buffer) => void | Promise<void>
 	endAudio: () => void
 	close: () => void
@@ -44,7 +46,10 @@ export type SatelliteSessionType = {
 	setFormat: (sampleRate: number, channels: number) => void
 	onAudio: (pcm: Buffer) => void
 	onSpeechEnd: () => Promise<void>
+	onAudioPlayed: (interactionId?: string) => void
 	onCancel: () => void
+	setMinListenUntil: (ts: number) => void
+	hasPendingUtterance: () => boolean
 	onClose: () => void
 }
 
@@ -76,6 +81,7 @@ export type SatelliteSpeculationArgsType = {
 export type SatelliteSpeculationHandoffType = {
 	pcm: Buffer
 	speechEndAt?: number
+	endpointDecisionAt?: number
 	filePathPromise: Promise<string>
 }
 

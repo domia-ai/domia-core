@@ -1,44 +1,146 @@
-import { eq, desc, and, gte, asc } from "drizzle-orm"
+import { eq, desc, and, gte, gt, or, asc, isNull, count } from "drizzle-orm"
 
 import {
 	dbClient,
 	memoryFact,
+	factEvidence,
 	knowledgeEntry,
 	memoryEpisode,
 	userModel,
 	type DBClientOrTxType,
 	type InsertMemoryFactType,
+	type InsertFactEvidenceType,
 	type InsertKnowledgeEntryType,
 	type InsertMemoryEpisodeType,
 	type InsertUserModelType,
+	MS_TIMESTAMP,
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 
 const dbAdapter = {
-	upsertFact: (
+	insertFact: (
 		data: InsertMemoryFactType,
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client
 			.insert(memoryFact)
-			.values({ ...data, updatedAt: DEFAULT_TIMESTAMP })
+			.values({ ...data, updatedAt: MS_TIMESTAMP })
+			.onConflictDoNothing(),
+	insertOrReactivateFact: (
+		data: InsertMemoryFactType,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.insert(memoryFact)
+			.values({ ...data, updatedAt: MS_TIMESTAMP })
 			.onConflictDoUpdate({
-				target: [memoryFact.domiaId, memoryFact.subject, memoryFact.relation],
+				target: [
+					memoryFact.domiaId,
+					memoryFact.subject,
+					memoryFact.relation,
+					memoryFact.valueKey,
+				],
 				set: {
 					value: data.value,
 					confidence: data.confidence,
-					sourceInteractionId: data.sourceInteractionId,
-					updatedAt: DEFAULT_TIMESTAMP,
+					supersededAt: null,
+					updatedAt: MS_TIMESTAMP,
 				},
 			}),
+	getActiveFactsFor: (
+		domiaId: string,
+		subject: string,
+		relation: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.memoryFact.findMany({
+			where: and(
+				eq(memoryFact.domiaId, domiaId),
+				eq(memoryFact.subject, subject),
+				eq(memoryFact.relation, relation),
+				isNull(memoryFact.supersededAt),
+			),
+		}),
+	findFactByKey: (
+		domiaId: string,
+		subject: string,
+		relation: string,
+		valueKey: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.memoryFact.findFirst({
+			where: and(
+				eq(memoryFact.domiaId, domiaId),
+				eq(memoryFact.subject, subject),
+				eq(memoryFact.relation, relation),
+				eq(memoryFact.valueKey, valueKey),
+			),
+		}),
+	reactivateFact: (
+		id: string,
+		confidence: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(memoryFact)
+			.set({ supersededAt: null, confidence, updatedAt: MS_TIMESTAMP })
+			.where(eq(memoryFact.id, id)),
+	setFactConfidence: (
+		id: string,
+		confidence: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(memoryFact)
+			.set({ confidence, updatedAt: MS_TIMESTAMP })
+			.where(eq(memoryFact.id, id)),
+	supersedeFact: (id: string, client: DBClientOrTxType = dbClient) =>
+		client
+			.update(memoryFact)
+			.set({ supersededAt: MS_TIMESTAMP, updatedAt: MS_TIMESTAMP })
+			.where(eq(memoryFact.id, id)),
+	supersedeActiveFacts: (
+		domiaId: string,
+		subject: string,
+		relation: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(memoryFact)
+			.set({ supersededAt: MS_TIMESTAMP, updatedAt: MS_TIMESTAMP })
+			.where(
+				and(
+					eq(memoryFact.domiaId, domiaId),
+					eq(memoryFact.subject, subject),
+					eq(memoryFact.relation, relation),
+					isNull(memoryFact.supersededAt),
+				),
+			),
+	addFactEvidence: (
+		data: InsertFactEvidenceType,
+		client: DBClientOrTxType = dbClient,
+	) => client.insert(factEvidence).values(data).onConflictDoNothing(),
+	countFactEvidence: async (
+		factId: string,
+		client: DBClientOrTxType = dbClient,
+	): Promise<number> => {
+		const rows = await client
+			.select({ n: count() })
+			.from(factEvidence)
+			.where(eq(factEvidence.factId, factId))
+		return rows[0]?.n ?? 0
+	},
 	getRecentFacts: (
 		domiaId: string,
 		limit: number,
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client.query.memoryFact.findMany({
-			where: eq(memoryFact.domiaId, domiaId),
-			orderBy: desc(memoryFact.updatedAt),
+			where: and(
+				eq(memoryFact.domiaId, domiaId),
+				isNull(memoryFact.supersededAt),
+			),
+			orderBy: desc(memoryFact.createdAt),
 			limit,
 		}),
 	getFactsForDomia: (domiaId: string, client: DBClientOrTxType = dbClient) =>
@@ -50,15 +152,21 @@ const dbAdapter = {
 	getFactsSince: (
 		domiaId: string,
 		since: string,
+		sinceId: string,
 		limit: number,
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client.query.memoryFact.findMany({
 			where: and(
 				eq(memoryFact.domiaId, domiaId),
-				gte(memoryFact.updatedAt, since),
+				sinceId
+					? or(
+							gt(memoryFact.updatedAt, since),
+							and(eq(memoryFact.updatedAt, since), gt(memoryFact.id, sinceId)),
+						)
+					: gte(memoryFact.updatedAt, since),
 			),
-			orderBy: asc(memoryFact.updatedAt),
+			orderBy: [asc(memoryFact.updatedAt), asc(memoryFact.id)],
 			limit,
 		}),
 	getLastFactAt: (domiaId: string, client: DBClientOrTxType = dbClient) =>

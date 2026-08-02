@@ -7,9 +7,14 @@ import {
 	sanitizeFactLine,
 } from "@/utils"
 
-import { FACT_KIND_ENUM, type FactKindEnumType } from "@/db"
+import {
+	dbClient,
+	FACT_KIND_ENUM,
+	type FactKindEnumType,
+	type SelectMemoryFactType,
+} from "@/db"
 import dbAdapter from "../db-adapter"
-import { factsArraySchema } from "../schemas"
+import { factSchema } from "../schemas"
 import {
 	MEMORY_FACT_CANDIDATE_LIMIT,
 	MEMORY_FACT_EXTRACT_MAX,
@@ -18,6 +23,13 @@ import {
 	MIN_RECALL_CONF_PREF,
 	MIN_RECALL_CONF_OBS,
 	KB_CANDIDATE_LIMIT,
+	OBSERVATION_QUARANTINE_CONFIDENCE,
+	CORROBORATION_MIN_DISTINCT_SOURCES,
+	CORROBORATED_CONFIDENCE_MARGIN,
+	FACT_DEDUP_DEFAULT_THRESHOLD,
+	FACT_DEDUP_RELATION_THRESHOLDS,
+	SINGLE_VALUED_RELATIONS,
+	RELATION_ALLOWLIST_RE,
 } from "../constants"
 import type { RawFactType } from "../types"
 
@@ -217,25 +229,37 @@ export const upsertKnowledgeEntry = async (
 export const deleteKnowledgeEntry = (domia: DomiaType, id: string) =>
 	dbAdapter.deleteKnowledge(domia.id, id)
 
-export const getFactsSince = (domiaId: string, since: string, limit: number) =>
-	dbAdapter.getFactsSince(domiaId, since, limit)
+export const getFactsSince = (
+	domiaId: string,
+	since: string,
+	sinceId: string,
+	limit: number,
+) => dbAdapter.getFactsSince(domiaId, since, sinceId, limit)
 
 export const getLastFactAt = async (domiaId: string) => {
 	const row = await dbAdapter.getLastFactAt(domiaId)
 	return row?.updatedAt ?? null
 }
 
+export const isExplicitMemoryCommand = (
+	text: string,
+	language?: string | null,
+): boolean => languageSetsFor(language).memoryCommandRe.test(text)
+
 export const buildFactExtractionLines = (): string[] => [
 	`Also extract durable facts the person EXPLICITLY stated about themselves. Format as objects {subject, relation, value, confidence}: "subject" is ALWAYS exactly "the user" (never "the user said X", never their name as the subject); "relation" is short lowercase (e.g. "is named", "is allergic to", "likes", "dislikes"); "value" is the plain detail with NO brackets or quotes (e.g. Kevin, green tea); "confidence" is 0..1.`,
+	`Only DURABLE identity qualifies: name, tastes, relationships, possessions, allergies, home, work. NEVER capture in-the-moment actions, requests or commands. "Turn on the kitchen lights" → NOT a fact (a command). "Remind me at nine" → NOT a fact (a request). "My name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"} IS a fact.`,
 	`DO capture clear first-person declarations: "my name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"}; "I love green tea" / "green tea is my favorite" → {subject:"the user", relation:"likes", value:"green tea"}; "I can't stand coffee" → {subject:"the user", relation:"dislikes", value:"coffee"}; "I'm allergic to peanuts" → {subject:"the user", relation:"is allergic to", value:"peanuts"}. Preferences, name, allergies, relationships, and plans they state ARE facts — capture them.`,
 	`When the person RETRACTS or REVERSES something ("I quit coffee", "I no longer like tea", "I switched from X to Y", "actually I can't stand it anymore"), emit a retraction with "op":"delete" for the OLD fact ({subject:"the user", relation:"likes", value:"coffee", op:"delete"}) — and for a switch also add the NEW fact. Default op is "add"; only set "delete" for an explicit retraction.`,
-	`NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia. If they only asked a question or made small talk, return [].`,
+	`NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia; (d) the EXAMPLES in these instructions — Kevin, green tea, coffee and peanuts are illustrations, never facts, unless THIS conversation explicitly stated them. If they only asked a question or made small talk, return [].`,
 ]
 
 export const parseFacts = (input: unknown): RawFactType[] => {
-	const result = factsArraySchema.safeParse(input)
-	if (!result.success) return []
-	return result.data
+	if (!Array.isArray(input)) return []
+	return input
+		.map((item) => factSchema.safeParse(item))
+		.filter((r): r is { success: true; data: RawFactType } => r.success)
+		.map((r) => r.data)
 		.filter((f) => f.subject.trim() && f.relation.trim() && f.value.trim())
 		.slice(0, MEMORY_FACT_EXTRACT_MAX)
 }
@@ -266,24 +290,108 @@ const canonicalSubject = (raw: string): string => {
 
 const IDENTITY_PROTECT_FLOOR = 0.85
 
+// what the user is doing right now is conversation, not durable memory — ephemeral captures poison recall and churn the prompt prefix
+const EPHEMERAL_FACT_RE =
+	/\b(is (asking|saying|doing|trying|requesting|telling|wondering|testing)|asked (for|to|about)|wants? (the|to turn|to set|to play)|turn(ing|ed)? (on|off)|has recently|right now|currently|just (said|asked|did)|is aware of|talks later|will call at)\b/i
+
+export const isEphemeralFact = (relation: string, value: string): boolean =>
+	EPHEMERAL_FACT_RE.test(`${relation} ${value}`)
+
+const rejectFact = (
+	subject: string,
+	relation: string,
+	value: string,
+	stopwords: Set<string>,
+): string | null => {
+	if (subject !== SPEAKER_SUBJECT) return "subject not the user"
+	if (!RELATION_ALLOWLIST_RE.test(relation)) return "relation not state-shaped"
+	if (isEphemeralFact(relation, value)) return "ephemeral"
+	if (tokensOf(value, stopwords).length === 0 && value.length < 3)
+		return "value not meaningful"
+	return null
+}
+
+const dedupThreshold = (relation: string): number =>
+	FACT_DEDUP_RELATION_THRESHOLDS[relation] ?? FACT_DEDUP_DEFAULT_THRESHOLD
+
+const findSemanticDuplicate = async (
+	domia: DomiaType,
+	value: string,
+	candidates: { id: string; value: string; confidence: number | null }[],
+	relation: string,
+): Promise<{ id: string; confidence: number | null } | null> => {
+	if (!candidates.length) return null
+	const vectors = await embed(domia, [value, ...candidates.map((c) => c.value)])
+	if (!vectors || vectors.length !== candidates.length + 1) return null
+	const query = vectors[0]
+	const threshold = dedupThreshold(relation)
+	let best: { id: string; confidence: number | null } | null = null
+	let bestSim = 0
+	for (let i = 0; i < candidates.length; i++) {
+		const sim = cosineSim(query, vectors[i + 1])
+		if (sim >= threshold && sim > bestSim) {
+			bestSim = sim
+			best = candidates[i]
+		}
+	}
+	return best
+}
+
+const corroborate = async (
+	factId: string,
+	confidence: number | null,
+	kind: FactKindEnumType,
+	sourceInteractionId?: string,
+): Promise<void> => {
+	if (!sourceInteractionId) return
+	await dbAdapter.addFactEvidence({
+		id: generateUuid(),
+		factId,
+		sourceInteractionId,
+	})
+	const distinct = await dbAdapter.countFactEvidence(factId)
+	if (distinct < CORROBORATION_MIN_DISTINCT_SOURCES) return
+	const promoted = confFloor(kind) + CORROBORATED_CONFIDENCE_MARGIN
+	if ((confidence ?? 0) < promoted)
+		await dbAdapter.setFactConfidence(factId, promoted)
+}
+
+const enteringConfidence = (
+	kind: FactKindEnumType,
+	claimed: number | undefined,
+): number => {
+	const base = claimed ?? DEFAULT_FACT_CONFIDENCE
+	if (kind === FACT_KIND_ENUM.OBSERVATION)
+		return Math.min(base, OBSERVATION_QUARANTINE_CONFIDENCE)
+	return Math.max(base, confFloor(kind))
+}
+
 const reconcileDeletes = async (
 	domia: DomiaType,
-	deletes: { subject: string; value: string }[],
+	deletes: {
+		subject: string
+		relation: string
+		value: string
+		explicit?: boolean
+	}[],
 ): Promise<number> => {
 	if (!deletes.length) return 0
 	const rows = await dbAdapter.getFactsForDomia(domia.id)
 	let removed = 0
 	for (const del of deletes) {
 		for (const row of rows) {
+			if (row.supersededAt) continue
 			if (canonicalSubject(row.subject) !== del.subject) continue
+			if (normalizeFactKey(row.relation) !== del.relation) continue
 			if (
+				!del.explicit &&
 				(row.confidence ?? 0) >= IDENTITY_PROTECT_FLOOR &&
 				row.kind === FACT_KIND_ENUM.USER_FACT
 			)
 				continue
 			const rowVal = normalizeFactKey(row.value)
 			if (rowVal.includes(del.value) || del.value.includes(rowVal)) {
-				await dbAdapter.deleteFactById(row.id)
+				await dbAdapter.supersedeFact(row.id)
 				removed += 1
 			}
 		}
@@ -297,43 +405,190 @@ export const upsertFacts = async (
 	sourceInteractionId?: string,
 ): Promise<void> => {
 	if (!facts.length) return
-	const deletes: { subject: string; value: string }[] = []
+	const stopwords = languageSetsFor(domia.characterProfile?.language).stopwords
+	const deletes: {
+		subject: string
+		relation: string
+		value: string
+		explicit?: boolean
+	}[] = []
 	const seen = new Set<string>()
+	const rejected: string[] = []
 	let stored = 0
+	let corroborated = 0
 	for (const fact of facts) {
 		const subject = canonicalSubject(fact.subject)
 		const relation = normalizeFactKey(fact.relation)
 		const value = stripBrackets(sanitizeFactLine(fact.value).text)
 		if (!subject || !relation || !value) continue
 		if (fact.op === "delete") {
-			deletes.push({ subject, value: normalizeFactKey(value) })
+			deletes.push({
+				subject,
+				relation,
+				value: normalizeFactKey(value),
+				explicit: fact.explicit,
+			})
 			continue
 		}
-		const dedupKey = `${subject}|${relation}`
+		const reason = rejectFact(subject, relation, value, stopwords)
+		if (reason) {
+			rejected.push(`${subject} ${relation} ${value} (${reason})`)
+			continue
+		}
+		const valueKey = normalizeFactKey(value)
+		const dedupKey = `${subject}|${relation}|${valueKey}`
 		if (seen.has(dedupKey)) continue
 		seen.add(dedupKey)
-		await dbAdapter.upsertFact({
-			id: generateUuid(),
+		const kind = classifyFactKind(fact.relation)
+		const active = await dbAdapter.getActiveFactsFor(
+			domia.id,
+			subject,
+			relation,
+		)
+		const keyed = await dbAdapter.findFactByKey(
+			domia.id,
+			subject,
+			relation,
+			valueKey,
+		)
+		if (keyed && !keyed.supersededAt) {
+			await corroborate(keyed.id, keyed.confidence, kind, sourceInteractionId)
+			corroborated += 1
+			continue
+		}
+		if (keyed?.supersededAt) {
+			const entering = enteringConfidence(kind, fact.confidence)
+			dbClient.transaction((tx) => {
+				if (SINGLE_VALUED_RELATIONS.has(relation))
+					dbAdapter.supersedeActiveFacts(domia.id, subject, relation, tx).run()
+				dbAdapter.reactivateFact(keyed.id, entering, tx).run()
+			})
+			if (sourceInteractionId)
+				await dbAdapter.addFactEvidence({
+					id: generateUuid(),
+					factId: keyed.id,
+					sourceInteractionId,
+				})
+			stored += 1
+			continue
+		}
+		const duplicate = await findSemanticDuplicate(
+			domia,
+			value,
+			active.map((row) => ({
+				id: row.id,
+				value: row.value,
+				confidence: row.confidence,
+			})),
+			relation,
+		)
+		if (duplicate) {
+			await corroborate(
+				duplicate.id,
+				duplicate.confidence,
+				kind,
+				sourceInteractionId,
+			)
+			corroborated += 1
+			continue
+		}
+		const id = generateUuid()
+		const insertData = {
+			id,
 			domiaId: domia.id,
 			subject,
 			relation,
 			value,
-			confidence: fact.confidence ?? DEFAULT_FACT_CONFIDENCE,
-			kind: classifyFactKind(fact.relation),
+			valueKey,
+			confidence: enteringConfidence(kind, fact.confidence),
+			kind,
 			sourceInteractionId: sourceInteractionId ?? null,
-		})
+		}
+		if (SINGLE_VALUED_RELATIONS.has(relation)) {
+			dbClient.transaction((tx) => {
+				dbAdapter.supersedeActiveFacts(domia.id, subject, relation, tx).run()
+				dbAdapter.insertOrReactivateFact(insertData, tx).run()
+			})
+		} else {
+			await dbAdapter.insertFact(insertData)
+		}
+		const inserted = await dbAdapter.findFactByKey(
+			domia.id,
+			subject,
+			relation,
+			valueKey,
+		)
+		const evidenceTarget = SINGLE_VALUED_RELATIONS.has(relation)
+			? inserted?.id
+			: inserted?.id === id
+				? id
+				: undefined
+		if (evidenceTarget && sourceInteractionId)
+			await dbAdapter.addFactEvidence({
+				id: generateUuid(),
+				factId: evidenceTarget,
+				sourceInteractionId,
+			})
 		stored += 1
 	}
 	const removed = await reconcileDeletes(domia, deletes)
 	memoryLogger.info("🧠 facts stored", {
 		domiaId: domia.id,
 		count: stored,
+		corroborated,
 		removed,
+		...(rejected.length ? { rejected } : {}),
 		facts: facts.map(
 			(f) =>
 				`${f.op === "delete" ? "-" : ""}${f.subject} ${f.relation} ${f.value}`,
 		),
 	})
+}
+
+export const auditStoredFacts = async (
+	domia: DomiaType,
+): Promise<{ row: SelectMemoryFactType; reason: string }[]> => {
+	const stopwords = languageSetsFor(domia.characterProfile?.language).stopwords
+	const rows = await dbAdapter.getFactsForDomia(domia.id)
+	const garbage: { row: SelectMemoryFactType; reason: string }[] = []
+	for (const row of rows) {
+		if (row.supersededAt) continue
+		const subject = canonicalSubject(row.subject)
+		const relation = normalizeFactKey(row.relation)
+		const value = stripBrackets(sanitizeFactLine(row.value).text)
+		const reason = value
+			? rejectFact(subject, relation, value, stopwords)
+			: "value empty"
+		if (reason) garbage.push({ row, reason })
+	}
+	return garbage
+}
+
+export const deleteStoredFacts = async (ids: string[]): Promise<number> => {
+	let removed = 0
+	for (const id of ids) {
+		await dbAdapter.deleteFactById(id)
+		removed += 1
+	}
+	return removed
+}
+
+export const getActiveFactRefs = async (
+	domia: DomiaType,
+): Promise<{ subject: string; relation: string; value: string }[]> => {
+	try {
+		const rows = await dbAdapter.getRecentFacts(
+			domia.id,
+			MEMORY_FACT_CANDIDATE_LIMIT,
+		)
+		return rows.map(({ subject, relation, value }) => ({
+			subject,
+			relation,
+			value,
+		}))
+	} catch {
+		return []
+	}
 }
 
 export const getFactStrings = async (domia: DomiaType): Promise<string[]> => {

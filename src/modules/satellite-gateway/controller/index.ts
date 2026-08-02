@@ -66,11 +66,12 @@ const wsTransport = (
 		sendReplyDone: (reply, interactionId) =>
 			send(ws, { type: "reply_done", reply, interactionId }),
 		sendError: (message) => send(ws, { type: "error", message }),
-		beginAudio: (format) =>
+		beginAudio: (format, interactionId) =>
 			send(ws, {
 				type: "audio_stream_begin",
 				sampleRate: format.sampleRate,
 				channels: format.channels,
+				...(interactionId ? { interactionId } : {}),
 			}),
 		writeAudio: (chunk) => {
 			if (ws.readyState !== ws.OPEN) return
@@ -151,6 +152,8 @@ export const setupSatelliteGateway = (
 					})
 				} else if (control.type === "speech_end") {
 					await session.onSpeechEnd()
+				} else if (control.type === "audio_played") {
+					session.onAudioPlayed(control.interactionId)
 				} else if (control.type === "cancel") {
 					session.onCancel()
 				}

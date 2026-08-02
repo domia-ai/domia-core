@@ -8,6 +8,7 @@ import {
 	setLocalMqttClient,
 	getLocalMqttClient,
 } from "@/modules/heartbeat-manager"
+import { registerSpeakingBroadcast } from "@/modules/core-bus"
 import type { SetupMqttArgsType } from "./types"
 import { MQTT_EVENT_ENUM } from "./constants"
 import { handleMqttMessage } from "@/modules/mqtt-event-handler"
@@ -89,6 +90,20 @@ export const setupMqtt = ({
 
 	const offlineTopic = `${ROOT}/+/${type}/${MQTT_EVENT_ENUM.OFFLINE}`
 	client.subscribe(offlineTopic)
+
+	const speakingTopic = `${ROOT}/+/${type}/${MQTT_EVENT_ENUM.SPEAKING}`
+	client.subscribe(speakingTopic)
+
+	if (nodeId) {
+		registerSpeakingBroadcast((speakingDomiaKey, speaking) => {
+			const current = getLocalMqttClient() ?? client
+			if (current.disconnected) return
+			current.publish(
+				`${ROOT}/${nodeId}/${type}/${MQTT_EVENT_ENUM.SPEAKING}`,
+				JSON.stringify({ nodeId, domiaKey: speakingDomiaKey, speaking }),
+			)
+		})
+	}
 
 	logger.success("✅ MQTT setup completed successfully")
 

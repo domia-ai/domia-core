@@ -31,6 +31,7 @@ export type ConfigHealthEntryType = {
 export type ConfigHealthType = {
 	ok: boolean
 	entries: ConfigHealthEntryType[]
+	llmSlots?: Record<string, number>
 }
 
 export type ConfigDomiaSectionType = Pick<

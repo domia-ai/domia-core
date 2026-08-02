@@ -1,6 +1,18 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs"
 import path from "path"
-import { configSnapshot, env, meshHeaders, queryOne, sleep } from "./lib"
+import {
+	configSnapshot,
+	env,
+	meshHeaders,
+	queryOne,
+	sleep,
+	runtimeSnapshot,
+	ladderDeltas,
+	ladderViolations,
+	wasSpeculationCommitted,
+	uniqueArtifactPath,
+	LADDER_STAGE_COLS,
+} from "./lib"
 import type { BenchStatsType, BenchSummaryType } from "./types"
 
 const LABEL =
@@ -31,6 +43,9 @@ const METRIC_COLS = [
 	"total_ms",
 	"rss_mb",
 	"intent_ms",
+	"llm_fresh_tokens",
+	"llm_cached_tokens",
+	...LADDER_STAGE_COLS,
 ] as const
 
 const SUMMARY_COLS = [
@@ -45,6 +60,17 @@ const SUMMARY_COLS = [
 	"perceived_ttfa_ms",
 	"total_ms",
 	"rss_mb",
+	"llm_fresh_tokens",
+	"llm_cached_tokens",
+	"d_endpoint_ms",
+	"d_stt_final_ms",
+	"d_prompt_ready_ms",
+	"d_llm_queued_ms",
+	"d_first_token_ms",
+	"d_tts_first_unit_ms",
+	"d_audio_delivered_ms",
+	"d_audible_ms",
+	"d_speech_to_delivered_ms",
 ] as const
 
 type TraceMetricsType = Record<string, number | string | null>
@@ -134,7 +160,21 @@ const main = async (): Promise<void> => {
 				row = traceRow(json.interactionId)
 			}
 			if (!row) continue
-			rows.push({ id: rowId, cold: run === 1, expectedText: g.text, ...row })
+			const speculative = wasSpeculationCommitted(json.interactionId)
+			const violations = speculative ? [] : ladderViolations(row)
+			if (violations.length)
+				console.warn(
+					`  ⚠️ ladder violations ${rowId}: ${violations.join("; ")}`,
+				)
+			rows.push({
+				id: rowId,
+				cold: run === 1,
+				expectedText: g.text,
+				speculative,
+				ladderIssues: violations,
+				...row,
+				...ladderDeltas(row),
+			})
 			console.log(
 				`  ${rowId.padEnd(7)}  stt:${String(row.stt_ms).padStart(4)}  llmQ:${String(row.llm_queue_ms).padStart(3)}  ttft:${String(row.llm_ttft_ms).padStart(4)}  tok/s:${String(row.llm_tokens_per_sec).padStart(5)}  ttsFirst:${String(row.tts_first_chunk_ms).padStart(4)}  ttfa:${String(row.ttfa_ms).padStart(5)}  total:${String(row.total_ms).padStart(5)}  rss:${row.rss_mb}MB`,
 			)
@@ -150,14 +190,20 @@ const main = async (): Promise<void> => {
 			wordOverlap(String(r.expectedText ?? ""), String(r.transcript ?? "")) <
 			0.5,
 	).length
+	const violationCount = rows.reduce(
+		(acc, r) => acc + ((r.ladderIssues as string[] | undefined)?.length ?? 0),
+		0,
+	)
 	const summary: BenchSummaryType = {
 		label: LABEL,
 		n: okRows.length,
 		expected,
 		failed: failedRows.length,
 		transcriptMismatches,
+		ladderViolations: violationCount,
 		runs: env.BENCH_RUNS,
 		snapshot,
+		runtime: runtimeSnapshot(),
 		all: summarize(okRows),
 		...(warmRows.length ? { warm: summarize(warmRows) } : {}),
 	}
@@ -167,10 +213,12 @@ const main = async (): Promise<void> => {
 		)
 	if (transcriptMismatches > 0)
 		console.warn(`⚠️ transcript mismatches: ${transcriptMismatches}`)
+	if (violationCount > 0)
+		console.error(`❌ ladder monotonicity violations: ${violationCount}`)
 	console.log("\n=== SUMMARY ===")
 	console.log(JSON.stringify(summary, null, 2))
 	mkdirSync(OUT_DIR, { recursive: true })
-	const outFile = path.join(OUT_DIR, `${LABEL}.json`)
+	const outFile = uniqueArtifactPath(OUT_DIR, LABEL)
 	writeFileSync(outFile, JSON.stringify({ summary, rows }, null, "\t"))
 	console.log(`saved → ${outFile}`)
 
@@ -178,7 +226,7 @@ const main = async (): Promise<void> => {
 		["ttfa_ms", env.BENCH_TTFA_P95_MAX, summary.all.ttfa_ms?.p95],
 		["total_ms", env.BENCH_TOTAL_P95_MAX, summary.all.total_ms?.p95],
 	]
-	let breached = false
+	let breached = violationCount > 0
 	for (const [name, max, actual] of gates) {
 		if (max == null) continue
 		if (actual == null || actual > max) {

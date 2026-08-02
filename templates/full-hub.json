@@ -73,6 +73,8 @@
 	"llm": {
 		"name": "Default",
 		"engine": "OLLAMA",
+		"baseUrl": "http://localhost:11434",
+		"slotAffinityEnabled": false,
 		"modelName": "llama3.2:3b",
 		"temperature": 0.7,
 		"contextWindow": 4096,
@@ -93,6 +95,7 @@
 		"customModelPath": "data/models/kws-zipformer-gigaspeech-3.3M-2024-01-01",
 		"quantization": "int8",
 		"vadEngine": "SILERO",
+		"pauseBargeInEnabled": true,
 		"vadModelPath": "data/models/silero_vad.onnx",
 		"inputDeviceIndex": 0,
 		"sampleRate": 16000,
@@ -104,6 +107,7 @@
 		"name": "Default",
 		"engine": "SOX",
 		"volume": 100,
+		"wordLevelHeardEnabled": true,
 		"streamingEnabled": true,
 		"outputDevice": null
 	}

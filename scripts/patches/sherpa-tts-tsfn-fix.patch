@@ -11,7 +11,7 @@ index b15d4b85..04a06627 100755
  
  curl -SL -O https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-coqui-de-css10.tar.bz2
 diff --git a/harmony-os/SherpaOnnxHar/sherpa_onnx/src/main/cpp/non-streaming-tts.cc b/harmony-os/SherpaOnnxHar/sherpa_onnx/src/main/cpp/non-streaming-tts.cc
-index f0e2d074..7f347636 100644
+index f0e2d074..ab6b0d81 100644
 --- a/harmony-os/SherpaOnnxHar/sherpa_onnx/src/main/cpp/non-streaming-tts.cc
 +++ b/harmony-os/SherpaOnnxHar/sherpa_onnx/src/main/cpp/non-streaming-tts.cc
 @@ -5,7 +5,6 @@
@@ -22,7 +22,7 @@ index f0e2d074..7f347636 100644
  #include <sstream>
  #include <string>
  #include <vector>
-@@ -743,79 +742,225 @@ static Napi::Object OfflineTtsGenerateWrapper(const Napi::CallbackInfo &info) {
+@@ -743,79 +742,232 @@ static Napi::Object OfflineTtsGenerateWrapper(const Napi::CallbackInfo &info) {
    }
  }
  
@@ -76,6 +76,13 @@ index f0e2d074..7f347636 100644
 +      state->audio = nullptr;
 +    }
 +    state->deferred.Reject(Napi::Error::New(env, state->error).Value());
++    state->settled = true;
++    return;
++  }
++
++  if (state->audio == nullptr) {
++    state->deferred.Reject(
++        Napi::Error::New(env, "TTS generation produced no audio").Value());
 +    state->settled = true;
 +    return;
 +  }
@@ -292,7 +299,7 @@ index f0e2d074..7f347636 100644
  
   protected:
    void Execute() override {
-@@ -823,38 +968,27 @@ class TtsGenerateWorker : public Napi::AsyncWorker {
+@@ -823,38 +975,27 @@ class TtsGenerateWorker : public Napi::AsyncWorker {
                         void *arg) -> int32_t {
        TtsGenerateWorker *_this = reinterpret_cast<TtsGenerateWorker *>(arg);
  
@@ -345,7 +352,7 @@ index f0e2d074..7f347636 100644
        return 1;
      };
      SherpaOnnxGenerationConfig gen_config;
-@@ -864,47 +998,42 @@ class TtsGenerateWorker : public Napi::AsyncWorker {
+@@ -864,47 +1005,42 @@ class TtsGenerateWorker : public Napi::AsyncWorker {
      audio_ = SherpaOnnxOfflineTtsGenerateWithConfig(
          tts_, text_.c_str(), &gen_config, callback, this);
  
@@ -401,7 +408,7 @@ index f0e2d074..7f347636 100644
 +    state_->generation_done = true;
 +    state_->audio = audio_;
 +    state_->use_external_buffer = use_external_buffer_;
-+    if (sentinel_failed_) {
++    if (sentinel_failed_ || tsfn_closing_) {
 +      // No drain signal will ever arrive; fail the generation instead of
 +      // leaving the promise pending forever
 +      if (state_->error.empty()) {
@@ -421,7 +428,7 @@ index f0e2d074..7f347636 100644
    const SherpaOnnxOfflineTts *tts_;
    std::string text_;
    float speed_;
-@@ -913,7 +1042,15 @@ class TtsGenerateWorker : public Napi::AsyncWorker {
+@@ -913,7 +1049,15 @@ class TtsGenerateWorker : public Napi::AsyncWorker {
  
    const SherpaOnnxGeneratedAudio *audio_;
  
@@ -438,7 +445,7 @@ index f0e2d074..7f347636 100644
  };
  
  static Napi::Object OfflineTtsGenerateAsyncWrapper(
-@@ -1007,20 +1144,20 @@ static Napi::Object OfflineTtsGenerateAsyncWrapper(
+@@ -1007,20 +1151,20 @@ static Napi::Object OfflineTtsGenerateAsyncWrapper(
      cb = obj.Get("callback").As<Napi::Function>();
    }
  
@@ -464,7 +471,7 @@ index f0e2d074..7f347636 100644
    worker->Queue();
    return worker->Promise();
  }
-@@ -1029,23 +1166,23 @@ static Napi::Object OfflineTtsGenerateAsyncWrapper(
+@@ -1029,23 +1173,23 @@ static Napi::Object OfflineTtsGenerateAsyncWrapper(
  class TtsGenerateWithConfigWorker : public Napi::AsyncWorker {
   public:
    TtsGenerateWithConfigWorker(const Napi::Env &env, TSFN tsfn,
@@ -491,7 +498,7 @@ index f0e2d074..7f347636 100644
    }
  
   protected:
-@@ -1055,83 +1192,75 @@ class TtsGenerateWithConfigWorker : public Napi::AsyncWorker {
+@@ -1055,83 +1199,75 @@ class TtsGenerateWithConfigWorker : public Napi::AsyncWorker {
        TtsGenerateWithConfigWorker *_this =
            reinterpret_cast<TtsGenerateWithConfigWorker *>(arg);
  
@@ -589,7 +596,7 @@ index f0e2d074..7f347636 100644
 +    state_->generation_done = true;
 +    state_->audio = audio_;
 +    state_->use_external_buffer = use_external_buffer_;
-+    if (sentinel_failed_) {
++    if (sentinel_failed_ || tsfn_closing_) {
 +      // No drain signal will ever arrive; fail the generation instead of
 +      // leaving the promise pending forever
 +      if (state_->error.empty()) {
@@ -618,7 +625,7 @@ index f0e2d074..7f347636 100644
  };
  
  static Napi::Object OfflineTtsGenerateAsyncWithConfigWrapper(
-@@ -1168,11 +1297,10 @@ static Napi::Object OfflineTtsGenerateAsyncWithConfigWrapper(
+@@ -1168,11 +1304,10 @@ static Napi::Object OfflineTtsGenerateAsyncWithConfigWrapper(
      cb = obj.Get("callback").As<Napi::Function>();
    }
  
@@ -633,7 +640,7 @@ index f0e2d074..7f347636 100644
  
    SherpaOnnxGenerationConfig gen_config;
    memset(&gen_config, 0, sizeof(gen_config));
-@@ -1182,7 +1310,8 @@ static Napi::Object OfflineTtsGenerateAsyncWithConfigWrapper(
+@@ -1182,7 +1317,8 @@ static Napi::Object OfflineTtsGenerateAsyncWithConfigWrapper(
    }
  
    TtsGenerateWithConfigWorker *worker = new TtsGenerateWithConfigWorker(
@@ -645,10 +652,10 @@ index f0e2d074..7f347636 100644
  }
 diff --git a/nodejs-addon-examples/test_tts_async_callback_stress.js b/nodejs-addon-examples/test_tts_async_callback_stress.js
 new file mode 100644
-index 00000000..2eaa0e3c
+index 00000000..7f54ff8c
 --- /dev/null
 +++ b/nodejs-addon-examples/test_tts_async_callback_stress.js
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,240 @@
 +// Copyright (c)  2026  Kevin Castillo
 +//
 +// Stress test for the async TTS progress-callback path (generateAsync + onProgress).
@@ -716,6 +723,11 @@ index 00000000..2eaa0e3c
 +        return 1;
 +      },
 +    });
++    // drain-before-settle guarantees every delivered callback ran by now
++    if (chunks === 0) {
++      console.error(`FAIL: no progress callbacks fired in iteration ${i}`);
++      process.exit(1);
++    }
 +    totalChunks += chunks;
 +    if (i === warmup - 1) steadyStateBase = rssMb();
 +  }
@@ -782,10 +794,11 @@ index 00000000..2eaa0e3c
 +        uncaught.message}`);
 +    process.exit(1);
 +  }
-+  if (rejection === null ||
-+      !String(rejection.message).includes('callback boom')) {
-+    console.error(`FAIL: expected rejection carrying the thrown error, got ${
-+        rejection === null ? 'resolution' : rejection.message}`);
++  if (rejection === null || !(rejection instanceof Error) ||
++      !rejection.message.includes('callback boom')) {
++    console.error(
++        `FAIL: expected rejection containing the thrown message, got ${
++            rejection === null ? 'resolution' : rejection.message}`);
 +    process.exit(1);
 +  }
 +  if (calls !== 1) {
@@ -860,6 +873,10 @@ index 00000000..2eaa0e3c
 +  });
 +  if (!r.samples || r.samples.length === 0) {
 +    console.error('FAIL: enableExternalBuffer:false returned no samples');
++    process.exit(1);
++  }
++  if (chunks === 0) {
++    console.error('FAIL: no progress callback fired in copy-buffer generation');
 +    process.exit(1);
 +  }
 +  console.log(`copy-buffer: ${chunks} chunks, ${r.samples.length} samples`);

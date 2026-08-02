@@ -12,6 +12,7 @@ export type SatelliteHelloType = {
 export type SatelliteControlType =
 	| SatelliteHelloType
 	| { type: "speech_end" }
+	| { type: "audio_played"; interactionId: string }
 	| { type: "cancel" }
 
 export type SatelliteReadyType = {
@@ -35,6 +36,7 @@ export type SatelliteAudioStreamBeginType = {
 	type: "audio_stream_begin"
 	sampleRate: number
 	channels: number
+	interactionId?: string
 }
 
 export type SatelliteAudioStreamEndType = {

@@ -1,0 +1,158 @@
+{
+	"s01": [
+		{
+			"cls": "quiet",
+			"file": "evals/fixtures/stt/s01.wav"
+		},
+		{
+			"cls": "fan",
+			"file": "evals/fixtures/stt/noise/s01-fan.wav"
+		},
+		{
+			"cls": "music",
+			"file": "evals/fixtures/stt/noise/s01-music.wav"
+		},
+		{
+			"cls": "tv",
+			"file": "evals/fixtures/stt/noise/s01-tv.wav"
+		},
+		{
+			"cls": "competing",
+			"file": "evals/fixtures/stt/noise/s01-competing.wav"
+		},
+		{
+			"cls": "distance",
+			"file": "evals/fixtures/stt/noise/s01-distance.wav"
+		}
+	],
+	"s02": [
+		{
+			"cls": "quiet",
+			"file": "evals/fixtures/stt/s02.wav"
+		},
+		{
+			"cls": "fan",
+			"file": "evals/fixtures/stt/noise/s02-fan.wav"
+		},
+		{
+			"cls": "music",
+			"file": "evals/fixtures/stt/noise/s02-music.wav"
+		},
+		{
+			"cls": "tv",
+			"file": "evals/fixtures/stt/noise/s02-tv.wav"
+		},
+		{
+			"cls": "competing",
+			"file": "evals/fixtures/stt/noise/s02-competing.wav"
+		},
+		{
+			"cls": "distance",
+			"file": "evals/fixtures/stt/noise/s02-distance.wav"
+		}
+	],
+	"s05": [
+		{
+			"cls": "quiet",
+			"file": "evals/fixtures/stt/s05.wav"
+		},
+		{
+			"cls": "fan",
+			"file": "evals/fixtures/stt/noise/s05-fan.wav"
+		},
+		{
+			"cls": "music",
+			"file": "evals/fixtures/stt/noise/s05-music.wav"
+		},
+		{
+			"cls": "tv",
+			"file": "evals/fixtures/stt/noise/s05-tv.wav"
+		},
+		{
+			"cls": "competing",
+			"file": "evals/fixtures/stt/noise/s05-competing.wav"
+		},
+		{
+			"cls": "distance",
+			"file": "evals/fixtures/stt/noise/s05-distance.wav"
+		}
+	],
+	"s08": [
+		{
+			"cls": "quiet",
+			"file": "evals/fixtures/stt/s08.wav"
+		},
+		{
+			"cls": "fan",
+			"file": "evals/fixtures/stt/noise/s08-fan.wav"
+		},
+		{
+			"cls": "music",
+			"file": "evals/fixtures/stt/noise/s08-music.wav"
+		},
+		{
+			"cls": "tv",
+			"file": "evals/fixtures/stt/noise/s08-tv.wav"
+		},
+		{
+			"cls": "competing",
+			"file": "evals/fixtures/stt/noise/s08-competing.wav"
+		},
+		{
+			"cls": "distance",
+			"file": "evals/fixtures/stt/noise/s08-distance.wav"
+		}
+	],
+	"s10": [
+		{
+			"cls": "quiet",
+			"file": "evals/fixtures/stt/s10.wav"
+		},
+		{
+			"cls": "fan",
+			"file": "evals/fixtures/stt/noise/s10-fan.wav"
+		},
+		{
+			"cls": "music",
+			"file": "evals/fixtures/stt/noise/s10-music.wav"
+		},
+		{
+			"cls": "tv",
+			"file": "evals/fixtures/stt/noise/s10-tv.wav"
+		},
+		{
+			"cls": "competing",
+			"file": "evals/fixtures/stt/noise/s10-competing.wav"
+		},
+		{
+			"cls": "distance",
+			"file": "evals/fixtures/stt/noise/s10-distance.wav"
+		}
+	],
+	"s11": [
+		{
+			"cls": "quiet",
+			"file": "evals/fixtures/stt/s11.wav"
+		},
+		{
+			"cls": "fan",
+			"file": "evals/fixtures/stt/noise/s11-fan.wav"
+		},
+		{
+			"cls": "music",
+			"file": "evals/fixtures/stt/noise/s11-music.wav"
+		},
+		{
+			"cls": "tv",
+			"file": "evals/fixtures/stt/noise/s11-tv.wav"
+		},
+		{
+			"cls": "competing",
+			"file": "evals/fixtures/stt/noise/s11-competing.wav"
+		},
+		{
+			"cls": "distance",
+			"file": "evals/fixtures/stt/noise/s11-distance.wav"
+		}
+	]
+}
