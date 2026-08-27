@@ -1,0 +1,121 @@
+[
+	{
+		"name": "fast-neg: negation must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Don't turn on the kitchen light",
+				"expect": {
+					"fastPath": false,
+					"notTools": ["HassTurnOn"]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: past tense must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "I already turned on the kitchen light",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: question about state must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Did you turn on the kitchen light",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: reported speech must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "She said turn on the kitchen light",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: hypothetical must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "If you turn on the kitchen light it gets warm",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: ramble with embedded command must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "So my grandma used to turn on the kitchen light every morning before breakfast",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: unknown entity must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn on the garage light",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: bare entity name must not fast-path",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Kitchen light",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "agent-judgment: bare entity name should not trigger an action (advisory)",
+		"suite": "fast",
+		"language": "en",
+		"mode": "advisory",
+		"turns": [
+			{
+				"text": "Kitchen light",
+				"expect": {
+					"calledToolCount": 0
+				}
+			}
+		]
+	}
+]

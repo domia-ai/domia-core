@@ -64,18 +64,28 @@ export const connectEsphomeSatellite = (
 	let configVerifyFailures = 0
 	const shouldFollowUp = () => followUpEnabled && lastTranscriptChars > 0
 	const SPEAKING_FALLBACK_MS = 15_000
+	const SPEAKING_DURATION_SLACK_MS = 1_000
 	let speakingResetTimer: ReturnType<typeof setTimeout> | null = null
-	const markDeviceSpeaking = (): void => {
-		logger.info("📢 device announce started", {
-			satelliteId: binding.satelliteId,
-		})
-		setPresenceStatus(presenceKey, "speaking")
+	const armSpeakingReset = (durationMs: number | null): void => {
+		const resetMs =
+			durationMs !== null
+				? durationMs +
+					(binding.playbackDrainMarginMs ?? 250) +
+					SPEAKING_DURATION_SLACK_MS
+				: SPEAKING_FALLBACK_MS
 		if (speakingResetTimer) clearTimeout(speakingResetTimer)
 		speakingResetTimer = setTimeout(() => {
 			if (getPresence(presenceKey)?.status === "speaking")
 				setPresenceStatus(presenceKey, "idle", true)
-		}, SPEAKING_FALLBACK_MS)
+		}, resetMs)
 		speakingResetTimer.unref?.()
+	}
+	const markDeviceSpeaking = (durationMs: number | null): void => {
+		logger.info("📢 device announce started", {
+			satelliteId: binding.satelliteId,
+		})
+		setPresenceStatus(presenceKey, "speaking")
+		armSpeakingReset(durationMs)
 	}
 	const clearDeviceSpeaking = (): void => {
 		logger.info("📢 device announce finished", {
@@ -179,10 +189,27 @@ export const connectEsphomeSatellite = (
 				if (getPresence(presenceKey)?.status !== "speaking")
 					setPresenceStatus(presenceKey, "idle", true)
 			},
-			onPlaybackStart: () => markDeviceSpeaking(),
+			onPlaybackStart: (durationMs) => markDeviceSpeaking(durationMs),
+			onPlaybackDurationKnown: (durationMs) => {
+				if (getPresence(presenceKey)?.status === "speaking")
+					armSpeakingReset(durationMs)
+			},
 			onPlaybackEnd: () => clearDeviceSpeaking(),
 		})
 		runController = rc
+
+		const patchDurationFromUrl = (
+			generation: number | null,
+			url: string,
+		): void => {
+			if (generation === null) return
+			const servedId = url.split("/").pop()
+			const filePath = servedId ? getAudioFilePath(servedId) : undefined
+			if (!filePath) return
+			void getWavDurationMs(filePath)
+				.catch(() => null)
+				.then((durationMs) => rc.updatePlaybackDuration(generation, durationMs))
+		}
 
 		const transport: SatelliteTransportType = {
 			sendReady: () => undefined,
@@ -246,7 +273,8 @@ export const connectEsphomeSatellite = (
 					)
 			},
 			announce: (url) => {
-				rc.enqueuePlayback(url, "announce", false, null)
+				const generation = rc.enqueuePlayback(url, "announce", false, null)
+				patchDurationFromUrl(generation, url)
 			},
 			pauseAudio: () => {
 				if (!mediaPlayerId) return false
@@ -297,7 +325,10 @@ export const connectEsphomeSatellite = (
 					desiredWakeWords = [...ids]
 					esp.setVoiceAssistantConfiguration(ids)
 				},
-				announce: (url) => rc.enqueuePlayback(url, "announce", false, null),
+				announce: (url) => {
+					const generation = rc.enqueuePlayback(url, "announce", false, null)
+					patchDurationFromUrl(generation, url)
+				},
 				setNumber: (entityId, value) => {
 					desiredNumbers[entityId] = value
 					esp.sendNumberCommand(entityId, value)

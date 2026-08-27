@@ -39,7 +39,7 @@ import {
 import {
 	runTTS,
 	ttsVoiceFromDomia,
-	ttsAdapterToPcmChunks,
+	cachedTtsPcmChunks,
 } from "@/modules/tts-engine"
 import {
 	resolveCapabilityDelegations,
@@ -190,7 +190,7 @@ const tryLocalStreamingTtsPlayback = async (
 		)
 		playback = await playStreamedAudio(
 			ctx,
-			single.wrap(ttsAdapterToPcmChunks(domia, tts.adapter, session.reply)),
+			single.wrap(cachedTtsPcmChunks(domia, tts.adapter, session.reply)),
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,

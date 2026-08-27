@@ -4,6 +4,7 @@ import { generateUuid, now } from "@/utils"
 import {
 	type SelectSkillProviderType,
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
+	DEFAULT_SKILL_TRUST_TIER,
 	MCP_TRANSPORT_ENUM,
 	SKILL_PROTOCOL_ENUM,
 } from "@/db"
@@ -29,6 +30,7 @@ export const baseSkillProvider = (
 		maxResultChars: DEFAULT_SKILL_MAX_RESULT_CHARS,
 		timeout: faker.number.int({ min: 1000, max: 5000 }),
 		priority: faker.number.int({ min: 0, max: 10 }),
+		trustTier: DEFAULT_SKILL_TRUST_TIER,
 		createdAt: now(),
 		updatedAt: now(),
 	}

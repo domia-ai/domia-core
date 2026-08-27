@@ -8,6 +8,7 @@ import {
 	pollRecord,
 	assertTurn,
 	assertCoherence,
+	judgeReply,
 	evalCaseFileSchema,
 	configSnapshot,
 	execWrite,
@@ -175,11 +176,39 @@ type ConversationTranscriptType = {
 	}[]
 }
 
+const seedCaseFacts = async (c: EvalCaseType): Promise<void> => {
+	if (!c.seedFacts?.length) return
+	const domiaId = queryOne<{ id: string }>(
+		"SELECT id FROM domia WHERE domia_key = ?",
+		[env.EVAL_DOMIA_KEY],
+	)?.id
+	if (!domiaId) return
+	const now = new Date().toISOString()
+	for (const [i, fact] of c.seedFacts.entries()) {
+		execWrite(
+			`INSERT INTO memory_fact (id, domia_id, subject, relation, value, value_key, confidence, kind, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, 0.9, 'user_fact', ?, ?)`,
+			[
+				`seed-${c.name.replace(/\W+/g, "-").slice(0, 40)}-${i}`,
+				domiaId,
+				fact.subject,
+				fact.relation,
+				fact.value,
+				fact.value.toLowerCase(),
+				now,
+				now,
+			],
+		)
+	}
+	await postConfigRefresh()
+}
+
 const runConversation = async (
 	c: EvalCaseType,
 ): Promise<{ passed: boolean; transcript: ConversationTranscriptType }> => {
 	if (c.isolate === "session") await resetConversation()
 	else await isolateConversation()
+	await seedCaseFacts(c)
 	const transcript: ConversationTranscriptType = { name: c.name, turns: [] }
 	let passed = true
 	for (const turn of c.turns) {
@@ -212,6 +241,18 @@ const runConversation = async (
 				),
 			)
 			assertions.push(...(await dbFactAssertions(turn)))
+			if (turn.expect.judge) {
+				const verdict = await judgeReply(
+					turn.text,
+					reply,
+					turn.expect.judge.rubric,
+				)
+				assertions.push({
+					name: `judge>=${turn.expect.judge.min}`,
+					ok: verdict.score >= turn.expect.judge.min,
+					detail: `score ${verdict.score} — ${verdict.reason}`,
+				})
+			}
 		}
 		if (assertions.some((a) => !a.ok)) passed = false
 		transcript.turns.push({

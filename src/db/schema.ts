@@ -169,6 +169,9 @@ import {
 	DEFAULT_TTS_SILENCE_SCALE,
 	DEFAULT_TTS_SPEED,
 	DEFAULT_TTS_STREAMING_ENABLED,
+	DEFAULT_TTS_PHRASE_CACHE_ENABLED,
+	DEFAULT_TTS_PHRASE_CACHE_ENTRIES,
+	DEFAULT_TTS_PHRASE_CACHE_MAX_CHARS,
 	DEFAULT_TTS_POOL_WARM_WORKERS,
 	DEFAULT_TTS_POOL_MAX_WORKERS,
 	DEFAULT_TTS_POOL_AUTO_SCALE_ENABLED,
@@ -215,6 +218,31 @@ import {
 	DEFAULT_SATELLITE_CAPTURE_HEAD_TRIM_MS,
 	SKILL_PROTOCOL_ENUM_VALUES,
 	MCP_TRANSPORT_ENUM_VALUES,
+	SKILL_TRUST_TIER_ENUM_VALUES,
+	DEFAULT_SKILL_TRUST_TIER,
+	TOOL_RUN_STATUS_ENUM,
+	TOOL_RUN_STATUS_ENUM_VALUES,
+	ASYNC_FOLLOW_UP_POLICY_ENUM_VALUES,
+	DEFAULT_ASYNC_FOLLOW_UP_POLICY,
+	DEFAULT_ASYNC_FOLLOW_UP_MAX_WAIT_MS,
+	DEFAULT_AGENT_REPEAT_WARN_AT,
+	DEFAULT_AGENT_REPEAT_BLOCK_AT,
+	DEFAULT_AGENT_MAX_TOOL_CALLS_PER_TURN,
+	DEFAULT_AGENT_RECENT_TOOLS_TURNS,
+	DEFAULT_ANAPHORA_MAX_AGE_MS,
+	DEFAULT_FAST_PATH_ENABLED,
+	DEFAULT_FAST_PATH_MIN_COVERAGE,
+	DEFAULT_FAST_PATH_MAX_UTTERANCE_CHARS,
+	DEFAULT_FAST_PATH_BLOCKLIST_ENABLED,
+	DEFAULT_CONSTRAINED_REPAIR_ENABLED,
+	DEFAULT_SLOT_WAIT_TIMEOUT_MS,
+	DEFAULT_SLOT_WAIT_POLL_MS,
+	DEFAULT_INTENT_LLM_ON_SINGLE_SLOT,
+	AGENT_DECISION_MODE_ENUM_VALUES,
+	DEFAULT_AGENT_DECISION_MODE,
+	CONFIRMATION_STATUS_ENUM,
+	CONFIRMATION_STATUS_ENUM_VALUES,
+	DEFAULT_AUTHORED_SPEECH_ENABLED,
 	AGENT_PROMPT_MODE_ENUM_VALUES,
 	DEFAULT_AGENT_PROMPT_MODE,
 	SKILLS_ROUTING_ENUM_VALUES,
@@ -223,6 +251,8 @@ import {
 	DEFAULT_DESCRIPTOR_ROUTING_ENABLED,
 	DEFAULT_AGENT_MAX_STEPS,
 	DEFAULT_AGENT_BUDGET_MS,
+	DEFAULT_TOOL_CALL_TEMPERATURE,
+	DEFAULT_TOOL_CALL_NUM_PREDICT,
 	DEFAULT_CONFIRMATION_TTL_MS,
 	DEFAULT_AGENT_ACK_AFTER_MS,
 	DEFAULT_TOOL_SHORTLIST_MAX,
@@ -916,6 +946,82 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	slotAffinityEnabled: integer("slot_affinity_enabled", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_LLM_SLOT_AFFINITY_ENABLED),
+	repeatPenalty: real("repeat_penalty"),
+	topK: integer("top_k"),
+	minP: real("min_p"),
+	seed: integer("seed"),
+	stopSequences: text("stop_sequences", { mode: "json" }).$type<
+		string[] | null
+	>(),
+	toolTemperature: real("tool_temperature")
+		.notNull()
+		.default(DEFAULT_TOOL_CALL_TEMPERATURE),
+	toolNumPredict: integer("tool_num_predict")
+		.notNull()
+		.default(DEFAULT_TOOL_CALL_NUM_PREDICT),
+	asyncFollowUpPolicy: text("async_follow_up_policy", {
+		enum: ASYNC_FOLLOW_UP_POLICY_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_ASYNC_FOLLOW_UP_POLICY),
+	asyncFollowUpMaxWaitMs: integer("async_follow_up_max_wait_ms")
+		.notNull()
+		.default(DEFAULT_ASYNC_FOLLOW_UP_MAX_WAIT_MS),
+	agentRepeatWarnAt: integer("agent_repeat_warn_at")
+		.notNull()
+		.default(DEFAULT_AGENT_REPEAT_WARN_AT),
+	agentRepeatBlockAt: integer("agent_repeat_block_at")
+		.notNull()
+		.default(DEFAULT_AGENT_REPEAT_BLOCK_AT),
+	agentMaxToolCallsPerTurn: integer("agent_max_tool_calls_per_turn")
+		.notNull()
+		.default(DEFAULT_AGENT_MAX_TOOL_CALLS_PER_TURN),
+	agentRecentToolsTurns: integer("agent_recent_tools_turns")
+		.notNull()
+		.default(DEFAULT_AGENT_RECENT_TOOLS_TURNS),
+	anaphoraMaxAgeMs: integer("anaphora_max_age_ms")
+		.notNull()
+		.default(DEFAULT_ANAPHORA_MAX_AGE_MS),
+	fastPathEnabled: integer("fast_path_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_FAST_PATH_ENABLED),
+	fastPathMinCoverage: real("fast_path_min_coverage")
+		.notNull()
+		.default(DEFAULT_FAST_PATH_MIN_COVERAGE),
+	fastPathMaxUtteranceChars: integer("fast_path_max_utterance_chars")
+		.notNull()
+		.default(DEFAULT_FAST_PATH_MAX_UTTERANCE_CHARS),
+	fastPathBlocklistEnabled: integer("fast_path_blocklist_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_FAST_PATH_BLOCKLIST_ENABLED),
+	constrainedRepairEnabled: integer("constrained_repair_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_CONSTRAINED_REPAIR_ENABLED),
+	slotWaitTimeoutMs: integer("slot_wait_timeout_ms")
+		.notNull()
+		.default(DEFAULT_SLOT_WAIT_TIMEOUT_MS),
+	slotWaitPollMs: integer("slot_wait_poll_ms")
+		.notNull()
+		.default(DEFAULT_SLOT_WAIT_POLL_MS),
+	intentLlmOnSingleSlot: integer("intent_llm_on_single_slot", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_INTENT_LLM_ON_SINGLE_SLOT),
+	agentDecisionMode: text("agent_decision_mode", {
+		enum: AGENT_DECISION_MODE_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_AGENT_DECISION_MODE),
+	authoredSpeechEnabled: integer("authored_speech_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_AUTHORED_SPEECH_ENABLED),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -986,6 +1092,15 @@ export const ttsConfig = sqliteTable("tts_config", {
 	poolExecutionTimeoutMs: integer("tts_pool_execution_timeout_ms")
 		.notNull()
 		.default(DEFAULT_TTS_POOL_EXECUTION_TIMEOUT_MS),
+	phraseCacheEnabled: integer("phrase_cache_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_TTS_PHRASE_CACHE_ENABLED),
+	phraseCacheEntries: integer("phrase_cache_entries")
+		.notNull()
+		.default(DEFAULT_TTS_PHRASE_CACHE_ENTRIES),
+	phraseCacheMaxChars: integer("phrase_cache_max_chars")
+		.notNull()
+		.default(DEFAULT_TTS_PHRASE_CACHE_MAX_CHARS),
 	sentenceSoftFlushMinChars: integer("sentence_soft_flush_min_chars")
 		.notNull()
 		.default(DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS),
@@ -1042,8 +1157,60 @@ export const skillProvider = sqliteTable("skill_provider", {
 		.default(DEFAULT_SKILL_MAX_RESULT_CHARS),
 	timeout: integer("timeout_ms").notNull().default(DEFAULT_SKILL_TIMEOUT_MS),
 	priority: integer("priority").notNull().default(0),
+	trustTier: text("trust_tier", { enum: SKILL_TRUST_TIER_ENUM_VALUES })
+		.notNull()
+		.default(DEFAULT_SKILL_TRUST_TIER),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+})
+
+export const toolRun = sqliteTable(
+	"tool_run",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		interactionId: text("interaction_id").notNull(),
+		tool: text("tool").notNull(),
+		providerSlug: text("provider_slug"),
+		argsHash: text("args_hash").notNull(),
+		riskClass: text("risk_class"),
+		policyDecision: text("policy_decision"),
+		policySource: text("policy_source"),
+		confirmationId: text("confirmation_id"),
+		status: text("status", { enum: TOOL_RUN_STATUS_ENUM_VALUES })
+			.notNull()
+			.default(TOOL_RUN_STATUS_ENUM.DISPATCHED),
+		durationMs: integer("duration_ms"),
+		spokenAt: text("spoken_at"),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		settledAt: text("settled_at"),
+	},
+	(t) => [index("tool_run_interaction_idx").on(t.interactionId, t.status)],
+)
+
+export const pendingConfirmationRow = sqliteTable("pending_confirmation", {
+	scope: text("scope").primaryKey(),
+	domiaKey: text("domia_key").notNull(),
+	tool: text("tool").notNull(),
+	args: text("args", { mode: "json" })
+		.$type<Record<string, unknown>>()
+		.notNull(),
+	resolvedArgs: text("resolved_args", { mode: "json" }).$type<Record<
+		string,
+		unknown
+	> | null>(),
+	summary: text("summary"),
+	language: text("language"),
+	reasked: integer("reasked", { mode: "boolean" }).notNull().default(false),
+	expiresAt: integer("expires_at").notNull(),
+	status: text("status", { enum: CONFIRMATION_STATUS_ENUM_VALUES })
+		.notNull()
+		.default(CONFIRMATION_STATUS_ENUM.PENDING),
+	settledAt: text("settled_at"),
+	settledBy: text("settled_by"),
+	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 })
 
 export const audioPlaybackConfig = sqliteTable("audio_playback_config", {
@@ -1187,6 +1354,7 @@ export const interactionTrace = sqliteTable(
 		sttResult: text("stt_result"),
 		intentDecision: text("intent_decision"),
 		intentMs: integer("intent_ms"),
+		fastPathMs: integer("fast_path_ms"),
 		agentDecisionMs: integer("agent_decision_ms"),
 		agentToolMs: integer("agent_tool_ms"),
 		agentFinalizeMs: integer("agent_finalize_ms"),

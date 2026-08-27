@@ -71,6 +71,7 @@ export const personaContextFromDomia = (
 					factCapture: ms.factCapture,
 					factRecall: ms.factRecall,
 					environmentTimeEnabled: ms.environmentTimeEnabled,
+					skillsEngine: ms.skillsEngine,
 				}
 			: null,
 		useCompactPrompt: domia?.llmModelConfig?.useCompactPrompt ?? false,
@@ -92,6 +93,7 @@ export const personaContextFromDomia = (
 					pitch: domia.ttsConfig.pitch,
 				}
 			: null,
+		originEpochMs: Date.now(),
 	}
 }
 
@@ -276,12 +278,13 @@ const renderCharacter = (persona: PersonaContextType, name: string): string => {
 	return `${name} ${parts.join(", ")}.`
 }
 
-const NOW_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
-	weekday: "long",
-	year: "numeric",
-	month: "long",
-	day: "numeric",
-})
+const nowDateFormat = (): Intl.DateTimeFormat =>
+	new Intl.DateTimeFormat("en-US", {
+		weekday: "long",
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	})
 
 const ONES_WORDS = [
 	"twelve",
@@ -344,11 +347,11 @@ const spokenTime = (d: Date): string => {
 	return `${hour} ${minuteToWords(minutes)} ${period}`
 }
 
-const renderNow = (): string => {
-	const d = new Date()
-	return `Today is ${NOW_DATE_FORMAT.format(d)}.
-If asked the time, reply exactly: "It's ${spokenTime(d)}."
-If asked the day or date, use the date above.`
+const renderNow = (epochMs?: number): string => {
+	const d = epochMs !== undefined ? new Date(epochMs) : new Date()
+	return `Background data, not something to announce: today is ${nowDateFormat().format(d)}, and the time right now is ${spokenTime(d)} (spoken form).
+Mention the time or date ONLY when the user explicitly asks for it — never as an answer to anything else.
+Times mentioned in earlier turns are in the past; the current time is only the one above.`
 }
 
 const clipReply = (text: string): string => {
@@ -390,6 +393,13 @@ export const buildPromptFromPersona = (
 	sections.push(["VOICE RULES", voiceRules])
 
 	sections.push(["TRANSPARENCY", renderTransparency(name)])
+
+	if (moduleSettings?.skillsEngine === false) {
+		sections.push([
+			"NO TOOLS CONNECTED",
+			`Right now you have no tools connected: you cannot perform real-world actions or check the state of anything outside this conversation. If asked to do something or to check something, say you can't do that right now. Never answer "sure", never report a state you cannot check, never pretend an action happened.`,
+		])
+	}
 
 	const voiceStyle = persona.characterProfile?.voiceStyle?.trim()
 	const styleNotes = persona.promptOverrides?.styleNotes?.trim()
@@ -458,7 +468,7 @@ export const buildPromptFromPersona = (
 				.map((f) => `- ${f}`)
 				.join(
 					"\n",
-				)}\nThese are about the person you're talking to — don't assume they apply to anyone else they mention.`,
+				)}\nAnswer questions about this person directly from these facts — their name, their likes, what they've told you. They are about the person you're talking to — don't assume they apply to anyone else they mention.`,
 		])
 	}
 
@@ -483,7 +493,7 @@ export const buildPromptFromPersona = (
 	}
 
 	if (moduleSettings?.environmentTimeEnabled !== false) {
-		sections.push(["NOW", renderNow()])
+		sections.push(["NOW", renderNow(persona.originEpochMs ?? undefined)])
 	}
 
 	if (!options?.omitUserInput) {

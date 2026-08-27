@@ -1,4 +1,8 @@
-import { LLM_ENGINE_ENUM } from "@/db"
+import {
+	LLM_ENGINE_ENUM,
+	DEFAULT_SLOT_WAIT_TIMEOUT_MS,
+	DEFAULT_SLOT_WAIT_POLL_MS,
+} from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { llmSlotsLogger, sleep } from "@/utils"
 
@@ -9,8 +13,6 @@ import type {
 	SlotStatsType,
 } from "../types"
 
-const SLOT_WAIT_TIMEOUT_MS = 8000
-const SLOT_WAIT_POLL_MS = 25
 const LEASE_MAX_HOLD_MS = 120_000
 const DEGRADED_RETRY_MS = 30_000
 
@@ -188,7 +190,11 @@ export const acquireSlotLease = async (
 ): Promise<SlotLeaseType | null> => {
 	if (!affinityApplies(domia)) return null
 	const baseUrl = baseUrlOf(domia)
-	const deadline = Date.now() + SLOT_WAIT_TIMEOUT_MS
+	const waitTimeoutMs =
+		domia.llmModelConfig?.slotWaitTimeoutMs ?? DEFAULT_SLOT_WAIT_TIMEOUT_MS
+	const waitPollMs =
+		domia.llmModelConfig?.slotWaitPollMs ?? DEFAULT_SLOT_WAIT_POLL_MS
+	const deadline = Date.now() + waitTimeoutMs
 	let waited = false
 	let state = await discover(baseUrl)
 	for (;;) {
@@ -233,14 +239,28 @@ export const acquireSlotLease = async (
 		}
 		if (Date.now() >= deadline) {
 			stats.waitTimeouts += 1
+			const heldSlot = slotFor(state, domia.id, purpose)
 			llmSlotsLogger.warn("⚠️ slot wait timed out", {
 				identityId: domia.id,
 				purpose,
+				slotId: heldSlot,
+				inFlight: heldSlot !== null ? state.inFlight[heldSlot] : null,
+				heldMs:
+					heldSlot !== null
+						? Date.now() - (state.lastAcquireAt[heldSlot] ?? 0)
+						: null,
 			})
 			throw new Error("llm slot wait timed out (slot leased and busy)")
 		}
-		await sleep(SLOT_WAIT_POLL_MS)
+		await sleep(waitPollMs)
 	}
+}
+
+export const knownSlotCount = (domia: DomiaType): number | null => {
+	if (!affinityApplies(domia)) return null
+	const state = servers.get(baseUrlOf(domia))
+	if (!state || state.degraded || state.slots < 1) return null
+	return state.slots
 }
 
 export const isIdentitySlotBusy = (domia: DomiaType): boolean => {

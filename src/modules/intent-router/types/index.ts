@@ -6,6 +6,7 @@ export type IntentDecisionType = {
 		| "no-local-llm"
 		| "classified"
 		| "classify-failed"
+		| "single-slot-skip-llm"
 		| `keyphrase:${string}`
 		| `keyword:${string}`
 		| `embedding:${string}`

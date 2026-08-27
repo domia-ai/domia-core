@@ -1,0 +1,51 @@
+{
+	"timestamp": "2026-08-18T01:42:49.849905+00:00",
+	"suites": "tools,home-mock,fast",
+	"scores": [
+		{
+			"model": "llama3.2:3b",
+			"mode": "native",
+			"gatePassed": 21,
+			"gateTotal": 21,
+			"casesPassed": 29,
+			"casesTotal": 30,
+			"failures": [
+				"[tools] tools baseline: read-only context call reports ok (known routing gap) (0/2)"
+			]
+		},
+		{
+			"model": "llama3.2:3b",
+			"mode": "structured",
+			"gatePassed": 21,
+			"gateTotal": 21,
+			"casesPassed": 29,
+			"casesTotal": 30,
+			"failures": [
+				"[tools] tools baseline: read-only context call reports ok (known routing gap) (0/2)"
+			]
+		},
+		{
+			"model": "granite4:micro",
+			"mode": "native",
+			"gatePassed": 21,
+			"gateTotal": 21,
+			"casesPassed": 29,
+			"casesTotal": 30,
+			"failures": [
+				"[tools] tools baseline: read-only context call reports ok (known routing gap) (0/2)"
+			]
+		},
+		{
+			"model": "granite4:micro",
+			"mode": "structured",
+			"gatePassed": 21,
+			"gateTotal": 21,
+			"casesPassed": 28,
+			"casesTotal": 30,
+			"failures": [
+				"[tools] contracts: hung tool surfaces timeout status instead of hanging the turn (0/1)",
+				"[tools] tools baseline: read-only context call reports ok (known routing gap) (0/2)"
+			]
+		}
+	]
+}

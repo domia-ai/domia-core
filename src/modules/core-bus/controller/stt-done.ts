@@ -58,6 +58,12 @@ import {
 	skillsEnabled,
 	shortlistedToolsOf,
 	claimTurnCompleted,
+	getActiveTurn,
+	recentToolsLine,
+	attemptFastPathRoute,
+	peekPendingElicit,
+	takePendingElicit,
+	elicitContentFor,
 } from "../utils"
 import { applyExpressedEmotionTags } from "@/modules/emotion-engine"
 import {
@@ -73,8 +79,11 @@ import {
 	INTERACTION_STATUS_ENUM,
 	RESPONSE_TYPE_ENUM,
 	SKILL_TOOL_NAME_SEPARATOR,
+	DEFAULT_ASYNC_FOLLOW_UP_POLICY,
+	DEFAULT_ASYNC_FOLLOW_UP_MAX_WAIT_MS,
 	type SkillToolType,
 	type ToolTraceEntryType,
+	AGENT_DECISION_MODE_ENUM,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { buildDelegationPersona } from "@/modules/prompt-context-builder"
@@ -84,17 +93,23 @@ import { admitVoiceReply } from "@/modules/voice-admission"
 import {
 	runLLM,
 	runLLMWithTools,
+	runLLMChatConstrainedJson,
 	runLLMReplyStreamOrTools,
+	runLLMConstrainedJson,
 	type LlmUsageType,
 } from "@/modules/llm-engine"
 import {
 	runAgentTurn,
 	peekPendingConfirmation,
+	peekExpiredConfirmation,
 	takePendingConfirmation,
+	settleConfirmation,
+	claimConfirmation,
 	markConfirmationReasked,
 	confirmationScope,
 	isAffirmative,
 	isNegative,
+	createStructuredInference,
 	type AgentInferenceType,
 	type AgentStreamInferenceType,
 	type AgentResultType,
@@ -106,6 +121,8 @@ import {
 	callTool,
 	resolveToolFinalize,
 	renderFinalizeText,
+	claimToolRunSpoken,
+	unclaimToolRunSpoken,
 } from "@/modules/skill-engine"
 import { hasActivePlayback } from "@/modules/audio-playback"
 import {
@@ -240,6 +257,29 @@ const waitForQuietAudio = async (domiaId: string): Promise<boolean> => {
 	const t0 = Date.now()
 	while (hasActivePlayback(domiaId) || isRecordingInProgress(domiaId)) {
 		if (Date.now() - t0 > QUIET_AUDIO_DEADLINE_MS) return false
+		await new Promise((resolve) => setTimeout(resolve, QUIET_AUDIO_POLL_MS))
+	}
+	return true
+}
+
+const waitForTurnIdle = async (
+	domia: DomiaType,
+	ownInteractionId: string,
+): Promise<boolean> => {
+	const policy =
+		domia.llmModelConfig?.asyncFollowUpPolicy ?? DEFAULT_ASYNC_FOLLOW_UP_POLICY
+	const deadlineMs =
+		domia.llmModelConfig?.asyncFollowUpMaxWaitMs ??
+		DEFAULT_ASYNC_FOLLOW_UP_MAX_WAIT_MS
+	const busy = (): boolean => {
+		const live = getActiveTurn(domia.id)
+		return live !== null && live.interactionId !== ownInteractionId
+	}
+	if (!busy()) return true
+	if (policy === "drop") return false
+	const t0 = Date.now()
+	while (busy()) {
+		if (Date.now() - t0 > deadlineMs) return false
 		await new Promise((resolve) => setTimeout(resolve, QUIET_AUDIO_POLL_MS))
 	}
 	return true
@@ -780,22 +820,17 @@ const runLocalSyncLlm = async (
 	}
 }
 
-const withAgentSummary = (
-	result: AgentResultType,
-): ToolTraceEntryType[] | null => {
-	if (!result.skillResponses.length) return null
-	return [
-		...result.skillResponses,
-		{
-			kind: "summary",
-			decisionMs: result.decisionMs,
-			toolMs: result.toolMs,
-			finalizeMs: result.finalizeMs,
-			finalizeMode: result.finalizeMode,
-			stopReason: result.stopReason,
-		},
-	]
-}
+const withAgentSummary = (result: AgentResultType): ToolTraceEntryType[] => [
+	...result.skillResponses,
+	{
+		kind: "summary",
+		decisionMs: result.decisionMs,
+		toolMs: result.toolMs,
+		finalizeMs: result.finalizeMs,
+		finalizeMode: result.finalizeMode,
+		stopReason: result.stopReason,
+	},
+]
 
 const agentTimingCols = (
 	result: AgentResultType,
@@ -831,11 +866,16 @@ const tryAgentTurn = async (
 	executor: { key: string; model: string | null },
 	streamFinalize?: AgentStreamInferenceType,
 	signal?: AbortSignal,
+	constrainedRepair?: (
+		prompt: string,
+		schema: Record<string, unknown>,
+	) => Promise<string | null>,
 ): Promise<boolean> => {
 	const { domia } = ctx
 	const startTime = Date.now()
 	const envelope = getInteractionRuntime(session.interactionId)?.envelope
 	const confirmationChannel = envelope?.satelliteId ?? envelope?.source
+	const toolsLine = await recentToolsLine(domia).catch(() => null)
 	let result: AgentResultType
 	try {
 		result = await stage(
@@ -853,6 +893,8 @@ const tryAgentTurn = async (
 					allowAsyncTools: session.isVoice && session.liveVoice === true,
 					signal,
 					confirmationChannel,
+					recentToolsLine: toolsLine ?? undefined,
+					constrainedRepair,
 					onSlowTool:
 						session.isVoice && session.liveVoice
 							? () => playFeedbackSound(domia, "thinking")
@@ -934,6 +976,14 @@ const tryAgentTurn = async (
 				)
 				return
 			}
+			const idle = await waitForTurnIdle(domia, session.interactionId)
+			if (!idle) {
+				domiaBusLogger.info(
+					"async tool follow-up dropped — a newer turn is live",
+					{ domiaId: domia.id, interactionId: session.interactionId },
+				)
+				return
+			}
 			if (isTurnAborted(domia.id, session.interactionId)) {
 				domiaBusLogger.info("async tool follow-up dropped — turn superseded", {
 					domiaId: domia.id,
@@ -941,29 +991,63 @@ const tryAgentTurn = async (
 				})
 				return
 			}
-			void speak(domia, followUp).catch((err) =>
-				domiaBusLogger.warn("async tool follow-up speak failed", {
+			const speakable = outcomes.filter((o) =>
+				claimToolRunSpoken(session.interactionId, o.tool, o.resolvedArgs),
+			)
+			if (speakable.length === 0) {
+				domiaBusLogger.info("async tool follow-up already spoken — skipped", {
+					domiaId: domia.id,
+					interactionId: session.interactionId,
+				})
+				return
+			}
+			const speakableFailures = speakable.filter((o) => !o.ok)
+			const spokenText = [
+				...new Set(
+					(speakableFailures.length > 0 ? speakableFailures : speakable).map(
+						(o) => o.doneText,
+					),
+				),
+			].join(" ")
+			void speak(domia, spokenText).catch((err) => {
+				domiaBusLogger.warn("async tool follow-up speak failed — unclaiming", {
 					domiaId: domia.id,
 					err,
-				}),
-			)
+				})
+				for (const o of speakable)
+					unclaimToolRunSpoken(session.interactionId, o.tool, o.resolvedArgs)
+			})
 		})
 	}
 
 	if (result.replyStream && session.isVoice) {
-		await updateInteraction({
-			id: session.interactionId,
-			skillProviderUsed: result.serversUsed.join(",") || null,
-			skillPrompt: result.skillPrompt,
-			skillResponse: withAgentSummary(result),
-			...agentTimingCols(result),
-			...toolCols(result),
-		})
-		return pipelineVoiceFromTokens(ctx, session, result.replyStream, {
-			llmExecutorKey: executor.key,
-			llmModelUsed: executor.model,
-		})
+		try {
+			await updateInteraction({
+				id: session.interactionId,
+				skillProviderUsed: result.serversUsed.join(",") || null,
+				skillPrompt: result.skillPrompt,
+				skillResponse: withAgentSummary(result),
+				...agentTimingCols(result),
+				...toolCols(result),
+			})
+			const piped = await pipelineVoiceFromTokens(
+				ctx,
+				session,
+				result.replyStream,
+				{
+					llmExecutorKey: executor.key,
+					llmModelUsed: executor.model,
+				},
+			)
+			if (!piped) result.replyStreamClose?.()
+			return piped
+		} catch (err) {
+			result.replyStreamClose?.()
+			throw err
+		}
 	}
+
+	if (result.replyStream) result.replyStreamClose?.()
 
 	const { reply: agentReply } = ensureReplyOrFallback(
 		result.reply,
@@ -1091,12 +1175,26 @@ const attemptLocalSkillsRoute = async (
 	})
 	if (!decision.needsSkill) return false
 	const onUsage = (u: LlmUsageType) => recordLlmUsage(session.interactionId, u)
-	const inference: AgentInferenceType = (messages, toolDefs, toolChoice) =>
-		runLLMWithTools(domia, messages, toolDefs, onUsage, toolChoice)
+	const structuredMode =
+		domia.llmModelConfig?.agentDecisionMode ===
+		AGENT_DECISION_MODE_ENUM.STRUCTURED
+	const inference: AgentInferenceType = structuredMode
+		? createStructuredInference(domia, (messages, schema, signal) =>
+				runLLMChatConstrainedJson(domia, messages, schema, onUsage, signal),
+			)
+		: (messages, toolDefs, toolChoice, signal) =>
+				runLLMWithTools(domia, messages, toolDefs, onUsage, toolChoice, signal)
 	const streamFinalize: AgentStreamInferenceType | undefined =
-		features.canSentencePipeline
-			? (messages, toolDefs) =>
-					runLLMReplyStreamOrTools(domia, messages, toolDefs, onUsage)
+		features.canSentencePipeline && !structuredMode
+			? (messages, toolDefs, toolChoice, signal) =>
+					runLLMReplyStreamOrTools(
+						domia,
+						messages,
+						toolDefs,
+						onUsage,
+						toolChoice,
+						signal,
+					)
 			: undefined
 	return tryAgentTurn(
 		ctx,
@@ -1109,6 +1207,7 @@ const attemptLocalSkillsRoute = async (
 		},
 		streamFinalize,
 		turnSignal,
+		(prompt, schema) => runLLMConstrainedJson(domia, prompt, schema),
 	)
 }
 
@@ -1492,7 +1591,52 @@ const handleSttDoneFlow = async (
 			domia.domiaKey,
 			envelope?.satelliteId ?? envelope?.source,
 		)
+		const elicitEntry = peekPendingElicit(confirmScope)
+			? takePendingElicit(confirmScope)
+			: null
+		if (elicitEntry) {
+			const elicitAffirmative = isAffirmative(transcript, elicitEntry.language)
+			const elicitNegative = isNegative(transcript, elicitEntry.language)
+			const elicitContent =
+				elicitNegative && !elicitAffirmative
+					? null
+					: elicitContentFor(
+							elicitEntry.requestedSchema,
+							transcript,
+							elicitAffirmative,
+							elicitNegative,
+						)
+			if (elicitContent === null) elicitEntry.resolve({ action: "decline" })
+			else elicitEntry.resolve({ action: "accept", content: elicitContent })
+			domiaBusLogger.info(
+				`🛎️ elicitation answered: "${transcript.slice(0, 60)}"`,
+				{ domiaId, interactionId },
+			)
+			void updateInteraction({
+				id: interactionId,
+				intentDecision: "elicit-answer",
+			}).catch(() => undefined)
+			return
+		}
 		const pending = peekPendingConfirmation(confirmScope)
+		if (!pending) {
+			const expired = peekExpiredConfirmation(confirmScope)
+			if (expired && isAffirmative(transcript, expired.language)) {
+				settleConfirmation(confirmScope, "expired")
+				publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+					reply:
+						languageSetsFor(expired.language).phrases.confirmExpired ??
+						"That confirmation expired — tell me again if you still want it.",
+					transcript,
+					interactionId,
+					originDomiaKey,
+					responseType: payload.responseType,
+					speechEndAt: payload.speechEndAt,
+					liveVoice: payload.liveVoice,
+				})
+				return
+			}
+		}
 		if (pending) {
 			const phrases = languageSetsFor(pending.language).phrases
 			const replyConfirm = (reply: string): void =>
@@ -1509,6 +1653,20 @@ const handleSttDoneFlow = async (
 			const negative = isNegative(transcript, pending.language)
 			const taken =
 				affirmative !== negative ? takePendingConfirmation(confirmScope) : null
+			const claimed = taken
+				? claimConfirmation(confirmScope, affirmative ? "approved" : "denied")
+				: false
+			if (taken && !claimed) {
+				domiaBusLogger.warn(
+					"confirmation claim lost — not executing (already settled or persist failed)",
+					{ domiaId, interactionId, tool: taken.tool },
+				)
+				replyConfirm(
+					phrases.confirmExpired ??
+						"That confirmation expired — tell me again if you still want it.",
+				)
+				return
+			}
 			if (taken && affirmative) {
 				emitTurnEvent({
 					type: DOMIA_TURN_EVENT_ENUM.TOOL_REQUESTED,
@@ -1583,10 +1741,34 @@ const handleSttDoneFlow = async (
 				return
 			}
 			if (taken && negative) {
+				const deniedTrace: ToolTraceEntryType = {
+					kind: "result",
+					tool: taken.tool,
+					status: "denied",
+					durationMs: 0,
+					summaryForLlm: "not run — user declined",
+					args: taken.args,
+					resolvedArgs: taken.resolvedArgs,
+				}
+				void updateInteraction({
+					id: interactionId,
+					skillProviderUsed:
+						taken.tool.split(SKILL_TOOL_NAME_SEPARATOR)[0] ?? null,
+					skillResponse: [deniedTrace],
+				})
 				replyConfirm(phrases.cancelledAction ?? "Okay, I won't do that.")
 				return
 			}
-			if (!taken && affirmative === negative && !pending.reasked) {
+			const offTopicWords = transcript
+				.trim()
+				.split(/\s+/)
+				.filter(Boolean).length
+			if (
+				!taken &&
+				affirmative === negative &&
+				offTopicWords <= 4 &&
+				!pending.reasked
+			) {
 				markConfirmationReasked(confirmScope)
 				replyConfirm(
 					phrases.confirmReask ??
@@ -1595,7 +1777,7 @@ const handleSttDoneFlow = async (
 				)
 				return
 			}
-			if (affirmative === negative) takePendingConfirmation(confirmScope)
+			if (affirmative === negative) settleConfirmation(confirmScope, "ignored")
 		}
 	}
 
@@ -1622,6 +1804,27 @@ const handleSttDoneFlow = async (
 				speechEndAt: payload.speechEndAt,
 				liveVoice: payload.liveVoice,
 			})
+			return
+		}
+	}
+
+	if (originDomiaKey) {
+		const routed = await attemptFastPathRoute(
+			ctx,
+			payload,
+			interactionId,
+			transcript,
+			originDomiaKey,
+		).catch((err) => {
+			domiaBusLogger.warn("fast-path route failed — falling through", {
+				domiaId,
+				interactionId,
+				err,
+			})
+			return false
+		})
+		if (routed) {
+			releasePrestarted(payload)
 			return
 		}
 	}

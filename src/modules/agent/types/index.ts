@@ -11,11 +11,14 @@ export type AgentInferenceType = (
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
 	toolChoice?: ToolChoiceType,
+	signal?: AbortSignal,
 ) => Promise<ToolCallOrReplyType>
 
 export type AgentStreamInferenceType = (
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
+	toolChoice?: ToolChoiceType,
+	signal?: AbortSignal,
 ) => Promise<StreamReplyOrToolsType>
 
 export type AgentTurnOptionsType = {
@@ -27,9 +30,25 @@ export type AgentTurnOptionsType = {
 	signal?: AbortSignal
 	budgetMs?: number
 	confirmationChannel?: string
+	canConfirm?: boolean
+	recentToolsLine?: string
+	constrainedRepair?: (
+		prompt: string,
+		schema: Record<string, unknown>,
+	) => Promise<string | null>
 }
 
-export type AgentFinalizeModeType = "agent_loop" | "template" | "streamed"
+export type AgentFinalizeModeType =
+	| "agent_loop"
+	| "template"
+	| "streamed"
+	| "authored"
+
+export type StructuredDecisionRunnerType = (
+	messages: ChatMessageType[],
+	schema: Record<string, unknown>,
+	signal?: AbortSignal,
+) => Promise<string | null>
 
 export type AgentStopReasonType =
 	| "completed"
@@ -38,6 +57,26 @@ export type AgentStopReasonType =
 	| "aborted"
 	| "context_overflow"
 	| "confirm_required"
+	| "call_cap"
+
+export type ToolGuardConfigType = {
+	repeatWarnAt: number
+	repeatBlockAt: number
+	maxCallsPerTurn: number
+}
+
+export type ToolGuardVerdictType = {
+	action: "allow" | "block"
+	syntheticResult?: string
+	forceNoTool?: boolean
+}
+
+export type ConfirmationSettleStatusType =
+	| "approved"
+	| "denied"
+	| "ignored"
+	| "expired"
+	| "superseded"
 
 export type PendingConfirmationType = {
 	tool: string
@@ -52,6 +91,7 @@ export type PendingConfirmationType = {
 export type AgentResultType = {
 	reply: string
 	replyStream?: AsyncIterable<string>
+	replyStreamClose?: () => void
 	toolNamesUsed: string[]
 	serversUsed: string[]
 	steps: number

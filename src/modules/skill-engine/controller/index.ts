@@ -1,18 +1,36 @@
 import {
 	SKILL_TOOL_NAME_SEPARATOR,
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
+	DEFAULT_SKILL_TRUST_TIER,
+	TOOL_RUN_STATUS_ENUM,
 	type SelectSkillProviderType,
 	type SkillToolType,
 	type ToolFinalizeRuleType,
 	type ToolPolicyType,
 } from "@/db"
-import { skillEngineLogger, now, isExternalUrl, scanPiiEgress } from "@/utils"
+import {
+	skillEngineLogger,
+	now,
+	isExternalUrl,
+	scanPiiEgress,
+	getTraceContext,
+	hashCanonical,
+	sanitizeUntrustedText,
+} from "@/utils"
+import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import type { DomiaType } from "@/modules/core"
 
 import dbAdapter from "../db-adapter"
 import { resolveSkillAdapter } from "../adapters"
 import { resolveSpecialization } from "../specializations"
 import { resolveDescriptor } from "../utils/descriptor"
+import {
+	effectiveHints,
+	deriveRiskClass,
+	deriveDefaultPolicy,
+	escalateRisk,
+	escalatePolicy,
+} from "../utils/risk"
 import {
 	breakerOpen,
 	recordBreakerResult,
@@ -23,8 +41,13 @@ import {
 import type {
 	RawSkillToolType,
 	SkillCallResultType,
+	SkillCallStatusType,
 	SkillConnectionType,
 	ResolvedSkillResilienceType,
+	ResolvedSkillDescriptorType,
+	ResolvedToolMetaType,
+	SkillConnHooksType,
+	SkillElicitResultType,
 } from "../types"
 
 const connections = new Map<string, SkillConnectionType>()
@@ -43,23 +66,135 @@ export const getProviderResilience = (
 ): ResolvedSkillResilienceType | null =>
 	findConn(domiaId, providerSlug)?.descriptor.resilience ?? null
 
+const splitName = (
+	namespacedName: string,
+): { providerSlug: string; rawName: string } => {
+	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+	return {
+		providerSlug: sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : "",
+		rawName:
+			sepIdx >= 0
+				? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
+				: namespacedName,
+	}
+}
+
+const buildToolMeta = (
+	tools: SkillToolType[],
+	descriptor: ResolvedSkillDescriptorType,
+	trustTier: string,
+): Map<string, ResolvedToolMetaType> => {
+	const meta = new Map<string, ResolvedToolMetaType>()
+	for (const t of tools) {
+		const override =
+			descriptor.toolHints[t.rawName] ?? descriptor.toolHints["*"]
+		const hints = effectiveHints(t.annotations, override, trustTier)
+		const riskClass = deriveRiskClass(hints)
+		const declaredPolicy =
+			descriptor.toolPolicy[t.rawName] ?? descriptor.toolPolicy["*"]
+		meta.set(t.rawName, {
+			rawName: t.rawName,
+			riskClass,
+			idempotent: hints.idempotent === true,
+			openWorld: hints.openWorld !== false,
+			cancellable: override?.cancellable ?? true,
+			policy: declaredPolicy ?? deriveDefaultPolicy(riskClass),
+			policySource: declaredPolicy ? "descriptor" : "risk_default",
+			timeoutMs: override?.timeoutMs ?? null,
+			allowedActors: null,
+		})
+	}
+	return meta
+}
+
 export const getToolPolicy = (
 	domiaId: string,
 	namespacedName: string,
 ): ToolPolicyType => {
-	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
-	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
-	const rawName =
-		sepIdx >= 0
-			? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
-			: namespacedName
+	const { providerSlug, rawName } = splitName(namespacedName)
 	const conn = findConn(domiaId, providerSlug)
 	if (!conn) return "allow"
 	return (
+		conn.toolMeta.get(rawName)?.policy ??
 		conn.descriptor.toolPolicy[rawName] ??
 		conn.descriptor.toolPolicy["*"] ??
 		"allow"
 	)
+}
+
+export const getToolMeta = (
+	domiaId: string,
+	namespacedName: string,
+): ResolvedToolMetaType | null => {
+	const { providerSlug, rawName } = splitName(namespacedName)
+	return findConn(domiaId, providerSlug)?.toolMeta.get(rawName) ?? null
+}
+
+export const getConnectionsFor = (domiaId: string): SkillConnectionType[] =>
+	[...connections.values()].filter((c) => c.provider.domiaId === domiaId)
+
+export const claimToolRunSpoken = (
+	interactionId: string,
+	namespacedName: string,
+	resolvedArgs: Record<string, unknown> | undefined,
+): boolean => {
+	const runId = `${interactionId}:${namespacedName}:${hashCanonical(resolvedArgs ?? {})}:0`
+	try {
+		return dbAdapter.claimSpoken(runId)
+	} catch (error) {
+		skillEngineLogger.warn("tool_run spoken claim failed", { runId, error })
+		return true
+	}
+}
+
+export const unclaimToolRunSpoken = (
+	interactionId: string,
+	namespacedName: string,
+	resolvedArgs: Record<string, unknown> | undefined,
+): void => {
+	const runId = `${interactionId}:${namespacedName}:${hashCanonical(resolvedArgs ?? {})}:0`
+	try {
+		dbAdapter.unclaimSpoken(runId).run()
+	} catch (error) {
+		skillEngineLogger.warn("tool_run spoken unclaim failed", { runId, error })
+	}
+}
+
+export const markDispatchedToolRunsLost = (): void => {
+	try {
+		dbAdapter.markLostDispatched().run()
+	} catch (error) {
+		skillEngineLogger.warn("tool_run lost sweep failed", { error })
+	}
+}
+
+export const getInvocationPolicy = (
+	domiaId: string,
+	namespacedName: string,
+	resolvedArgs: Record<string, unknown>,
+): { policy: ToolPolicyType; escalated: boolean } => {
+	const { providerSlug, rawName } = splitName(namespacedName)
+	const conn = findConn(domiaId, providerSlug)
+	if (!conn) return { policy: "allow", escalated: false }
+	const meta = conn.toolMeta.get(rawName)
+	const basePolicy =
+		meta?.policy ??
+		conn.descriptor.toolPolicy[rawName] ??
+		conn.descriptor.toolPolicy["*"] ??
+		"allow"
+	if (!conn.specialization?.invocationRisk || !meta)
+		return { policy: basePolicy, escalated: false }
+	const invocation = conn.specialization.invocationRisk(
+		conn.provider,
+		rawName,
+		resolvedArgs,
+	)
+	const risk = escalateRisk(meta.riskClass, invocation)
+	const policy =
+		meta.policySource === "risk_default"
+			? escalatePolicy(basePolicy, risk)
+			: basePolicy
+	return { policy, escalated: policy !== basePolicy }
 }
 
 const slugify = (name: string): string =>
@@ -84,6 +219,70 @@ const buildSlugMap = (
 	return map
 }
 
+const refreshHooks = new Map<string, () => void>()
+const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const elicitPresenters = new Map<
+	string,
+	(
+		message: string,
+		requestedSchema: Record<string, unknown> | undefined,
+	) => Promise<SkillElicitResultType>
+>()
+
+export const setSkillsRefreshHook = (domiaId: string, fn: () => void): void => {
+	refreshHooks.set(domiaId, fn)
+}
+
+export const clearSkillsRefreshHook = (domiaId: string): void => {
+	refreshHooks.delete(domiaId)
+	const timer = refreshTimers.get(domiaId)
+	if (timer) clearTimeout(timer)
+	refreshTimers.delete(domiaId)
+}
+
+export const setElicitationPresenter = (
+	domiaId: string,
+	fn: (
+		message: string,
+		requestedSchema: Record<string, unknown> | undefined,
+	) => Promise<SkillElicitResultType>,
+): void => {
+	elicitPresenters.set(domiaId, fn)
+}
+
+export const clearElicitationPresenter = (domiaId: string): void => {
+	elicitPresenters.delete(domiaId)
+}
+
+const REFRESH_DEBOUNCE_MS = 2000
+
+const scheduleToolRefresh = (domiaId: string): void => {
+	if (refreshTimers.has(domiaId)) return
+	const timer = setTimeout(() => {
+		refreshTimers.delete(domiaId)
+		refreshHooks.get(domiaId)?.()
+	}, REFRESH_DEBOUNCE_MS)
+	if (typeof timer.unref === "function") timer.unref()
+	refreshTimers.set(domiaId, timer)
+}
+
+const connHooksFor = (cfg: SelectSkillProviderType): SkillConnHooksType => ({
+	onToolListChanged: () => scheduleToolRefresh(cfg.domiaId),
+	onElicit: async (message, requestedSchema) => {
+		const presenter = elicitPresenters.get(cfg.domiaId)
+		if (!presenter) return { action: "decline" }
+		try {
+			return await presenter(message, requestedSchema)
+		} catch (err) {
+			skillEngineLogger.warn("elicitation presenter failed", {
+				provider: cfg.name,
+				err,
+			})
+			return { action: "cancel" }
+		}
+	},
+})
+
 export const connectProvider = async (
 	cfg: SelectSkillProviderType,
 	slug: string,
@@ -98,7 +297,7 @@ export const connectProvider = async (
 		return false
 	}
 	try {
-		const handle = await adapter.connect(cfg)
+		const handle = await adapter.connect(cfg, connHooksFor(cfg))
 		const specialization = resolveSpecialization(cfg)
 		if (specialization?.onConnected)
 			void Promise.resolve(specialization.onConnected(cfg, handle)).catch(
@@ -108,6 +307,7 @@ export const connectProvider = async (
 						err,
 					}),
 			)
+		const descriptor = resolveDescriptor(cfg, language)
 		connections.set(cfg.id, {
 			providerId: cfg.id,
 			providerSlug: slug,
@@ -115,7 +315,12 @@ export const connectProvider = async (
 			maxResultChars: cfg.maxResultChars ?? DEFAULT_SKILL_MAX_RESULT_CHARS,
 			timeoutMs: cfg.timeout,
 			allowedTools: new Set((cfg.toolsCache ?? []).map((t) => t.rawName)),
-			descriptor: resolveDescriptor(cfg, language),
+			descriptor,
+			toolMeta: buildToolMeta(
+				cfg.toolsCache ?? [],
+				descriptor,
+				cfg.trustTier ?? DEFAULT_SKILL_TRUST_TIER,
+			),
 			language,
 			provider: cfg,
 			specialization,
@@ -240,6 +445,8 @@ const toCachedTools = (
 				namespacedName: `${conn.providerSlug}${SKILL_TOOL_NAME_SEPARATOR}${t.name}`,
 				description: t.description,
 				inputSchema: allow ? pruneSchemaParams(schema, allow) : schema,
+				...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
+				...(t.annotations ? { annotations: t.annotations } : {}),
 			}
 		})
 
@@ -262,7 +469,15 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 				Object.keys(paramAllow).length ? paramAllow : null,
 			)
 			conn.allowedTools = new Set(tools.map((t) => t.rawName))
-			dbAdapter.cacheTools(cfg.id, tools, now()).run()
+			const syncedAt = now()
+			dbAdapter.cacheTools(cfg.id, tools, syncedAt).run()
+			conn.provider = { ...cfg, toolsCache: tools, lastSyncAt: syncedAt }
+			conn.descriptor = resolveDescriptor(conn.provider, conn.language)
+			conn.toolMeta = buildToolMeta(
+				tools,
+				conn.descriptor,
+				cfg.trustTier ?? DEFAULT_SKILL_TRUST_TIER,
+			)
 			result.push(...tools)
 		} catch (error) {
 			skillEngineLogger.warn("skill listTools failed — dropping connection", {
@@ -356,13 +571,26 @@ export const callTool = async (
 		}
 	}
 	const policy =
-		conn.descriptor.toolPolicy[rawName] ?? conn.descriptor.toolPolicy["*"]
+		conn.toolMeta.get(rawName)?.policy ??
+		conn.descriptor.toolPolicy[rawName] ??
+		conn.descriptor.toolPolicy["*"]
 	if (policy === "block") {
 		skillEngineLogger.warn("skill callTool blocked by policy", {
 			tool: namespacedName,
 		})
 		return {
 			text: `Action "${rawName}" is blocked by policy.`,
+			status: "blocked",
+			isError: true,
+			resolvedArgs: args,
+		}
+	}
+	if (policy === "confirm" && !preResolved) {
+		skillEngineLogger.warn("skill callTool requires confirmation — not run", {
+			tool: namespacedName,
+		})
+		return {
+			text: `Action "${rawName}" needs the user's confirmation and was not run.`,
 			status: "blocked",
 			isError: true,
 			resolvedArgs: args,
@@ -408,7 +636,92 @@ export const callTool = async (
 			resolvedArgs: args,
 		}
 	}
+	if (!preResolved && conn.specialization?.invocationRisk) {
+		const meta = conn.toolMeta.get(rawName)
+		if (meta && meta.policySource === "risk_default") {
+			const invocation = conn.specialization.invocationRisk(
+				conn.provider,
+				rawName,
+				resolvedArgs,
+			)
+			const escalated = escalatePolicy(
+				meta.policy,
+				escalateRisk(meta.riskClass, invocation),
+			)
+			if (escalated === "confirm") {
+				skillEngineLogger.warn(
+					"skill callTool escalated to confirmation — not run",
+					{ tool: namespacedName },
+				)
+				return {
+					text: `Action "${rawName}" needs the user's confirmation and was not run.`,
+					status: "blocked",
+					isError: true,
+					resolvedArgs,
+				}
+			}
+		}
+	}
 	skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
+
+	const traceCtx = getTraceContext()
+	const argsHash = hashCanonical(resolvedArgs)
+	const auditMeta = conn.toolMeta.get(rawName)
+	const runId = traceCtx?.interactionId
+		? `${traceCtx.interactionId}:${namespacedName}:${argsHash}:0`
+		: null
+	if (runId && traceCtx?.interactionId) {
+		const claimed = dbAdapter.claimToolRun({
+			id: runId,
+			domiaId,
+			interactionId: traceCtx.interactionId,
+			tool: namespacedName,
+			providerSlug,
+			argsHash,
+			riskClass: auditMeta?.riskClass ?? null,
+			policyDecision: policy ?? "allow",
+			policySource: auditMeta?.policySource ?? null,
+		})
+		if (!claimed) {
+			skillEngineLogger.warn("skill callTool duplicate claim — suppressed", {
+				tool: namespacedName,
+			})
+			return {
+				text: `Duplicate call to "${rawName}" was suppressed.`,
+				status: "blocked",
+				isError: true,
+				resolvedArgs,
+			}
+		}
+		emitTurnEvent({
+			type: DOMIA_TURN_EVENT_ENUM.TOOL_STARTED,
+			interactionId: traceCtx.interactionId,
+			originDomiaKey: traceCtx.originDomiaKey ?? "",
+			traceId: traceCtx.traceId,
+			toolName: namespacedName,
+			provider: providerSlug || undefined,
+			riskClass: auditMeta?.riskClass,
+			policyDecision: policy ?? "allow",
+			argsHash,
+		})
+	}
+	const runStartedAt = Date.now()
+	const settleRun = (status: SkillCallStatusType): void => {
+		if (!runId) return
+		const mapped =
+			status === "ok"
+				? TOOL_RUN_STATUS_ENUM.OK
+				: status === "timeout"
+					? TOOL_RUN_STATUS_ENUM.TIMEOUT
+					: status === "cancelled"
+						? TOOL_RUN_STATUS_ENUM.CANCELLED
+						: TOOL_RUN_STATUS_ENUM.FAILED
+		try {
+			dbAdapter.settleToolRun(runId, mapped, Date.now() - runStartedAt).run()
+		} catch (error) {
+			skillEngineLogger.warn("tool_run settle failed", { runId, error })
+		}
+	}
 
 	if (isExternalUrl(conn.provider.url)) {
 		const pii = scanPiiEgress(resolvedArgs)
@@ -421,36 +734,95 @@ export const callTool = async (
 		}
 	}
 
+	const meta = conn.toolMeta.get(rawName)
+	const effectiveTimeoutMs = meta?.timeoutMs ?? conn.timeoutMs
+	const retryAllowed = meta?.idempotent === true
+	const maxAttempts = retryAllowed ? Math.max(1, retryMaxAttempts) : 1
+	const cancellable = meta?.cancellable !== false
 	let transportError: unknown = null
-	for (let attempt = 0; attempt < Math.max(1, retryMaxAttempts); attempt++) {
+	let sawTimeout = false
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
 		if (attempt > 0) {
 			skillEngineLogger.warn(
-				`skill callTool transient — retry ${attempt}/${retryMaxAttempts - 1}`,
+				`skill callTool transient — retry ${attempt}/${maxAttempts - 1}`,
 				{ tool: namespacedName },
 			)
 			await sleep(backoffDelay(attempt, retryBackoffMs), signal)
 		}
 		if (signal?.aborted) break
+		const deadline = new AbortController()
+		const timer = setTimeout(() => deadline.abort(), effectiveTimeoutMs + 250)
+		timer.unref?.()
+		const attemptSignals = [deadline.signal]
+		if (cancellable && signal) attemptSignals.push(signal)
+		const attemptSignal =
+			attemptSignals.length === 1
+				? attemptSignals[0]
+				: AbortSignal.any(attemptSignals)
 		try {
-			const res = await conn.handle.callTool(rawName, resolvedArgs, signal)
+			const res = await conn.handle.callTool(
+				rawName,
+				resolvedArgs,
+				attemptSignal,
+				{ timeoutMs: effectiveTimeoutMs },
+			)
+			if (res.structured !== undefined) {
+				const outputSchema = (conn.provider.toolsCache ?? []).find(
+					(t) => t.rawName === rawName,
+				)?.outputSchema
+				const required = outputSchema?.required
+				if (
+					Array.isArray(required) &&
+					(typeof res.structured !== "object" ||
+						res.structured === null ||
+						required.some(
+							(k) =>
+								typeof k === "string" &&
+								!(k in (res.structured as Record<string, unknown>)),
+						))
+				)
+					skillEngineLogger.warn(
+						"structuredContent does not satisfy outputSchema required keys",
+						{ tool: namespacedName },
+					)
+			}
+			if (res.status === "cancelled") {
+				if (signal?.aborted) break
+				sawTimeout = true
+				transportError = null
+				continue
+			}
 			if (isTransientStatus(res.status)) {
+				sawTimeout = true
 				transportError = null
 				continue
 			}
 			recordBreakerResult(breakerKey, true, breakerThreshold, breakerCooldownMs)
+			settleRun(res.status)
 			const truncated =
 				res.text.length > conn.maxResultChars
 					? `${res.text.slice(0, conn.maxResultChars)}…[truncated]`
 					: res.text
+			const speakable = res.speakableText
+				? sanitizeUntrustedText(res.speakableText, { maxLength: 500 }).text
+				: undefined
 			return {
 				text: truncated || "(no output)",
 				status: res.status,
 				isError: res.isError,
 				resolvedArgs,
+				...(speakable ? { speakableText: speakable } : {}),
+				...(res.structured !== undefined ? { structured: res.structured } : {}),
 			}
 		} catch (error) {
 			transportError = error
+			if (deadline.signal.aborted && !signal?.aborted) {
+				sawTimeout = true
+				transportError = null
+			}
 			if (signal?.aborted) break
+		} finally {
+			clearTimeout(timer)
 		}
 	}
 
@@ -458,8 +830,24 @@ export const callTool = async (
 		skillEngineLogger.info("skill callTool cancelled by caller", {
 			tool: namespacedName,
 		})
+		settleRun("cancelled")
 		return {
 			text: `Tool "${rawName}" was cancelled.`,
+			status: "cancelled",
+			isError: true,
+			resolvedArgs,
+		}
+	}
+
+	if (sawTimeout && transportError == null) {
+		recordBreakerResult(breakerKey, false, breakerThreshold, breakerCooldownMs)
+		skillEngineLogger.warn("skill callTool timed out", {
+			tool: namespacedName,
+			timeoutMs: effectiveTimeoutMs,
+		})
+		settleRun("timeout")
+		return {
+			text: `Tool "${rawName}" timed out.`,
 			status: "timeout",
 			isError: true,
 			resolvedArgs,
@@ -470,6 +858,7 @@ export const callTool = async (
 		tool: namespacedName,
 		error: transportError,
 	})
+	settleRun("error")
 	return {
 		text: `Tool "${rawName}" failed.`,
 		status: "error",

@@ -1,0 +1,113 @@
+[
+	{
+		"name": "quality memory: seeded facts answer identity questions gracefully",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"seedFacts": [
+			{ "subject": "the user", "relation": "is named", "value": "Nora" },
+			{ "subject": "the user", "relation": "likes", "value": "green tea" },
+			{ "subject": "the user", "relation": "has a dog named", "value": "Luka" }
+		],
+		"turns": [
+			{
+				"text": "What's my name?",
+				"expect": {
+					"routed": "chat",
+					"recallsFact": { "value": "Nora" },
+					"replyIncludes": ["nora"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "What do I usually drink?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["tea"],
+					"maxReplyWords": 20
+				}
+			},
+			{
+				"text": "Should I take Luka to the park this weekend?",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 35,
+					"judge": {
+						"rubric": "knows Luka is the user's dog and answers naturally about taking the dog out; never asks who Luka is",
+						"min": 3
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "quality memory: capture then recall five turns later",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "By the way, my sister's name is Elena.",
+				"expect": { "routed": "chat", "factInDb": { "value": "Elena" } }
+			},
+			{
+				"text": "Tell me a fun fact about the moon.",
+				"expect": { "routed": "chat", "maxReplyWords": 40 }
+			},
+			{
+				"text": "What's a good breakfast idea?",
+				"expect": { "routed": "chat", "maxReplyWords": 40 }
+			},
+			{
+				"text": "Do you like rainy days?",
+				"expect": { "routed": "chat", "maxReplyWords": 35 }
+			},
+			{
+				"text": "What was my sister's name again?",
+				"expect": {
+					"routed": "chat",
+					"recallsFact": { "value": "Elena" },
+					"replyIncludes": ["elena"],
+					"maxReplyWords": 15
+				}
+			}
+		]
+	},
+	{
+		"name": "quality memory: contradiction updates gracefully",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"seedFacts": [
+			{ "subject": "the user", "relation": "likes", "value": "coffee" }
+		],
+		"turns": [
+			{
+				"text": "Actually I've stopped drinking coffee, I only drink green tea now.",
+				"expect": {
+					"routed": "chat",
+					"factInDb": { "value": "green tea" },
+					"maxReplyWords": 30
+				}
+			},
+			{
+				"text": "What should I order at the cafe?",
+				"expect": {
+					"routed": "chat",
+					"replyExcludes": ["coffee"],
+					"maxReplyWords": 30,
+					"judge": {
+						"rubric": "suggests something consistent with the user now drinking green tea, not coffee",
+						"min": 3
+					}
+				}
+			}
+		]
+	}
+]

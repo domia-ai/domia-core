@@ -1,0 +1,108 @@
+[
+	{
+		"name": "tools baseline: single turn-on call with paired result and timings",
+		"suite": "tools",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Turn on the kitchen light",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOn",
+					"exactlyOnce": "HassTurnOn",
+					"anyArgMatches": "kitchen",
+					"maxToolMs": 5000,
+					"expectEvents": {
+						"present": ["tool.requested", "tool.result"],
+						"toolResultStatusFor": { "HassTurnOn": "ok" },
+						"seqOrdered": true
+					},
+					"stageOrder": [
+						"stt.final",
+						"tool.requested",
+						"tool.result",
+						"turn.completed"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "tools baseline: read-only context call reports ok (known routing gap)",
+		"suite": "tools",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"mode": "advisory",
+		"turns": [
+			{
+				"text": "Which lights do you see in the house?",
+				"expect": {
+					"routed": "skill",
+					"tool": ["GetLiveContext", "HassTurnOn", "HassTurnOff"],
+					"expectEvents": {
+						"toolResultStatus": "ok",
+						"seqOrdered": true
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "tools baseline: chat stays chat with zero tool calls",
+		"suite": "tools",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Tell me something interesting about whales",
+				"expect": {
+					"routed": "chat",
+					"calledToolCount": 0,
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "tools baseline: slow tool still completes with ok result",
+		"suite": "tools",
+		"language": "en",
+		"mode": "advisory",
+		"mockHa": { "latencyMs": { "HassTurnOff": 2000 } },
+		"turns": [
+			{
+				"text": "Turn off the bedroom light",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOff",
+					"expectEvents": {
+						"toolResultStatusFor": { "HassTurnOff": "ok" }
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "tools baseline: failing tool surfaces failed status not silence",
+		"suite": "tools",
+		"language": "en",
+		"mode": "advisory",
+		"mockHa": { "fail": { "HassLightSet": "always" } },
+		"turns": [
+			{
+				"text": "Set the living room light to 50 percent",
+				"expect": {
+					"routed": "skill",
+					"status": "ok",
+					"expectEvents": {
+						"present": ["tool.result", "turn.completed"]
+					}
+				}
+			}
+		]
+	}
+]

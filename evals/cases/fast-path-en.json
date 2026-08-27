@@ -1,0 +1,105 @@
+[
+	{
+		"name": "fast: turn on entity by name",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn on the kitchen light",
+				"expect": {
+					"fastPath": true,
+					"routed": "fast",
+					"tool": "HassTurnOn",
+					"argsSubset": {
+						"name": "Kitchen Light"
+					},
+					"expectEvents": {
+						"present": ["tool.requested", "tool.result"],
+						"toolResultStatusFor": {
+							"HassTurnOn": "ok"
+						}
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "fast: switch off entity without article",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Switch off bedroom light",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassTurnOff",
+					"argsSubset": {
+						"name": "Bedroom Light"
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "fast: trailing-on word order",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn the living room light on",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassTurnOn",
+					"argsSubset": {
+						"name": "Living Room Light"
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "fast: brightness with range slot",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Set the kitchen light to 40 percent",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassLightSet",
+					"argsSubset": {
+						"name": "Kitchen Light",
+						"brightness": 40
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "fast: anaphora follow-up resolves the last entity",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn on the bedroom light",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassTurnOn",
+					"argsSubset": {
+						"name": "Bedroom Light"
+					}
+				}
+			},
+			{
+				"text": "Turn it off",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassTurnOff",
+					"argsSubset": {
+						"name": "Bedroom Light"
+					}
+				}
+			}
+		]
+	}
+]

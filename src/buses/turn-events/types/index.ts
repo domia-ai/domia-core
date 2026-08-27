@@ -10,7 +10,12 @@ export type TurnEventInputSourceType =
 	| "announcement"
 	| "scheduled"
 
-export type TurnEventToolStatusType = "ok" | "failed" | "timeout" | "cancelled"
+export type TurnEventToolStatusType =
+	| "ok"
+	| "failed"
+	| "timeout"
+	| "cancelled"
+	| "denied"
 
 export type TurnEventEnvelopeType = {
 	interactionId: string
@@ -70,10 +75,18 @@ export type TurnEventBodyMapType = {
 		toolName: string
 		provider?: string
 	}
+	[DOMIA_TURN_EVENT_ENUM.TOOL_STARTED]: {
+		toolName: string
+		provider?: string
+		riskClass?: string
+		policyDecision?: string
+		argsHash?: string
+	}
 	[DOMIA_TURN_EVENT_ENUM.TOOL_RESULT]: {
 		toolName: string
 		status: TurnEventToolStatusType
 		toolMs?: number
+		durationMs?: number
 	}
 	[DOMIA_TURN_EVENT_ENUM.TTS_FIRST_AUDIO]: {
 		ttsFirstChunkMs?: number

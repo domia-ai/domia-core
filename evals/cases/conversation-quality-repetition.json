@@ -1,0 +1,44 @@
+[
+	{
+		"name": "quality repetition: re-asked topic gets a fresh answer",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 3,
+		"passRatio": 1,
+		"turns": [
+			{
+				"text": "What do you know about Costa Rica?",
+				"expect": { "routed": "chat", "maxReplyWords": 40 }
+			},
+			{
+				"text": "Nice. What's your favorite season?",
+				"expect": { "routed": "chat", "maxReplyWords": 35 }
+			},
+			{
+				"text": "Tell me something about Costa Rica.",
+				"expect": {
+					"routed": "chat",
+					"noRepeat": true,
+					"maxReplyWords": 40,
+					"judge": {
+						"rubric": "says something about Costa Rica that is NOT the same as its earlier answer — new detail or new angle",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "And your favorite season, what was it?",
+				"expect": {
+					"routed": "chat",
+					"noEcho": true,
+					"maxReplyWords": 30,
+					"judge": {
+						"rubric": "answers consistently with its earlier stated season but phrased differently, not copy-pasted",
+						"min": 3
+					}
+				}
+			}
+		]
+	}
+]

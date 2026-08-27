@@ -5,6 +5,7 @@ import {
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { runLLMIntent } from "@/modules/llm-engine"
+import { knownSlotCount } from "@/modules/llm-slots"
 import { intentRouterLogger, parseLlmJson } from "@/utils"
 
 import { INTENT_SYSTEM } from "../constants"
@@ -132,6 +133,11 @@ export const classifyNeedsSkill = async (
 		}
 	}
 	if (!opts.canRunLlm) return { needsSkill: false, reason: "no-local-llm" }
+	if (
+		domia.llmModelConfig?.intentLlmOnSingleSlot === false &&
+		knownSlotCount(domia) === 1
+	)
+		return { needsSkill: tools.length > 0, reason: "single-slot-skip-llm" }
 
 	const model =
 		domia.llmModelConfig?.intentModelName?.trim() || DEFAULT_INTENT_MODEL

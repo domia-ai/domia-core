@@ -8,7 +8,12 @@ import {
 } from "@/modules/llm-slots"
 import { llmEngineLogger, createAsyncSemaphore, parseLlmJson } from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
-import { LLM_ENGINE_ENUM, DEFAULT_LLM_CONCURRENCY } from "@/db"
+import {
+	LLM_ENGINE_ENUM,
+	DEFAULT_LLM_CONCURRENCY,
+	DEFAULT_TOOL_CALL_TEMPERATURE,
+	DEFAULT_TOOL_CALL_NUM_PREDICT,
+} from "@/db"
 import type {
 	ChatMessageType,
 	LlmEngineAdapterType,
@@ -87,8 +92,6 @@ const timingsOf = (raw: unknown): LlamaTimingsType | undefined =>
 
 const JSON_NUM_PREDICT = 192
 const INTENT_NUM_PREDICT = 48
-const TOOL_CALL_TEMPERATURE = 0.2
-const TOOL_CALL_NUM_PREDICT = 512
 const NO_AUTH = "noauth"
 
 const llmSemaphore = createAsyncSemaphore(1)
@@ -184,6 +187,27 @@ const userMessages = (
 	{ role: "user", content: prompt },
 ]
 
+const samplerBody = (domia: DomiaType): Record<string, unknown> => {
+	const config = domia.llmModelConfig
+	return {
+		...(config?.seed != null ? { seed: config.seed } : {}),
+		...(config?.stopSequences?.length ? { stop: config.stopSequences } : {}),
+		...(config?.topK != null ? { top_k: config.topK } : {}),
+		...(config?.minP != null ? { min_p: config.minP } : {}),
+		...(config?.repeatPenalty != null
+			? { repeat_penalty: config.repeatPenalty }
+			: {}),
+	}
+}
+
+const toolSampler = (domia: DomiaType) => ({
+	temperature:
+		domia.llmModelConfig?.toolTemperature ?? DEFAULT_TOOL_CALL_TEMPERATURE,
+	max_tokens:
+		domia.llmModelConfig?.toolNumPredict ?? DEFAULT_TOOL_CALL_NUM_PREDICT,
+	...samplerBody(domia),
+})
+
 const requireToolModel = (domia: DomiaType): string =>
 	domia.llmModelConfig?.toolModelName?.trim() || requireModel(domia)
 
@@ -269,6 +293,7 @@ export const runOpenAiCompatible = async (
 			messages: userMessages(promptContext),
 			temperature: cfg.temperature,
 			max_tokens: cfg.maxTokens,
+			...samplerBody(domia),
 			...slotBody(lease.slotId),
 		})
 		onUsage?.(
@@ -318,6 +343,7 @@ const runOpenAiCompatibleStream = async function* (
 			...(domia.llmModelConfig?.streamUsage !== false
 				? { stream_options: { include_usage: true } }
 				: {}),
+			...samplerBody(domia),
 			...slotBody(lease.slotId),
 		})
 		abortStream = () => stream.controller.abort()
@@ -458,13 +484,11 @@ const warmupOpenAiCompatible = async (domia: DomiaType): Promise<void> => {
 	}
 }
 
-const runOpenAiCompatibleWithTools = async (
+const runOpenAiCompatibleConstrainedJson = async (
 	domia: DomiaType,
-	messages: ChatMessageType[],
-	tools: ToolDefinitionType[],
-	onUsage?: LlmUsageSinkType,
-	toolChoice?: ToolChoiceType,
-): Promise<ToolCallOrReplyType> => {
+	prompt: string,
+	schema: Record<string, unknown>,
+): Promise<string> => {
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
@@ -472,13 +496,100 @@ const runOpenAiCompatibleWithTools = async (
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
-			messages: toOpenAiMessages(messages),
-			tools: toOpenAiTools(tools),
-			tool_choice: toolChoice === "none" ? "none" : "auto",
-			temperature: TOOL_CALL_TEMPERATURE,
-			max_tokens: TOOL_CALL_NUM_PREDICT,
+			messages: userMessages(prompt),
+			temperature: 0,
+			max_tokens: 256,
+			response_format: {
+				type: "json_schema",
+				json_schema: { name: "tool_args", schema, strict: true },
+			},
 			...slotBody(lease.slotId),
 		})
+		return response.choices[0]?.message?.content?.trim() || ""
+	} catch (error) {
+		maybeInvalidateSlots(domia, error)
+		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
+			logger: llmEngineLogger,
+			meta: { error },
+		})
+	} finally {
+		lease.release()
+	}
+}
+
+const runOpenAiCompatibleChatConstrainedJson = async (
+	domia: DomiaType,
+	messages: ChatMessageType[],
+	schema: Record<string, unknown>,
+	onUsage?: LlmUsageSinkType,
+	signal?: AbortSignal,
+): Promise<string> => {
+	const modelName = requireToolModel(domia)
+	const cfg = resolveConfig(domia)
+	const client = getClient(cfg)
+	const lease = await acquireSlot(domia)
+	try {
+		if (signal?.aborted) return ""
+		const response = await client.chat.completions.create(
+			{
+				model: modelName,
+				messages: toOpenAiMessages(messages),
+				response_format: {
+					type: "json_schema",
+					json_schema: { name: "agent_decision", schema, strict: true },
+				},
+				...toolSampler(domia),
+				...slotBody(lease.slotId),
+			},
+			{ signal },
+		)
+		onUsage?.(
+			openAiUsage(
+				response.usage,
+				response.choices[0]?.finish_reason,
+				timingsOf(response),
+				domia.llmModelConfig?.contextWindow,
+				response.id,
+			),
+		)
+		return response.choices[0]?.message?.content?.trim() || ""
+	} catch (error) {
+		if (signal?.aborted) return ""
+		maybeInvalidateSlots(domia, error)
+		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
+			logger: llmEngineLogger,
+			meta: { error },
+		})
+	} finally {
+		lease.release()
+	}
+}
+
+const runOpenAiCompatibleWithTools = async (
+	domia: DomiaType,
+	messages: ChatMessageType[],
+	tools: ToolDefinitionType[],
+	onUsage?: LlmUsageSinkType,
+	toolChoice?: ToolChoiceType,
+	signal?: AbortSignal,
+): Promise<ToolCallOrReplyType> => {
+	const modelName = requireToolModel(domia)
+	const cfg = resolveConfig(domia)
+	const client = getClient(cfg)
+	const lease = await acquireSlot(domia)
+	try {
+		if (signal?.aborted) return { kind: "reply", text: "" }
+		const response = await client.chat.completions.create(
+			{
+				model: modelName,
+				messages: toOpenAiMessages(messages),
+				tools: toOpenAiTools(tools),
+				tool_choice: toolChoice === "none" ? "none" : "auto",
+				...toolSampler(domia),
+				...slotBody(lease.slotId),
+			},
+			{ signal },
+		)
 		onUsage?.(
 			openAiUsage(
 				response.usage,
@@ -494,7 +605,7 @@ const runOpenAiCompatibleWithTools = async (
 			const calls: ToolCallType[] = toolCalls
 				.filter((c) => c.type === "function")
 				.map((c) => ({
-					name: c.function.name,
+					name: c.function.name?.trim() || "__blank__",
 					...(() => {
 						const n = normalizeArgs(c.function.arguments)
 						return { arguments: n.args, argsInvalid: n.invalid || undefined }
@@ -504,6 +615,7 @@ const runOpenAiCompatibleWithTools = async (
 		}
 		return { kind: "reply", text: message?.content?.trim() || "" }
 	} catch (error) {
+		if (signal?.aborted) return { kind: "reply", text: "" }
 		maybeInvalidateSlots(domia, error)
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
@@ -519,26 +631,31 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 	messages: ChatMessageType[],
 	tools: ToolDefinitionType[],
 	onUsage?: LlmUsageSinkType,
+	toolChoice?: ToolChoiceType,
+	signal?: AbortSignal,
 ): Promise<StreamReplyOrToolsType> => {
-	const modelName = requireModel(domia)
+	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
 	const lease = await acquireSlot(domia)
 	const releaseOnce = lease.release
 	try {
 		const startedAt = Date.now()
-		const stream = await client.chat.completions.create({
-			model: modelName,
-			messages: toOpenAiMessages(messages),
-			tools: toOpenAiTools(tools),
-			temperature: TOOL_CALL_TEMPERATURE,
-			max_tokens: TOOL_CALL_NUM_PREDICT,
-			stream: true,
-			...(domia.llmModelConfig?.streamUsage !== false
-				? { stream_options: { include_usage: true } }
-				: {}),
-			...slotBody(lease.slotId),
-		})
+		const stream = await client.chat.completions.create(
+			{
+				model: modelName,
+				messages: toOpenAiMessages(messages),
+				tools: toOpenAiTools(toolChoice === "none" ? [] : tools),
+				...(toolChoice === "none" ? {} : { tool_choice: "auto" }),
+				...toolSampler(domia),
+				stream: true,
+				...(domia.llmModelConfig?.streamUsage !== false
+					? { stream_options: { include_usage: true } }
+					: {}),
+				...slotBody(lease.slotId),
+			},
+			{ signal },
+		)
 		const iter = stream[Symbol.asyncIterator]()
 		let first = await iter.next()
 		while (
@@ -592,9 +709,14 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 					)
 			}
 			releaseOnce()
-			const calls: ToolCallType[] = [...acc.values()]
-				.filter((c) => c.name)
-				.map((c) => ({ name: c.name, arguments: normalizeArgs(c.args) }))
+			const calls: ToolCallType[] = [...acc.values()].map((c) => {
+				const n = normalizeArgs(c.args)
+				return {
+					name: c.name.trim() || "__blank__",
+					arguments: n.args,
+					argsInvalid: n.invalid || undefined,
+				}
+			})
 			return { kind: "tool_calls", calls }
 		}
 
@@ -633,7 +755,11 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 				releaseOnce()
 			}
 		})()
-		return { kind: "reply", tokens }
+		const close = (): void => {
+			safeAbort(() => stream.controller.abort())
+			releaseOnce()
+		}
+		return { kind: "reply", tokens, close }
 	} catch (error) {
 		releaseOnce()
 		maybeInvalidateSlots(domia, error)
@@ -652,6 +778,8 @@ export const openAiCompatibleEngine: LlmEngineAdapterType = {
 	runJson: runOpenAiCompatibleJson,
 	runWithTools: runOpenAiCompatibleWithTools,
 	runReplyStreamOrTools: runOpenAiCompatibleReplyStreamOrTools,
+	runConstrainedJson: runOpenAiCompatibleConstrainedJson,
+	runChatConstrainedJson: runOpenAiCompatibleChatConstrainedJson,
 	runIntent: runOpenAiCompatibleIntent,
 	warmup: warmupOpenAiCompatible,
 }

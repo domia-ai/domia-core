@@ -34,6 +34,7 @@ const personaModulesSchema = z
 		factCapture: z.boolean(),
 		factRecall: z.boolean(),
 		environmentTimeEnabled: z.boolean(),
+		skillsEngine: z.boolean(),
 	})
 	.partial()
 
@@ -70,4 +71,5 @@ export const personaContextSchema = z.object({
 	userMoodTrend: z.array(z.string()).nullish(),
 	promptOverrides: promptOverridesSchema.nullish(),
 	ttsVoice: ttsVoiceSchema.nullish(),
+	originEpochMs: z.number().nullish(),
 })

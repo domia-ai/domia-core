@@ -77,7 +77,7 @@ const streamToSink = async (
 		await sink.begin?.(format)
 		try {
 			for await (const chunk of audio) {
-				if (meta.ledger?.isPaused()) {
+				while (meta.ledger?.isPaused() && !meta.aborted?.()) {
 					await meta.ledger.waitResume()
 				}
 				if (meta.aborted?.()) {

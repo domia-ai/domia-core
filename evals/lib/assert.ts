@@ -27,6 +27,7 @@ const toolEntries = (
 	rec: EvalTurnRecordType,
 ): {
 	tool?: string
+	kind?: string
 	resolvedArgs?: Record<string, unknown>
 	args?: Record<string, unknown>
 }[] =>
@@ -34,6 +35,28 @@ const toolEntries = (
 		(e): e is { tool?: string } =>
 			e !== null && typeof e === "object" && "tool" in e,
 	)
+
+const resultEntries = (
+	rec: EvalTurnRecordType,
+): { tool?: string; kind?: string }[] =>
+	toolEntries(rec).filter(
+		(e) => e.kind === "result" || e.kind === "async_outcome",
+	)
+
+const summaryEntry = (
+	rec: EvalTurnRecordType,
+): { finalizeMode?: string; stopReason?: string } | undefined =>
+	(rec.skillResponse ?? []).find(
+		(e): e is { kind: string; finalizeMode?: string; stopReason?: string } =>
+			e !== null &&
+			typeof e === "object" &&
+			(e as { kind?: string }).kind === "summary",
+	)
+
+const rawName = (t: string): string => {
+	const i = t.indexOf("__")
+	return i >= 0 ? t.slice(i + 2) : t
+}
 
 const deepSubset = (
 	subset: Record<string, unknown>,
@@ -71,10 +94,6 @@ export const assertTurn = (
 	}
 	const tools = toolEntries(rec)
 	const toolNames = tools.map((t) => t.tool ?? "")
-	const rawName = (t: string): string => {
-		const i = t.indexOf("__")
-		return i >= 0 ? t.slice(i + 2) : t
-	}
 
 	if (expect.routed === "skill")
 		add(
@@ -89,10 +108,19 @@ export const assertTurn = (
 			`tools=${rec.toolCallCount}`,
 		)
 	if (expect.routed === "fast")
+		add("routed=fast", rec.llmMs === null, `llmMs=${rec.llmMs}`)
+
+	if (expect.fastPath === true)
 		add(
-			"routed=fast",
-			rec.llmMs === null && (rec.toolCallCount ?? 0) === 0,
-			`llmMs=${rec.llmMs}`,
+			"fastPath=true",
+			(rec.intentDecision ?? "").startsWith("fast-path") && rec.llmMs === null,
+			`intent=${rec.intentDecision} llmMs=${rec.llmMs}`,
+		)
+	if (expect.fastPath === false)
+		add(
+			"fastPath=false",
+			!(rec.intentDecision ?? "").startsWith("fast-path"),
+			`intent=${rec.intentDecision}`,
 		)
 
 	const wantedTools = expect.tool
@@ -167,6 +195,15 @@ export const assertTurn = (
 				reply,
 			)
 
+	if (expect.maxReplyWords !== undefined) {
+		const words = reply.trim().split(/\s+/).filter(Boolean).length
+		add(
+			`maxReplyWords:${expect.maxReplyWords}`,
+			words <= expect.maxReplyWords,
+			`${words} words — ${reply}`,
+		)
+	}
+
 	const prompt = rec.llmPrompt ?? ""
 	if (expect.promptIncludes)
 		for (const s of expect.promptIncludes)
@@ -206,6 +243,87 @@ export const assertTurn = (
 			`ttfa=${rec.ttfaMs}`,
 		)
 
+	if (expect.calledToolCount != null)
+		add(
+			`calledToolCount=${expect.calledToolCount}`,
+			resultEntries(rec).length === expect.calledToolCount,
+			`got=${resultEntries(rec).length}`,
+		)
+
+	if (expect.traceToolStatus)
+		for (const [tool, status] of Object.entries(expect.traceToolStatus)) {
+			const entries = resultEntries(rec).filter(
+				(e) => rawName(e.tool ?? "") === tool,
+			)
+			add(
+				`traceStatus[${tool}]=${status}`,
+				entries.some((e) => (e as { status?: string }).status === status),
+				`got=${entries.map((e) => (e as { status?: string }).status).join(",")}`,
+			)
+		}
+
+	if (expect.exactlyOnce) {
+		const hits = resultEntries(rec).filter(
+			(t) => rawName(t.tool ?? "") === expect.exactlyOnce,
+		)
+		add(
+			`exactlyOnce:${expect.exactlyOnce}`,
+			hits.length === 1,
+			`count=${hits.length}`,
+		)
+	}
+
+	if (expect.stageOrder) {
+		const types = rec.events.map((e) => e.type)
+		let cursor = -1
+		const ordered = expect.stageOrder.every((t) => {
+			const i = types.indexOf(t, cursor + 1)
+			if (i < 0) return false
+			cursor = i
+			return true
+		})
+		add(
+			`stageOrder:${expect.stageOrder.join(">")}`,
+			ordered,
+			`events=${types.join(",")}`,
+		)
+	}
+
+	if (expect.maxDecisionMs != null)
+		add(
+			`decisionMs<=${expect.maxDecisionMs}`,
+			(rec.agentDecisionMs ?? Infinity) <= expect.maxDecisionMs,
+			`decisionMs=${rec.agentDecisionMs}`,
+		)
+	if (expect.maxToolMs != null)
+		add(
+			`toolMs<=${expect.maxToolMs}`,
+			(rec.agentToolMs ?? Infinity) <= expect.maxToolMs,
+			`toolMs=${rec.agentToolMs}`,
+		)
+	if (expect.maxFinalizeMs != null)
+		add(
+			`finalizeMs<=${expect.maxFinalizeMs}`,
+			(rec.agentFinalizeMs ?? Infinity) <= expect.maxFinalizeMs,
+			`finalizeMs=${rec.agentFinalizeMs}`,
+		)
+
+	if (expect.expectFinalizeMode || expect.expectStopReason) {
+		const summary = summaryEntry(rec)
+		if (expect.expectFinalizeMode)
+			add(
+				`finalizeMode=${expect.expectFinalizeMode}`,
+				summary?.finalizeMode === expect.expectFinalizeMode,
+				`got=${summary?.finalizeMode}`,
+			)
+		if (expect.expectStopReason)
+			add(
+				`stopReason=${expect.expectStopReason}`,
+				summary?.stopReason === expect.expectStopReason,
+				`got=${summary?.stopReason}`,
+			)
+	}
+
 	if (expect.status)
 		add(
 			`status=${expect.status}`,
@@ -234,6 +352,28 @@ export const assertTurn = (
 				statuses.includes(ev.toolResultStatus),
 				`statuses=${statuses.map((s) => s ?? "?").join(",")}`,
 			)
+		}
+		if (ev.toolResultStatusFor) {
+			const results = rec.events
+				.filter((e) => e.type === "tool.result")
+				.map((e) => {
+					try {
+						return JSON.parse(e.payload ?? "") as {
+							toolName?: string
+							status?: string
+						}
+					} catch {
+						return {}
+					}
+				})
+			for (const [tool, status] of Object.entries(ev.toolResultStatusFor))
+				add(
+					`toolResultStatus[${tool}]=${status}`,
+					results.some(
+						(r) => rawName(r.toolName ?? "") === tool && r.status === status,
+					),
+					`results=${results.map((r) => `${r.toolName}:${r.status}`).join(",")}`,
+				)
 		}
 		if (ev.seqOrdered) {
 			const seqs = rec.events.map((e) => e.seq)

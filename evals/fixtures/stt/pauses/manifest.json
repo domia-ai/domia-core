@@ -1,0 +1,163 @@
+{
+	"note": "Synthetic corpus (Kokoro TTS + sox) — mid-sentence pause traps at syntactically incomplete split points. Regenerate with evals:gen-pauses.",
+	"cases": [
+		{
+			"id": "p01-trap000",
+			"baseId": "p01",
+			"text": "Turn on the lights in the kitchen please.",
+			"trapMs": 0,
+			"file": "evals/fixtures/stt/pauses/p01-trap000.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p01-trap000-cut.wav"
+		},
+		{
+			"id": "p01-trap300",
+			"baseId": "p01",
+			"text": "Turn on the lights in the kitchen please.",
+			"trapMs": 300,
+			"file": "evals/fixtures/stt/pauses/p01-trap300.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p01-trap300-cut.wav"
+		},
+		{
+			"id": "p01-trap400",
+			"baseId": "p01",
+			"text": "Turn on the lights in the kitchen please.",
+			"trapMs": 400,
+			"file": "evals/fixtures/stt/pauses/p01-trap400.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p01-trap400-cut.wav"
+		},
+		{
+			"id": "p01-trap450",
+			"baseId": "p01",
+			"text": "Turn on the lights in the kitchen please.",
+			"trapMs": 450,
+			"file": "evals/fixtures/stt/pauses/p01-trap450.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p01-trap450-cut.wav"
+		},
+		{
+			"id": "p01-trap600",
+			"baseId": "p01",
+			"text": "Turn on the lights in the kitchen please.",
+			"trapMs": 600,
+			"file": "evals/fixtures/stt/pauses/p01-trap600.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p01-trap600-cut.wav"
+		},
+		{
+			"id": "p01-trap800",
+			"baseId": "p01",
+			"text": "Turn on the lights in the kitchen please.",
+			"trapMs": 800,
+			"file": "evals/fixtures/stt/pauses/p01-trap800.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p01-trap800-cut.wav"
+		},
+		{
+			"id": "p02-trap000",
+			"baseId": "p02",
+			"text": "Remind me to call my mom tomorrow morning.",
+			"trapMs": 0,
+			"file": "evals/fixtures/stt/pauses/p02-trap000.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p02-trap000-cut.wav"
+		},
+		{
+			"id": "p02-trap300",
+			"baseId": "p02",
+			"text": "Remind me to call my mom tomorrow morning.",
+			"trapMs": 300,
+			"file": "evals/fixtures/stt/pauses/p02-trap300.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p02-trap300-cut.wav"
+		},
+		{
+			"id": "p02-trap400",
+			"baseId": "p02",
+			"text": "Remind me to call my mom tomorrow morning.",
+			"trapMs": 400,
+			"file": "evals/fixtures/stt/pauses/p02-trap400.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p02-trap400-cut.wav"
+		},
+		{
+			"id": "p02-trap450",
+			"baseId": "p02",
+			"text": "Remind me to call my mom tomorrow morning.",
+			"trapMs": 450,
+			"file": "evals/fixtures/stt/pauses/p02-trap450.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p02-trap450-cut.wav"
+		},
+		{
+			"id": "p02-trap600",
+			"baseId": "p02",
+			"text": "Remind me to call my mom tomorrow morning.",
+			"trapMs": 600,
+			"file": "evals/fixtures/stt/pauses/p02-trap600.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p02-trap600-cut.wav"
+		},
+		{
+			"id": "p02-trap800",
+			"baseId": "p02",
+			"text": "Remind me to call my mom tomorrow morning.",
+			"trapMs": 800,
+			"file": "evals/fixtures/stt/pauses/p02-trap800.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p02-trap800-cut.wav"
+		},
+		{
+			"id": "p03-trap000",
+			"baseId": "p03",
+			"text": "Set a timer for twenty five minutes.",
+			"trapMs": 0,
+			"file": "evals/fixtures/stt/pauses/p03-trap000.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p03-trap000-cut.wav"
+		},
+		{
+			"id": "p03-trap300",
+			"baseId": "p03",
+			"text": "Set a timer for twenty five minutes.",
+			"trapMs": 300,
+			"file": "evals/fixtures/stt/pauses/p03-trap300.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p03-trap300-cut.wav"
+		},
+		{
+			"id": "p03-trap400",
+			"baseId": "p03",
+			"text": "Set a timer for twenty five minutes.",
+			"trapMs": 400,
+			"file": "evals/fixtures/stt/pauses/p03-trap400.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p03-trap400-cut.wav"
+		},
+		{
+			"id": "p03-trap450",
+			"baseId": "p03",
+			"text": "Set a timer for twenty five minutes.",
+			"trapMs": 450,
+			"file": "evals/fixtures/stt/pauses/p03-trap450.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p03-trap450-cut.wav"
+		},
+		{
+			"id": "p03-trap600",
+			"baseId": "p03",
+			"text": "Set a timer for twenty five minutes.",
+			"trapMs": 600,
+			"file": "evals/fixtures/stt/pauses/p03-trap600.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p03-trap600-cut.wav"
+		},
+		{
+			"id": "p03-trap800",
+			"baseId": "p03",
+			"text": "Set a timer for twenty five minutes.",
+			"trapMs": 800,
+			"file": "evals/fixtures/stt/pauses/p03-trap800.wav",
+			"cutFile": "evals/fixtures/stt/pauses/p03-trap800-cut.wav"
+		}
+	],
+	"controls": [
+		{
+			"id": "s01",
+			"file": "evals/fixtures/stt/s01.wav"
+		},
+		{
+			"id": "s02",
+			"file": "evals/fixtures/stt/s02.wav"
+		},
+		{
+			"id": "s03",
+			"file": "evals/fixtures/stt/s03.wav"
+		}
+	]
+}

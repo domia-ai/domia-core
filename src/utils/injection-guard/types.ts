@@ -9,3 +9,5 @@ export type SanitizeOptionsType = {
 	maxLength?: number
 	collapseNewlines?: boolean
 }
+
+export type InjectionPatternType = { re: RegExp; reason: string }

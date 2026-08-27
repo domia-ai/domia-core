@@ -682,8 +682,9 @@ export const createSatelliteSession = (
 				if (announceFn) unregisterSatelliteAnnouncer(registeredKey, announceFn)
 			}
 			registeredKey = identity.domiaKey
-			if (announceFn) registerSatelliteAnnouncer(registeredKey, announceFn)
-			else registerSatelliteSink(registeredKey, connectionSink)
+			if (announceFn)
+				registerSatelliteAnnouncer(registeredKey, announceFn, satelliteId)
+			else registerSatelliteSink(registeredKey, connectionSink, satelliteId)
 			setSatellitePresence(registeredKey, satelliteId, protocol, {
 				capabilities: {
 					canHear: true,

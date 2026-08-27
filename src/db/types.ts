@@ -178,6 +178,13 @@ export type {
 	SkillDescriptorLocaleType,
 	DomiaSkillDescriptorType,
 	ToolPolicyType,
+	ToolAnnotationsType,
+	ToolHintOverrideType,
+	ToolRiskClassType,
+	FastPathSlotSourceType,
+	FastPathSlotType,
+	FastPathIntentType,
+	FastPathBlockType,
 } from "./json-types"
 
 export type SelectSkillProviderType = InferSelectModel<
@@ -189,6 +196,13 @@ export type InsertSkillProviderType = InferInsertModel<
 export type UpdateSkillProviderType = Partial<
 	Omit<InsertSkillProviderType, "id">
 > & { id: string }
+
+export type SelectToolRunType = InferSelectModel<typeof schema.toolRun>
+export type SelectPendingConfirmationRowType = InferSelectModel<
+	typeof schema.pendingConfirmationRow
+>
+export type InsertToolRunType = InferInsertModel<typeof schema.toolRun>
+export type ToolRunStatusEnumType = SelectToolRunType["status"]
 
 export type SelectInteractionTraceType = InferSelectModel<
 	typeof schema.interactionTrace

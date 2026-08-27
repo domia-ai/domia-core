@@ -62,6 +62,7 @@ export const configBundleSchema = z
 		tts: createUpdateSchema(ttsConfig).omit(META_ACTIVE).strict().nullish(),
 		llm: createUpdateSchema(llmModelConfig)
 			.omit(META_ACTIVE)
+			.extend({ stopSequences: z.array(z.string()).nullish() })
 			.strict()
 			.nullish(),
 		wakeWord: createUpdateSchema(wakeWordConfig)

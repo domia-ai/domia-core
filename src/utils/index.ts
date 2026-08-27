@@ -1,4 +1,5 @@
 export * from "./audio-file"
+export * from "./canonical"
 export * from "./concurrency"
 export * from "./db"
 export * from "./db-time"

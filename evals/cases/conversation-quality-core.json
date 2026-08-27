@@ -1,0 +1,144 @@
+[
+	{
+		"name": "quality core: factual-short answers stay short and correct",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "What's the capital of France?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["paris"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "How many days are in a week?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["seven"],
+					"replyExcludes": ["7"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "Is a tomato a fruit or a vegetable?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["fruit"],
+					"maxReplyWords": 25
+				}
+			}
+		]
+	},
+	{
+		"name": "quality core: opinion and small talk feel warm not robotic",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Good morning! How are you today?",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 25,
+					"judge": {
+						"rubric": "a warm, natural greeting back that answers how it is doing; not an interrogation, not a lecture",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "Do you prefer sunrises or sunsets?",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 35,
+					"judge": {
+						"rubric": "takes a side with a bit of personality instead of refusing to have preferences or hedging both ways",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "Tell me something interesting about octopuses.",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 40,
+					"judge": {
+						"rubric": "one real, correct, interesting fact about octopuses phrased naturally for speech",
+						"min": 3
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "quality core: emotional turn gets acknowledged in character",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "I had a really rough day at work today.",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 35,
+					"judge": {
+						"rubric": "acknowledges the feeling warmly and offers presence or a gentle follow-up; does NOT lecture, does NOT list solutions, does NOT copy the user's mood mechanically",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "Thanks. Just tired mostly.",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 25,
+					"judge": {
+						"rubric": "brief, kind, lets the moment breathe; no interrogation, no fake cheerfulness",
+						"min": 3
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "quality core: no-tools honesty without invented state",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Turn off the kitchen lights.",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 30,
+					"judge": {
+						"rubric": "gracefully says it cannot control devices right now; does NOT pretend it did it, does NOT invent device state",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "Is the front door locked?",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 30,
+					"judge": {
+						"rubric": "honestly says it cannot check that; does NOT invent an answer about the door being locked or unlocked",
+						"min": 3
+					}
+				}
+			}
+		]
+	}
+]

@@ -1,4 +1,11 @@
-import type { SelectSkillProviderType, ToolFinalizeMapType } from "@/db"
+import type {
+	SelectSkillProviderType,
+	ToolFinalizeMapType,
+	SkillToolType,
+	ToolHintOverrideType,
+	FastPathBlockType,
+	FastPathIntentType,
+} from "@/db"
 import { skillEngineLogger, languageSetsFor, parseLlmJson } from "@/utils"
 
 import type {
@@ -279,6 +286,122 @@ const haFinalizeTemplates = (language: string | null): ToolFinalizeMapType => {
 	}
 }
 
+const SENSITIVE_TOOL_RE = /lock|unlock|cover|garage|alarm|siren/i
+
+const SENSITIVE_DOMAIN_RE = /^(lock|alarm_control_panel|cover|siren)$/
+
+const READ_TOOL_RE = /getlivecontext|getstate|get_state|query|status/i
+
+const haToolHints = (
+	tools: SkillToolType[],
+): Record<string, ToolHintOverrideType> => {
+	const hints: Record<string, ToolHintOverrideType> = {}
+	for (const t of tools) {
+		if (READ_TOOL_RE.test(t.rawName))
+			hints[t.rawName] = { readOnlyHint: true, openWorldHint: false }
+		else
+			hints[t.rawName] = {
+				readOnlyHint: false,
+				destructiveHint: SENSITIVE_TOOL_RE.test(t.rawName),
+				idempotentHint: true,
+				openWorldHint: false,
+			}
+	}
+	return hints
+}
+
+const haToolPolicy = (tools: SkillToolType[]): Record<string, "confirm"> => {
+	const policy: Record<string, "confirm"> = {}
+	for (const t of tools)
+		if (SENSITIVE_TOOL_RE.test(t.rawName)) policy[t.rawName] = "confirm"
+	return policy
+}
+
+const resolvedEntityDomain = (
+	provider: SelectSkillProviderType,
+	resolvedArgs: Record<string, unknown>,
+): string | null => {
+	const name =
+		typeof resolvedArgs.name === "string" ? resolvedArgs.name.trim() : null
+	if (!name) return null
+	const ctx = contextCache.get(provider.id)
+	if (!ctx) return null
+	const folded = fold(name)
+	const entity = ctx.entities.find((e) =>
+		e.names.some((n) => fold(n) === folded),
+	)
+	return entity?.domain ?? null
+}
+
+const haFastPathBlock = (
+	tools: SkillToolType[],
+	language: string | null,
+): FastPathBlockType | undefined => {
+	const has = (name: string): boolean => tools.some((t) => t.rawName === name)
+	const es = (language ?? "en").toLowerCase().startsWith("es")
+	const intents: FastPathIntentType[] = []
+	const entitySlot = {
+		entity: { source: { kind: "context", key: "entity" } },
+	} as FastPathIntentType["slots"]
+	if (has("HassTurnOn"))
+		intents.push({
+			tool: "HassTurnOn",
+			templates: es
+				? ["<encender> [<articulo>] {entity}"]
+				: ["<turnon> [<the>] {entity}", "turn [<the>] {entity} on"],
+			slots: entitySlot,
+			requiredKeywords: es
+				? [["enciende", "prende", "activa", "encender", "prender"]]
+				: [["on"]],
+		})
+	if (has("HassTurnOff"))
+		intents.push({
+			tool: "HassTurnOff",
+			templates: es
+				? ["<apagar> [<articulo>] {entity}"]
+				: ["<turnoff> [<the>] {entity}", "turn [<the>] {entity} off"],
+			slots: entitySlot,
+			requiredKeywords: es
+				? [["apaga", "desactiva", "apagar", "desconecta"]]
+				: [["off"]],
+		})
+	if (has("HassLightSet"))
+		intents.push({
+			tool: "HassLightSet",
+			templates: es
+				? [
+						"(pon|ajusta) [<articulo>] {entity} al {level} [por ciento]",
+						"(pon|ajusta) [<articulo>] {entity} a {level} [por ciento]",
+					]
+				: [
+						"(set|dim|brighten) [<the>] {entity} to {level} [percent] [brightness]",
+						"set [<the>] {entity} brightness to {level} [percent]",
+					],
+			slots: {
+				...entitySlot,
+				level: {
+					source: { kind: "range", min: 0, max: 100 },
+					arg: "brightness",
+				},
+			},
+		})
+	if (intents.length === 0) return undefined
+	return {
+		intents,
+		expansionRules: es
+			? {
+					encender: "(enciende|encienda|prende|prenda|activa|active)",
+					apagar: "(apaga|apague|desactiva|desactive|desconecta)",
+					articulo: "(la|el|las|los|mi|mis)",
+				}
+			: {
+					turnon: "(turn on|switch on)",
+					turnoff: "(turn off|switch off)",
+					the: "(the|my|our)",
+				},
+	}
+}
+
 export const homeAssistantSpecialization: SkillSpecializationType = {
 	kind: "home-assistant",
 	descriptorDefaults: (tools, language) => ({
@@ -291,10 +414,43 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 					(t) => CORE_RE.test(t.rawName) || CORE_RE.test(t.description ?? ""),
 				)
 				.map((t) => t.rawName),
+			toolHints: haToolHints(tools),
+			toolPolicy: haToolPolicy(tools),
 			finalize: haFinalizeTemplates(language),
 			genericWords: [...languageSetsFor(language).deviceGenericWords],
 		},
+		fastPath: haFastPathBlock(tools, language),
 	}),
+	fastPathSlotValues: (provider, key) => {
+		const ctx = contextCache.get(provider.id)
+		if (!ctx) return null
+		if (key === "entity") {
+			const out: { phrase: string; args: Record<string, unknown> }[] = []
+			for (const entity of ctx.entities) {
+				const canonical = entity.names[0]
+				if (!canonical) continue
+				for (const name of entity.names)
+					out.push({ phrase: name, args: { name: canonical } })
+			}
+			return out
+		}
+		if (key === "area")
+			return [...ctx.areas].map((area) => ({ phrase: area, args: { area } }))
+		return null
+	},
+	invocationRisk: (provider, _rawName, resolvedArgs) => {
+		const domain = resolvedEntityDomain(provider, resolvedArgs)
+		if (domain && SENSITIVE_DOMAIN_RE.test(domain)) return "write_destructive"
+		const domainsArg = resolvedArgs.domain
+		if (
+			Array.isArray(domainsArg) &&
+			domainsArg.some(
+				(d) => typeof d === "string" && SENSITIVE_DOMAIN_RE.test(d),
+			)
+		)
+			return "write_destructive"
+		return null
+	},
 	onConnected: async (
 		provider: SelectSkillProviderType,
 		handle: SkillConnHandleType,

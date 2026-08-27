@@ -44,6 +44,7 @@ import {
 	isSpeakable,
 	skillsMayIntercept,
 	looksSkillish,
+	prewarmFastPathPhrase,
 	markLadderStage,
 } from "../utils"
 import type {
@@ -174,7 +175,11 @@ const startSpeculation = (
 			return null
 		}
 		onPartial?.(transcript)
-		if (skillsMayIntercept(domia) && (await looksSkillish(domia, transcript))) {
+		if (
+			skillsMayIntercept(domia) &&
+			(prewarmFastPathPhrase(ctx, transcript) ||
+				(await looksSkillish(domia, transcript)))
+		) {
 			domiaBusLogger.info(
 				`🔮 speculation g${generation} skipped — skill-ish transcript ("${transcript.slice(0, 60)}")`,
 				{ domiaId: domia.id },

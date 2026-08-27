@@ -56,12 +56,19 @@
 		"e2e": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/e2e.ts",
 		"evals": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",
 		"evals:live": "EVAL_LIVE=1 dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",
+		"evals:tools": "EVAL_SUITES=tools,tools-confirm,security dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/run.ts",
+		"evals:fast-path-sweep": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/fast-path-sweep.ts",
+		"evals:agent-loop": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/agent-loop.ts",
+		"evals:tools-scorecard": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/tools-scorecard.ts",
 		"evals:parsing": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/parsing.ts",
 		"evals:protocols": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/protocol-replay.ts",
 		"evals:adversarial": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/adversarial.ts",
 		"evals:promote": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/promote-traces.ts",
 		"evals:conversation": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/conversation.ts",
+		"evals:llm-tournament": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/llm-tournament.ts",
 		"evals:stt-noise": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/stt-noise.ts",
+		"evals:turn-hold": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/turn-hold.ts",
+		"evals:gen-pauses": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/gen-pauses-corpus.ts",
 		"evals:stt": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/stt-wer.ts",
 		"turn-logic": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/turn-logic.ts",
 		"typecheck:evals": "tsc --noEmit -p tsconfig.evals.json",
@@ -72,10 +79,13 @@
 		"setup:models:matcha": "bash scripts/download-models.sh matcha",
 		"setup:models:nemotron-streaming": "bash scripts/download-models.sh nemotron-streaming",
 		"evals:fact-dedup": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/fact-dedup.ts",
+		"evals:satellite-persistence": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/satellite-persistence.ts",
 		"evals:esphome-controller": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/esphome-controller.ts",
+		"evals:esphome-adapter": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/esphome-adapter.ts",
 		"evals:fact-sync": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/fact-sync-cursor.ts",
 		"evals:tts-tournament": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/tts-tournament.ts",
-		"evals:voice-feel": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/voice-feel-soak.ts"
+		"evals:voice-feel": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/voice-feel-soak.ts",
+		"evals:h2-regressions": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/h2-regressions.ts"
 	},
 	"devDependencies": {
 		"@dotenvx/dotenvx": "^1.67.0",
@@ -125,7 +135,7 @@
 		"ollama": "^0.6.3",
 		"onnxruntime-node": "^1.27.0",
 		"openai": "^6.43.0",
-		"sherpa-onnx-node": "1.13.3",
+		"sherpa-onnx-node": "1.13.5",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},
@@ -134,11 +144,11 @@
 	},
 	"overrides": {
 		"onnxruntime-node": "$onnxruntime-node",
-		"sherpa-onnx-darwin-arm64": "1.13.3",
-		"sherpa-onnx-darwin-x64": "1.13.3",
-		"sherpa-onnx-linux-arm64": "1.13.3",
-		"sherpa-onnx-linux-x64": "1.13.3",
-		"sherpa-onnx-win-x64": "1.13.3",
-		"sherpa-onnx-win-ia32": "1.13.3"
+		"sherpa-onnx-darwin-arm64": "1.13.5",
+		"sherpa-onnx-darwin-x64": "1.13.5",
+		"sherpa-onnx-linux-arm64": "1.13.5",
+		"sherpa-onnx-linux-x64": "1.13.5",
+		"sherpa-onnx-win-x64": "1.13.5",
+		"sherpa-onnx-win-ia32": "1.13.5"
 	}
 }

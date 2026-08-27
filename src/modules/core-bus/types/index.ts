@@ -1,3 +1,4 @@
+import type { SkillElicitResultType } from "@/modules/skill-engine"
 import type {
 	DomiaEventBusPayloadMapType,
 	DOMIA_EVENT_BUS_ENUM,
@@ -756,3 +757,16 @@ export type TurnCompletionGuardOptsType = {
 	status?: string
 	traceId?: string
 }
+
+export type PendingElicitType = {
+	message: string
+	requestedSchema: Record<string, unknown> | undefined
+	language: string | null
+	resolve: (result: SkillElicitResultType) => void
+	timer: ReturnType<typeof setTimeout>
+}
+
+export type SpeakTargetType =
+	| { kind: "local" }
+	| { kind: "satellite"; satelliteId: string }
+	| { kind: "broadcast" }

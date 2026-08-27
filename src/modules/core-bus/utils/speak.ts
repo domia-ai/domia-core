@@ -1,5 +1,5 @@
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
-import { ttsAdapterToPcmChunks } from "@/modules/tts-engine"
+import { cachedTtsPcmChunks } from "@/modules/tts-engine"
 import { type DomiaType, safeOwnDomia, getHostedDomias } from "@/modules/core"
 import { resolveCoreBusFeatures } from "./features"
 import { playStreamedAudio } from "./playback"
@@ -23,6 +23,7 @@ import type {
 	RenderedTtsType,
 	ResolvedTtsEngineType,
 	StreamingSinkFormatType,
+	SpeakTargetType,
 } from "../types"
 
 const SPEAK_WAIT_FOR_TURN_MS = 15000
@@ -34,7 +35,7 @@ const renderTtsToServedUrl = async (
 ): Promise<RenderedTtsType | null> => {
 	const interactionId = generateUuid()
 	const chunks: Buffer[] = []
-	for await (const chunk of ttsAdapterToPcmChunks(domia, tts.adapter, text)) {
+	for await (const chunk of cachedTtsPcmChunks(domia, tts.adapter, text)) {
 		chunks.push(chunk)
 	}
 	if (chunks.length === 0) return null
@@ -68,12 +69,43 @@ export const renderAnnouncementUrl = async (
 	return rendered?.url ?? null
 }
 
+export const resolveSpeakDelivery = (
+	domiaKey: string,
+	target?: SpeakTargetType,
+): {
+	announcer: ReturnType<typeof getSatelliteAnnouncerFor>
+	sink: ReturnType<typeof getSatelliteSinkFor>
+	allowLocal: boolean
+} => {
+	if (target?.kind === "local")
+		return { announcer: null, sink: null, allowLocal: true }
+	if (target?.kind === "satellite")
+		return {
+			announcer: getSatelliteAnnouncerFor(domiaKey, target.satelliteId),
+			sink: getSatelliteSinkFor(domiaKey, target.satelliteId),
+			allowLocal: false,
+		}
+	return {
+		announcer: getSatelliteAnnouncerFor(domiaKey),
+		sink: getSatelliteSinkFor(domiaKey),
+		allowLocal: true,
+	}
+}
+
 export const speak = async (
 	domia: DomiaType,
 	text: string,
+	target?: SpeakTargetType,
 ): Promise<SpeakResultType> => {
 	const trimmed = text.trim()
 	if (!trimmed) return { delivered: false, target: "none" }
+
+	const { announcer, sink, allowLocal } = resolveSpeakDelivery(
+		domia.domiaKey,
+		target,
+	)
+	if (target?.kind === "satellite" && !announcer && !sink)
+		return { delivered: false, target: "none" }
 
 	const capabilities = normalizeRuntimeCapabilities(
 		domia.runtimeCapabilities ?? {},
@@ -84,9 +116,6 @@ export const speak = async (
 
 	const rendered = await renderTtsToServedUrl(domia, tts, trimmed)
 	if (!rendered) return { delivered: false, target: "none" }
-
-	const announcer = getSatelliteAnnouncerFor(domia.domiaKey)
-	const sink = getSatelliteSinkFor(domia.domiaKey)
 	const format: StreamingSinkFormatType = {
 		sampleRate: tts.adapter.capabilities.sampleRate,
 		channels: tts.adapter.capabilities.channels === 2 ? 2 : 1,
@@ -99,11 +128,11 @@ export const speak = async (
 		return { delivered: true, target: "satellite", ...audio }
 	}
 	if (sink) {
-		await streamAudioFileTo(domia, features, rendered.filePath, format, true)
+		await streamAudioFileTo(domia, features, rendered.filePath, format, sink)
 		return { delivered: true, target: "satellite", ...audio }
 	}
-	if (features.canPlayback) {
-		await streamAudioFileTo(domia, features, rendered.filePath, format, false)
+	if (allowLocal && features.canPlayback) {
+		await streamAudioFileTo(domia, features, rendered.filePath, format, null)
 		return { delivered: true, target: "local", ...audio }
 	}
 	return { delivered: false, target: "none", ...audio }
@@ -123,7 +152,7 @@ const streamAudioFileTo = async (
 	features: ReturnType<typeof resolveCoreBusFeatures>,
 	filePath: string,
 	format: StreamingSinkFormatType,
-	useSink: boolean,
+	sink: ReturnType<typeof getSatelliteSinkFor>,
 ): Promise<void> => {
 	const interactionId = generateUuid()
 	const active = getActiveTurn(domia.id)
@@ -134,10 +163,7 @@ const streamAudioFileTo = async (
 		])
 	}
 	const turn = beginTurn(domia.id, interactionId)
-	if (useSink) {
-		const sink = getSatelliteSinkFor(domia.domiaKey)
-		if (sink) registerStreamingSink(interactionId, sink)
-	}
+	if (sink) registerStreamingSink(interactionId, sink)
 	try {
 		await playStreamedAudio(
 			{ domia, features },
@@ -150,7 +176,7 @@ const streamAudioFileTo = async (
 			format,
 		)
 	} finally {
-		if (useSink) clearStreamingSink(interactionId)
+		if (sink) clearStreamingSink(interactionId)
 		turn.end()
 	}
 }
@@ -182,7 +208,7 @@ export const announceAudio = async (
 		}
 	}
 	if (!delivered && sink) {
-		await streamAudioFileTo(domia, features, filePath, format, true)
+		await streamAudioFileTo(domia, features, filePath, format, sink)
 		delivered = true
 	}
 	if (delivered)
@@ -194,7 +220,7 @@ export const announceAudio = async (
 		}
 
 	if (features.canPlayback) {
-		await streamAudioFileTo(domia, features, filePath, format, false)
+		await streamAudioFileTo(domia, features, filePath, format, null)
 		return {
 			delivered: true,
 			target: "local",

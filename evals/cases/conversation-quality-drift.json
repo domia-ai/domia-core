@@ -1,0 +1,132 @@
+[
+	{
+		"name": "quality drift: twenty-turn session holds budgets and coherence",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"seedFacts": [
+			{ "subject": "the user", "relation": "is named", "value": "Nora" }
+		],
+		"turns": [
+			{
+				"text": "Good morning!",
+				"expect": { "routed": "chat", "maxReplyWords": 20 }
+			},
+			{
+				"text": "What's the capital of Japan?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["tokyo"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "Tell me a fun fact about bees.",
+				"expect": { "routed": "chat", "maxReplyWords": 40 }
+			},
+			{
+				"text": "Do you like music?",
+				"expect": { "routed": "chat", "maxReplyWords": 35 }
+			},
+			{
+				"text": "What's a good stretch after sitting all day?",
+				"expect": { "routed": "chat", "maxReplyWords": 45 }
+			},
+			{
+				"text": "How many legs does a spider have?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["eight"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "I'm thinking of repainting the living room.",
+				"expect": { "routed": "chat", "maxReplyWords": 35 }
+			},
+			{
+				"text": "Maybe a warm terracotta color.",
+				"expect": { "routed": "chat", "maxReplyWords": 35 }
+			},
+			{
+				"text": "What goes well with terracotta walls?",
+				"expect": { "routed": "chat", "maxReplyWords": 45 }
+			},
+			{
+				"text": "Nice. What's the biggest ocean?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["pacific"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "Tell me a short joke.",
+				"expect": { "routed": "chat", "maxReplyWords": 35 }
+			},
+			{
+				"text": "Another one!",
+				"expect": { "routed": "chat", "noRepeat": true, "maxReplyWords": 35 }
+			},
+			{
+				"text": "What's my name, by the way?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["nora"],
+					"maxReplyWords": 15
+				}
+			},
+			{
+				"text": "Right! What were we talking about painting?",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 40,
+					"judge": {
+						"rubric": "remembers the living room repaint and the terracotta idea from earlier in this conversation",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "How long does paint usually take to dry?",
+				"expect": { "routed": "chat", "maxReplyWords": 40 }
+			},
+			{
+				"text": "Do fish sleep?",
+				"expect": { "routed": "chat", "maxReplyWords": 40 }
+			},
+			{
+				"text": "What's seven times eight?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["fifty"],
+					"maxReplyWords": 12
+				}
+			},
+			{
+				"text": "I'm getting sleepy.",
+				"expect": {
+					"routed": "chat",
+					"maxReplyWords": 25,
+					"judge": {
+						"rubric": "gentle, brief wind-down response; no lecture about sleep hygiene",
+						"min": 3
+					}
+				}
+			},
+			{
+				"text": "Good night!",
+				"expect": { "routed": "chat", "maxReplyWords": 15 }
+			},
+			{
+				"text": "Oh wait, one more: what's the capital of Japan again?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["tokyo"],
+					"noEcho": true,
+					"maxReplyWords": 15
+				}
+			}
+		]
+	}
+]

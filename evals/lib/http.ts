@@ -42,6 +42,13 @@ export const postChat = async (
 	return (await res.json()) as { interactionId: string; reply: string }
 }
 
+export const postChatAsync = (
+	text: string,
+): { done: Promise<{ interactionId: string; reply: string } | null> } => {
+	const done = postChat(text).catch(() => null)
+	return { done }
+}
+
 export const postConfig = async (bundle: unknown): Promise<void> => {
 	const res = await fetch(
 		`${env.EVAL_URL}/config?domiaKey=${env.EVAL_DOMIA_KEY}`,

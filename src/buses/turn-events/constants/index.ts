@@ -8,6 +8,7 @@ export enum DOMIA_TURN_EVENT_ENUM {
 	LLM_FIRST_SENTENCE = "llm.first_sentence",
 	LLM_DONE = "llm.done",
 	TOOL_REQUESTED = "tool.requested",
+	TOOL_STARTED = "tool.started",
 	TOOL_RESULT = "tool.result",
 	TTS_FIRST_AUDIO = "tts.first_audio",
 	PLAYBACK_STARTED = "playback.started",

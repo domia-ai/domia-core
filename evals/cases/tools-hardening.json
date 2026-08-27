@@ -1,0 +1,61 @@
+[
+	{
+		"name": "hardening: coerced string args still execute correctly",
+		"suite": "tools",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Set the kitchen light to 40 percent brightness",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassLightSet",
+					"expectEvents": {
+						"toolResultStatusFor": { "HassLightSet": "ok" }
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "hardening: repeated failing tool is guard-blocked with paired results",
+		"suite": "tools",
+		"language": "en",
+		"mode": "advisory",
+		"mockHa": { "fail": { "HassTurnOn": "always" } },
+		"turns": [
+			{
+				"text": "Turn on the kitchen light",
+				"expect": {
+					"routed": "skill",
+					"status": "ok",
+					"expectEvents": { "present": ["tool.result", "turn.completed"] }
+				}
+			}
+		]
+	},
+	{
+		"name": "hardening: cross-turn tool history enables bare follow-up",
+		"suite": "tools",
+		"language": "en",
+		"mode": "advisory",
+		"turns": [
+			{
+				"text": "Turn on the bedroom light",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOn"
+				}
+			},
+			{
+				"text": "Now turn it off",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOff",
+					"anyArgMatches": "bedroom"
+				}
+			}
+		]
+	}
+]

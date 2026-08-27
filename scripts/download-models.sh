@@ -69,6 +69,14 @@ case "${1:-all}" in
 esac
 
 case "${1:-}" in
+  parakeet-v3|espanol|multilingual)
+    download_and_extract "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8" \
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2" \
+      "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
+    ;;
+esac
+
+case "${1:-}" in
   parakeet-streaming|parakeet-unified)
     download_and_extract "parakeet-unified-560" \
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-streaming-560ms.tar.bz2" \

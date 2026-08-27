@@ -41,4 +41,3 @@ evals/candidates/
 # live-session voice captures must never be committed (privacy) — fixtures in git are synthetic only
 evals/fixtures/stt/real-home-*/
 evals/fixtures/stt/h18-echo-*/
-evals/fixtures/stt/pauses/

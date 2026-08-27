@@ -1,0 +1,69 @@
+[
+	{
+		"name": "contracts: tool.started audit event emitted with policy metadata",
+		"suite": "tools",
+		"language": "en",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "Turn on the kitchen light",
+				"expect": {
+					"routed": "skill",
+					"tool": "HassTurnOn",
+					"stageOrder": ["tool.requested", "tool.started", "tool.result"],
+					"expectEvents": {
+						"present": ["tool.started"],
+						"toolResultStatusFor": { "HassTurnOn": "ok" }
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "contracts: hung tool surfaces timeout status instead of hanging the turn",
+		"suite": "tools",
+		"language": "en",
+		"mode": "advisory",
+		"mockHa": { "latencyMs": { "HassTurnOff": 12000 } },
+		"turns": [
+			{
+				"text": "Turn off the bedroom light",
+				"expect": {
+					"routed": "skill",
+					"expectEvents": {
+						"toolResultStatusFor": { "HassTurnOff": "timeout" }
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "contracts: repeated provider failures open the breaker",
+		"suite": "tools",
+		"language": "en",
+		"mode": "advisory",
+		"mockHa": { "fail": { "*": "always" } },
+		"turns": [
+			{
+				"text": "Turn on the kitchen light",
+				"expect": { "expectEvents": { "toolResultStatus": "failed" } }
+			},
+			{
+				"text": "Turn on the bedroom light",
+				"expect": { "expectEvents": { "toolResultStatus": "failed" } }
+			},
+			{
+				"text": "Turn on the living room light",
+				"expect": { "expectEvents": { "toolResultStatus": "failed" } }
+			},
+			{
+				"text": "Turn on the kitchen light",
+				"expect": {
+					"maxToolMs": 500,
+					"expectEvents": { "toolResultStatus": "failed" }
+				}
+			}
+		]
+	}
+]

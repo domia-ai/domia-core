@@ -83,8 +83,6 @@ data-driven: the first instants of each capture window are gated so neither the 
 tail of the previous reply reaches the recognizer. All windows and trims are per-satellite database
 configuration.
 
-(protocol details), `domia-satellite-architecture.md` (design + as-built).
-
 ## The companion
 
 The character layers are prompt text over the same single LLM call — they cost ~nothing on the hot path

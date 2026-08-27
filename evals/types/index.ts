@@ -6,6 +6,9 @@ export type EvalSuiteType =
 	| "memory"
 	| "conversation"
 	| "parsing"
+	| "tools"
+	| "tools-confirm"
+	| "security"
 
 export type EvalRequirementType = "skills" | "ha" | "facts" | "multilingual"
 
@@ -27,6 +30,8 @@ export type EvalExpectType = {
 	replyExcludes?: string[]
 	noRepeat?: boolean
 	noEcho?: boolean
+	maxReplyWords?: number
+	judge?: { rubric: string; min: number }
 	maxTtfaMs?: number
 	status?: "ok"
 	promptIncludes?: string[]
@@ -35,9 +40,23 @@ export type EvalExpectType = {
 	factInDb?: { subject?: string; value: string }
 	noFactInDb?: { subject?: string; value: string }
 	factCountAtMost?: { subject?: string; value: string; count: number }
+	fastPath?: boolean
+	calledToolCount?: number
+	traceToolStatus?: Record<string, string>
+	exactlyOnce?: string
+	stageOrder?: string[]
+	maxDecisionMs?: number
+	maxToolMs?: number
+	maxFinalizeMs?: number
+	expectFinalizeMode?: string
+	expectStopReason?: string
 	expectEvents?: {
 		present?: string[]
 		toolResultStatus?: "ok" | "failed" | "timeout" | "cancelled"
+		toolResultStatusFor?: Record<
+			string,
+			"ok" | "failed" | "timeout" | "cancelled"
+		>
 		completedAfterPlayback?: boolean
 		seqOrdered?: boolean
 	}
@@ -58,6 +77,8 @@ export type EvalCaseType = {
 	passRatio?: number
 	mode?: EvalCaseModeType
 	isolate?: "facts" | "conversation" | "session"
+	seedFacts?: SeedFactType[]
+	mockHa?: Partial<MockHaBehaviorType>
 	turns: EvalTurnType[]
 }
 
@@ -68,6 +89,9 @@ export type EvalTurnRecordType = {
 	toolCallCount: number | null
 	llmMs: number | null
 	ttfaMs: number | null
+	agentDecisionMs: number | null
+	agentToolMs: number | null
+	agentFinalizeMs: number | null
 	status: string | null
 	skillResponse: unknown[] | null
 	llmPrompt: string | null
@@ -244,8 +268,17 @@ export type TtsTournamentRowType = {
 	rssAfterMb: number
 }
 
+export type MockHaBehaviorType = {
+	latencyMs: Record<string, number>
+	fail: Record<string, number | "always">
+	poison: Record<string, string>
+	annotations: boolean
+	catalogSize: number
+}
+
 export type MockHaServerType = {
 	url: string
+	setBehavior: (patch: Partial<MockHaBehaviorType>) => Promise<void>
 	close: () => Promise<void>
 }
 
@@ -290,4 +323,60 @@ export type SyncPageType = {
 export type EsphomeSentEventType = {
 	type: number
 	data?: { name: string; value: string }[]
+}
+
+export type FakeEsphomeCallType = { method: string; args: unknown[] }
+
+export type FakeEsphomeDeviceType = {
+	module: typeof import("esphome-client")
+	calls: FakeEsphomeCallType[]
+	callsOf: (method: string) => FakeEsphomeCallType[]
+	sentEventTypes: () => number[]
+	emit: (name: string, payload?: unknown) => void
+	setEntities: (list: Record<string, unknown>[]) => void
+}
+
+export type PauseCorpusCaseType = {
+	id: string
+	baseId: string
+	text: string
+	trapMs: number
+	file: string
+	cutFile: string
+}
+
+export type PauseCorpusManifestType = {
+	note: string
+	cases: PauseCorpusCaseType[]
+	controls: { id: string; file: string }[]
+}
+
+export type SeedFactType = { subject: string; relation: string; value: string }
+
+export type JudgeVerdictType = { score: number; reason: string }
+
+export type PairwiseWinnerType = "A" | "B" | "tie"
+
+export type TourneyCaseResultType = {
+	name: string
+	passed: boolean
+}
+
+export type TourneyTurnReplyType = {
+	caseName: string
+	turnIndex: number
+	user: string
+	reply: string
+}
+
+export type TourneyModelResultType = {
+	model: string
+	casesPassed: number
+	casesTotal: number
+	cases: TourneyCaseResultType[]
+	ttftP50Ms: number | null
+	tokensPerSecP50: number | null
+	llmMsP50: number | null
+	pairwise: { wins: number; losses: number; ties: number }
+	transcript: string
 }

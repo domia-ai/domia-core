@@ -4,6 +4,9 @@ import type {
 	SkillToolType,
 	DomiaSkillDescriptorType,
 	ToolPolicyType,
+	ToolHintOverrideType,
+	ToolRiskClassType,
+	ToolAnnotationsType,
 } from "@/db"
 
 export type ResolvedSkillResilienceType = {
@@ -22,10 +25,30 @@ export type ResolvedSkillDescriptorType = {
 	keywords: string[]
 	coreTools: string[]
 	toolPolicy: Record<string, ToolPolicyType>
+	toolHints: Record<string, ToolHintOverrideType>
 	paramAllow: Record<string, string[]>
 	finalize: ToolFinalizeMapType
 	genericWords: string[]
 	resilience: ResolvedSkillResilienceType
+}
+
+export type ResolvedToolMetaType = {
+	rawName: string
+	riskClass: ToolRiskClassType
+	idempotent: boolean
+	openWorld: boolean
+	cancellable: boolean
+	policy: ToolPolicyType
+	policySource: "descriptor" | "risk_default"
+	timeoutMs: number | null
+	allowedActors: string[] | null
+}
+
+export type EffectiveHintsType = {
+	readOnly: boolean | undefined
+	destructive: boolean | undefined
+	idempotent: boolean | undefined
+	openWorld: boolean | undefined
 }
 
 export type ToolShortlistResultType = {
@@ -64,6 +87,16 @@ export type SkillSpecializationType = {
 		args: Record<string, unknown>,
 		language?: string | null,
 	) => Promise<Record<string, unknown>> | Record<string, unknown>
+	invocationRisk?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		resolvedArgs: Record<string, unknown>,
+	) => ToolRiskClassType | null
+	fastPathSlotValues?: (
+		provider: SelectSkillProviderType,
+		key: string,
+		language: string | null,
+	) => { phrase: string; args: Record<string, unknown> }[] | null
 }
 
 export type HaEntityType = {
@@ -197,18 +230,28 @@ export type SkillCallStatusType =
 	| "blocked"
 	| "timeout"
 	| "unauthorized"
+	| "cancelled"
 
 export type SkillCallResultType = {
 	text: string
 	status: SkillCallStatusType
 	isError: boolean
 	resolvedArgs?: Record<string, unknown>
+	speakableText?: string
+	structured?: unknown
+}
+
+export type SkillCallToolOptionsType = {
+	onProgress?: (message: string | null) => void
+	timeoutMs?: number
 }
 
 export type RawSkillToolType = {
 	name: string
 	description?: string
 	inputSchema?: Record<string, unknown>
+	outputSchema?: Record<string, unknown>
+	annotations?: ToolAnnotationsType
 }
 
 export type SkillConnHandleType = {
@@ -217,13 +260,30 @@ export type SkillConnHandleType = {
 		rawName: string,
 		args: Record<string, unknown>,
 		signal?: AbortSignal,
+		opts?: SkillCallToolOptionsType,
 	) => Promise<SkillCallResultType>
 	close: () => Promise<void>
 }
 
+export type SkillElicitResultType =
+	| { action: "accept"; content: Record<string, unknown> }
+	| { action: "decline" }
+	| { action: "cancel" }
+
+export type SkillConnHooksType = {
+	onToolListChanged?: () => void
+	onElicit?: (
+		message: string,
+		requestedSchema: Record<string, unknown> | undefined,
+	) => Promise<SkillElicitResultType>
+}
+
 export type SkillAdapterType = {
 	protocol: string
-	connect: (cfg: SelectSkillProviderType) => Promise<SkillConnHandleType>
+	connect: (
+		cfg: SelectSkillProviderType,
+		hooks?: SkillConnHooksType,
+	) => Promise<SkillConnHandleType>
 }
 
 export type SkillConnectionType = {
@@ -234,6 +294,7 @@ export type SkillConnectionType = {
 	timeoutMs: number
 	allowedTools: Set<string>
 	descriptor: ResolvedSkillDescriptorType
+	toolMeta: Map<string, ResolvedToolMetaType>
 	language: string | null
 	provider: SelectSkillProviderType
 	specialization: SkillSpecializationType | null

@@ -77,7 +77,8 @@ export type RunControllerDepsType = {
 	onRunCancelled: (reason: string) => void
 	hasPendingSpeech?: () => boolean
 	onRunClosed: () => void
-	onPlaybackStart: () => void
+	onPlaybackStart: (durationMs: number | null) => void
+	onPlaybackDurationKnown?: (durationMs: number) => void
 	onPlaybackEnd: () => void
 }
 

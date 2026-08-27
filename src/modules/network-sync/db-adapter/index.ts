@@ -36,6 +36,7 @@ import {
 	type InsertMqttConfigType,
 	type InsertRuntimeCapabilitiesType,
 	type InsertCapabilityDelegationType,
+	type InsertSatelliteConfigType,
 	DEFAULT_TIMESTAMP,
 } from "@/db"
 
@@ -63,20 +64,25 @@ const dbAdapter = {
 		domiaKey: string,
 		newId: string,
 		client: DBClientOrTxType = dbClient,
-	): void => {
+	): InsertSatelliteConfigType[] => {
 		const existing = client
 			.select({ id: domia.id, isHosted: domia.isHosted })
 			.from(domia)
 			.where(eq(domia.domiaKey, domiaKey))
 			.get()
-		if (!existing || existing.id === newId) return
+		if (!existing || existing.id === newId) return []
 		if (existing.isHosted) {
 			networkSyncLogger.warn(
 				"domiaKey conflict: a network peer shares a locally-hosted identity's key — keeping the local row",
 				{ domiaKey, localId: existing.id, peerId: newId },
 			)
-			return
+			return []
 		}
+		const strandedSatellites = client
+			.select()
+			.from(satelliteConfig)
+			.where(eq(satelliteConfig.domiaId, existing.id))
+			.all()
 		client
 			.update(capabilityDelegation)
 			.set({ delegateToDomiaId: null })
@@ -94,6 +100,19 @@ const dbAdapter = {
 			client.delete(table).where(eq(table.domiaId, existing.id)).run()
 		}
 		client.delete(domia).where(eq(domia.id, existing.id)).run()
+		return strandedSatellites
+	},
+	restoreSatellites: (
+		rows: InsertSatelliteConfigType[],
+		domiaId: string,
+		client: DBClientOrTxType = dbClient,
+	): void => {
+		for (const row of rows) {
+			client
+				.insert(satelliteConfig)
+				.values({ ...row, domiaId })
+				.run()
+		}
 	},
 	markPeerOffline: (
 		nodeId: string,

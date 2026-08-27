@@ -20,6 +20,7 @@ import {
 	emotionTagLoosePattern,
 	collapseSpeechWhitespace,
 	withIdleTimeout,
+	ttsEngineLogger,
 } from "@/utils"
 import type {
 	TtsVoiceType,
@@ -70,6 +71,116 @@ export const ttsAdapterToPcmChunks = async function* (
 	const result = await adapter.run(domia, speech, options)
 	if (!result?.filePath) return
 	yield* wavFileToPcmChunks(result.filePath)
+}
+
+const phraseCache = new Map<string, Buffer[]>()
+const phraseInflight = new Map<string, Promise<Buffer[]>>()
+
+const phraseCacheKey = (
+	domia: DomiaType,
+	adapter: TtsEngineAdapterType,
+	speech: string,
+): string | null => {
+	const cfg = domia.ttsConfig
+	if (!cfg) return null
+	const voice = resolveTtsVoice(undefined, cfg, domia)
+	return [
+		adapter.id,
+		cfg.modelPath,
+		cfg.language,
+		voice.voiceName,
+		voice.speed,
+		voice.pitch,
+		voice.silenceScale,
+		speech.toLowerCase(),
+	].join("|")
+}
+
+export const phraseCacheStats = (): { entries: number } => ({
+	entries: phraseCache.size,
+})
+
+export const resetPhraseCache = (): void => {
+	phraseCache.clear()
+}
+
+export const cachedTtsPcmChunks = async function* (
+	domia: DomiaType,
+	adapter: TtsEngineAdapterType,
+	text: string,
+): AsyncIterable<Buffer> {
+	const cfg = domia.ttsConfig
+	const speech = sanitizeForSpeech(text)
+	if (
+		!cfg?.phraseCacheEnabled ||
+		!speech ||
+		speech.length > cfg.phraseCacheMaxChars
+	) {
+		yield* ttsAdapterToPcmChunks(domia, adapter, text)
+		return
+	}
+	const key = phraseCacheKey(domia, adapter, speech)
+	if (!key) {
+		yield* ttsAdapterToPcmChunks(domia, adapter, text)
+		return
+	}
+	const serveHit = (hit: Buffer[]): Buffer[] => {
+		phraseCache.delete(key)
+		phraseCache.set(key, hit)
+		ttsEngineLogger.info("🔊 phrase cache hit", {
+			chars: speech.length,
+			chunks: hit.length,
+		})
+		return hit
+	}
+	const hit = phraseCache.get(key)
+	if (hit) {
+		yield* serveHit(hit)
+		return
+	}
+	const pending = phraseInflight.get(key)
+	if (pending) {
+		try {
+			yield* serveHit(await pending)
+			return
+		} catch {
+			const settled = phraseCache.get(key)
+			if (settled) {
+				yield* serveHit(settled)
+				return
+			}
+		}
+	}
+	let resolveInflight: (chunks: Buffer[]) => void = () => undefined
+	let rejectInflight: (err: Error) => void = () => undefined
+	const inflight = new Promise<Buffer[]>((resolve, reject) => {
+		resolveInflight = resolve
+		rejectInflight = reject
+	})
+	inflight.catch(() => undefined)
+	phraseInflight.set(key, inflight)
+	const collected: Buffer[] = []
+	let completed = false
+	try {
+		for await (const chunk of ttsAdapterToPcmChunks(domia, adapter, text)) {
+			collected.push(chunk)
+			yield chunk
+		}
+		completed = true
+	} finally {
+		phraseInflight.delete(key)
+		if (completed && collected.length > 0) {
+			phraseCache.set(key, collected)
+			while (phraseCache.size > Math.max(1, cfg.phraseCacheEntries)) {
+				const oldest = phraseCache.keys().next().value
+				if (oldest === undefined) break
+				phraseCache.delete(oldest)
+			}
+			resolveInflight(collected)
+		} else {
+			rejectInflight(new Error("tts synthesis incomplete"))
+		}
+	}
 }
 
 const moodShades = (domia: DomiaType): boolean =>

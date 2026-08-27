@@ -95,13 +95,24 @@ export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
 
 	dbClient.transaction((tx) => {
 		networkSyncLogger.debug("Upserting domia", logParams)
-		dbAdapter.deleteStalePeerByKey(domiaKey, domiaId, tx)
+		const strandedSatellites = dbAdapter.deleteStalePeerByKey(
+			domiaKey,
+			domiaId,
+			tx,
+		)
 		dbAdapter
 			.upsertDomia(
 				{ ...normalizeDomia(domia), isHosted: false, lastSeenAt: Date.now() },
 				tx,
 			)
 			.run()
+		if (strandedSatellites.length > 0) {
+			networkSyncLogger.info(
+				`🛰️ re-parented ${strandedSatellites.length} satellite binding(s) across peer re-registration`,
+				logParams,
+			)
+			dbAdapter.restoreSatellites(strandedSatellites, domiaId, tx)
+		}
 
 		const runtimeCapabilities = normalizeRuntimeCapabilities(domia)
 		if (runtimeCapabilities) {

@@ -45,10 +45,10 @@ export type ToolChoiceType = "auto" | "none"
 
 export type ToolCallOrReplyType =
 	| { kind: "reply"; text: string }
-	| { kind: "tool_calls"; calls: ToolCallType[] }
+	| { kind: "tool_calls"; calls: ToolCallType[]; say?: string }
 
 export type StreamReplyOrToolsType =
-	| { kind: "reply"; tokens: AsyncIterable<string> }
+	| { kind: "reply"; tokens: AsyncIterable<string>; close: () => void }
 	| { kind: "tool_calls"; calls: ToolCallType[] }
 
 export type LlmEngineAdapterType = {
@@ -77,16 +77,31 @@ export type LlmEngineAdapterType = {
 		tools: ToolDefinitionType[],
 		onUsage?: LlmUsageSinkType,
 		toolChoice?: ToolChoiceType,
+		signal?: AbortSignal,
 	) => Promise<ToolCallOrReplyType>
 	runReplyStreamOrTools?: (
 		domia: DomiaType,
 		messages: ChatMessageType[],
 		tools: ToolDefinitionType[],
 		onUsage?: LlmUsageSinkType,
+		toolChoice?: ToolChoiceType,
+		signal?: AbortSignal,
 	) => Promise<StreamReplyOrToolsType>
 	runIntent?: (
 		domia: DomiaType,
 		prompt: string,
 		modelName: string,
+	) => Promise<string>
+	runConstrainedJson?: (
+		domia: DomiaType,
+		prompt: string,
+		schema: Record<string, unknown>,
+	) => Promise<string>
+	runChatConstrainedJson?: (
+		domia: DomiaType,
+		messages: ChatMessageType[],
+		schema: Record<string, unknown>,
+		onUsage?: LlmUsageSinkType,
+		signal?: AbortSignal,
 	) => Promise<string>
 }

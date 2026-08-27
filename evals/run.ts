@@ -5,6 +5,8 @@ import {
 	waitForHealth,
 	postChat,
 	postModules,
+	postConfig,
+	resetConversation,
 	pollRecord,
 	assertTurn,
 	evalCaseFileSchema,
@@ -69,7 +71,19 @@ const SUITE_REQUIRES: Partial<Record<EvalSuiteType, EvalRequirementType[]>> = {
 	"home-mock": ["skills"],
 	"home-live": ["skills", "ha"],
 	memory: ["facts"],
+	tools: ["skills"],
+	"tools-confirm": ["skills"],
+	security: ["skills"],
+	fast: ["skills"],
 }
+
+const MOCK_SUITES: EvalSuiteType[] = [
+	"home-mock",
+	"tools",
+	"tools-confirm",
+	"security",
+	"fast",
+]
 
 const reloadSkills = async (): Promise<void> => {
 	await postModules({ skillsEngine: false })
@@ -90,7 +104,11 @@ const waitForMockSync = async (): Promise<boolean> => {
 	return false
 }
 
-const setupMockHa = async (): Promise<() => Promise<void>> => {
+const setupMockHa = async (): Promise<{
+	teardown: () => Promise<void>
+	setBehavior: (patch: Record<string, unknown>) => Promise<void>
+	resync: () => Promise<void>
+}> => {
 	const mock = await startMockHa()
 	const realProviders = queryAll<{ id: string }>(
 		"SELECT id FROM skill_provider WHERE is_active = 1 AND id != ?",
@@ -109,12 +127,23 @@ const setupMockHa = async (): Promise<() => Promise<void>> => {
 	await reloadSkills()
 	const synced = await waitForMockSync()
 	if (!synced) console.warn("⚠️ mock-ha provider did not sync tools in time")
-	return async () => {
-		execWrite("DELETE FROM skill_provider WHERE id = ?", [MOCK_HA_PROVIDER_ID])
-		for (const p of realProviders)
-			execWrite("UPDATE skill_provider SET is_active = 1 WHERE id = ?", [p.id])
-		await reloadSkills()
-		await mock.close()
+	return {
+		teardown: async () => {
+			execWrite("DELETE FROM skill_provider WHERE id = ?", [
+				MOCK_HA_PROVIDER_ID,
+			])
+			for (const p of realProviders)
+				execWrite("UPDATE skill_provider SET is_active = 1 WHERE id = ?", [
+					p.id,
+				])
+			await reloadSkills()
+			await mock.close()
+		},
+		setBehavior: mock.setBehavior,
+		resync: async () => {
+			await reloadSkills()
+			await waitForMockSync()
+		},
 	}
 }
 
@@ -152,12 +181,23 @@ const runCaseOnce = async (
 	return { assertions, interactionIds }
 }
 
-const runCase = async (c: EvalCaseType): Promise<EvalCaseResultType> => {
+const runCase = async (
+	c: EvalCaseType,
+	mockControl?: {
+		setBehavior: (patch: Record<string, unknown>) => Promise<void>
+		resync: () => Promise<void>
+	},
+): Promise<EvalCaseResultType> => {
 	const runs = c.runs ?? 1
 	const passRatio = c.passRatio ?? 1
 	const runsDetail: EvalRunDetailType[] = []
+	if (mockControl && c.mockHa) {
+		await mockControl.setBehavior(c.mockHa)
+		if (c.mockHa.annotations || c.mockHa.catalogSize) await mockControl.resync()
+	}
 	for (let i = 0; i < runs; i++) {
 		if (c.isolate === "facts") await isolateFacts()
+		if (MOCK_SUITES.includes(c.suite)) await resetConversation()
 		const { assertions, interactionIds } = await runCaseOnce(c)
 		runsDetail.push({
 			run: i + 1,
@@ -165,6 +205,10 @@ const runCase = async (c: EvalCaseType): Promise<EvalCaseResultType> => {
 			interactionIds,
 			assertions,
 		})
+	}
+	if (mockControl && c.mockHa) {
+		await mockControl.setBehavior({})
+		if (c.mockHa.annotations || c.mockHa.catalogSize) await mockControl.resync()
 	}
 	const runsPassed = runsDetail.filter((r) => r.passed).length
 	return {
@@ -209,7 +253,7 @@ const main = async (): Promise<void> => {
 		const needs = [...(SUITE_REQUIRES[c.suite] ?? [])]
 		if (
 			c.language === "es" &&
-			(c.suite === "home-mock" || c.suite === "home-live")
+			(c.suite === "home-live" || MOCK_SUITES.includes(c.suite))
 		)
 			needs.push("multilingual")
 		const missing = needs.filter((r) => !met.has(r))
@@ -237,15 +281,25 @@ const main = async (): Promise<void> => {
 				console.log(`     ✗ ${a.name}${a.detail ? ` — ${a.detail}` : ""}`)
 		}
 	}
-	for (const c of cases.filter((c) => c.suite !== "home-mock"))
+	for (const c of cases.filter((c) => !MOCK_SUITES.includes(c.suite)))
 		report(await runCase(c))
-	const mockCases = cases.filter((c) => c.suite === "home-mock")
+	const mockCases = cases.filter((c) => MOCK_SUITES.includes(c.suite))
 	if (mockCases.length > 0) {
-		const teardown = await setupMockHa()
+		const mock = await setupMockHa()
 		try {
-			for (const c of mockCases) report(await runCase(c))
+			for (const c of mockCases.filter((c) => c.suite !== "fast"))
+				report(await runCase(c, mock))
+			const fastCases = mockCases.filter((c) => c.suite === "fast")
+			if (fastCases.length > 0) {
+				await postConfig({ llm: { fastPathEnabled: true } })
+				try {
+					for (const c of fastCases) report(await runCase(c, mock))
+				} finally {
+					await postConfig({ llm: { fastPathEnabled: false } })
+				}
+			}
 		} finally {
-			await teardown()
+			await mock.teardown()
 		}
 	}
 	const gateResults = results.filter((r) => r.mode === "gate")

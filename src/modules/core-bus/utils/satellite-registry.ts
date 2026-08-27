@@ -28,16 +28,18 @@ export const getSatelliteControl = (
 ): SatelliteControlType | null =>
 	controls.get(controlKey(domiaKey, satelliteId)) ?? null
 
-const sinks = new Map<string, Set<StreamingSinkType>>()
+const sinks = new Map<string, Map<StreamingSinkType, string | null>>()
 
-const announcers = new Map<string, Set<SatelliteAnnouncerType>>()
+const announcers = new Map<string, Map<SatelliteAnnouncerType, string | null>>()
 
 export const registerSatelliteAnnouncer = (
 	domiaKey: string,
 	announcer: SatelliteAnnouncerType,
+	satelliteId?: string | null,
 ): void => {
-	const set = announcers.get(domiaKey) ?? new Set<SatelliteAnnouncerType>()
-	set.add(announcer)
+	const set =
+		announcers.get(domiaKey) ?? new Map<SatelliteAnnouncerType, string | null>()
+	set.set(announcer, satelliteId ?? null)
 	announcers.set(domiaKey, set)
 }
 
@@ -53,10 +55,17 @@ export const unregisterSatelliteAnnouncer = (
 
 export const getSatelliteAnnouncerFor = (
 	domiaKey: string,
+	satelliteId?: string | null,
 ): SatelliteAnnouncerType | null => {
 	const set = announcers.get(domiaKey)
 	if (!set || set.size === 0) return null
-	const targets = [...set]
+	const targets =
+		satelliteId != null
+			? [...set.entries()]
+					.filter(([, id]) => id === satelliteId)
+					.map(([t]) => t)
+			: [...set.keys()]
+	if (targets.length === 0) return null
 	if (targets.length === 1) return targets[0]
 	return (url) => {
 		for (const t of targets) t(url)
@@ -66,9 +75,10 @@ export const getSatelliteAnnouncerFor = (
 export const registerSatelliteSink = (
 	domiaKey: string,
 	sink: StreamingSinkType,
+	satelliteId?: string | null,
 ): void => {
-	const set = sinks.get(domiaKey) ?? new Set<StreamingSinkType>()
-	set.add(sink)
+	const set = sinks.get(domiaKey) ?? new Map<StreamingSinkType, string | null>()
+	set.set(sink, satelliteId ?? null)
 	sinks.set(domiaKey, set)
 }
 
@@ -84,10 +94,17 @@ export const unregisterSatelliteSink = (
 
 export const getSatelliteSinkFor = (
 	domiaKey: string,
+	satelliteId?: string | null,
 ): StreamingSinkType | null => {
 	const set = sinks.get(domiaKey)
 	if (!set || set.size === 0) return null
-	const targets = [...set]
+	const targets =
+		satelliteId != null
+			? [...set.entries()]
+					.filter(([, id]) => id === satelliteId)
+					.map(([t]) => t)
+			: [...set.keys()]
+	if (targets.length === 0) return null
 	if (targets.length === 1) return targets[0]
 	const fidelities = ["none", "sentence", "estimated", "exact"] as const
 	const weakest = targets.reduce<(typeof fidelities)[number]>((acc, t) => {

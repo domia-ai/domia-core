@@ -68,7 +68,7 @@ export const beginTurn = (
 			rememberAbort(interactionId)
 			controller.abort()
 			pausedTurns.delete(domiaId)
-			ledgers.get(interactionId)?.releaseGate()
+			ledgers.get(interactionId)?.resume()
 			stopActivePlayback(domiaId)
 			clearStreamingSink(interactionId)
 			domiaBusLogger.info(`🛑 turn aborted (${reason})`, {

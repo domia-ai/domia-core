@@ -278,7 +278,7 @@ export const createEsphomeRunController = (
 		item.startedAt = Date.now()
 		activePlayback = item
 		announcingObserved = false
-		deps.onPlaybackStart()
+		deps.onPlaybackStart(item.durationMs)
 		if (phase === "processing" || phase === "listening") setPhase("playback")
 		if (item.kind === "reply") {
 			deps.sendEvent(deps.events.intentEnd, [
@@ -355,8 +355,10 @@ export const createEsphomeRunController = (
 		durationMs: number | null,
 	): void => {
 		if (durationMs === null) return
-		if (activePlayback?.playbackGeneration === generation)
+		if (activePlayback?.playbackGeneration === generation) {
 			activePlayback.durationMs = durationMs
+			deps.onPlaybackDurationKnown?.(durationMs)
+		}
 		const queued = queue.find((q) => q.playbackGeneration === generation)
 		if (queued) queued.durationMs = durationMs
 	}

@@ -44,6 +44,24 @@ export const ladder = (interactionId: string): LadderRowType[] =>
 		[interactionId],
 	)
 
+export const pollEventSince = async (
+	sinceIso: string,
+	type: string,
+	timeoutMs = 10000,
+): Promise<string | null> => {
+	const since = sinceIso.replace("T", " ").slice(0, 19)
+	const start = Date.now()
+	while (Date.now() - start < timeoutMs) {
+		const row = queryOne<{ interaction_id: string }>(
+			"SELECT interaction_id FROM turn_event WHERE type = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1",
+			[type, since],
+		)
+		if (row) return row.interaction_id
+		await sleep(100)
+	}
+	return null
+}
+
 const readRecord = (
 	interactionId: string,
 	needsTool: boolean,
@@ -52,7 +70,7 @@ const readRecord = (
 	try {
 		const row = db
 			.prepare(
-				`SELECT intent_decision, tool_call_count, llm_ms, ttfa_ms, status, skill_response, llm_prompt
+				`SELECT intent_decision, tool_call_count, llm_ms, ttfa_ms, agent_decision_ms, agent_tool_ms, agent_finalize_ms, status, skill_response, llm_prompt
 				 FROM interaction_trace WHERE id = ?`,
 			)
 			.get(interactionId) as
@@ -61,6 +79,9 @@ const readRecord = (
 					tool_call_count: number | null
 					llm_ms: number | null
 					ttfa_ms: number | null
+					agent_decision_ms: number | null
+					agent_tool_ms: number | null
+					agent_finalize_ms: number | null
 					status: string | null
 					skill_response: string | null
 					llm_prompt: string | null
@@ -97,6 +118,9 @@ const readRecord = (
 			toolCallCount: row.tool_call_count,
 			llmMs: row.llm_ms,
 			ttfaMs: row.ttfa_ms,
+			agentDecisionMs: row.agent_decision_ms,
+			agentToolMs: row.agent_tool_ms,
+			agentFinalizeMs: row.agent_finalize_ms,
 			status: row.status,
 			skillResponse,
 			llmPrompt: row.llm_prompt,

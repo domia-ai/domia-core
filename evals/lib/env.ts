@@ -14,6 +14,8 @@ const envSchema = z.object({
 	E2E_B_URL: z.string().optional(),
 	E2E_B_DB: z.string().optional(),
 	LABEL: z.string().optional(),
+	EVAL_JUDGE_MODEL: z.string().default("qwen2.5:7b"),
+	EVAL_JUDGE_HOST: z.string().default("http://localhost:11434"),
 	BENCH_RUNS: z.coerce.number().int().min(1).default(1),
 	BENCH_TTFA_P95_MAX: z.coerce.number().optional(),
 	BENCH_TOTAL_P95_MAX: z.coerce.number().optional(),

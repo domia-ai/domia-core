@@ -94,6 +94,7 @@ export const resolveDescriptor = (
 		keywords: concatUnique(fRoot?.keywords, dRoot?.keywords, locale?.keywords),
 		coreTools: concatUnique(fExec?.coreTools, dExec?.coreTools),
 		toolPolicy: { ...fExec?.toolPolicy, ...dExec?.toolPolicy },
+		toolHints: { ...fExec?.toolHints, ...dExec?.toolHints },
 		paramAllow: { ...fExec?.paramAllow, ...dExec?.paramAllow },
 		finalize: mergeFinalize(fExec?.finalize, dExec?.finalize, locale?.finalize),
 		genericWords: concatUnique(

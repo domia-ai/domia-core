@@ -27,8 +27,12 @@ import {
 	stampFirstTokenIterable,
 	extractEmotionTags,
 	splitSentenceEmotionTags,
+	beginTurn,
+	createPlaybackLedger,
+	registerTurnLedger,
 } from "@/modules/core-bus/utils"
 import { sentenceVoiceForTags } from "@/modules/tts-engine"
+import { createToolGuards } from "@/modules/agent"
 import { startSatelliteSpeculation } from "@/modules/satellite-core/controller/speculation"
 import {
 	subscribeToDomiaBus,
@@ -1057,9 +1061,97 @@ const runSlotCoordinatorChecks = async (): Promise<void> => {
 	resetSlotCoordinator()
 }
 
+const runPauseAbortLedgerChecks = async (): Promise<void> => {
+	const domiaId = "turn-logic-pause-abort"
+	const interactionId = randomUUID()
+	const scope = beginTurn(domiaId, interactionId)
+	const ledger = createPlaybackLedger(
+		{ sampleRate: 16000, channels: 1 },
+		{ wordLevelHeard: false },
+	)
+	registerTurnLedger(interactionId, ledger)
+	ledger.pause()
+	checker.check("ledger pause marks paused", ledger.isPaused())
+	let waiterResolved = false
+	void ledger.waitResume().then(() => {
+		waiterResolved = true
+	})
+	scope.abort("pause-abort-eval")
+	await sleep(20)
+	checker.check(
+		"abort while paused clears the pause (resume semantics)",
+		!ledger.isPaused(),
+	)
+	checker.check("abort while paused releases pause waiters", waiterResolved)
+	checker.check(
+		"post-abort playback loop cannot re-enter the pause wait",
+		!ledger.isPaused() || scope.aborted(),
+	)
+	scope.end()
+}
+
+const runToolGuardChecks = (): void => {
+	console.log("\ntool guards (createToolGuards)")
+	const guards = createToolGuards({
+		repeatWarnAt: 1,
+		repeatBlockAt: 2,
+		maxCallsPerTurn: 2,
+	})
+	const a1 = guards.onCallAttempt("t__a", { name: "x" })
+	const a2 = guards.onCallAttempt("t__b", { name: "y" })
+	const a3 = guards.onCallAttempt("t__c", { name: "z" })
+	checker.check("first call within cap is allowed", a1.action === "allow")
+	checker.check("second call within cap is allowed", a2.action === "allow")
+	checker.check(
+		"single batch of cap+1 blocks the extra call (reservation, not execution)",
+		a3.action === "block" && a3.forceNoTool === true,
+	)
+	checker.check("cap trip is reported", guards.wasCapTripped())
+
+	const g2 = createToolGuards({
+		repeatWarnAt: 1,
+		repeatBlockAt: 2,
+		maxCallsPerTurn: 10,
+	})
+	g2.onCallAttempt("t__a", { name: "x" })
+	g2.onResult("t__a", { name: "x" }, false, "boom", false)
+	const retry1 = g2.onCallAttempt("t__a", { name: "x" })
+	checker.check(
+		"repeat of a failed signature is blocked with guidance",
+		retry1.action === "block" && retry1.forceNoTool !== true,
+	)
+	g2.onResult("t__a", { name: "x" }, false, "boom", false)
+	const retry2 = g2.onCallAttempt("t__a", { name: "x" })
+	checker.check(
+		"second repeat forces no-tool",
+		retry2.action === "block" && retry2.forceNoTool === true,
+	)
+	const other = g2.onCallAttempt("t__a", { name: "different" })
+	checker.check(
+		"different args are a different signature",
+		other.action === "allow",
+	)
+
+	const g3 = createToolGuards({
+		repeatWarnAt: 1,
+		repeatBlockAt: 2,
+		maxCallsPerTurn: 10,
+	})
+	g3.onCallAttempt("t__read", {})
+	g3.onResult("t__read", {}, true, "the answer", true)
+	const cachedRepeat = g3.onCallAttempt("t__read", {})
+	checker.check(
+		"repeated ok read serves the cached synthetic",
+		cachedRepeat.action === "block" &&
+			(cachedRepeat.syntheticResult ?? "").includes("the answer"),
+	)
+}
+
 const main = async (): Promise<void> => {
 	runFabricatorChecks()
+	runToolGuardChecks()
 	runProsodyTagChecks()
+	await runPauseAbortLedgerChecks()
 	await runSlotCoordinatorChecks()
 	runDynamicEndpointingChecks()
 	await runSpeculationChecks()
