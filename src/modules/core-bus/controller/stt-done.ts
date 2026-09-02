@@ -1572,9 +1572,22 @@ const handleSttDoneFlow = async (
 		}),
 	)
 
-	if (!transcript.trim()) {
+	const wakeWordOnly = (() => {
+		const wake = domia.wakeWordConfig?.wakeWord?.trim().toLowerCase()
+		if (!wake) return false
+		const spoken = transcript
+			.trim()
+			.toLowerCase()
+			.replace(/[.,!?¡¿]/g, "")
+		if (!spoken || spoken.includes(" ")) return false
+		if (spoken === wake) return true
+		return spoken.length >= 4 && wake.startsWith(spoken)
+	})()
+	if (!transcript.trim() || wakeWordOnly) {
 		domiaBusLogger.info(
-			`📝 STT_DONE: empty transcript — no speech detected, ending turn without LLM/TTS`,
+			wakeWordOnly
+				? `📝 STT_DONE: wake-word-only transcript ("${transcript.trim()}") — discarding turn`
+				: `📝 STT_DONE: empty transcript — no speech detected, ending turn without LLM/TTS`,
 			{ domiaId, interactionId },
 		)
 		void persistTerminal(interactionId, INTERACTION_STATUS_ENUM.NO_SPEECH)

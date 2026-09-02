@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 
+import type { SttEngineEnumType } from "@/db"
 import { runLLM } from "@/modules/llm-engine"
 import { runSTT } from "@/modules/stt-engine"
 import { runTTS } from "@/modules/tts-engine"
@@ -55,9 +56,16 @@ const percentile = (sorted: number[], p: number): number => {
 export const benchmarkCommand = async (
 	filePath: string,
 	corpusPath?: string,
+	sttEngine?: string,
+	sttBaseUrl?: string,
 ) => {
 	try {
-		const domia = getDomia({})
+		const domia = getDomia({
+			sttConfigOverrides: {
+				...(sttEngine && { engine: sttEngine as SttEngineEnumType }),
+				...(sttBaseUrl && { baseUrl: sttBaseUrl }),
+			},
+		})
 
 		if (corpusPath) {
 			const absCorpus = path.resolve(corpusPath)

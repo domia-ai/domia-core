@@ -105,15 +105,15 @@
 		]
 	},
 	{
-		"name": "agent-judgment: bare entity name should not trigger an action (advisory)",
+		"name": "clarify: bare entity name asks instead of acting",
 		"suite": "fast",
 		"language": "en",
-		"mode": "advisory",
 		"turns": [
 			{
 				"text": "Kitchen light",
 				"expect": {
-					"calledToolCount": 0
+					"calledToolCount": 0,
+					"replyIncludes": ["Kitchen Light"]
 				}
 			}
 		]

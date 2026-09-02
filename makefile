@@ -206,6 +206,45 @@ llm-server: ##🚀 Run llama-server in the foreground on :$(LLM_PORT) (dev/bench
 		--host 0.0.0.0 --port $(LLM_PORT) \
 		-ngl 99 -c $(LLM_CTX) --no-warmup $(LLM_EXTRA_FLAGS)
 
+NEMO_VERSION ?= 0.1.0
+NEMO_DIR ?= $(HOME)/nemo-speech
+NEMO_BIN = $(NEMO_DIR)/nemo-speech/bin/nemo-speech
+NEMO_PORT ?= 8600
+NEMO_MODEL ?= nemotron-3.5
+NEMO_EXTRA_FLAGS ?=
+
+nemo-speech: ##🏗️ Install NeMo-Speech.cpp prebuilt binary + pull the ASR model
+	@if [ -x "$(NEMO_BIN)" ]; then echo "✅ nemo-speech already installed: $(NEMO_BIN)"; \
+	else \
+		case "$$(uname -s)-$$(uname -m)" in \
+			Darwin-arm64) asset=macos-aarch64-metal ;; \
+			Linux-aarch64) asset=linux-aarch64-vulkan ;; \
+			Linux-x86_64) asset=linux-x86_64-cuda13 ;; \
+			*) echo "❌ unsupported platform"; exit 1 ;; \
+		esac; \
+		mkdir -p "$(NEMO_DIR)"; \
+		echo "🌐 Downloading nemo-speech-$(NEMO_VERSION)-$$asset..."; \
+		curl -fL --progress-bar "https://github.com/NVIDIA/NeMo-Speech.cpp/releases/download/v$(NEMO_VERSION)/nemo-speech-$(NEMO_VERSION)-$$asset.tar.gz" | tar xz -C "$(NEMO_DIR)"; \
+	fi
+	@"$(NEMO_BIN)" model pull $(NEMO_MODEL)
+	@echo "✅ nemo-speech ready — set stt.engine=NEMO_SPEECH, stt.baseUrl=http://127.0.0.1:$(NEMO_PORT)/v1"
+
+nemo-serve: ##🚀 Run nemo-speech serve in the foreground on :$(NEMO_PORT) (dev, any OS)
+	@$(MAKE) nemo-speech
+	@MODEL=$$("$(NEMO_BIN)" model list --paths 2>/dev/null | grep -m1 "$(NEMO_MODEL)" | awk '{print $$NF}'); \
+	[ -n "$$MODEL" ] || MODEL=$$(find $$HOME/.cache/nemo-speech $$HOME/Library/Caches/NeMoSpeech -name "*.gguf" 2>/dev/null | grep -m1 asr || find $$HOME/.cache/nemo-speech $$HOME/Library/Caches/NeMoSpeech -name "*.gguf" 2>/dev/null | head -1); \
+	"$(NEMO_BIN)" serve --asr-model "$$MODEL" --host 127.0.0.1 --port $(NEMO_PORT) --no-ui --no-warmup --asr.backend.gpu 0 --asr.streaming.rnnt_right_context 1 $(NEMO_EXTRA_FLAGS)
+
+nemo-service: ##🔁 Install nemo-speech serve as a systemd service (Linux, needs sudo)
+	@[ "$$(uname -s)" = "Linux" ] || { echo "❌ systemd service is Linux-only — on macOS use: make nemo-serve"; exit 1; }
+	@$(MAKE) nemo-speech
+	@MODEL=$$(find $$HOME/.cache/nemo-speech -name "*.gguf" 2>/dev/null | grep -m1 asr || find $$HOME/.cache/nemo-speech -name "*.gguf" | head -1); \
+	printf '[Unit]\nDescription=NeMo-Speech.cpp server (Domia STT)\nAfter=network-online.target\n\n[Service]\nType=simple\nUser=%s\nExecStart=%s serve --asr-model %s --host 127.0.0.1 --port %s --no-ui --no-warmup --asr.backend.gpu 0 --asr.streaming.rnnt_right_context 1 %s\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' \
+		"$$(id -un)" "$(NEMO_BIN)" "$$MODEL" "$(NEMO_PORT)" "$(NEMO_EXTRA_FLAGS)" > /tmp/nemo-speech.service
+	@sudo cp /tmp/nemo-speech.service /etc/systemd/system/nemo-speech.service
+	@sudo systemctl daemon-reload && sudo systemctl enable --now nemo-speech
+	@echo "✅ nemo-speech service installed (port $(NEMO_PORT)). Logs: journalctl -fu nemo-speech"
+
 llm-service: ##🔁 Install llama-server as a systemd service (Linux, needs sudo)
 	@[ "$$(uname -s)" = "Linux" ] || { echo "❌ systemd service is Linux-only — on macOS use: make llm-server"; exit 1; }
 	@$(MAKE) llama-cpp llm-gguf

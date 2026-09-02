@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "fs"
 import { resolve } from "path"
-import { dbClient } from "@/db"
+import { dbClient, STT_ENGINE_ENUM } from "@/db"
 import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
 import { getBootStatus } from "@/modules/runtime-control"
@@ -39,14 +39,24 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 	const entries: ConfigHealthEntryType[] = []
 	const caps = domia.runtimeCapabilities
 	const stt = domia.sttConfig
-	if (stt && caps?.stt)
+	if (stt && caps?.stt) {
+		const remoteStt =
+			stt.engine === STT_ENGINE_ENUM.NEMO_SPEECH ||
+			stt.engine === STT_ENGINE_ENUM.OPENAI_COMPATIBLE
 		entries.push({
 			stage: "stt",
 			engine: stt.engine,
 			configured: stt.modelName,
-			path: stt.modelPath,
-			status: dirInstalled(stt.modelPath) ? "ok" : "missing",
+			path: remoteStt ? stt.baseUrl : stt.modelPath,
+			status: remoteStt
+				? stt.baseUrl?.trim()
+					? "ok"
+					: "missing"
+				: dirInstalled(stt.modelPath)
+					? "ok"
+					: "missing",
 		})
+	}
 	const tts = domia.ttsConfig
 	if (tts && caps?.tts)
 		entries.push({
@@ -201,7 +211,7 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 			: null,
 		modules: toBundleSection(domia.moduleSettings),
 		capabilities: toBundleSection(domia.runtimeCapabilities),
-		stt: toBundleSection(domia.sttConfig),
+		stt: toBundleSection(domia.sttConfig, ["apiKey"]),
 		tts: toBundleSection(domia.ttsConfig),
 		llm: toBundleSection(domia.llmModelConfig, ["apiKey"]),
 		wakeWord: toBundleSection(domia.wakeWordConfig),

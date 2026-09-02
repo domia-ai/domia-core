@@ -9,6 +9,7 @@ import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 export type SttCapabilitiesType = {
 	streaming: boolean
 	expectedSampleRate: number
+	external?: boolean
 }
 
 export type SttEngineAdapterType = {
@@ -100,6 +101,19 @@ export type SttSessionResultType =
 	| { ok: true }
 	| { partial: string }
 	| { text: string }
+
+export type NemoSpeechServerEventType = {
+	type?: string
+	item_id?: string
+	delta?: string
+	transcript?: string
+	error?: unknown
+}
+
+export type NemoSpeechPendingCommitType = {
+	generation: number
+	itemId: string | null
+}
 
 export type SttStreamSessionType = {
 	pushChunk: (pcm: Buffer) => void

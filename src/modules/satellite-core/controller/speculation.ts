@@ -22,8 +22,8 @@ import type {
 const wrapSession = (session: SttStreamSessionType): SttStreamSessionType => ({
 	pushChunk: (pcm) => session.pushChunk(pcm),
 	partial: () => session.partial(),
-	// no pads into the shared decoder — partial() is the snapshot, so resume needs no reset
-	flushPartial: () => Promise.resolve(session.partial()),
+	// flushPartial(0) pads nothing into the shared decoder — it only lets async engines settle pending deltas
+	flushPartial: () => session.flushPartial(0),
 	finish: () => session.finish(),
 	reset: () => undefined,
 	abort: () => session.abort(),
@@ -34,22 +34,31 @@ export const startSatelliteSpeculation = async (
 ): Promise<SatelliteSpeculationType | null> => {
 	const { identity, interactionId } = args
 	const config = identity.wakeWordConfig
-	if (!config?.satelliteSpeculationEnabled) return null
-	if (config.speculativeSilenceMs <= 0) return null
-	if (skillsMayIntercept(identity) && config.speculateWithSkills !== true)
+	const notArmed = (reason: string): null => {
+		satelliteGatewayLogger.debug("🔮 speculation not armed", {
+			domiaKey: identity.domiaKey,
+			interactionId,
+			reason,
+		})
 		return null
-	if (!args.sttSession()) return null
+	}
+	if (!config?.satelliteSpeculationEnabled) return notArmed("disabled")
+	if (config.speculativeSilenceMs <= 0) return notArmed("no-silence-window")
+	if (skillsMayIntercept(identity) && config.speculateWithSkills !== true)
+		return notArmed("skills-intercept")
+	if (!args.sttSession()) return notArmed("no-stt-session")
 	const features = resolveCoreBusFeatures(
 		identity,
 		normalizeRuntimeCapabilities(identity.runtimeCapabilities ?? {}),
 	)
-	if (features.canRunLlm ? !features.canStreamLlm : false) return null
-	if (!features.canRunTts) return null
+	if (features.canRunLlm ? !features.canStreamLlm : false)
+		return notArmed("no-llm-stream")
+	if (!features.canRunTts) return notArmed("no-tts")
 	const admitted = await admitVoiceReply(identity).catch((err: unknown) => {
 		if (isSemaphoreBusyError(err)) return null
 		throw err
 	})
-	if (!admitted) return null
+	if (!admitted) return notArmed("voice-semaphore-busy")
 	const release = onceFn(admitted)
 
 	const fastVad = createVadWindow(config, {

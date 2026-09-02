@@ -92,6 +92,32 @@ const argsOfCapture = (
 	return { args: surface, resolvedArgs: resolved }
 }
 
+const ARTICLE_PREFIX_RE = /^(the |my |our |la |el |las |los |mi |mis |una |un )/
+
+export const matchBareEntity = (
+	domia: DomiaType,
+	transcript: string,
+): { name: string; phrase: string } | null => {
+	const enabled =
+		domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED
+	if (!enabled) return null
+	const index = ensureIndex(domia)
+	if (!index) return null
+	let folded = fold(transcript)
+	if (!folded) return null
+	folded = folded.replace(ARTICLE_PREFIX_RE, "")
+	for (const intent of index.intents)
+		for (const slot of intent.slots.values()) {
+			if (slot.kind !== "values") continue
+			for (const value of slot.values) {
+				if (fold(value.phrase) !== folded) continue
+				const name = value.args.name ?? value.args.area
+				if (typeof name === "string") return { name, phrase: value.phrase }
+			}
+		}
+	return null
+}
+
 export const matchFastPath = (
 	domia: DomiaType,
 	transcript: string,
@@ -126,6 +152,8 @@ export const matchFastPath = (
 			reason: rebuilding.size > 0 ? "rebuilding" : "no_index",
 		})
 	const utteranceTokens = new Set(tokensOf(transcript))
+	const sets = languageSetsFor(domia.characterProfile?.language)
+	const numbers = { words: sets.numberWords, joiners: sets.numberJoiners }
 	const minCoverage =
 		domia.llmModelConfig?.fastPathMinCoverage ?? DEFAULT_FAST_PATH_MIN_COVERAGE
 	const candidates: FastPathMatchType[] = []
@@ -138,7 +166,12 @@ export const matchFastPath = (
 		if (!keywordsOk) continue
 		for (const template of intent.templates) {
 			if (!template.prefilter.test(folded)) continue
-			const parsed = matchTemplate(transcript, template.ast, intent.slots)
+			const parsed = matchTemplate(
+				transcript,
+				template.ast,
+				intent.slots,
+				numbers,
+			)
 			if (!parsed?.consumed) continue
 			const coverage =
 				folded.length > 0 ? parsed.literalChars / folded.length : 0

@@ -87,8 +87,11 @@ const matchNodes = (
 	if (!slot) return
 	if (slot.kind === "range") {
 		const numMatch = /^(\d+)/.exec(text.slice(pos))
-		if (!numMatch) return
-		const value = Number(numMatch[1])
+		const parsed = numMatch
+			? { value: Number(numMatch[1]), chars: numMatch[1].length }
+			: wordNumberAt(text, pos)
+		if (!parsed) return
+		const { value, chars } = parsed
 		if (value < slot.min || value > slot.max) return
 		const captures = new Map(state.captures)
 		captures.set(node.name, value)
@@ -98,8 +101,8 @@ const matchNodes = (
 			nodeIdx + 1,
 			{
 				...state,
-				pos: pos + numMatch[1].length,
-				slotChars: state.slotChars + numMatch[1].length,
+				pos: pos + chars,
+				slotChars: state.slotChars + chars,
 				captures,
 			},
 			slots,
@@ -130,11 +133,45 @@ const matchNodes = (
 	}
 }
 
+let activeNumbers: { words: Record<string, number>; joiners: string[] } = {
+	words: {},
+	joiners: [],
+}
+
+const wordNumberAt = (
+	text: string,
+	pos: number,
+): { value: number; chars: number } | null => {
+	const tail = text.slice(pos)
+	const tokens = tail.split(" ")
+	const w = activeNumbers.words
+	const t1 = tokens[0]
+	if (!t1 || w[t1] === undefined) return null
+	const tens = w[t1]
+	const joinerIdx =
+		tokens[1] && activeNumbers.joiners.includes(tokens[1]) ? 2 : 1
+	const unitTok = tokens[joinerIdx]
+	if (
+		tens >= 20 &&
+		tens % 10 === 0 &&
+		unitTok &&
+		w[unitTok] !== undefined &&
+		w[unitTok] >= 1 &&
+		w[unitTok] <= 9
+	) {
+		const chars = tokens.slice(0, joinerIdx + 1).join(" ").length
+		return { value: tens + w[unitTok], chars }
+	}
+	return { value: tens, chars: t1.length }
+}
+
 export const matchTemplate = (
 	utterance: string,
 	ast: FastPathAstNodeType[],
 	slots: Map<string, CompiledSlotType>,
+	numbers?: { words: Record<string, number>; joiners: string[] },
 ): FastPathParseResultType | null => {
+	if (numbers) activeNumbers = numbers
 	const text = fold(utterance)
 	const results: StateType[] = []
 	matchNodes(

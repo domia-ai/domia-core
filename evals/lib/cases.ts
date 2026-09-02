@@ -90,6 +90,7 @@ export const evalCaseSchema = z
 			"tools",
 			"tools-confirm",
 			"security",
+			"routing",
 		]),
 		language: z.enum(["en", "es"]),
 		runs: z.number().int().positive().optional(),

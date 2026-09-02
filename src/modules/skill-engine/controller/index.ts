@@ -585,6 +585,22 @@ export const callTool = async (
 			resolvedArgs: args,
 		}
 	}
+	const intercepted = conn.specialization?.interceptToolCall?.(
+		conn.provider,
+		rawName,
+		args,
+	)
+	if (intercepted) {
+		skillEngineLogger.debug("skill callTool served locally by specialization", {
+			tool: namespacedName,
+		})
+		return {
+			text: intercepted.text,
+			status: "ok",
+			isError: false,
+			resolvedArgs: args,
+		}
+	}
 	if (policy === "confirm" && !preResolved) {
 		skillEngineLogger.warn("skill callTool requires confirmation — not run", {
 			tool: namespacedName,

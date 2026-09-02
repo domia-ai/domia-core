@@ -3,6 +3,7 @@ export type EvalSuiteType =
 	| "home-live"
 	| "chat"
 	| "fast"
+	| "routing"
 	| "memory"
 	| "conversation"
 	| "parsing"

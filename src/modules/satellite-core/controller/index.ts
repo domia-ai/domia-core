@@ -1,5 +1,6 @@
 import { writeFile, readFile } from "fs/promises"
 import { join } from "path"
+import { randomUUID } from "crypto"
 
 import { type DomiaType, safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import {
@@ -43,6 +44,13 @@ import {
 import { getSttEngine, type SttStreamSessionType } from "@/modules/stt-engine"
 import { acknowledgeEndpoint } from "@/modules/feedback-sounds"
 import { runLLM } from "@/modules/llm-engine"
+import { getRecentTurns, getRecentUserMoods } from "@/modules/session-manager"
+import {
+	getFactStrings,
+	getKnowledgeStrings,
+	getPreviouslyStrings,
+	getUserModelSummary,
+} from "@/modules/memory"
 import {
 	personaContextFromDomia,
 	buildPromptFromPersona,
@@ -104,12 +112,39 @@ const primeLlmPrefix = (domia: DomiaType): void => {
 	lastLlmPrimeAt.set(domia.id, now)
 	const cfg = domia.llmModelConfig
 	if (!cfg) return
-	const prompt = buildPromptFromPersona(personaContextFromDomia(domia), "", {
-		omitUserInput: true,
-	})
-	void runLLM({ ...domia, llmModelConfig: { ...cfg, numPredict: 1 } }, prompt)
-		.then(() => satelliteGatewayLogger.info("🔥 llm prefix primed"))
-		.catch(() => undefined)
+	void (async () => {
+		const memoryOn = domia.moduleSettings?.memoryEngine !== false
+		const emotionOn = domia.moduleSettings?.emotionEngine !== false
+		const [
+			recentTurns,
+			knownFacts,
+			knowledgeBase,
+			previously,
+			userModel,
+			userMoodTrend,
+		] = await Promise.all([
+			memoryOn ? getRecentTurns(domia, randomUUID()) : [],
+			domia.moduleSettings?.factRecall !== false ? getFactStrings(domia) : [],
+			getKnowledgeStrings(domia),
+			memoryOn ? getPreviouslyStrings(domia) : [],
+			memoryOn ? getUserModelSummary(domia) : null,
+			emotionOn ? getRecentUserMoods(domia) : [],
+		])
+		const prompt = buildPromptFromPersona(personaContextFromDomia(domia), "", {
+			omitUserInput: true,
+			recentTurns,
+			knownFacts,
+			knowledgeBase,
+			previously,
+			userModel: userModel ?? undefined,
+			userMoodTrend,
+		})
+		await runLLM(
+			{ ...domia, llmModelConfig: { ...cfg, numPredict: 1 } },
+			prompt,
+		)
+		satelliteGatewayLogger.info("🔥 llm prefix primed")
+	})().catch(() => undefined)
 }
 
 const sendViaSink = async (
@@ -943,6 +978,22 @@ export const createSatelliteSession = (
 				void handleUtterance(speechEndAt)
 				return
 			}
+			if (
+				(wc?.satelliteSpeculationEnabled ?? false) &&
+				!busy &&
+				!spec &&
+				!specStarting &&
+				(pausedBargeIn !== null ||
+					pendingInteractionId === null ||
+					sttSession === null ||
+					!vad.everDetected())
+			)
+				satelliteGatewayLogger.debug("🔮 speculation precondition miss", {
+					pausedBargeIn: pausedBargeIn !== null,
+					pendingInteraction: pendingInteractionId !== null,
+					sttSession: sttSession !== null,
+					vadDetected: vad.everDetected(),
+				})
 			if (
 				!busy &&
 				!spec &&

@@ -427,18 +427,6 @@ export const buildPromptFromPersona = (
 		sections.push(["ENVIRONMENT", environmentContext])
 	}
 
-	const knowledgeBase = persona.knowledgeBase ?? options?.knowledgeBase
-	if (knowledgeBase?.length) {
-		sections.push([
-			"WHAT YOU KNOW ABOUT HERE",
-			`${knowledgeBase
-				.map((k) => `- ${k}`)
-				.join(
-					"\n",
-				)}\nThis is current and authoritative — answer questions about your place and role directly from it, no tools or internet needed.`,
-		])
-	}
-
 	if (moduleSettings?.memoryEngine !== false) {
 		const userModel = persona.userModel ?? options?.userModel
 		if (userModel?.trim()) {
@@ -458,6 +446,19 @@ export const buildPromptFromPersona = (
 					)}\nYou remember these; weave them in naturally when relevant.`,
 			])
 		}
+	}
+
+	// ranked-per-utterance sections sit below the stable blocks so their churn can't invalidate the cached prefix
+	const knowledgeBase = persona.knowledgeBase ?? options?.knowledgeBase
+	if (knowledgeBase?.length) {
+		sections.push([
+			"WHAT YOU KNOW ABOUT HERE",
+			`${knowledgeBase
+				.map((k) => `- ${k}`)
+				.join(
+					"\n",
+				)}\nThis is current and authoritative — answer questions about your place and role directly from it, no tools or internet needed.`,
+		])
 	}
 
 	const knownFacts = persona.knownFacts ?? options?.knownFacts

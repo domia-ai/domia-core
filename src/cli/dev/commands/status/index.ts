@@ -28,7 +28,9 @@ export const statusCommand = async () => {
 			`📝 STT Engine: ${domia.sttConfig?.engine ?? "Not configured"} ` +
 				`(model=${domia.sttConfig?.modelName ?? "n/a"}, ` +
 				`quant=${domia.sttConfig?.quantization ?? "default"}, ` +
-				`path=${domia.sttConfig?.modelPath ?? "n/a"})`,
+				`path=${domia.sttConfig?.modelPath ?? "n/a"}, ` +
+				`url=${domia.sttConfig?.baseUrl ?? "n/a"}, ` +
+				`apiKey=${domia.sttConfig?.apiKey ? "set" : "none"})`,
 		)
 		devCliLogger.info(
 			`🧠 LLM Engine: ${domia.llmModelConfig?.engine ?? "Not configured"} ` +

@@ -4,18 +4,10 @@ import { STT_ENGINE_ENUM, DEFAULT_STT_TIMEOUT_MS } from "@/db"
 import { sttEngineLogger, STT_ERRORS, domiaError, wrapPcmToWav } from "@/utils"
 import type { DomiaType } from "@/modules/core"
 
+import { createNemoSpeechSession } from "./session"
 import type { SttEngineAdapterType } from "../../types"
 
 const SAMPLE_RATE = 16000
-
-const ASR_TEXT_MARKER = "<asr_text>"
-
-const cleanTranscript = (text: string): string => {
-	const marker = text.indexOf(ASR_TEXT_MARKER)
-	return (
-		marker >= 0 ? text.slice(marker + ASR_TEXT_MARKER.length) : text
-	).trim()
-}
 
 const transcribeRemote = async (
 	domia: DomiaType,
@@ -28,7 +20,7 @@ const transcribeRemote = async (
 			logger: sttEngineLogger,
 			meta: {
 				domiaId: domia.id,
-				reason: "openai-compatible STT requires sttConfig.baseUrl",
+				reason: "nemo-speech STT requires sttConfig.baseUrl",
 			},
 		})
 	const form = new FormData()
@@ -37,12 +29,12 @@ const transcribeRemote = async (
 		new Blob([new Uint8Array(wav)], { type: "audio/wav" }),
 		"audio.wav",
 	)
-	form.append("response_format", "json")
 	if (config?.language) form.append("language", config.language)
 	if (config?.modelName) form.append("model", config.modelName)
 	const headers: Record<string, string> = {}
 	if (config?.apiKey?.trim())
 		headers.authorization = `Bearer ${config.apiKey.trim()}`
+	const started = Date.now()
 	const res = await fetch(
 		`${baseUrl.replace(/\/$/, "")}/audio/transcriptions`,
 		{
@@ -58,18 +50,47 @@ const transcribeRemote = async (
 			meta: { domiaId: domia.id, status: res.status },
 		})
 	const body = (await res.json()) as { text?: string }
-	return cleanTranscript(body.text ?? "")
+	sttEngineLogger.debug("nemo-speech batch transcription", {
+		domiaId: domia.id,
+		execMs: Date.now() - started,
+	})
+	return (body.text ?? "").trim()
 }
 
-export const openAiCompatibleSttEngine: SttEngineAdapterType = {
-	id: STT_ENGINE_ENUM.OPENAI_COMPATIBLE,
+export const nemoSpeechEngine: SttEngineAdapterType = {
+	id: STT_ENGINE_ENUM.NEMO_SPEECH,
 	capabilities: {
-		streaming: false,
+		streaming: true,
 		expectedSampleRate: SAMPLE_RATE,
 		external: true,
 	},
-	run: async (domia, filePath) =>
-		transcribeRemote(domia, await readFile(filePath)),
-	runPcm: (domia, pcm) =>
-		transcribeRemote(domia, wrapPcmToWav(pcm, SAMPLE_RATE, 1, 16)),
+	run: async (domia, filePath, onTiming) => {
+		const started = Date.now()
+		const text = await transcribeRemote(domia, await readFile(filePath))
+		onTiming?.({ queueWaitMs: 0, execMs: Date.now() - started })
+		return text
+	},
+	runPcm: async (domia, pcm, onTiming) => {
+		const started = Date.now()
+		const text = await transcribeRemote(
+			domia,
+			wrapPcmToWav(pcm, SAMPLE_RATE, 1, 16),
+		)
+		onTiming?.({ queueWaitMs: 0, execMs: Date.now() - started })
+		return text
+	},
+	runStream: async (domia, audioStream) => {
+		const session = createNemoSpeechSession(domia)
+		if (!session)
+			throw domiaError(STT_ERRORS.TRANSCRIPTION_FAILED, {
+				logger: sttEngineLogger,
+				meta: {
+					domiaId: domia.id,
+					reason: "nemo-speech STT requires sttConfig.baseUrl",
+				},
+			})
+		for await (const chunk of audioStream) session.pushChunk(chunk)
+		return session.finish()
+	},
+	createSession: (domia) => createNemoSpeechSession(domia),
 }

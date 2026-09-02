@@ -7,7 +7,7 @@ import {
 } from "@/db"
 import { domiaBusLogger, getTraceContext, languageSetsFor } from "@/utils"
 import { updateInteraction } from "@/modules/session-manager"
-import { matchFastPath } from "@/modules/fast-path"
+import { matchFastPath, matchBareEntity } from "@/modules/fast-path"
 import {
 	callTool,
 	getInvocationPolicy,
@@ -23,7 +23,11 @@ import {
 
 import { skillsEnabled } from "./skill-routing"
 import { getInteractionRuntime } from "./interaction-runtime"
-import { lastActedEntity } from "./recent-tools"
+import {
+	lastActedEntity,
+	setClarifiedEntity,
+	clearClarifiedEntity,
+} from "./recent-tools"
 import type { CoreBusContextType, SttDonePayloadType } from "../types"
 
 const resolveAnaphora = async (
@@ -102,6 +106,39 @@ export const attemptFastPathRoute = async (
 	const effectiveTranscript = await resolveAnaphora(domia, transcript)
 	const verdict = matchFastPath(domia, effectiveTranscript)
 	if (verdict.kind !== "match") {
+		if (verdict.reason === "no_match") {
+			const bare = matchBareEntity(domia, effectiveTranscript)
+			if (bare) {
+				setClarifiedEntity(domia.id, bare.name)
+				const phrases = languageSetsFor(
+					domia.characterProfile?.language ?? null,
+				).phrases
+				const question = (
+					phrases.clarifyWhatToDo ??
+					"What would you like me to do with {entity}?"
+				).replace("{entity}", bare.phrase)
+				void updateInteraction({
+					id: interactionId,
+					intentDecision: `clarify:${bare.name}`,
+					fastPathMs: verdict.fastPathMs,
+					intentMs: verdict.fastPathMs,
+				}).catch(() => undefined)
+				domiaBusLogger.info(
+					`⚡ bare-entity clarify "${bare.phrase}" → asking`,
+					{ domiaId: domia.id, interactionId },
+				)
+				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+					reply: question,
+					transcript,
+					interactionId,
+					originDomiaKey,
+					responseType: payload.responseType,
+					speechEndAt: payload.speechEndAt,
+					liveVoice: payload.liveVoice,
+				})
+				return true
+			}
+		}
 		if (verdict.reason !== "disabled")
 			void updateInteraction({
 				id: interactionId,
@@ -187,6 +224,7 @@ export const attemptFastPathRoute = async (
 			true,
 		)
 		const ok = res.status === "ok" && !res.isError
+		if (ok) clearClarifiedEntity(domia.id)
 		const template = ok ? (finalize?.done ?? finalize?.ack) : finalize?.error
 		const fallback = ok
 			? (phrases.thatIsDone ?? "Done.")

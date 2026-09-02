@@ -75,6 +75,7 @@ const SUITE_REQUIRES: Partial<Record<EvalSuiteType, EvalRequirementType[]>> = {
 	"tools-confirm": ["skills"],
 	security: ["skills"],
 	fast: ["skills"],
+	routing: ["skills"],
 }
 
 const MOCK_SUITES: EvalSuiteType[] = [
@@ -83,6 +84,7 @@ const MOCK_SUITES: EvalSuiteType[] = [
 	"tools-confirm",
 	"security",
 	"fast",
+	"routing",
 ]
 
 const reloadSkills = async (): Promise<void> => {

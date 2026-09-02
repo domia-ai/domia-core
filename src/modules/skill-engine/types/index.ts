@@ -81,6 +81,11 @@ export type SkillSpecializationType = {
 		handle: SkillConnHandleType,
 	) => Promise<void> | void
 	onDisconnected?: (provider: SelectSkillProviderType) => Promise<void> | void
+	interceptToolCall?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		args: Record<string, unknown>,
+	) => { text: string } | null
 	resolveArgs?: (
 		provider: SelectSkillProviderType,
 		rawName: string,

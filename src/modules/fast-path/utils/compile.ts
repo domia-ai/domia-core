@@ -76,10 +76,34 @@ const compileSlot = (
 	return valuesSlot(values)
 }
 
+const numberFormOf = (folded: string): string | null => {
+	const tokens = folded.split(" ")
+	const last = tokens[tokens.length - 1]
+	if (!last || last.length < 4) return null
+	const variant = last.endsWith("s") ? last.slice(0, -1) : `${last}s`
+	return [...tokens.slice(0, -1), variant].join(" ")
+}
+
+const withNumberForms = (
+	values: FastPathSlotValueType[],
+): FastPathSlotValueType[] => {
+	const seen = new Set(values.map((v) => v.folded))
+	const out = [...values]
+	for (const v of values) {
+		const variant = numberFormOf(v.folded)
+		if (!variant || seen.has(variant)) continue
+		seen.add(variant)
+		out.push({ ...v, folded: variant })
+	}
+	return out.sort((a, b) => b.folded.length - a.folded.length)
+}
+
 const valuesSlot = (
 	values: FastPathSlotValueType[],
 ): CompiledSlotType | null => {
-	const kept = dropAmbiguousPhrases(values.filter((v) => v.folded.length > 0))
+	const kept = dropAmbiguousPhrases(
+		withNumberForms(values.filter((v) => v.folded.length > 0)),
+	)
 	return kept.length > 0 ? { kind: "values", values: kept } : null
 }
 

@@ -34,10 +34,21 @@ const main = async (): Promise<void> => {
 		return (res.logits.data as Float32Array)[0]
 	}
 	const threshold = DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD
+	const TAIL_KEEP_MS = 150
+	const SR = 16000
+	const trimTail = (audio: Float32Array, trapMs: number): Float32Array => {
+		const trimMs = Math.max(0, trapMs - TAIL_KEEP_MS)
+		const trimSamples = Math.floor((trimMs * SR) / 1000)
+		return trimSamples > 0 && trimSamples < audio.length
+			? audio.subarray(0, audio.length - trimSamples)
+			: audio
+	}
 
 	let missing = 0
 	let fullComplete = 0
 	const byTrap = new Map<number, { held: number; n: number }>()
+	const trimmedScores: number[] = []
+	const fullScores: number[] = []
 	for (const c of manifest.cases) {
 		const cutPath = path.resolve(c.cutFile)
 		const fullPath = path.resolve(c.file)
@@ -46,8 +57,12 @@ const main = async (): Promise<void> => {
 			missing++
 			continue
 		}
-		const probAtPause = await score(wavPcm(cutPath))
+		const cutAudio = wavPcm(cutPath)
+		const probAtPause = await score(cutAudio)
+		const probTrimmed = await score(trimTail(cutAudio, c.trapMs))
 		const probFull = await score(wavPcm(fullPath))
+		trimmedScores.push(probTrimmed)
+		fullScores.push(probFull)
 		if (probFull >= threshold) fullComplete++
 		const held = probAtPause < threshold
 		const bucket = byTrap.get(c.trapMs) ?? { held: 0, n: 0 }
@@ -55,7 +70,7 @@ const main = async (): Promise<void> => {
 		if (held) bucket.held++
 		byTrap.set(c.trapMs, bucket)
 		console.log(
-			`  ${c.id.padEnd(14)} at-pause p=${probAtPause.toFixed(3)} ${held ? "HELD" : "released"} · full p=${probFull.toFixed(3)}`,
+			`  ${c.id.padEnd(14)} at-pause p=${probAtPause.toFixed(3)} ${held ? "HELD" : "released"} · trimmed(150ms) p=${probTrimmed.toFixed(3)} · full p=${probFull.toFixed(3)}`,
 		)
 	}
 
@@ -89,6 +104,19 @@ const main = async (): Promise<void> => {
 		`  full utterances complete: ${fullComplete}/${manifest.cases.length}`,
 	)
 
+	console.log(`\n=== tail-trim calibration grid (trimmed-to-150ms scores) ===`)
+	console.log(`  | thr | mid-sentence HELD | fulls complete |`)
+	const gridRows: { thr: number; held: number; fulls: number }[] = []
+	for (const thr of [0.5, 0.6, 0.7, 0.8, 0.9]) {
+		const held = trimmedScores.filter((v) => v < thr).length
+		const fulls = fullScores.filter((v) => v >= thr).length
+		gridRows.push({ thr, held, fulls })
+		console.log(
+			`  | ${thr.toFixed(1)} | ${held}/${trimmedScores.length} | ${fulls}/${fullScores.length} |`,
+		)
+	}
+
+	const heldAtDefault = trimmedScores.filter((v) => v < threshold).length
 	const gates: [string, boolean][] = [
 		["manifest has cases", manifest.cases.length >= 12],
 		["all referenced files exist", missing === 0],
@@ -96,6 +124,10 @@ const main = async (): Promise<void> => {
 		[
 			"full trap utterances score complete (separation exists)",
 			fullComplete >= manifest.cases.length - 2,
+		],
+		[
+			`tail-trimmed mid-sentence captures hold at threshold ${threshold} (≥14/${trimmedScores.length})`,
+			heldAtDefault >= 14,
 		],
 	]
 	let failed = 0

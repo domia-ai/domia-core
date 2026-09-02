@@ -101,5 +101,29 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "fast: clarify then anaphora executes on the clarified entity",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Living room light",
+				"expect": {
+					"calledToolCount": 0,
+					"replyIncludes": ["Living Room Light"]
+				}
+			},
+			{
+				"text": "Turn it on",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassTurnOn",
+					"argsSubset": {
+						"name": "Living Room Light"
+					}
+				}
+			}
+		]
 	}
 ]

@@ -64,7 +64,12 @@ export const warmupOnBoot = (
 ): void => {
 	if (!domia.warmupOnBoot) return
 	const tasks: Promise<void>[] = []
-	if (capabilities.stt && domia.sttConfig?.modelPath) tasks.push(warmStt(domia))
+	const sttEngine = domia.sttConfig?.engine
+		? getSttEngine(domia.sttConfig.engine)
+		: null
+	const sttInProcess = Boolean(sttEngine) && !sttEngine?.capabilities.external
+	if (capabilities.stt && sttInProcess && domia.sttConfig?.modelPath)
+		tasks.push(warmStt(domia))
 	if (capabilities.llm && domia.llmModelConfig?.modelName)
 		tasks.push(warmLlm(domia))
 	if (capabilities.tts && domia.ttsConfig?.modelPath) tasks.push(warmTts(domia))

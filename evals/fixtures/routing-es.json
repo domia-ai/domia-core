@@ -1,0 +1,356 @@
+[
+	{
+		"name": "route-es: imperativo encender → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Enciende la luz de la cocina",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: imperativo apagar → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Apaga la luz del dormitorio",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: cortesía puedes → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Puedes encender la luz de la sala?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: por favor → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Por favor apaga la luz de la cocina",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: prender variante → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Prende la luz del dormitorio",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: brillo → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Pon la luz de la cocina al treinta por ciento",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: baja el brillo → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Baja la luz de la sala al veinte por ciento",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: podrías → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Podrías encender la luz del dormitorio?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: necesito luz → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Necesito la luz de la cocina encendida",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: desconecta → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Desconecta la luz de la sala",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: saludo → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Buenos días, ¿cómo estás?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: opinión → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Qué piensas del verano?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: matemática → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Cuánto es doce por ocho?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: cuento → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Cuéntame un cuento corto de un gato",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: desahogo → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Tuve un día muy pesado hoy",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: cultura general → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Quién escribió Don Quijote?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: charla lluvia → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Te gustan los días de lluvia?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: luz como sustantivo → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Ayer vi un espectáculo de luces hermoso",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: acción pasada → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Ayer encendí la luz de la cocina y leí un libro",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es: negación → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "No enciendas la luz de la cocina, ya hay mucha claridad",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es-estado: estado encendida → skill (gap)",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Está encendida la luz de la cocina?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		],
+		"mode": "advisory"
+	},
+	{
+		"name": "route-es-estado: estado cuáles → skill (gap)",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Cuáles luces están encendidas ahora?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		],
+		"mode": "advisory"
+	},
+	{
+		"name": "route-es-hard: indirecta oscuro → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Está muy oscuro en la cocina",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		],
+		"mode": "advisory"
+	},
+	{
+		"name": "route-es-hard: más brillante → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Pon más brillante la sala",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es-hard: comando+charla → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Enciende la luz de la cocina y cuéntame un chiste",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es-hard: hipotética → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Si encendiera todas las luces, ¿subiría la factura?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-es-hard: cita reportada → chat",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "Mi mamá me dijo que apagara las luces al salir",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	}
+]

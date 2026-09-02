@@ -7,6 +7,7 @@ export type IntentDecisionType = {
 		| "classified"
 		| "classify-failed"
 		| "single-slot-skip-llm"
+		| "numeric-followup"
 		| `keyphrase:${string}`
 		| `keyword:${string}`
 		| `embedding:${string}`

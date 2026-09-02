@@ -6,7 +6,7 @@ import {
 import type { DomiaType } from "@/modules/core"
 import { runLLMIntent } from "@/modules/llm-engine"
 import { knownSlotCount } from "@/modules/llm-slots"
-import { intentRouterLogger, parseLlmJson } from "@/utils"
+import { intentRouterLogger, parseLlmJson, languageSetsFor } from "@/utils"
 
 import { INTENT_SYSTEM } from "../constants"
 import { embed } from "@/modules/embeddings"
@@ -26,6 +26,70 @@ import type {
 
 const EMBED_AMBIGUITY_BAND = 0.06
 
+const escapeRe = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+export const routingBlockerHit = (
+	transcript: string,
+	language: string | null | undefined,
+): string | null => {
+	const folded = transcript.toLowerCase()
+	for (const blocker of languageSetsFor(language ?? null).routingBlockers) {
+		const re = new RegExp(
+			`(^|[\\s,;¡¿"'(])${escapeRe(blocker)}([\\s,;.!?"')]|$)`,
+			"i",
+		)
+		if (re.test(folded)) return blocker
+	}
+	return null
+}
+
+export const scoreIntentEmbedding = async (
+	domia: DomiaType,
+	transcript: string,
+	tools: IntentToolHintType[],
+	hints?: IntentRoutingHintsType,
+): Promise<{ best: number; lexical: number } | null> => {
+	const [toolVecs, exampleVecs, queryVecs] = await Promise.all([
+		toolEmbeddings(domia, tools),
+		hints?.exampleUtterances?.length
+			? exampleEmbeddings(domia, hints.exampleUtterances)
+			: Promise.resolve(null),
+		embed(domia, [transcript]),
+	])
+	const query = queryVecs?.[0]
+	if (!toolVecs || !query) return null
+	let best = 0
+	for (const vec of toolVecs) best = Math.max(best, cosine(query, vec))
+	if (exampleVecs)
+		for (const vec of exampleVecs) best = Math.max(best, cosine(query, vec))
+	const lexical = await lexicalToolScore(domia, transcript, tools)
+	return { best, lexical }
+}
+
+const numericFollowUp = (
+	transcript: string,
+	language: string | null | undefined,
+): boolean => {
+	const sets = languageSetsFor(language)
+	const tokens = transcript
+		.toLowerCase()
+		.replace(/[.,!?¡¿%]/g, " ")
+		.split(/\s+/)
+		.filter(Boolean)
+	if (tokens.length === 0 || tokens.length > 4) return false
+	let hasNumber = false
+	for (const token of tokens) {
+		if (/^\d+$/.test(token) || sets.numberWords[token] !== undefined) {
+			hasNumber = true
+			continue
+		}
+		if (sets.numberJoiners.includes(token)) continue
+		if (sets.percentWords.includes(token)) continue
+		return false
+	}
+	return hasNumber
+}
+
 const classifyByEmbedding = async (
 	domia: DomiaType,
 	transcript: string,
@@ -34,6 +98,8 @@ const classifyByEmbedding = async (
 ): Promise<IntentDecisionType | "ambiguous" | null> => {
 	const hit = keyphraseHit(transcript, tools)
 	if (hit) return { needsSkill: true, reason: `keyphrase:${hit}` }
+	if (numericFollowUp(transcript, domia.characterProfile?.language))
+		return { needsSkill: true, reason: "numeric-followup" }
 	if (hints?.keywords?.length) {
 		const kw = keywordHit(transcript, hints.keywords)
 		if (kw) return { needsSkill: true, reason: `keyword:${kw}` }
@@ -64,6 +130,13 @@ const classifyByEmbedding = async (
 	if (verdict === "chat") {
 		lexical = await lexicalToolScore(domia, transcript, tools)
 		if (lexical > 0) verdict = "ambiguous"
+	}
+	if (verdict === "skill") {
+		const blocker = routingBlockerHit(
+			transcript,
+			domia.characterProfile?.language,
+		)
+		if (blocker) verdict = "ambiguous"
 	}
 	intentRouterLogger.info(
 		`intent embedding gate: sim=${best.toFixed(3)} lex=${lexical.toFixed(2)} thr=${threshold} → ${verdict} (${Date.now() - started}ms)`,

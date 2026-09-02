@@ -102,6 +102,7 @@ export const clearOpenAiClients = (): void => clients.clear()
 const acquireSlot = async (
 	domia: DomiaType,
 	purpose: LlmSlotPurposeType = "interactive",
+	label = "unlabeled",
 ): Promise<{ release: () => void; slotId: number | null }> => {
 	llmSemaphore.setLimit(
 		domia?.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
@@ -117,6 +118,11 @@ const acquireSlot = async (
 			meta: { error, reason: "slot lease acquisition" },
 		})
 	}
+	llmEngineLogger.debug("llm slot acquired", {
+		label,
+		purpose,
+		slotId: lease?.slotId ?? null,
+	})
 	let released = false
 	return {
 		slotId: lease?.slotId ?? null,
@@ -286,7 +292,7 @@ export const runOpenAiCompatible = async (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "run")
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
@@ -326,7 +332,7 @@ const runOpenAiCompatibleStream = async function* (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "stream")
 	const release = lease.release
 	let abortStream: (() => void) | null = null
 	let finishReason: string | null = null
@@ -392,7 +398,7 @@ const runOpenAiCompatibleJson = async (
 	const modelName = requireModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia, "background")
+	const lease = await acquireSlot(domia, "background", "json")
 	try {
 		if (shouldAbort?.()) return ""
 		const stream = await client.chat.completions.create({
@@ -431,7 +437,7 @@ const runOpenAiCompatibleIntent = async (
 ): Promise<string> => {
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "background", "intent")
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
@@ -474,7 +480,7 @@ const warmupOpenAiCompatible = async (domia: DomiaType): Promise<void> => {
 	const models = [...new Set([main, reflection || null, tool || null])].filter(
 		(m): m is string => Boolean(m),
 	)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "warmup")
 	try {
 		for (const model of models) {
 			await warmupModel(client, model, lease.slotId)
@@ -492,7 +498,7 @@ const runOpenAiCompatibleConstrainedJson = async (
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "constrainedjson")
 	try {
 		const response = await client.chat.completions.create({
 			model: modelName,
@@ -527,7 +533,7 @@ const runOpenAiCompatibleChatConstrainedJson = async (
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "chatconstrainedjson")
 	try {
 		if (signal?.aborted) return ""
 		const response = await client.chat.completions.create(
@@ -576,7 +582,7 @@ const runOpenAiCompatibleWithTools = async (
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "withtools")
 	try {
 		if (signal?.aborted) return { kind: "reply", text: "" }
 		const response = await client.chat.completions.create(
@@ -637,7 +643,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 	const modelName = requireToolModel(domia)
 	const cfg = resolveConfig(domia)
 	const client = getClient(cfg)
-	const lease = await acquireSlot(domia)
+	const lease = await acquireSlot(domia, "interactive", "replystreamortools")
 	const releaseOnce = lease.release
 	try {
 		const startedAt = Date.now()

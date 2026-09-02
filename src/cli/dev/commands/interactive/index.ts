@@ -1,5 +1,7 @@
 import inquirer from "inquirer"
 
+import { STT_ENGINE_ENUM, STT_ENGINE_ENUM_VALUES } from "@/db"
+
 import {
 	environmentCommand,
 	wakeWordCommand,
@@ -10,7 +12,15 @@ import {
 	ttsCommand,
 	playAudioCommand,
 	benchmarkCommand,
+	statusCommand,
+	configShowCommand,
+	configHealthCommand,
 } from "../"
+
+const REMOTE_STT_ENGINES: string[] = [
+	STT_ENGINE_ENUM.NEMO_SPEECH,
+	STT_ENGINE_ENUM.OPENAI_COMPATIBLE,
+]
 
 export const interactiveCommand = async () => {
 	const { command } = await inquirer.prompt([
@@ -28,6 +38,9 @@ export const interactiveCommand = async () => {
 				{ name: "🗣️  Run TTS", value: "tts" },
 				{ name: "🔊 Play Audio", value: "play-audio" },
 				{ name: "📊 Benchmark", value: "benchmark" },
+				{ name: "📋 Status", value: "status" },
+				{ name: "🩺 Config Health", value: "config-health" },
+				{ name: "🧾 Config Show", value: "config-show" },
 			],
 		},
 	])
@@ -43,15 +56,33 @@ export const interactiveCommand = async () => {
 			await audioRecordingCommand()
 			break
 		case "stt": {
-			const { file } = await inquirer.prompt([
+			const { file, engine } = await inquirer.prompt([
 				{
 					type: "input",
 					name: "file",
 					message: "📝 Path to audio file:",
 					default: "tmp/mic_test_output.wav",
 				},
+				{
+					type: "list",
+					name: "engine",
+					message: "📝 STT engine:",
+					choices: [...STT_ENGINE_ENUM_VALUES],
+				},
 			])
-			await sttCommand(file)
+			let baseUrl: string | undefined
+			if (REMOTE_STT_ENGINES.includes(engine)) {
+				const answers = await inquirer.prompt([
+					{
+						type: "input",
+						name: "baseUrl",
+						message: "🌐 Server URL (include /v1):",
+						default: "http://127.0.0.1:8600/v1",
+					},
+				])
+				baseUrl = answers.baseUrl
+			}
+			await sttCommand(file, engine, undefined, baseUrl)
 			break
 		}
 		case "llm": {
@@ -124,5 +155,15 @@ export const interactiveCommand = async () => {
 			await benchmarkCommand(file)
 			break
 		}
+
+		case "status":
+			await statusCommand()
+			break
+		case "config-health":
+			await configHealthCommand()
+			break
+		case "config-show":
+			await configShowCommand()
+			break
 	}
 }

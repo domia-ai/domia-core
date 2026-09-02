@@ -38,6 +38,8 @@ import {
 } from "@/modules/turn-detector"
 
 const ACOUSTIC_GATE_COOLDOWN_MS = 250
+const ACOUSTIC_TAIL_KEEP_MS = 150
+const ACOUSTIC_MAX_HOLD_MS = 1000
 
 const frameAlignedStart = (
 	byteOffset: number,
@@ -249,7 +251,14 @@ export const startSpeculativeCapture = (
 		if (Date.now() - lastAcousticRunAt < ACOUSTIC_GATE_COOLDOWN_MS) return
 		acousticChecking = true
 		lastAcousticRunAt = Date.now()
-		const pcm = int16BufferToFloat32(Buffer.concat(captured))
+		const raw = Buffer.concat(captured)
+		const trailingSilenceMs = vad.silenceMs()
+		const trimMs = Math.max(0, trailingSilenceMs - ACOUSTIC_TAIL_KEEP_MS)
+		const bytesPerMs = (config.sampleRate / 1000) * 2
+		const trimBytes = Math.min(raw.length, Math.floor(trimMs * bytesPerMs) & ~1)
+		const pcm = int16BufferToFloat32(
+			trimBytes > 0 ? raw.subarray(0, raw.length - trimBytes) : raw,
+		)
 		void predictTurnComplete(
 			pcm,
 			config.turnDetectorModelPath,
@@ -269,11 +278,18 @@ export const startSpeculativeCapture = (
 				!vad.speechActive() &&
 				vad.holdMs() + vad.silenceMs() >= currentDebounceMs
 			: vad.completed()
+	let baseReachedAt = 0
 	const endpointReached = (): boolean => {
 		const base = baseSilenceReached()
 		if (!acoustic) return base
-		if (base) runAcousticGate()
-		return base && acousticComplete
+		if (base) {
+			if (baseReachedAt === 0) baseReachedAt = Date.now()
+			runAcousticGate()
+		} else baseReachedAt = 0
+		return (
+			base &&
+			(acousticComplete || Date.now() - baseReachedAt >= ACOUSTIC_MAX_HOLD_MS)
+		)
 	}
 	let speculated = false
 	let speculatedAt = 0

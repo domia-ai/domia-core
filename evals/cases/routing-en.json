@@ -1,0 +1,368 @@
+[
+	{
+		"name": "route: imperative on → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn on the kitchen light",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: imperative off → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn off the bedroom light",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: polite can-you → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Can you turn on the living room light?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: polite please → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Please turn off the kitchen light",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: trailing order → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn the bedroom light on",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: brightness → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Set the kitchen light to 30 percent",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: dim phrasing → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Dim the living room light to 20 percent",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: would-you → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Would you turn on the bedroom light?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: need-light phrasing → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "I need the kitchen light on",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: switch verb → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Switch off the living room light",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: greeting → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Good morning, how are you?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: opinion → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "What do you think about summer?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: math → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "What is twelve times eight?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: story → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Tell me a short story about a cat",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: smalltalk feelings → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "I had a rough day today",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: general knowledge → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Who wrote Don Quixote?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: time chat → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Do you like rainy days?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: light as noun chat → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "I saw a beautiful light show yesterday",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: past action chat → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Yesterday I turned on the kitchen light and read a book",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: negation chat → chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Don't turn on the kitchen light, it's too bright already",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-state: state query on/off → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Is the kitchen light on?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-state: state query which → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Which lights are on right now?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-hard: which-lights-do-you-see → skill (the tools-gap utterance)",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Which lights do you see in the house?",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		],
+		"mode": "advisory"
+	},
+	{
+		"name": "route-hard: indirect too-dark → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "It's too dark in the kitchen",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		],
+		"mode": "advisory"
+	},
+	{
+		"name": "route-hard: make-it-brighter → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Make the living room brighter",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-hard: command+chat mix → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Turn on the kitchen light and tell me a joke",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-hard: hypothetical stays chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "If I turned on every light, would the bill go up?",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	},
+	{
+		"name": "route-hard: quoted command stays chat",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "My mom told me to turn off the lights when I leave",
+				"expect": {
+					"routed": "chat"
+				}
+			}
+		]
+	}
+]

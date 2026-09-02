@@ -324,6 +324,14 @@ export const snapshotContext = (
 	return { ...dest.snapshot, handle: attachment.handle }
 }
 
+export const liveEntities = (providerId: string): HaLiveEntityType[] | null => {
+	const attachment = providerAttachments.get(providerId)
+	if (!attachment) return null
+	const dest = destinations.get(attachment.destKey)
+	if (!dest || !dest.live || dest.client.state() !== "live") return null
+	return [...dest.entities.values()]
+}
+
 export const queryEntityState = (
 	providerId: string,
 	entityId: string,

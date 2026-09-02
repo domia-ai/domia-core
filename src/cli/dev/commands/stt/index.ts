@@ -10,6 +10,8 @@ export const sttCommand = async (
 	filePath: string,
 	engine?: string,
 	model?: string,
+	baseUrl?: string,
+	apiKey?: string,
 ) => {
 	try {
 		if (
@@ -26,6 +28,8 @@ export const sttCommand = async (
 			sttConfigOverrides: {
 				...(engine && { engine: engine as SttEngineEnumType }),
 				...(model && { modelName: model }),
+				...(baseUrl && { baseUrl }),
+				...(apiKey && { apiKey }),
 			},
 		})
 		const audioFile = path.resolve(filePath)

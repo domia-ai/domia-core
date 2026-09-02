@@ -1,5 +1,6 @@
 import { Command } from "commander"
 import { devCliLogger } from "@/utils"
+import { STT_ENGINE_ENUM_VALUES } from "@/db"
 
 import {
 	environmentCommand,
@@ -68,10 +69,20 @@ program
 	)
 	.option(
 		"-e, --engine <engine>",
-		"STT engine to use (WHISPER | MOONSHINE). Defaults to mock factory value.",
+		`STT engine to use (${STT_ENGINE_ENUM_VALUES.join(" | ")}). Defaults to mock factory value.`,
 	)
 	.option("-m, --model <model>", "Model name (engine-specific)")
-	.action((options) => sttCommand(options.file, options.engine, options.model))
+	.option("-u, --base-url <url>", "Server URL for remote engines (include /v1)")
+	.option("-k, --api-key <key>", "API key for remote engines")
+	.action((options) =>
+		sttCommand(
+			options.file,
+			options.engine,
+			options.model,
+			options.baseUrl,
+			options.apiKey,
+		),
+	)
 
 program
 	.command("llm")
@@ -139,7 +150,22 @@ program
 		"-c, --corpus <path>",
 		"Path to a corpus JSON to run engine-direct timings over each entry",
 	)
-	.action((options) => benchmarkCommand(options.file, options.corpus))
+	.option(
+		"-e, --stt-engine <engine>",
+		`STT engine override (${STT_ENGINE_ENUM_VALUES.join(" | ")})`,
+	)
+	.option(
+		"-u, --stt-base-url <url>",
+		"STT server URL for remote engines (include /v1)",
+	)
+	.action((options) =>
+		benchmarkCommand(
+			options.file,
+			options.corpus,
+			options.sttEngine,
+			options.sttBaseUrl,
+		),
+	)
 
 program
 	.command("interactive")

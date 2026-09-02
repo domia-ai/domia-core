@@ -41,6 +41,12 @@ export const looksSkillish = async (
 		domia.wakeWordConfig?.speculationSkillGateMaxScore ??
 		DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE
 	const top = ranked.length > 0 ? ranked[0].score : 0
+	domiaBusLogger.debug("🔮 speculation skill gate", {
+		domiaId: domia.id,
+		top,
+		maxScore,
+		blocked: top > maxScore,
+	})
 	return top > maxScore
 }
 

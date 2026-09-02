@@ -54,6 +54,10 @@ Run **one LLM server at a time** — on 8GB unified memory two resident models t
 - **TTS**: VITS (piper `libritts_r-medium`) on CPU with 4 threads and per-sentence streaming on. `pacerEnabled` must stay **off** on this hardware (its batches outrun the 5s runway and cut long replies).
 - **Services**: domia (`make domia-service`) and llama-server (`make llm-service`) both run under systemd (`Restart=always`) — the appliance survives reboots, crashes and OOM kills.
 
+## STT server (NeMo-Speech.cpp)
+
+The GPU STT lane uses NVIDIA's NeMo-Speech.cpp — a native prebuilt binary (no Docker, no Python): `make nemo-speech` downloads the platform tarball (Vulkan build on Orin — the cuda13 build segfaults on sm_87) and pulls the multilingual `nemotron-3.5` ASR model; `make nemo-service` installs it under systemd on :8600 (`--no-warmup` is mandatory on Orin — serve-mode warmup hits a GGML assert). Point the identity's `stt.engine=NEMO_SPEECH` and `stt.baseUrl=http://127.0.0.1:8600/v1`. On macOS use `make nemo-serve` (Metal build, foreground).
+
 ## Tuning the llama-server process
 
 Server-side flags belong to the provider layer (the server process), not to Domia's DB — Domia is a client of an OpenAI-compatible endpoint and per-identity DB config governs only what rides each request (`modelName`, `temperature`, `numPredict`, `baseUrl`). The makefile exposes the server knobs:
@@ -67,6 +71,7 @@ make llm-service LLM_GGUF=data/models/gguf/my-model.gguf       # different model
 
 Notes:
 
+- **Never pass `--cache-reuse` on Orin.** Tested 2026-07 (values 64/256, inspired by NVIDIA's reachy-mini-assistant which runs it with fp16 KV and `-np 1`): no measurable benefit — and the flag silently stayed in the installed unit. Diagnosed 2026-08: combined with `-np 2` + quantized KV (`-ctk/-ctv q8_0`) + flash attention, its chunk-shift reuse makes the per-turn divergent-tail prefill run at 15-70 tok/s instead of ~750 (llm ttft p50 2585ms vs 291ms all-layers-on). Removing the flag was the single biggest latency win of that investigation. If you regenerate the unit with `make llm-service`, keep `LLM_EXTRA_FLAGS` free of it.
 - **Flash attention** is already `auto` in current llama.cpp — it enables itself on CUDA/Metal; no flag needed.
 - Keep Domia's `llm.contextWindow` (DB) ≤ the server's `LLM_CTX` — the server silently truncates beyond its own limit.
 - `useCompactPrompt` measured **worse** on this setup (total p50 +906ms): llama-server's prefix cache already makes the rich persona prompt free after the first turn, and the compact variant loses the style guidance.

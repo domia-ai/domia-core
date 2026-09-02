@@ -16,7 +16,12 @@ import type {
 } from "../../types"
 import { resolveDescriptor } from "../../utils/descriptor"
 import { fold, tokensOf } from "./text"
-import { attachDataPlane, detachDataPlane, snapshotContext } from "./data-plane"
+import {
+	attachDataPlane,
+	detachDataPlane,
+	snapshotContext,
+	liveEntities,
+} from "./data-plane"
 
 const HA_ALIASES: Record<string, string[]> = {
 	brighter: ["brightness", "light", "bright"],
@@ -333,50 +338,153 @@ const resolvedEntityDomain = (
 	return entity?.domain ?? null
 }
 
+const baseLanguage = (language: string | null): string =>
+	(language ?? "en").toLowerCase().split(/[-_]/)[0]
+
+const forLanguage = <T>(
+	byLanguage: Record<string, T>,
+	language: string | null,
+): T => byLanguage[baseLanguage(language)] ?? byLanguage.en
+
+type HaFastPathLanguagePackType = {
+	turnOnTemplates: string[]
+	turnOnAreaTemplates: string[]
+	turnOnKeywords: string[][]
+	turnOffTemplates: string[]
+	turnOffAreaTemplates: string[]
+	turnOffKeywords: string[][]
+	lightSetTemplates: string[]
+	expansionRules: Record<string, string>
+}
+
+const HA_FAST_PATH_LANGUAGES: Record<string, HaFastPathLanguagePackType> = {
+	en: {
+		turnOnTemplates: ["<turnon> [<the>] {entity}", "turn [<the>] {entity} on"],
+		turnOnAreaTemplates: [
+			"<turnon> [<the>] lights in [<the>] {area}",
+			"<turnon> [<the>] {area} lights",
+		],
+		turnOnKeywords: [["on"]],
+		turnOffTemplates: [
+			"<turnoff> [<the>] {entity}",
+			"turn [<the>] {entity} off",
+		],
+		turnOffAreaTemplates: [
+			"<turnoff> [<the>] lights in [<the>] {area}",
+			"<turnoff> [<the>] {area} lights",
+		],
+		turnOffKeywords: [["off"]],
+		lightSetTemplates: [
+			"(set|dim|brighten) [<the>] {entity} to {level} [percent] [brightness]",
+			"set [<the>] {entity} brightness to {level} [percent]",
+		],
+		expansionRules: {
+			turnon: "(turn on|switch on)",
+			turnoff: "(turn off|switch off)",
+			the: "(the|my|our)",
+		},
+	},
+	es: {
+		turnOnTemplates: ["<encender> [<articulo>] {entity}"],
+		turnOnAreaTemplates: [
+			"<encender> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}",
+		],
+		turnOnKeywords: [["enciende", "prende", "activa", "encender", "prender"]],
+		turnOffTemplates: ["<apagar> [<articulo>] {entity}"],
+		turnOffAreaTemplates: [
+			"<apagar> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}",
+		],
+		turnOffKeywords: [["apaga", "desactiva", "apagar", "desconecta"]],
+		lightSetTemplates: [
+			"(pon|ajusta) [<articulo>] {entity} al {level} [por ciento]",
+			"(pon|ajusta) [<articulo>] {entity} a {level} [por ciento]",
+		],
+		expansionRules: {
+			encender: "(enciende|encienda|prende|prenda|activa|active)",
+			apagar: "(apaga|apague|desactiva|desactive|desconecta)",
+			articulo: "(la|el|las|los|mi|mis)",
+		},
+	},
+}
+
+const HA_EXAMPLE_UTTERANCES: Record<string, string[]> = {
+	en: [
+		"turn on the kitchen light",
+		"turn off the bedroom light",
+		"switch on the living room lamp",
+		"set the light to fifty percent",
+		"dim the living room light",
+		"brighten the kitchen",
+		"turn everything off",
+		"is the kitchen light on?",
+		"which lights are on right now?",
+		"I need the light on",
+		"make the room brighter",
+		"switch off the hallway light",
+	],
+	es: [
+		"enciende la luz de la cocina",
+		"apaga la luz del dormitorio",
+		"prende la lámpara de la sala",
+		"pon la luz al cincuenta por ciento",
+		"baja el brillo de la sala",
+		"sube el brillo de la cocina",
+		"desconecta la luz del pasillo",
+		"apaga todas las luces",
+		"¿está encendida la luz de la cocina?",
+		"¿cuáles luces están encendidas?",
+		"necesito la luz encendida",
+		"pon más brillante la habitación",
+	],
+}
+
 const haFastPathBlock = (
 	tools: SkillToolType[],
 	language: string | null,
 ): FastPathBlockType | undefined => {
 	const has = (name: string): boolean => tools.some((t) => t.rawName === name)
-	const es = (language ?? "en").toLowerCase().startsWith("es")
+	const pack = forLanguage(HA_FAST_PATH_LANGUAGES, language)
 	const intents: FastPathIntentType[] = []
 	const entitySlot = {
 		entity: { source: { kind: "context", key: "entity" } },
 	} as FastPathIntentType["slots"]
+	const areaSlot = {
+		area: { source: { kind: "context", key: "area" } },
+	} as FastPathIntentType["slots"]
 	if (has("HassTurnOn"))
 		intents.push({
 			tool: "HassTurnOn",
-			templates: es
-				? ["<encender> [<articulo>] {entity}"]
-				: ["<turnon> [<the>] {entity}", "turn [<the>] {entity} on"],
+			templates: pack.turnOnTemplates,
 			slots: entitySlot,
-			requiredKeywords: es
-				? [["enciende", "prende", "activa", "encender", "prender"]]
-				: [["on"]],
+			requiredKeywords: pack.turnOnKeywords,
+		})
+	if (has("HassTurnOn") && pack.turnOnAreaTemplates.length > 0)
+		intents.push({
+			tool: "HassTurnOn",
+			templates: pack.turnOnAreaTemplates,
+			slots: areaSlot,
+			requiredKeywords: pack.turnOnKeywords,
+			argDefaults: { domain: ["light"] },
 		})
 	if (has("HassTurnOff"))
 		intents.push({
 			tool: "HassTurnOff",
-			templates: es
-				? ["<apagar> [<articulo>] {entity}"]
-				: ["<turnoff> [<the>] {entity}", "turn [<the>] {entity} off"],
+			templates: pack.turnOffTemplates,
 			slots: entitySlot,
-			requiredKeywords: es
-				? [["apaga", "desactiva", "apagar", "desconecta"]]
-				: [["off"]],
+			requiredKeywords: pack.turnOffKeywords,
+		})
+	if (has("HassTurnOff") && pack.turnOffAreaTemplates.length > 0)
+		intents.push({
+			tool: "HassTurnOff",
+			templates: pack.turnOffAreaTemplates,
+			slots: areaSlot,
+			requiredKeywords: pack.turnOffKeywords,
+			argDefaults: { domain: ["light"] },
 		})
 	if (has("HassLightSet"))
 		intents.push({
 			tool: "HassLightSet",
-			templates: es
-				? [
-						"(pon|ajusta) [<articulo>] {entity} al {level} [por ciento]",
-						"(pon|ajusta) [<articulo>] {entity} a {level} [por ciento]",
-					]
-				: [
-						"(set|dim|brighten) [<the>] {entity} to {level} [percent] [brightness]",
-						"set [<the>] {entity} brightness to {level} [percent]",
-					],
+			templates: pack.lightSetTemplates,
 			slots: {
 				...entitySlot,
 				level: {
@@ -388,17 +496,7 @@ const haFastPathBlock = (
 	if (intents.length === 0) return undefined
 	return {
 		intents,
-		expansionRules: es
-			? {
-					encender: "(enciende|encienda|prende|prenda|activa|active)",
-					apagar: "(apaga|apague|desactiva|desactive|desconecta)",
-					articulo: "(la|el|las|los|mi|mis)",
-				}
-			: {
-					turnon: "(turn on|switch on)",
-					turnoff: "(turn off|switch off)",
-					the: "(the|my|our)",
-				},
+		expansionRules: pack.expansionRules,
 	}
 }
 
@@ -407,11 +505,17 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 	descriptorDefaults: (tools, language) => ({
 		version: 1,
 		kind: "home-assistant",
-		routing: { aliases: HA_ALIASES },
+		routing: {
+			aliases: HA_ALIASES,
+			exampleUtterances: forLanguage(HA_EXAMPLE_UTTERANCES, language),
+		},
 		execution: {
 			coreTools: tools
 				.filter(
-					(t) => CORE_RE.test(t.rawName) || CORE_RE.test(t.description ?? ""),
+					(t) =>
+						t.rawName === CONTEXT_TOOL ||
+						CORE_RE.test(t.rawName) ||
+						CORE_RE.test(t.description ?? ""),
 				)
 				.map((t) => t.rawName),
 			toolHints: haToolHints(tools),
@@ -461,6 +565,23 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 	onDisconnected: (provider: SelectSkillProviderType) => {
 		detachDataPlane(provider.id)
 		contextCache.delete(provider.id)
+	},
+	interceptToolCall: (provider, rawName) => {
+		if (rawName !== "GetLiveContext") return null
+		const entities = liveEntities(provider.id)
+		if (!entities || entities.length === 0) return null
+		const lines = entities.map((e) => {
+			const parts = [
+				`names: ${e.names.join(", ") || e.entityId}`,
+				`domain: ${e.domain}`,
+				`state: ${e.state ?? "unknown"}`,
+			]
+			if (e.area) parts.push(`areas: ${e.area}`)
+			return `- ${parts.join("; ")}`
+		})
+		return {
+			text: `Live Context: An overview of the areas and the devices in this smart home:\n${lines.join("\n")}`,
+		}
 	},
 	resolveArgs: (provider, _rawName, args, language) => {
 		const rawName = args.name

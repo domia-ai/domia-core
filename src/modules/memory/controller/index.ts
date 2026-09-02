@@ -92,6 +92,7 @@ const rankFactsLexical = (
 	return scored
 		.sort((a, b) => b.rel - a.rel || a.index - b.index)
 		.slice(0, limit)
+		.sort((a, b) => a.index - b.index)
 		.map((s) => s.fact)
 }
 
@@ -117,6 +118,7 @@ export const rankFactsByRelevance = async (
 		}))
 		.sort((a, b) => b.rel - a.rel || a.index - b.index)
 		.slice(0, limit)
+		.sort((a, b) => a.index - b.index)
 		.map((s) => s.fact)
 }
 

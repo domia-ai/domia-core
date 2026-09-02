@@ -43,11 +43,24 @@ const renderEntry = (
 	return `${shortName}${targetPart} ok · ${agoLabel(createdAt)}`
 }
 
+const clarifiedEntities = new Map<string, { name: string; at: number }>()
+
+export const setClarifiedEntity = (domiaId: string, name: string): void => {
+	clarifiedEntities.set(domiaId, { name, at: Date.now() })
+}
+
+export const clearClarifiedEntity = (domiaId: string): void => {
+	clarifiedEntities.delete(domiaId)
+}
+
 export const lastActedEntity = async (
 	domia: DomiaType,
 ): Promise<string | null> => {
 	const maxAgeMs =
 		domia.llmModelConfig?.anaphoraMaxAgeMs ?? DEFAULT_ANAPHORA_MAX_AGE_MS
+	const clarified = clarifiedEntities.get(domia.id)
+	const liveClarified =
+		clarified && Date.now() - clarified.at <= maxAgeMs ? clarified : null
 	const rows = await dbClient
 		.select({
 			skillResponse: interactionTrace.skillResponse,
@@ -63,16 +76,21 @@ export const lastActedEntity = async (
 		.orderBy(desc(interactionTrace.createdAt))
 		.limit(3)
 	for (const row of rows) {
-		if (traceAgeMs(row.createdAt) > maxAgeMs) return null
+		if (traceAgeMs(row.createdAt) > maxAgeMs) break
 		const entries = (row.skillResponse ?? []) as ToolTraceEntryType[]
 		for (const entry of [...entries].reverse()) {
 			if (entry.kind !== "result" && entry.kind !== "async_outcome") continue
 			if (entry.status !== "ok") continue
 			const name = entry.resolvedArgs?.name
-			if (typeof name === "string" && name.trim()) return name
+			if (typeof name === "string" && name.trim()) {
+				const actedAt = Date.now() - traceAgeMs(row.createdAt)
+				if (liveClarified && liveClarified.at > actedAt)
+					return liveClarified.name
+				return name
+			}
 		}
 	}
-	return null
+	return liveClarified?.name ?? null
 }
 
 export const recentToolsLine = async (
