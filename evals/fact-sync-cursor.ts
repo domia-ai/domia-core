@@ -47,26 +47,30 @@ const main = async (): Promise<void> => {
 	let pages = 0
 	let duplicates = 0
 	let stalled = false
-	for (; pages < MAX_PAGES; pages++) {
-		const page = await fetchSyncPage(cursor.since, cursor.id)
-		for (const fact of page.facts) {
-			if (seen.has(fact.id)) duplicates++
-			seen.add(fact.id)
-			if (fact.value.startsWith(VALUE_PREFIX)) sentinelsSeen.add(fact.id)
+	try {
+		for (; pages < MAX_PAGES; pages++) {
+			const page = await fetchSyncPage(cursor.since, cursor.id)
+			for (const fact of page.facts) {
+				if (seen.has(fact.id)) duplicates++
+				seen.add(fact.id)
+				if (fact.value.startsWith(VALUE_PREFIX)) sentinelsSeen.add(fact.id)
+			}
+			if (!page.nextFactsCursor) break
+			if (
+				page.nextFactsCursor.since === cursor.since &&
+				page.nextFactsCursor.id === cursor.id
+			) {
+				stalled = true
+				break
+			}
+			cursor = page.nextFactsCursor
+			if (page.facts.length < PAGE_LIMIT) break
 		}
-		if (!page.nextFactsCursor) break
-		if (
-			page.nextFactsCursor.since === cursor.since &&
-			page.nextFactsCursor.id === cursor.id
-		) {
-			stalled = true
-			break
-		}
-		cursor = page.nextFactsCursor
-		if (page.facts.length < PAGE_LIMIT) break
+	} finally {
+		execWrite("DELETE FROM memory_fact WHERE value LIKE ?", [
+			`${VALUE_PREFIX}%`,
+		])
 	}
-
-	execWrite("DELETE FROM memory_fact WHERE value LIKE ?", [`${VALUE_PREFIX}%`])
 
 	const checks: [string, boolean, string][] = [
 		[

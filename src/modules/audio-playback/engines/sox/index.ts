@@ -5,14 +5,13 @@ import {
 	DEFAULT_PLAYBACK_WATCHDOG_GRACE_MS,
 	DEFAULT_PLAYBACK_TRUNCATION_REPLAY_THRESHOLD_MS,
 } from "@/db"
-import { audioPlaybackLogger } from "@/utils"
+import { audioPlaybackLogger, bytesToAudioMs } from "@/utils"
 import { registerActivePlayback } from "../../utils"
 import type { AudioPlaybackResult, SoxStreamOptionsType } from "../../types"
 
 const STREAM_BUFFER_BYTES = 65536
 const KILL_GRACE_MS = 2000
 const PREWARM_TTL_MS = 15000
-const STDERR_NOISE_PATTERN = /can't set sample rate/
 
 const volumeFromConfig = (
 	config: DomiaType["audioPlaybackConfig"],
@@ -53,7 +52,7 @@ const attachStderrFilter = (
 ): void => {
 	proc.stderr?.on("data", (buf: Buffer) => {
 		const msg = buf.toString().trim()
-		if (!msg || STDERR_NOISE_PATTERN.test(msg)) return
+		if (!msg || msg.includes("can't set sample rate")) return
 		audioPlaybackLogger.warn(`[sox stderr]: ${msg}`, { domiaId })
 	})
 }
@@ -81,16 +80,6 @@ const waitDrainOrExit = (
 		proc.stdin?.once("close", finish)
 	})
 
-const bytesToAudioMs = (
-	bytes: number,
-	sampleRate: number,
-	channels: number,
-	bitsPerSample: number,
-): number => {
-	const bytesPerSec = sampleRate * channels * (bitsPerSample / 8)
-	return Math.round((bytes / bytesPerSec) * 1000)
-}
-
 export const runSox = async (
 	domia: DomiaType,
 	filePath: string,
@@ -102,7 +91,7 @@ export const runSox = async (
 	const args = appendVolArgs([filePath, ...trimArgs], factor)
 
 	audioPlaybackLogger.info("🔊 Running Sox playback", {
-		domiaId: domia?.id,
+		domiaId: domia.id,
 		filePath,
 		engine: "sox",
 		volume,
@@ -288,7 +277,7 @@ export const runSoxStream = async (
 	const playArgs = buildStreamPlayArgs(options, factor)
 
 	audioPlaybackLogger.info("🔊 Running Sox stream playback", {
-		domiaId: domia?.id,
+		domiaId: domia.id,
 		sampleRate: options.sampleRate,
 		channels: options.channels,
 		bitsPerSample: options.bitsPerSample,
@@ -576,7 +565,7 @@ export const runSoxStream = async (
 						)
 						break
 					}
-					if (!proc.stdin || !proc.stdin.writable) {
+					if (!proc.stdin?.writable) {
 						audioPlaybackLogger.warn(
 							"🔇 Sox stdin not writable, breaking pump",
 							{ domiaId: domia.id, chunksConsumed: state.chunkCount },

@@ -5,6 +5,7 @@ import {
 	satelliteGatewayLogger,
 	isLoopbackAddress,
 	isValidMeshToken,
+	rawDataToString,
 } from "@/utils"
 import {
 	createSatelliteSession,
@@ -44,10 +45,21 @@ export const startWsHeartbeat = (wss: WebSocketServer): void => {
 	wss.on("close", () => clearInterval(interval))
 }
 
+const CONTROL_TYPES: ReadonlySet<string> = new Set([
+	"hello",
+	"speech_end",
+	"audio_played",
+	"cancel",
+])
+
 const parseControl = (data: RawData): SatelliteControlType | null => {
 	try {
-		const parsed = JSON.parse(data.toString())
-		return typeof parsed?.type === "string"
+		const parsed: unknown = JSON.parse(rawDataToString(data))
+		const type =
+			typeof parsed === "object" && parsed !== null
+				? (parsed as { type?: unknown }).type
+				: undefined
+		return typeof type === "string" && CONTROL_TYPES.has(type)
 			? (parsed as SatelliteControlType)
 			: null
 	} catch {
@@ -154,7 +166,7 @@ export const setupSatelliteGateway = (
 					await session.onSpeechEnd()
 				} else if (control.type === "audio_played") {
 					session.onAudioPlayed(control.interactionId)
-				} else if (control.type === "cancel") {
+				} else {
 					session.onCancel()
 				}
 			})()

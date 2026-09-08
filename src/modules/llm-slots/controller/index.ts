@@ -4,7 +4,7 @@ import {
 	DEFAULT_SLOT_WAIT_POLL_MS,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
-import { llmSlotsLogger, sleep } from "@/utils"
+import { llmSlotsLogger, sleep, domiaError, LLM_ERRORS } from "@/utils"
 
 import type {
 	LlmSlotPurposeType,
@@ -30,11 +30,11 @@ const stats: SlotStatsType = {
 
 const affinityApplies = (domia: DomiaType): boolean =>
 	domia.llmModelConfig?.slotAffinityEnabled === true &&
-	domia.llmModelConfig?.engine === LLM_ENGINE_ENUM.OPENAI_COMPATIBLE &&
-	!!domia.llmModelConfig?.baseUrl?.trim()
+	domia.llmModelConfig.engine === LLM_ENGINE_ENUM.OPENAI_COMPATIBLE &&
+	!!domia.llmModelConfig.baseUrl.trim()
 
 const baseUrlOf = (domia: DomiaType): string =>
-	domia.llmModelConfig?.baseUrl?.trim() ?? ""
+	domia.llmModelConfig?.baseUrl.trim() ?? ""
 
 const serverSlotIdle = async (
 	baseUrl: string,
@@ -231,7 +231,10 @@ export const acquireSlotLease = async (
 				{ slotId },
 			)
 			stats.waitTimeouts += 1
-			throw new Error("llm slot wait timed out (lease held, server busy)")
+			throw domiaError(LLM_ERRORS.SLOT_WAIT_TIMEOUT, {
+				logger: llmSlotsLogger,
+				meta: { slotId, reason: "lease held, server busy" },
+			})
 		}
 		if (!waited) {
 			waited = true
@@ -250,7 +253,15 @@ export const acquireSlotLease = async (
 						? Date.now() - (state.lastAcquireAt[heldSlot] ?? 0)
 						: null,
 			})
-			throw new Error("llm slot wait timed out (slot leased and busy)")
+			throw domiaError(LLM_ERRORS.SLOT_WAIT_TIMEOUT, {
+				logger: llmSlotsLogger,
+				meta: {
+					identityId: domia.id,
+					purpose,
+					slotId: heldSlot,
+					reason: "slot leased and busy",
+				},
+			})
 		}
 		await sleep(waitPollMs)
 	}

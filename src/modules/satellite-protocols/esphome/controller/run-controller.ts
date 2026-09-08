@@ -47,7 +47,7 @@ export const createEsphomeRunController = (
 			if (disposed || gen !== runGeneration) return
 			onExpiry()
 		}, ms)
-		phaseTimer.unref?.()
+		phaseTimer.unref()
 	}
 
 	const setPhase = (next: RunPhaseType): void => {
@@ -158,8 +158,7 @@ export const createEsphomeRunController = (
 			return
 		}
 		let extraWindowMs = 0
-		const rearming =
-			nextRunIsFollowUp && activePlayback !== null && activePlayback.followUp
+		const rearming = nextRunIsFollowUp && activePlayback?.followUp === true
 		if (rearming && activePlayback) {
 			const started = activePlayback.startedAt ?? activePlayback.enqueuedAt
 			extraWindowMs = activePlayback.durationMs
@@ -307,7 +306,7 @@ export const createEsphomeRunController = (
 			)
 			finishPlayback("fallback-timeout")
 		}, fallbackMs)
-		playbackFallbackTimer.unref?.()
+		playbackFallbackTimer.unref()
 	}
 
 	const enqueuePlayback = (
@@ -330,7 +329,7 @@ export const createEsphomeRunController = (
 			const dropped = queue.splice(idx >= 0 ? idx : 0, 1)[0]
 			logger.warn("⚠️ playback queue full — dropping lowest priority", {
 				satelliteId: deps.satelliteId,
-				droppedKind: dropped?.kind,
+				droppedKind: dropped.kind,
 			})
 		}
 		playbackGeneration++
@@ -385,7 +384,7 @@ export const createEsphomeRunController = (
 			if (disposed || activePlayback?.playbackGeneration !== gen) return
 			finishPlayback("media-state")
 		}, waitMs)
-		drainTimer.unref?.()
+		drainTimer.unref()
 	}
 
 	const onAnnounceFinished = (): void => {
@@ -403,7 +402,7 @@ export const createEsphomeRunController = (
 			if (disposed || activePlayback?.playbackGeneration !== gen) return
 			finishPlayback("announce-finished+duration")
 		}, remainingMs)
-		drainTimer.unref?.()
+		drainTimer.unref()
 	}
 
 	const finishTurn = (): void => {

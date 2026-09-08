@@ -17,9 +17,11 @@ const envSchema = z.object({
 	EVAL_JUDGE_MODEL: z.string().default("qwen2.5:7b"),
 	EVAL_JUDGE_HOST: z.string().default("http://localhost:11434"),
 	BENCH_RUNS: z.coerce.number().int().min(1).default(1),
+	BENCH_CORPUS: z.string().min(1).default("golden"),
 	BENCH_TTFA_P95_MAX: z.coerce.number().optional(),
 	BENCH_TOTAL_P95_MAX: z.coerce.number().optional(),
-	DOMIA_MESH_SECRET: z.string().min(8),
+	EVAL_BENCH_LIVE: z.string().optional(),
+	DOMIA_MESH_SECRET: z.string().min(8).optional(),
 })
 
 export const env = envSchema.parse(process.env)

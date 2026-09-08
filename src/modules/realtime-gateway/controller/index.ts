@@ -2,6 +2,7 @@ import { WebSocketServer, type WebSocket, type RawData } from "ws"
 import type { IncomingMessage } from "http"
 
 import { type DomiaType, isHostedIdentity } from "@/modules/core"
+import { DEFAULT_PCM_SAMPLE_RATE } from "@/db"
 import {
 	realtimeGatewayLogger,
 	isLoopbackAddress,
@@ -10,6 +11,7 @@ import {
 	downsamplePcm16,
 	downmixToMonoPcm16,
 	generateUuid,
+	rawDataToString,
 } from "@/utils"
 import {
 	createSatelliteSession,
@@ -21,22 +23,36 @@ import { startWsHeartbeat } from "@/modules/satellite-gateway"
 import type {
 	RealtimeClientEventType,
 	RealtimeGatewayHandleType,
+	RealtimeParsedEventType,
 	RealtimeServerEventType,
 } from "../types"
 
-const STT_INPUT_RATE = 16000
+const STT_INPUT_RATE = DEFAULT_PCM_SAMPLE_RATE
 const DEFAULT_INPUT_RATE = 24000
 const INSECURE_KEY_SUBPROTOCOL = "openai-insecure-api-key."
 const WS_MAX_BUFFERED_BYTES = 4 * 1024 * 1024
 
-const parseEvent = (data: RawData): RealtimeClientEventType | null => {
+const CLIENT_EVENT_TYPES: ReadonlySet<string> = new Set([
+	"session.update",
+	"input_audio_buffer.append",
+	"input_audio_buffer.commit",
+	"input_audio_buffer.clear",
+	"response.create",
+	"response.cancel",
+])
+
+const parseEvent = (data: RawData): RealtimeParsedEventType => {
 	try {
-		const parsed = JSON.parse(data.toString())
-		return typeof parsed?.type === "string"
-			? (parsed as RealtimeClientEventType)
-			: null
+		const parsed: unknown = JSON.parse(rawDataToString(data))
+		const type =
+			typeof parsed === "object" && parsed !== null
+				? (parsed as { type?: unknown }).type
+				: undefined
+		if (typeof type !== "string") return { kind: "invalid" }
+		if (!CLIENT_EVENT_TYPES.has(type)) return { kind: "unsupported", type }
+		return { kind: "event", event: parsed as RealtimeClientEventType }
 	} catch {
-		return null
+		return { kind: "invalid" }
 	}
 }
 
@@ -247,24 +263,21 @@ export const setupRealtimeGateway = (
 				session?.onCancel()
 				return
 			}
-			if (event.type === "response.create") {
-				if (session) await session.onSpeechEnd()
-				return
-			}
-			sendError(
-				"invalid_request_error",
-				`unsupported event: ${(event as { type: string }).type}`,
-			)
+			if (session) await session.onSpeechEnd()
 		}
 
 		ws.on("message", (data, isBinary) => {
 			if (isBinary) return
-			const event = parseEvent(data)
-			if (!event) {
+			const parsed = parseEvent(data)
+			if (parsed.kind === "invalid") {
 				sendError("invalid_request_error", "invalid JSON event")
 				return
 			}
-			void handleEvent(event).catch((err) => {
+			if (parsed.kind === "unsupported") {
+				sendError("invalid_request_error", `unsupported event: ${parsed.type}`)
+				return
+			}
+			void handleEvent(parsed.event).catch((err: unknown) => {
 				realtimeGatewayLogger.warn("realtime event failed", {
 					satelliteId,
 					err,

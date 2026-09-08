@@ -4,10 +4,12 @@ import {
 	DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS,
 	DEFAULT_SENTENCE_HARD_FLUSH_CHARS,
 	DEFAULT_SENTENCE_FIRST_FLUSH_MAX_MS,
+	DEFAULT_SENTENCE_FIRST_FRAGMENT_MAX_WORDS,
 	DEFAULT_PIPELINE_MAX_QUEUE_DEPTH,
 	DEFAULT_PIPELINE_EAGER_TTS_SENTENCES,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
+import { toError } from "@/utils"
 import type {
 	AsyncQueueType,
 	EagerSlotsType,
@@ -18,6 +20,8 @@ import type {
 const HARD_TERMINATORS =
 	/(?<!\b(?:Dr|Mr|Mrs|Ms|St|vs|etc|Prof|Sr|Jr))(?<!\b[A-Za-z])(?<!\s\d)([.!?])["”'’)]*\s+(?=["“'‘([]?[A-Z0-9])/
 const SOFT_TERMINATORS = /([,;:])\s/
+const CLAUSE_BOUNDARY =
+	/(?<=[\p{L}\p{N}])([,;:])\s+|\s+[—–-]+\s+|(?<=[\p{L}\p{N}])[—–]+\s*/u
 
 export const DEFAULT_SENTENCE_TUNING: SentenceFlushTuningType = {
 	softFlushMinChars: DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS,
@@ -25,6 +29,7 @@ export const DEFAULT_SENTENCE_TUNING: SentenceFlushTuningType = {
 	mediumFlushChars: DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS,
 	hardFlushChars: DEFAULT_SENTENCE_HARD_FLUSH_CHARS,
 	firstFlushMaxMs: DEFAULT_SENTENCE_FIRST_FLUSH_MAX_MS,
+	firstFragmentMaxWords: DEFAULT_SENTENCE_FIRST_FRAGMENT_MAX_WORDS,
 }
 
 export const pipelineDepthFromDomia = (domia: DomiaType): number =>
@@ -38,7 +43,7 @@ export const eagerTtsSlotsFromDomia = (domia: DomiaType): EagerSlotsType =>
 
 const tryHardTerminator = (buffer: string): FlushResultType => {
 	const match = HARD_TERMINATORS.exec(buffer)
-	if (!match || match.index === undefined) return null
+	if (match?.index === undefined) return null
 	const cut = match.index + match[0].length
 	return { sentence: buffer.slice(0, cut).trim(), remaining: buffer.slice(cut) }
 }
@@ -49,9 +54,37 @@ const trySoftTerminator = (
 ): FlushResultType => {
 	if (buffer.length < tuning.softFlushMinChars) return null
 	const match = SOFT_TERMINATORS.exec(buffer)
-	if (!match || match.index === undefined) return null
+	if (match?.index === undefined) return null
 	const cut = match.index + match[0].length
 	return { sentence: buffer.slice(0, cut).trim(), remaining: buffer.slice(cut) }
+}
+
+export const isSpeakable = (sentence: string): boolean =>
+	/[\p{L}\p{N}]/u.test(sentence)
+
+const wordCount = (text: string): number =>
+	text.trim().split(/\s+/).filter(Boolean).length
+
+const tryFirstFragment = (
+	buffer: string,
+	tuning: SentenceFlushTuningType,
+): FlushResultType => {
+	if (tuning.firstFragmentMaxWords <= 0) return null
+	const match = CLAUSE_BOUNDARY.exec(buffer)
+	if (match?.index === undefined) return null
+	const keepPunctuation = /^[,;:]/.test(match[0])
+	const fragment = (
+		keepPunctuation
+			? buffer.slice(0, match.index + 1)
+			: buffer.slice(0, match.index)
+	).trim()
+	const words = wordCount(fragment)
+	if (words === 0 || words > tuning.firstFragmentMaxWords) return null
+	if (!isSpeakable(fragment)) return null
+	return {
+		sentence: fragment,
+		remaining: buffer.slice(match.index + match[0].length),
+	}
 }
 
 const tryFirstUnitWordFlush = (
@@ -102,6 +135,7 @@ const nextFlush = (
 	tuning: SentenceFlushTuningType,
 ): FlushResultType =>
 	tryHardTerminator(buffer) ??
+	(emittedAny ? null : tryFirstFragment(buffer, tuning)) ??
 	(emittedAny ? null : trySoftTerminator(buffer, tuning)) ??
 	(emittedAny ? null : tryFirstUnitWordFlush(buffer, tuning)) ??
 	(emittedAny ? null : tryMediumFlush(buffer, tuning)) ??
@@ -118,6 +152,7 @@ export const sentenceTuningFromDomia = (
 		mediumFlushChars: tts.sentenceMediumFlushChars,
 		hardFlushChars: tts.sentenceHardFlushChars,
 		firstFlushMaxMs: tts.sentenceFirstFlushMaxMs,
+		firstFragmentMaxWords: tts.sentenceFirstFragmentMaxWords,
 	}
 }
 
@@ -129,9 +164,6 @@ const tryFirstFlushTimeCap = (buffer: string): FlushResultType => {
 		remaining: buffer.slice(idx + 1),
 	}
 }
-
-export const isSpeakable = (sentence: string): boolean =>
-	/[\p{L}\p{N}]/u.test(sentence)
 
 export const cutFirstUnit = (
 	buffer: string,
@@ -183,7 +215,7 @@ export const splitTextIntoSentences = (text: string): string[] => {
 	let rest = trimmed
 	for (
 		let match = HARD_TERMINATORS.exec(rest);
-		match !== null && match.index !== undefined;
+		match?.index !== undefined;
 		match = HARD_TERMINATORS.exec(rest)
 	) {
 		const cut = match.index + match[0].length
@@ -283,12 +315,12 @@ export const primeStream = <T>(
 ): AsyncIterable<T> => {
 	if (!slots.tryAcquire()) return src
 	const queue = createAsyncQueue<T>()
-	let pumpError: unknown = null
+	let pumpError = null as Error | null
 	void (async () => {
 		try {
 			for await (const item of src) queue.push(item)
 		} catch (err) {
-			pumpError = err
+			pumpError = toError(err)
 		} finally {
 			queue.close()
 			slots.release()

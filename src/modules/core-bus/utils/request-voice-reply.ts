@@ -1,7 +1,12 @@
 import { existsSync } from "fs"
 import path from "path"
 
-import { getWavDurationMs } from "@/utils"
+import {
+	getWavDurationMs,
+	domiaError,
+	AUDIO_ERRORS,
+	domiaBusLogger,
+} from "@/utils"
 import type { DomiaType } from "@/modules/core"
 import { runInteraction } from "./run-interaction"
 import type {
@@ -25,7 +30,10 @@ export const requestVoiceReply = async (
 
 	const absPath = path.resolve(audioPath)
 	if (!existsSync(absPath)) {
-		throw new Error(`requestVoiceReply: audio file not found: ${absPath}`)
+		throw domiaError(AUDIO_ERRORS.AUDIO_FILE_NOT_FOUND, {
+			logger: domiaBusLogger,
+			meta: { site: "requestVoiceReply", path: absPath },
+		})
 	}
 
 	const result = await runInteraction(domia, {

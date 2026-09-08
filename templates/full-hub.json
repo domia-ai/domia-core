@@ -17,10 +17,7 @@
 		"memoryEngine": true,
 		"factCapture": true,
 		"factRecall": true,
-		"collectiveMind": true,
-		"narrativeEngine": true,
 		"identityEngine": true,
-		"remoteAccessEngine": true,
 		"skillsEngine": false
 	},
 	"stt": {
@@ -72,8 +69,8 @@
 	},
 	"llm": {
 		"name": "Default",
-		"engine": "OLLAMA",
-		"baseUrl": "http://localhost:11434",
+		"engine": "OPENAI_COMPATIBLE",
+		"baseUrl": "http://127.0.0.1:11435/v1",
 		"slotAffinityEnabled": false,
 		"modelName": "llama3.2:3b",
 		"temperature": 0.7,

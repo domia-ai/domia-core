@@ -1,0 +1,31 @@
+# Mosquitto ACL template for a Domia mesh. Copy to acl.txt (make mosquitto-acl does this) and
+# enable with `acl_file /mosquitto/config/acl.txt` in mosquitto.conf. Topic root = MQTT_TOPIC_ROOT
+# (default "domia"). ACL entries after a `user` line apply to that username. With
+# allow_anonymous=false, topic lines before the first `user` line (anonymous ACLs) reach no one,
+# so every user block must grant the mesh read itself.
+#
+# Topic layout (all under <root>/…/LOCAL/…):
+#   <root>/<domiaKey>/LOCAL/heartbeat        signed identity heartbeat (one per hosted identity)
+#   <root>/<domiaKey>/LOCAL/config_changed   live config refresh signal for that identity
+#   <root>/<nodeId>/LOCAL/offline            last-will, published by the broker on disconnect
+#   <root>/<nodeId>/LOCAL/speaking           speaking / silence broadcast for cross-room courtesy
+#
+# Every node must READ the whole tree (peer discovery) and WRITE only the topics it owns:
+# its hosted identity keys and its own nodeId (GET /identities and /health show them).
+
+# --- one block per node: user = the MQTT username from mqtt_config, the mesh read line plus one
+#     write line per hosted identity key and one for the node id
+#     (make mosquitto-user USER=<name> PASS=<pass> creates it) ---
+user node-a
+topic read domia/+/LOCAL/#
+topic write domia/DOMIA_A/LOCAL/#
+topic write domia/<node-a-nodeId>/LOCAL/#
+
+user node-b
+topic read domia/+/LOCAL/#
+topic write domia/DOMIA_B/LOCAL/#
+topic write domia/<node-b-nodeId>/LOCAL/#
+
+# --- console collector: read-only mirror ---
+user collector
+topic read domia/#

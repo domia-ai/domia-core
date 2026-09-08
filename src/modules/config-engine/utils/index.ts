@@ -16,7 +16,7 @@ import {
 	type InsertRuntimeCapabilitiesType,
 	MQTT_TYPE_ENUM,
 } from "@/db"
-import { generateUuid } from "@/utils"
+import { generateUuid, isTlsEnabled } from "@/utils"
 import { getLocalIp } from "@/modules/network-sync"
 
 import { type ConfigType } from "../types"
@@ -27,9 +27,10 @@ export const getDomiaCreateInputFromConfig = (
 ): InsertDomiaType => {
 	return {
 		id: generateUuid(),
-		name: config?.name,
-		domiaKey: config?.domiaKey,
+		name: config.name,
+		domiaKey: config.domiaKey,
 		localIp: getLocalIp(),
+		grpcTls: isTlsEnabled(),
 		isHosted,
 	}
 }
@@ -41,15 +42,15 @@ export const getRuntimeCapabilitiesCreateInputFromConfig = (
 	return {
 		id: generateUuid(),
 		domiaId,
-		wakeword: config?.wakeword,
-		record: config?.record,
-		stt: config?.stt,
-		intentDetection: config?.intentDetection,
-		intentExecution: config?.intentExecution,
-		promptGeneration: config?.promptGeneration,
-		llm: config?.llm,
-		tts: config?.tts,
-		playback: config?.playback,
+		wakeword: config.wakeword,
+		record: config.record,
+		stt: config.stt,
+		intentDetection: config.intentDetection,
+		intentExecution: config.intentExecution,
+		promptGeneration: config.promptGeneration,
+		llm: config.llm,
+		tts: config.tts,
+		playback: config.playback,
 	}
 }
 
@@ -62,19 +63,19 @@ export const getCharacterProfileCreateInputFromConfig = (
 		name: "Default",
 		isActive: true,
 		domiaId,
-		personality: config?.personality,
-		language: config?.language,
-		languagesSpoken: config?.languagesSpoken ?? [],
-		profession: config?.profession,
-		communicationStyle: config?.communicationStyle,
-		perceivedAge: config?.perceivedAge,
-		culturalBackground: config?.culturalBackground,
-		knowledgeDepth: config?.knowledgeDepth,
-		interests: config?.interests ?? [],
-		hobbies: config?.hobbies ?? [],
-		skills: config?.skills ?? [],
-		relationshipType: config?.relationshipType,
-		roleMode: config?.roleMode,
+		personality: config.personality,
+		language: config.language,
+		languagesSpoken: config.languagesSpoken,
+		profession: config.profession,
+		communicationStyle: config.communicationStyle,
+		perceivedAge: config.perceivedAge,
+		culturalBackground: config.culturalBackground,
+		knowledgeDepth: config.knowledgeDepth,
+		interests: config.interests,
+		hobbies: config.hobbies,
+		skills: config.skills,
+		relationshipType: config.relationshipType,
+		roleMode: config.roleMode,
 	}
 }
 
@@ -87,12 +88,9 @@ export const getModuleSettingsCreateInputFromConfig = (
 		name: "Default",
 		isActive: true,
 		domiaId,
-		emotionEngine: config?.emotionEngine,
-		memoryEngine: config?.memoryEngine,
-		collectiveMind: config?.collectiveMind,
-		remoteAccessEngine: config?.remoteAccessEngine,
-		narrativeEngine: config?.narrativeEngine,
-		identityEngine: config?.identityEngine,
+		emotionEngine: config.emotionEngine,
+		memoryEngine: config.memoryEngine,
+		identityEngine: config.identityEngine,
 	}
 }
 
@@ -177,8 +175,5 @@ export const getMqttConfigCreateInputFromConfig = (
 }
 
 export const getEmotionVectorFromConfig = (config: ConfigType): EmotionType => {
-	return normalizeEmotionVector(config?.emotion)
+	return normalizeEmotionVector(config.emotion)
 }
-
-export const getModuleValue = (moduleValue?: boolean) =>
-	typeof moduleValue === "boolean" ? moduleValue : true

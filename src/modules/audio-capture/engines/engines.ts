@@ -13,7 +13,3 @@ export const wakeWordEngines: Record<
 		run: runKws,
 	},
 }
-
-export const getWakeWordEngine = (
-	id: WakeWordEngineEnumType,
-): WakeWordEngineAdapterType | null => wakeWordEngines[id] ?? null

@@ -10,6 +10,8 @@ import type {
 	KeywordSpotterInstance,
 	VadConfig,
 	VadInstance,
+	SpeechDenoiserConfig,
+	OnlineSpeechDenoiserInstance,
 	RuntimeAddon,
 } from "./types"
 
@@ -44,6 +46,13 @@ export const createVad = (
 	bufferSizeInSeconds = 30,
 ): VadInstance =>
 	new (runtimeAddon().Vad)(config, bufferSizeInSeconds) as VadInstance
+
+export const createOnlineSpeechDenoiser = (
+	config: SpeechDenoiserConfig,
+): OnlineSpeechDenoiserInstance =>
+	new (runtimeAddon().OnlineSpeechDenoiser)(
+		config,
+	) as OnlineSpeechDenoiserInstance
 
 export const readWave = (filePath: string): Waveform =>
 	runtimeAddon().readWave(filePath)

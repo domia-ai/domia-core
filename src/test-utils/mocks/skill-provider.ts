@@ -5,6 +5,7 @@ import {
 	type SelectSkillProviderType,
 	DEFAULT_SKILL_MAX_RESULT_CHARS,
 	DEFAULT_SKILL_TRUST_TIER,
+	DEFAULT_SKILL_REFRESH_MS,
 	MCP_TRANSPORT_ENUM,
 	SKILL_PROTOCOL_ENUM,
 } from "@/db"
@@ -29,6 +30,7 @@ export const baseSkillProvider = (
 		lastSyncAt: null,
 		maxResultChars: DEFAULT_SKILL_MAX_RESULT_CHARS,
 		timeout: faker.number.int({ min: 1000, max: 5000 }),
+		toolsRefreshMs: DEFAULT_SKILL_REFRESH_MS,
 		priority: faker.number.int({ min: 0, max: 10 }),
 		trustTier: DEFAULT_SKILL_TRUST_TIER,
 		createdAt: now(),

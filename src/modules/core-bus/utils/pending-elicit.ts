@@ -40,7 +40,7 @@ const elicitOriginFor = (
 const REQUIRED_KEYS = (
 	schema: Record<string, unknown> | undefined,
 ): string[] =>
-	Array.isArray((schema as { required?: unknown })?.required)
+	Array.isArray((schema as { required?: unknown }).required)
 		? ((schema as { required: unknown[] }).required as string[]).map(String)
 		: []
 
@@ -104,7 +104,7 @@ export const presentElicit = (
 				if (!result.delivered)
 					cancelUndelivered("question could not be delivered")
 			})
-			.catch((err) => {
+			.catch((err: unknown) => {
 				domiaBusLogger.warn("elicitation speak failed", {
 					domiaId: domia.id,
 					err,

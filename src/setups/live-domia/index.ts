@@ -11,6 +11,7 @@ import {
 } from "@/setups/environment"
 
 import type { LiveDomiaType } from "./types"
+import { domiaError, CORE_ERRORS, appLogger } from "@/utils"
 
 const liveFrom = (
 	domia: DomiaType,
@@ -44,11 +45,17 @@ export const resolveLiveIdentity = async (
 		return resolveLiveDomia(bootDomia, bootCapabilities)
 	}
 	if (!isHostedIdentity(targetDomiaKey)) {
-		throw new Error(`identity not hosted: ${targetDomiaKey}`)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_HOSTED, {
+			logger: appLogger,
+			meta: { domiaKey: targetDomiaKey },
+		})
 	}
 	const resolved = await safeOwnDomia(targetDomiaKey, "live-domia resolve")
 	if (!resolved) {
-		throw new Error(`identity not resolvable: ${targetDomiaKey}`)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_RESOLVABLE, {
+			logger: appLogger,
+			meta: { domiaKey: targetDomiaKey },
+		})
 	}
 	return liveFrom(resolved, bootCapabilities)
 }

@@ -12,7 +12,7 @@ export const markLadderStage = (
 	if (!interactionId) return
 	const existing = ladderByInteraction.get(interactionId)
 	if (existing) {
-		if (existing[stage] === undefined) existing[stage] = at
+		existing[stage] ??= at
 		return
 	}
 	if (ladderByInteraction.size >= MAX_TRACKED) {
@@ -58,17 +58,3 @@ export const stampFirstTokenIterable = (
 		}
 	},
 })
-
-export const stampFirstTokenCallback = <T>(
-	interactionId: string,
-	onToken: (token: T) => void,
-): ((token: T) => void) => {
-	let stamped = false
-	return (token: T): void => {
-		if (!stamped) {
-			stamped = true
-			markLadderStage(interactionId, "llmFirstTokenAt")
-		}
-		onToken(token)
-	}
-}

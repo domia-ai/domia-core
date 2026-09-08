@@ -25,9 +25,6 @@ export const registerTurnLedger = (
 	ledgers.set(interactionId, ledger)
 }
 
-export const getTurnLedger = (
-	interactionId: string,
-): PlaybackLedgerType | null => ledgers.get(interactionId) ?? null
 const abortedInteractions = new Set<string>()
 const ABORTED_TOMBSTONE_MAX = 512
 const ABORT_WATCHDOG_MS = 5000
@@ -40,13 +37,7 @@ const rememberAbort = (interactionId: string): void => {
 	}
 }
 
-export const beginTurn = (
-	domiaId: string,
-	interactionId: string,
-): TurnScopeType => {
-	const existing = turns.get(domiaId)
-	if (existing?.interactionId === interactionId) return existing
-	if (existing) existing.abort("superseded")
+const openTurn = (domiaId: string, interactionId: string): TurnScopeType => {
 	abortedInteractions.delete(interactionId)
 
 	const controller = new AbortController()
@@ -96,6 +87,26 @@ export const beginTurn = (
 	return scope
 }
 
+export const beginTurn = (
+	domiaId: string,
+	interactionId: string,
+): TurnScopeType => {
+	const existing = turns.get(domiaId)
+	if (existing?.interactionId === interactionId) return existing
+	if (existing) existing.abort("superseded")
+	return openTurn(domiaId, interactionId)
+}
+
+export const beginTurnIfIdle = (
+	domiaId: string,
+	interactionId: string,
+): TurnScopeType | null => {
+	const existing = turns.get(domiaId)
+	if (existing?.interactionId === interactionId) return existing
+	if (existing) return null
+	return openTurn(domiaId, interactionId)
+}
+
 export const getActiveTurn = (domiaId: string): TurnScopeType | null =>
 	turns.get(domiaId) ?? null
 
@@ -115,7 +126,7 @@ export const pauseActiveTurn = (domiaId: string, reason: string): boolean => {
 	const sink = getStreamingSink(scope.interactionId)
 	let paused = false
 	if (sink?.capabilities?.pause && sink.pause) {
-		paused = sink.pause() === true
+		paused = sink.pause()
 	}
 	if (!paused) paused = pauseActivePlayback(domiaId)
 	if (!paused) return false
@@ -143,9 +154,6 @@ export const resumeActiveTurn = (domiaId: string): boolean => {
 	}
 	return true
 }
-
-export const isTurnPaused = (domiaId: string): boolean =>
-	pausedTurns.has(domiaId)
 
 export const abortAndWait = async (
 	domiaId: string,

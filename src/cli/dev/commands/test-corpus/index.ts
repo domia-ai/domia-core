@@ -189,7 +189,7 @@ const runOneEntry = async (
 export const runCorpus = async (corpusPath: string, outPath?: string) => {
 	const corpus = loadCorpus(corpusPath)
 	const domia = await initialize()
-	if (!domia?.runtimeCapabilities) {
+	if (!domia.runtimeCapabilities) {
 		devCliLogger.error("❌ Could not load DOMIA from DB (run npm run dev once)")
 		process.exit(1)
 	}
@@ -257,12 +257,12 @@ export const runCorpus = async (corpusPath: string, outPath?: string) => {
 }
 
 export const compareCorpus = (baselinePath: string, candidatePath: string) => {
-	const baseline: RunResultType = JSON.parse(
+	const baseline = JSON.parse(
 		fs.readFileSync(baselinePath, "utf8"),
-	)
-	const candidate: RunResultType = JSON.parse(
+	) as RunResultType
+	const candidate = JSON.parse(
 		fs.readFileSync(candidatePath, "utf8"),
-	)
+	) as RunResultType
 
 	const baselineMap = new Map(baseline.entries.map((e) => [e.id, e]))
 

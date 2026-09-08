@@ -36,7 +36,7 @@ const liveContext = (behavior: MockHaBehaviorType): string => {
 		(e) =>
 			`- names: ${e.names.join(", ")}\n  domain: ${e.domain}\n  areas: ${e.area}`,
 	)
-	const poison = behavior.poison["GetLiveContext"]
+	const poison = behavior.poison.GetLiveContext
 	if (poison)
 		rows.push(`- names: ${poison}\n  domain: light\n  areas: Living Room`)
 	return rows.join("\n")
@@ -273,12 +273,12 @@ const buildMcpServer = (behavior: MockHaBehaviorType): McpServer => {
 	return mcp
 }
 
-export const startMockHa = async (port = 3199): Promise<MockHaServerType> => {
+export const startMockHa = async (port = 0): Promise<MockHaServerType> => {
 	let behavior = defaultBehavior()
 	const server = createServer((req, res) => {
 		if (req.url === "/__control" && req.method === "POST") {
 			let body = ""
-			req.on("data", (c) => (body += c))
+			req.on("data", (c: Buffer) => (body += c.toString()))
 			req.on("end", () => {
 				try {
 					const patch = JSON.parse(body || "{}") as Partial<MockHaBehaviorType>

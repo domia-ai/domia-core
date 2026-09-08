@@ -3,7 +3,12 @@ import type { MqttClient } from "mqtt"
 import { MQTT_TYPE_ENUM } from "@/db"
 import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
 import type { ReceiveHeartbeatArgsType, SendHeartbeatArgsType } from "../types"
-import { heartbeatLogger } from "@/utils"
+import {
+	heartbeatLogger,
+	signMeshControlPayload,
+	isTlsEnabled,
+	httpScheme,
+} from "@/utils"
 import { env } from "@/config"
 import { isHostedIdentity, getDomia, getNodeId } from "@/modules/core"
 import { getLocalIp, upsertDomiaFromNetwork } from "@/modules/network-sync"
@@ -24,19 +29,28 @@ export const setLocalMqttClient = (client: MqttClient | null): void => {
 export const getLocalMqttClient = (): MqttClient | null => localMqttClient
 
 export const publishIdentityState = async (domiaKey: string): Promise<void> => {
-	const domia = await getDomia(domiaKey).catch(() => null)
+	const domia = await getDomia(domiaKey).catch((err: unknown) => {
+		heartbeatLogger.warn("identity lookup failed — state not published", {
+			err,
+			domiaKey,
+		})
+		return null
+	})
 	if (!domia) return
 	await sendHeartbeat({ domia })
 }
 
 export const publishConfigChanged = (domiaKey: string): void => {
 	const topic = `${env.MQTT_TOPIC_ROOT}/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.CONFIG_CHANGED}`
-	localMqttClient?.publish(topic, JSON.stringify({ domiaKey }))
+	localMqttClient?.publish(
+		topic,
+		JSON.stringify(signMeshControlPayload({ domiaKey })),
+	)
 }
 
 export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 	try {
-		const domiaKey = domia?.domiaKey
+		const domiaKey = domia.domiaKey
 		const topic = `${env.MQTT_TOPIC_ROOT}/${domiaKey}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.HEARTBEAT}`
 		heartbeatLogger.debug(`💓 Heartbeat sent for ${domiaKey}`)
 		const client = localMqttClient
@@ -58,13 +72,20 @@ export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 			? stamps.reduce((a, b) => (a > b ? a : b))
 			: null
 
-		const nodeId = await getNodeId().catch(() => null)
+		const nodeId = await getNodeId().catch((err: unknown) => {
+			heartbeatLogger.warn("nodeId lookup failed — heartbeat sent without it", {
+				err,
+			})
+			return null
+		})
 		const payload: Record<string, unknown> = {
 			...domia,
 			nodeId,
 			localIp,
 			grpcPort,
+			grpcTls: isTlsEnabled(),
 			httpPort,
+			httpScheme: httpScheme(),
 			isPrincipal: domiaKey === env.DOMIA_KEY,
 			lastInteractionAt,
 			lastTurnAt: turnEventAt,
@@ -76,14 +97,14 @@ export const sendHeartbeat = async ({ domia }: SendHeartbeatArgsType) => {
 				...p,
 				auth: p.auth?.kind ? { kind: p.auth.kind } : null,
 			}))
-		client?.publish(topic, JSON.stringify(payload))
+		client?.publish(topic, JSON.stringify(signMeshControlPayload(payload)))
 	} catch (err) {
 		heartbeatLogger.error(`❌ Failed to send heartbeat`, { err })
 	}
 }
 
 export const receiveHeartbeat = async ({ domia }: ReceiveHeartbeatArgsType) => {
-	const domiaKey = domia?.domiaKey
+	const domiaKey = domia.domiaKey
 	heartbeatLogger.info(`💓 Heartbeat received for ${domiaKey}`)
 
 	if (domiaKey && isHostedIdentity(domiaKey)) {
@@ -92,12 +113,17 @@ export const receiveHeartbeat = async ({ domia }: ReceiveHeartbeatArgsType) => {
 	}
 
 	const incomingNodeId = (domia as { nodeId?: string | null }).nodeId
-	const ownNodeId = await getNodeId().catch(() => null)
+	const ownNodeId = await getNodeId().catch((err: unknown) => {
+		heartbeatLogger.warn("nodeId lookup failed — own-hub check skipped", {
+			err,
+		})
+		return null
+	})
 	if (incomingNodeId && ownNodeId && incomingNodeId === ownNodeId) {
 		heartbeatLogger.info("🧠 Skipping heartbeat from own hub (nodeId match)")
 		return
 	}
 
 	heartbeatLogger.info(`🧠 Upserting Domia record for ${domiaKey}`)
-	await upsertDomiaFromNetwork(domia)
+	upsertDomiaFromNetwork(domia)
 }

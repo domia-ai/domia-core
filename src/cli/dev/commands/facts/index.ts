@@ -3,11 +3,16 @@ import { writeFileSync } from "fs"
 import { env } from "@/config"
 import { getDomia } from "@/modules/core"
 import { auditStoredFacts, deleteStoredFacts } from "@/modules/memory"
-import { devCliLogger } from "@/utils"
+import { devCliLogger, domiaError, CORE_ERRORS } from "@/utils"
+
+import type { FactsCleanupCliOptionsType } from "../../types"
 
 const loadDomia = async () => {
 	const domia = await getDomia(env.DOMIA_KEY)
-	if (!domia) throw new Error(`No domia found for key ${env.DOMIA_KEY}`)
+	if (!domia)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_RESOLVABLE, {
+			meta: { domiaKey: env.DOMIA_KEY },
+		})
 	return domia
 }
 
@@ -27,7 +32,7 @@ export const factsAuditCommand = async () => {
 	}
 }
 
-export const factsCleanupCommand = async (opts: { apply?: boolean }) => {
+export const factsCleanupCommand = async (opts: FactsCleanupCliOptionsType) => {
 	try {
 		const domia = await loadDomia()
 		const garbage = await auditStoredFacts(domia)

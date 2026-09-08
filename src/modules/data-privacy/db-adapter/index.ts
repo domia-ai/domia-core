@@ -55,7 +55,7 @@ const dbAdapter = {
 		const deleted: Record<string, number> = {}
 		for (const table of USER_DATA_TABLES) {
 			const res = client.delete(table).where(eq(table.domiaId, domiaId)).run()
-			deleted[getTableName(table)] = res.changes ?? 0
+			deleted[getTableName(table)] = res.changes
 		}
 		return deleted
 	},

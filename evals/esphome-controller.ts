@@ -1,7 +1,6 @@
 import { createEsphomeRunController } from "../src/modules/satellite-protocols/esphome/controller/run-controller"
+import { sleep } from "./lib"
 import type { EsphomeSentEventType } from "./types"
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const EV = {
 	runStart: 1,

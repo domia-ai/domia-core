@@ -17,6 +17,8 @@ import type {
 	SttDonePayloadType,
 	SttFlowSessionType,
 	TurnSessionContextType,
+	MemoryBundleType,
+	RankedPromptContextType,
 } from "../types"
 
 export const buildSttFlowSession = (
@@ -46,6 +48,42 @@ export const buildSttFlowSession = (
 	userModel,
 })
 
+export const buildRankedPromptContext = async (
+	domia: DomiaType,
+	transcript: string,
+	bundle: MemoryBundleType,
+	preranked?: { knownFacts: string[]; knowledgeBase: string[] },
+): Promise<RankedPromptContextType> => {
+	const [knownFacts, knowledgeBase] = preranked
+		? [preranked.knownFacts, preranked.knowledgeBase]
+		: await Promise.all([
+				rankFactsByRelevance(
+					domia,
+					bundle.knownFacts,
+					transcript,
+					MEMORY_FACT_RECALL_LIMIT,
+				),
+				rankFactsByRelevance(
+					domia,
+					bundle.knowledgeBase,
+					transcript,
+					KB_RECALL_LIMIT,
+				),
+			])
+	return {
+		knownFacts,
+		knowledgeBase,
+		prompt: buildPromptContext(domia, transcript, {
+			recentTurns: bundle.recentTurns,
+			knownFacts,
+			knowledgeBase,
+			previously: bundle.previously,
+			userModel: bundle.userModel ?? undefined,
+			userMoodTrend: bundle.userMoodTrend,
+		}),
+	}
+}
+
 export const buildTurnSession = async (
 	domia: DomiaType,
 	payload: SttDonePayloadType,
@@ -53,36 +91,27 @@ export const buildTurnSession = async (
 	transcript: string,
 	domiaId: string,
 ): Promise<TurnSessionContextType> => {
-	const {
-		recentTurns,
-		knownFacts: candidateFacts,
-		knowledgeBase: candidateKb,
-		previously,
-		userModel,
-		userMoodTrend,
-	} = await takeMemoryBundle(domia, interactionId)
-	const [knownFacts, knowledgeBase] = await Promise.all([
-		rankFactsByRelevance(
-			domia,
-			candidateFacts,
-			transcript,
-			MEMORY_FACT_RECALL_LIMIT,
-		),
-		rankFactsByRelevance(domia, candidateKb, transcript, KB_RECALL_LIMIT),
-	])
+	const bundle = await takeMemoryBundle(domia, interactionId)
+	const { recentTurns, previously, userModel, userMoodTrend } = bundle
+	const eager = payload.eagerPrefill
+	const reusableFacts =
+		eager &&
+		(eager.relation === "equal" || eager.relation === "extends") &&
+		eager.knownFacts !== undefined &&
+		eager.knowledgeBase !== undefined
+			? { knownFacts: eager.knownFacts, knowledgeBase: eager.knowledgeBase }
+			: undefined
+	const { knownFacts, knowledgeBase, prompt } = await buildRankedPromptContext(
+		domia,
+		transcript,
+		bundle,
+		reusableFacts,
+	)
 
 	const session = buildSttFlowSession(
 		payload,
 		interactionId,
-		payload.prestartedPrompt ??
-			buildPromptContext(domia, transcript, {
-				recentTurns,
-				knownFacts,
-				knowledgeBase,
-				previously,
-				userModel: userModel ?? undefined,
-				userMoodTrend,
-			}),
+		payload.prestartedPrompt ?? prompt,
 		recentTurns,
 		knownFacts,
 		userMoodTrend,

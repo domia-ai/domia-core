@@ -13,7 +13,7 @@ export class DomiaError extends Error {
 	) {
 		super(message)
 		this.name = "DomiaError"
-		Error.captureStackTrace?.(this, DomiaError)
+		Error.captureStackTrace(this, DomiaError)
 	}
 
 	static isInstance(value: unknown): value is DomiaError {
@@ -28,14 +28,8 @@ export class DomiaError extends Error {
 export const isDomiaError = (value: unknown): value is DomiaError =>
 	DomiaError.isInstance(value)
 
-export const hasErrorCode = (
-	value: unknown,
-	prefix: string,
-): value is DomiaError =>
-	DomiaError.isInstance(value) && value.code.startsWith(prefix)
-
 export const getErrorMessage = (error: ErrorCodeType) => {
-	return `[${error?.code}] ${error?.message}`
+	return `[${error.code}] ${error.message}`
 }
 
 export const domiaError = (

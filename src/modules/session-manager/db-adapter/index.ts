@@ -71,10 +71,9 @@ const dbAdapter = {
 		domiaId: string,
 		client: DBClientOrTxType = dbClient,
 	) =>
-		client.query.interactionSessionTrace.findMany({
+		client.query.interactionSessionTrace.findFirst({
 			where: eq(interactionSessionTrace.domiaId, domiaId),
 			orderBy: desc(interactionSessionTrace.lastUsedAt),
-			limit: 1,
 		}),
 	getLastInteractionAt: (
 		domiaId: string,

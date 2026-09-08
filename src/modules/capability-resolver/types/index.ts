@@ -14,6 +14,7 @@ export type ResolvedDelegateType = {
 	domiaId: string
 	localIp: string | null
 	grpcPort: number | null
+	grpcTls: boolean
 	source: "explicit" | "discovered"
 	streamingCapabilities: StreamingCapabilitiesType
 }

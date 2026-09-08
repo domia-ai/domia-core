@@ -15,6 +15,7 @@ import type {
 	DomiaSkillDescriptorType,
 	TtsEngineConfigType,
 	ToolTraceEntryType,
+	BenchThresholdsType,
 } from "./json-types"
 import {
 	PERSONALITY_ENUM,
@@ -68,12 +69,22 @@ import {
 	DEFAULT_ACOUSTIC_ENDPOINTING_ENABLED,
 	DEFAULT_SUPPRESS_WAKE_WHILE_PEER_SPEAKS,
 	DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD,
+	DEFAULT_ACOUSTIC_GATE_COOLDOWN_MS,
+	DEFAULT_ACOUSTIC_MAX_HOLD_MS,
+	DEFAULT_ACOUSTIC_TAIL_KEEP_MS,
+	DEFAULT_ACOUSTIC_LOCAL_MAX_HOLD_MS,
+	DEFAULT_BARGE_IN_MIN_RMS,
 	DEFAULT_TURN_DETECTOR_MODEL_PATH,
 	DEFAULT_TURN_DETECTOR_ENGINE,
 	TURN_DETECTOR_ENGINE_ENUM_VALUES,
 	DEFAULT_SPECULATIVE_TTS_ENABLED,
 	DEFAULT_SATELLITE_SPECULATION_ENABLED,
 	DEFAULT_SPECULATE_WITH_SKILLS,
+	DEFAULT_TWO_TIER_ENDPOINT_ENABLED,
+	DEFAULT_TWO_TIER_EAGER_MIN_PARTIAL_CHARS,
+	DEFAULT_TWO_TIER_PREFILL_IDLE_GUARD_MS,
+	DEFAULT_TWO_TIER_RESUME_GRACE_MS,
+	DEFAULT_TWO_TIER_MAX_EAGER_PREFILLS,
 	DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,
 	DEFAULT_SHARED_MIC_STREAM_ENABLED,
 	DEFAULT_ENDPOINT_COMPLETE_MS,
@@ -94,6 +105,33 @@ import {
 	DEFAULT_ENDPOINT_INCOMPLETE_MS,
 	DEFAULT_ENDPOINT_WAIT_MS,
 	DEFAULT_FOLLOW_UP_LEAD_PAD_MS,
+	AEC_BACKEND_ENUM_VALUES,
+	DEFAULT_AEC_ENABLED,
+	DEFAULT_AEC_BACKEND,
+	DEFAULT_AEC_METHOD,
+	DEFAULT_AEC_SOURCE_NAME,
+	DEFAULT_AEC_SINK_NAME,
+	DEFAULT_AEC_SET_DEFAULT_DEVICES,
+	SPEECH_ENHANCER_ENGINE_ENUM_VALUES,
+	DEFAULT_DENOISE_ENABLED,
+	DEFAULT_DENOISE_ENGINE,
+	DEFAULT_DENOISE_MODEL_PATH,
+	DEFAULT_DENOISE_NUM_THREADS,
+	DEFAULT_DENOISE_PROVIDER,
+	DEFAULT_ECHO_RESIDUAL_GATE_ENABLED,
+	DEFAULT_ECHO_RESIDUAL_MIN_RATIO,
+	DEFAULT_ECHO_RESIDUAL_WINDOW_MS,
+	DEFAULT_ECHO_RESIDUAL_MAX_DELAY_MS,
+	DEFAULT_ECHO_RESIDUAL_MIN_RMS,
+	DEFAULT_ECHO_RESIDUAL_MIN_FRAMES,
+	DEFAULT_STOP_WORD_ABORT_ENABLED,
+	DEFAULT_STOP_WORD_MAX_WORDS,
+	WAKE_VERIFIER_ENUM_VALUES,
+	DEFAULT_WAKE_VERIFIER,
+	DEFAULT_WAKE_VERIFIER_WINDOW_MS,
+	DEFAULT_WAKE_VERIFIER_MIN_RMS,
+	DEFAULT_WAKE_VERIFIER_MIN_SPEECH_MS,
+	DEFAULT_WAKE_VERIFIER_MIN_SCORE,
 	DEFAULT_SENTENCE_SOFT_FLUSH_MIN_CHARS,
 	DEFAULT_SENTENCE_FIRST_UNIT_MAX_WORDS,
 	DEFAULT_SENTENCE_MEDIUM_FLUSH_CHARS,
@@ -106,6 +144,13 @@ import {
 	DEFAULT_GRPC_STREAM_DEADLINE_MS,
 	DEFAULT_PEER_STALE_AFTER_MS,
 	DEFAULT_CONFIG_RELOAD_DRAIN_MS,
+	DEFAULT_MODEL_INSTALL_ALLOWED_HOSTS,
+	DEFAULT_HEARTBEAT_SIGNATURE_REQUIRED,
+	DEFAULT_KNOWLEDGE_MAX_CHARS,
+	DEFAULT_MESH_SECRET_GRACE_MS,
+	DEFAULT_GRPC_TLS,
+	DEFAULT_BENCH_TURNS,
+	DEFAULT_BENCH_THRESHOLDS,
 	DEFAULT_STT_POOL_EXECUTION_TIMEOUT_MS,
 	DEFAULT_TTS_POOL_EXECUTION_TIMEOUT_MS,
 	DEFAULT_MQTT_HOST,
@@ -126,6 +171,12 @@ import {
 	DEFAULT_REFLECTION_CONCURRENCY,
 	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
 	DEFAULT_REFLECTION_YIELD_TO_VOICE,
+	DEFAULT_REFLECTION_TIMEOUT_MS,
+	DEFAULT_REFLECTION_IDLE_POLL_MS,
+	DEFAULT_REFLECTION_IDLE_GRACE_MS,
+	DEFAULT_REFLECTION_MAX_IDLE_WAIT_MS,
+	DEFAULT_REFLECTION_SLOT_TIMEOUT_MS,
+	DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 	DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
 	DEFAULT_MAX_QUEUED_VOICE_REPLIES,
 	DEFAULT_VOICE_QUEUE_TIMEOUT_MS,
@@ -220,15 +271,25 @@ import {
 	MCP_TRANSPORT_ENUM_VALUES,
 	SKILL_TRUST_TIER_ENUM_VALUES,
 	DEFAULT_SKILL_TRUST_TIER,
+	DEFAULT_SKILL_REFRESH_MS,
 	TOOL_RUN_STATUS_ENUM,
 	TOOL_RUN_STATUS_ENUM_VALUES,
 	ASYNC_FOLLOW_UP_POLICY_ENUM_VALUES,
 	DEFAULT_ASYNC_FOLLOW_UP_POLICY,
 	DEFAULT_ASYNC_FOLLOW_UP_MAX_WAIT_MS,
+	DEFAULT_LLM_STREAM_IDLE_MS,
+	DEFAULT_QUIET_AUDIO_POLL_MS,
+	DEFAULT_QUIET_AUDIO_DEADLINE_MS,
 	DEFAULT_AGENT_REPEAT_WARN_AT,
 	DEFAULT_AGENT_REPEAT_BLOCK_AT,
 	DEFAULT_AGENT_MAX_TOOL_CALLS_PER_TURN,
 	DEFAULT_AGENT_RECENT_TOOLS_TURNS,
+	DEFAULT_AGENT_QUESTION_GUARD_ENABLED,
+	DEFAULT_AGENT_TARGET_GUARD_ENABLED,
+	DEFAULT_AGENT_READ_THEN_ANSWER_ENABLED,
+	DEFAULT_TOOL_REQUEST_MAX_RETRIES,
+	DEFAULT_FAST_PATH_COMPOUND_ENABLED,
+	DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS,
 	DEFAULT_ANAPHORA_MAX_AGE_MS,
 	DEFAULT_FAST_PATH_ENABLED,
 	DEFAULT_FAST_PATH_MIN_COVERAGE,
@@ -276,6 +337,31 @@ import {
 	ANNOUNCEMENT_KIND_ENUM_VALUES,
 	ANNOUNCEMENT_DELIVERY_ENUM,
 	ANNOUNCEMENT_DELIVERY_ENUM_VALUES,
+	DEFAULT_PROACTIVITY_ENGINE,
+	DEFAULT_PROACTIVE_IDLE_NUDGE_ENABLED,
+	DEFAULT_PROACTIVE_IDLE_NUDGE_AFTER_MS,
+	DEFAULT_PROACTIVE_IDLE_NUDGE_MIN_INTERVAL_MS,
+	DEFAULT_PROACTIVE_MAX_PER_HOUR,
+	DEFAULT_PROACTIVE_MAX_PER_DAY,
+	DEFAULT_PROACTIVE_CHIME_ENABLED,
+	DEFAULT_PROACTIVE_DEFER_MAX_MS,
+	DEFAULT_PROACTIVE_TICK_MS,
+	DEFAULT_PROACTIVE_LEASE_MS,
+	DEFAULT_PROACTIVE_MAX_ATTEMPTS,
+	DEFAULT_PROACTIVE_RETRY_BACKOFF_MS,
+	PROACTIVE_VERB_ENUM_VALUES,
+	DEFAULT_PROACTIVE_VERB,
+	PROACTIVE_IMPORTANCE_ENUM_VALUES,
+	DEFAULT_PROACTIVE_IMPORTANCE,
+	PROACTIVE_SCHEDULE_STATUS_ENUM,
+	PROACTIVE_SCHEDULE_STATUS_ENUM_VALUES,
+	PROACTIVE_TARGET_KIND_ENUM_VALUES,
+	DEFAULT_PROACTIVE_TARGET_KIND,
+	DEFAULT_SENTENCE_FIRST_FRAGMENT_MAX_WORDS,
+	DEFAULT_TTS_PHRASE_CACHE_MAX_BYTES,
+	DEFAULT_TTS_PHRASE_CACHE_WARMUP_ENABLED,
+	DEFAULT_TTS_PHRASE_CACHE_REPLY_UNITS_ENABLED,
+	DEFAULT_SATELLITE_WYOMING_STREAMING_TTS,
 } from "./constants"
 
 export const DEFAULT_TIMESTAMP = sql`CURRENT_TIMESTAMP`
@@ -339,6 +425,31 @@ export const domia = sqliteTable("domia", {
 	configReloadDrainMs: integer("config_reload_drain_ms")
 		.notNull()
 		.default(DEFAULT_CONFIG_RELOAD_DRAIN_MS),
+	modelInstallAllowedHosts: text("model_install_allowed_hosts", {
+		mode: "json",
+	})
+		.$type<string[]>()
+		.notNull()
+		.default(DEFAULT_MODEL_INSTALL_ALLOWED_HOSTS),
+	heartbeatSignatureRequired: integer("heartbeat_signature_required", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_HEARTBEAT_SIGNATURE_REQUIRED),
+	knowledgeMaxChars: integer("knowledge_max_chars")
+		.notNull()
+		.default(DEFAULT_KNOWLEDGE_MAX_CHARS),
+	meshSecretGraceMs: integer("mesh_secret_grace_ms")
+		.notNull()
+		.default(DEFAULT_MESH_SECRET_GRACE_MS),
+	grpcTls: integer("grpc_tls", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_GRPC_TLS),
+	benchTurns: integer("bench_turns").notNull().default(DEFAULT_BENCH_TURNS),
+	benchThresholds: text("bench_thresholds", { mode: "json" })
+		.$type<BenchThresholdsType>()
+		.notNull()
+		.default(DEFAULT_BENCH_THRESHOLDS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -528,11 +639,24 @@ export const moduleSettings = sqliteTable("module_settings", {
 	})
 		.notNull()
 		.default(DEFAULT_REFLECTION_YIELD_TO_VOICE),
-	collectiveMind: integer("collective_mind", { mode: "boolean" }).notNull(),
-	remoteAccessEngine: integer("remote_access_engine", {
-		mode: "boolean",
-	}).notNull(),
-	narrativeEngine: integer("narrative_engine", { mode: "boolean" }).notNull(),
+	reflectionTimeoutMs: integer("reflection_timeout_ms")
+		.notNull()
+		.default(DEFAULT_REFLECTION_TIMEOUT_MS),
+	reflectionIdlePollMs: integer("reflection_idle_poll_ms")
+		.notNull()
+		.default(DEFAULT_REFLECTION_IDLE_POLL_MS),
+	reflectionIdleGraceMs: integer("reflection_idle_grace_ms")
+		.notNull()
+		.default(DEFAULT_REFLECTION_IDLE_GRACE_MS),
+	reflectionMaxIdleWaitMs: integer("reflection_max_idle_wait_ms")
+		.notNull()
+		.default(DEFAULT_REFLECTION_MAX_IDLE_WAIT_MS),
+	reflectionSlotTimeoutMs: integer("reflection_slot_timeout_ms")
+		.notNull()
+		.default(DEFAULT_REFLECTION_SLOT_TIMEOUT_MS),
+	reflectionYieldMaxAttempts: integer("reflection_yield_max_attempts")
+		.notNull()
+		.default(DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS),
 	identityEngine: integer("identity_engine", { mode: "boolean" }).notNull(),
 	skillsEngine: integer("skills_engine", { mode: "boolean" })
 		.notNull()
@@ -545,6 +669,50 @@ export const moduleSettings = sqliteTable("module_settings", {
 	turnEventsPersist: integer("turn_events_persist", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_TURN_EVENTS_PERSIST),
+	proactivityEngine: integer("proactivity_engine", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_PROACTIVITY_ENGINE),
+	proactiveIdleNudgeEnabled: integer("proactive_idle_nudge_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_PROACTIVE_IDLE_NUDGE_ENABLED),
+	proactiveIdleNudgeAfterMs: integer("proactive_idle_nudge_after_ms")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_IDLE_NUDGE_AFTER_MS),
+	proactiveIdleNudgeMinIntervalMs: integer(
+		"proactive_idle_nudge_min_interval_ms",
+	)
+		.notNull()
+		.default(DEFAULT_PROACTIVE_IDLE_NUDGE_MIN_INTERVAL_MS),
+	proactiveQuietHoursStart: text("proactive_quiet_hours_start"),
+	proactiveQuietHoursEnd: text("proactive_quiet_hours_end"),
+	proactiveMaxPerHour: integer("proactive_max_per_hour")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_MAX_PER_HOUR),
+	proactiveMaxPerDay: integer("proactive_max_per_day")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_MAX_PER_DAY),
+	proactiveChimeEnabled: integer("proactive_chime_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_PROACTIVE_CHIME_ENABLED),
+	proactiveDeferMaxMs: integer("proactive_defer_max_ms")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_DEFER_MAX_MS),
+	proactiveTickMs: integer("proactive_tick_ms")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_TICK_MS),
+	proactiveLeaseMs: integer("proactive_lease_ms")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_LEASE_MS),
+	proactiveMaxAttempts: integer("proactive_max_attempts")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_MAX_ATTEMPTS),
+	proactiveRetryBackoffMs: integer("proactive_retry_backoff_ms")
+		.notNull()
+		.default(DEFAULT_PROACTIVE_RETRY_BACKOFF_MS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -695,6 +863,21 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	)
 		.notNull()
 		.default(DEFAULT_ACOUSTIC_ENDPOINT_THRESHOLD),
+	acousticGateCooldownMs: integer("acoustic_gate_cooldown_ms")
+		.notNull()
+		.default(DEFAULT_ACOUSTIC_GATE_COOLDOWN_MS),
+	acousticMaxHoldMs: integer("acoustic_max_hold_ms")
+		.notNull()
+		.default(DEFAULT_ACOUSTIC_MAX_HOLD_MS),
+	acousticTailKeepMs: integer("acoustic_tail_keep_ms")
+		.notNull()
+		.default(DEFAULT_ACOUSTIC_TAIL_KEEP_MS),
+	acousticLocalMaxHoldMs: integer("acoustic_local_max_hold_ms")
+		.notNull()
+		.default(DEFAULT_ACOUSTIC_LOCAL_MAX_HOLD_MS),
+	bargeInMinRms: real("barge_in_min_rms")
+		.notNull()
+		.default(DEFAULT_BARGE_IN_MIN_RMS),
 	suppressWakeWhilePeerSpeaks: integer("suppress_wake_while_peer_speaks", {
 		mode: "boolean",
 	})
@@ -719,6 +902,23 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	speculationSkillGateMaxScore: real("speculation_skill_gate_max_score")
 		.notNull()
 		.default(DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE),
+	twoTierEndpointEnabled: integer("two_tier_endpoint_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_TWO_TIER_ENDPOINT_ENABLED),
+	twoTierEagerMinPartialChars: integer("two_tier_eager_min_partial_chars")
+		.notNull()
+		.default(DEFAULT_TWO_TIER_EAGER_MIN_PARTIAL_CHARS),
+	twoTierPrefillIdleGuardMs: integer("two_tier_prefill_idle_guard_ms")
+		.notNull()
+		.default(DEFAULT_TWO_TIER_PREFILL_IDLE_GUARD_MS),
+	twoTierResumeGraceMs: integer("two_tier_resume_grace_ms")
+		.notNull()
+		.default(DEFAULT_TWO_TIER_RESUME_GRACE_MS),
+	twoTierMaxEagerPrefills: integer("two_tier_max_eager_prefills")
+		.notNull()
+		.default(DEFAULT_TWO_TIER_MAX_EAGER_PREFILLS),
 	sharedMicStreamEnabled: integer("shared_mic_stream_enabled", {
 		mode: "boolean",
 	})
@@ -765,6 +965,80 @@ export const wakeWordConfig = sqliteTable("wake_word_config", {
 	followUpLeadPadMs: integer("follow_up_lead_pad_ms")
 		.notNull()
 		.default(DEFAULT_FOLLOW_UP_LEAD_PAD_MS),
+	aecEnabled: integer("aec_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_AEC_ENABLED),
+	aecBackend: text("aec_backend", { enum: AEC_BACKEND_ENUM_VALUES })
+		.notNull()
+		.default(DEFAULT_AEC_BACKEND),
+	aecMethod: text("aec_method").notNull().default(DEFAULT_AEC_METHOD),
+	aecSourceMaster: text("aec_source_master"),
+	aecSinkMaster: text("aec_sink_master"),
+	aecSourceName: text("aec_source_name")
+		.notNull()
+		.default(DEFAULT_AEC_SOURCE_NAME),
+	aecSinkName: text("aec_sink_name").notNull().default(DEFAULT_AEC_SINK_NAME),
+	aecSetDefaultDevices: integer("aec_set_default_devices", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_AEC_SET_DEFAULT_DEVICES),
+	denoiseEnabled: integer("denoise_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_DENOISE_ENABLED),
+	denoiseEngine: text("denoise_engine", {
+		enum: SPEECH_ENHANCER_ENGINE_ENUM_VALUES,
+	})
+		.notNull()
+		.default(DEFAULT_DENOISE_ENGINE),
+	denoiseModelPath: text("denoise_model_path")
+		.notNull()
+		.default(DEFAULT_DENOISE_MODEL_PATH),
+	denoiseNumThreads: integer("denoise_num_threads")
+		.notNull()
+		.default(DEFAULT_DENOISE_NUM_THREADS),
+	denoiseProvider: text("denoise_provider")
+		.notNull()
+		.default(DEFAULT_DENOISE_PROVIDER),
+	echoResidualGateEnabled: integer("echo_residual_gate_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_ECHO_RESIDUAL_GATE_ENABLED),
+	echoResidualMinRatio: real("echo_residual_min_ratio")
+		.notNull()
+		.default(DEFAULT_ECHO_RESIDUAL_MIN_RATIO),
+	echoResidualWindowMs: integer("echo_residual_window_ms")
+		.notNull()
+		.default(DEFAULT_ECHO_RESIDUAL_WINDOW_MS),
+	echoResidualMaxDelayMs: integer("echo_residual_max_delay_ms")
+		.notNull()
+		.default(DEFAULT_ECHO_RESIDUAL_MAX_DELAY_MS),
+	echoResidualMinRms: real("echo_residual_min_rms")
+		.notNull()
+		.default(DEFAULT_ECHO_RESIDUAL_MIN_RMS),
+	echoResidualMinFrames: integer("echo_residual_min_frames")
+		.notNull()
+		.default(DEFAULT_ECHO_RESIDUAL_MIN_FRAMES),
+	stopWordAbortEnabled: integer("stop_word_abort_enabled", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_STOP_WORD_ABORT_ENABLED),
+	stopWordMaxWords: integer("stop_word_max_words")
+		.notNull()
+		.default(DEFAULT_STOP_WORD_MAX_WORDS),
+	wakeVerifier: text("wake_verifier", { enum: WAKE_VERIFIER_ENUM_VALUES })
+		.notNull()
+		.default(DEFAULT_WAKE_VERIFIER),
+	wakeVerifierWindowMs: integer("wake_verifier_window_ms")
+		.notNull()
+		.default(DEFAULT_WAKE_VERIFIER_WINDOW_MS),
+	wakeVerifierMinRms: real("wake_verifier_min_rms")
+		.notNull()
+		.default(DEFAULT_WAKE_VERIFIER_MIN_RMS),
+	wakeVerifierMinSpeechMs: integer("wake_verifier_min_speech_ms")
+		.notNull()
+		.default(DEFAULT_WAKE_VERIFIER_MIN_SPEECH_MS),
+	wakeVerifierMinScore: real("wake_verifier_min_score")
+		.notNull()
+		.default(DEFAULT_WAKE_VERIFIER_MIN_SCORE),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -967,6 +1241,15 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	asyncFollowUpMaxWaitMs: integer("async_follow_up_max_wait_ms")
 		.notNull()
 		.default(DEFAULT_ASYNC_FOLLOW_UP_MAX_WAIT_MS),
+	llmStreamIdleMs: integer("llm_stream_idle_ms")
+		.notNull()
+		.default(DEFAULT_LLM_STREAM_IDLE_MS),
+	quietAudioPollMs: integer("quiet_audio_poll_ms")
+		.notNull()
+		.default(DEFAULT_QUIET_AUDIO_POLL_MS),
+	quietAudioDeadlineMs: integer("quiet_audio_deadline_ms")
+		.notNull()
+		.default(DEFAULT_QUIET_AUDIO_DEADLINE_MS),
 	agentRepeatWarnAt: integer("agent_repeat_warn_at")
 		.notNull()
 		.default(DEFAULT_AGENT_REPEAT_WARN_AT),
@@ -979,6 +1262,24 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	agentRecentToolsTurns: integer("agent_recent_tools_turns")
 		.notNull()
 		.default(DEFAULT_AGENT_RECENT_TOOLS_TURNS),
+	agentQuestionGuardEnabled: integer("agent_question_guard_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_AGENT_QUESTION_GUARD_ENABLED),
+	agentTargetGuardEnabled: integer("agent_target_guard_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_AGENT_TARGET_GUARD_ENABLED),
+	agentReadThenAnswerEnabled: integer("agent_read_then_answer_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_AGENT_READ_THEN_ANSWER_ENABLED),
+	toolRequestMaxRetries: integer("tool_request_max_retries")
+		.notNull()
+		.default(DEFAULT_TOOL_REQUEST_MAX_RETRIES),
 	anaphoraMaxAgeMs: integer("anaphora_max_age_ms")
 		.notNull()
 		.default(DEFAULT_ANAPHORA_MAX_AGE_MS),
@@ -988,6 +1289,14 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	fastPathMinCoverage: real("fast_path_min_coverage")
 		.notNull()
 		.default(DEFAULT_FAST_PATH_MIN_COVERAGE),
+	fastPathCompoundEnabled: integer("fast_path_compound_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_FAST_PATH_COMPOUND_ENABLED),
+	fastPathCompoundMaxTargets: integer("fast_path_compound_max_targets")
+		.notNull()
+		.default(DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS),
 	fastPathMaxUtteranceChars: integer("fast_path_max_utterance_chars")
 		.notNull()
 		.default(DEFAULT_FAST_PATH_MAX_UTTERANCE_CHARS),
@@ -1125,6 +1434,22 @@ export const ttsConfig = sqliteTable("tts_config", {
 	workerRecycleAfterJobs: integer("tts_worker_recycle_after_jobs")
 		.notNull()
 		.default(DEFAULT_TTS_WORKER_RECYCLE_AFTER_JOBS),
+	phraseCacheMaxBytes: integer("phrase_cache_max_bytes")
+		.notNull()
+		.default(DEFAULT_TTS_PHRASE_CACHE_MAX_BYTES),
+	phraseCacheWarmupEnabled: integer("phrase_cache_warmup_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_TTS_PHRASE_CACHE_WARMUP_ENABLED),
+	phraseCacheReplyUnitsEnabled: integer("phrase_cache_reply_units_enabled", {
+		mode: "boolean",
+	})
+		.notNull()
+		.default(DEFAULT_TTS_PHRASE_CACHE_REPLY_UNITS_ENABLED),
+	sentenceFirstFragmentMaxWords: integer("sentence_first_fragment_max_words")
+		.notNull()
+		.default(DEFAULT_SENTENCE_FIRST_FRAGMENT_MAX_WORDS),
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
@@ -1156,6 +1481,9 @@ export const skillProvider = sqliteTable("skill_provider", {
 		.notNull()
 		.default(DEFAULT_SKILL_MAX_RESULT_CHARS),
 	timeout: integer("timeout_ms").notNull().default(DEFAULT_SKILL_TIMEOUT_MS),
+	toolsRefreshMs: integer("tools_refresh_ms")
+		.notNull()
+		.default(DEFAULT_SKILL_REFRESH_MS),
 	priority: integer("priority").notNull().default(0),
 	trustTier: text("trust_tier", { enum: SKILL_TRUST_TIER_ENUM_VALUES })
 		.notNull()
@@ -1427,6 +1755,7 @@ export const interactionTrace = sqliteTable(
 		implicitFeedback: text("implicit_feedback", {
 			enum: IMPLICIT_FEEDBACK_ENUM_VALUES,
 		}),
+		traceId: text("trace_id"),
 		domiaSnapshot: text("domia_snapshot", { mode: "json" }),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
@@ -1434,6 +1763,7 @@ export const interactionTrace = sqliteTable(
 	(t) => [
 		index("idx_trace_domia_created").on(t.domiaId, t.createdAt),
 		index("idx_trace_session").on(t.interactionSessionTraceId),
+		index("idx_trace_trace_id").on(t.traceId),
 	],
 )
 
@@ -1454,10 +1784,65 @@ export const announcement = sqliteTable(
 			.default(ANNOUNCEMENT_DELIVERY_ENUM.DOMIA_VOICE),
 		target: text("target"),
 		audioPath: text("audio_path"),
+		personId: text("person_id"),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
 	(t) => [index("idx_announcement_domia_updated").on(t.domiaId, t.updatedAt)],
+)
+
+export const proactiveSchedule = sqliteTable(
+	"proactive_schedule",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id),
+		personId: text("person_id"),
+		name: text("name").notNull(),
+		text: text("text"),
+		templateKey: text("template_key"),
+		templateParams: text("template_params", { mode: "json" }).$type<Record<
+			string,
+			string
+		> | null>(),
+		verb: text("verb", { enum: PROACTIVE_VERB_ENUM_VALUES })
+			.notNull()
+			.default(DEFAULT_PROACTIVE_VERB),
+		importance: text("importance", { enum: PROACTIVE_IMPORTANCE_ENUM_VALUES })
+			.notNull()
+			.default(DEFAULT_PROACTIVE_IMPORTANCE),
+		targetKind: text("target_kind", { enum: PROACTIVE_TARGET_KIND_ENUM_VALUES })
+			.notNull()
+			.default(DEFAULT_PROACTIVE_TARGET_KIND),
+		targetSatelliteId: text("target_satellite_id"),
+		actionTool: text("action_tool"),
+		actionArgs: text("action_args", { mode: "json" }).$type<Record<
+			string,
+			unknown
+		> | null>(),
+		dueAt: text("due_at").notNull(),
+		repeatEveryMs: integer("repeat_every_ms"),
+		repeatDailyAt: text("repeat_daily_at"),
+		status: text("status", { enum: PROACTIVE_SCHEDULE_STATUS_ENUM_VALUES })
+			.notNull()
+			.default(PROACTIVE_SCHEDULE_STATUS_ENUM.PENDING),
+		leaseUntil: text("lease_until"),
+		leaseOwner: text("lease_owner"),
+		attempts: integer("attempts").notNull().default(0),
+		firedCount: integer("fired_count").notNull().default(0),
+		lastFiredAt: text("last_fired_at"),
+		lastError: text("last_error"),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [
+		index("idx_proactive_schedule_domia_status_due").on(
+			t.domiaId,
+			t.status,
+			t.dueAt,
+		),
+	],
 )
 
 export const turnEvent = sqliteTable(
@@ -1548,6 +1933,9 @@ export const satelliteConfig = sqliteTable(
 		isActive: integer("is_active", { mode: "boolean" })
 			.notNull()
 			.default(DEFAULT_SATELLITE_ACTIVE),
+		wyomingStreamingTts: integer("wyoming_streaming_tts", { mode: "boolean" })
+			.notNull()
+			.default(DEFAULT_SATELLITE_WYOMING_STREAMING_TTS),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},
@@ -1565,8 +1953,6 @@ export const domiaRelations = relations(domia, ({ one, many }) => ({
 	}),
 	moduleSettings: many(moduleSettings),
 	characterProfiles: many(characterProfile),
-	emotionEvents: many(emotionEvent),
-	memoryFacts: many(memoryFact),
 	wakeWordConfigs: many(wakeWordConfig),
 	sttConfigs: many(sttConfig),
 	llmModelConfigs: many(llmModelConfig),
@@ -1574,15 +1960,7 @@ export const domiaRelations = relations(domia, ({ one, many }) => ({
 	skillProviders: many(skillProvider),
 	audioPlaybackConfigs: many(audioPlaybackConfig),
 	mqttConfigs: many(mqttConfig),
-	interactionTraces: many(interactionTrace),
-	interactionSessionTraces: many(interactionSessionTrace),
-	satellites: many(satelliteConfig),
-	capabilityDelegations: many(capabilityDelegation, {
-		relationName: "delegator",
-	}),
-	capabilityDelegatedToMe: many(capabilityDelegation, {
-		relationName: "delegatee",
-	}),
+	capabilityDelegations: many(capabilityDelegation),
 }))
 
 export const runtimeCapabilitiesRelations = relations(
@@ -1605,13 +1983,6 @@ export const satelliteConfigRelations = relations(
 	}),
 )
 
-export const emotionStateRelations = relations(emotionState, ({ one }) => ({
-	domia: one(domia, {
-		fields: [emotionState.domiaId],
-		references: [domia.id],
-	}),
-}))
-
 export const moduleSettingsRelations = relations(moduleSettings, ({ one }) => ({
 	domia: one(domia, {
 		fields: [moduleSettings.domiaId],
@@ -1628,20 +1999,6 @@ export const characterProfileRelations = relations(
 		}),
 	}),
 )
-
-export const emotionEventRelations = relations(emotionEvent, ({ one }) => ({
-	domia: one(domia, {
-		fields: [emotionEvent.domiaId],
-		references: [domia.id],
-	}),
-}))
-
-export const memoryFactRelations = relations(memoryFact, ({ one }) => ({
-	domia: one(domia, {
-		fields: [memoryFact.domiaId],
-		references: [domia.id],
-	}),
-}))
 
 export const wakeWordConfigRelations = relations(wakeWordConfig, ({ one }) => ({
 	domia: one(domia, {
@@ -1695,43 +2052,12 @@ export const mqttConfigRelations = relations(mqttConfig, ({ one }) => ({
 	}),
 }))
 
-export const interactionSessionTraceRelations = relations(
-	interactionSessionTrace,
-	({ one, many }) => ({
-		domia: one(domia, {
-			fields: [interactionSessionTrace.domiaId],
-			references: [domia.id],
-		}),
-		interactionTraces: many(interactionTrace),
-	}),
-)
-
-export const interactionTraceRelations = relations(
-	interactionTrace,
-	({ one }) => ({
-		domia: one(domia, {
-			fields: [interactionTrace.domiaId],
-			references: [domia.id],
-		}),
-		interactionSessionTrace: one(interactionSessionTrace, {
-			fields: [interactionTrace.interactionSessionTraceId],
-			references: [interactionSessionTrace.id],
-		}),
-	}),
-)
-
 export const capabilityDelegationRelations = relations(
 	capabilityDelegation,
 	({ one }) => ({
 		domia: one(domia, {
 			fields: [capabilityDelegation.domiaId],
 			references: [domia.id],
-			relationName: "delegator",
-		}),
-		delegateToDomia: one(domia, {
-			fields: [capabilityDelegation.delegateToDomiaId],
-			references: [domia.id],
-			relationName: "delegatee",
 		}),
 	}),
 )

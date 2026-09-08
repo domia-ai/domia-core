@@ -1,14 +1,15 @@
 import { rm } from "fs/promises"
 
 import { type DomiaType } from "@/modules/core"
+import { DEFAULT_PCM_SAMPLE_RATE } from "@/db"
 import { warmupLogger } from "@/utils"
-import { runTTS } from "@/modules/tts-engine"
+import { runTTS, getTtsEngine, warmPhraseCache } from "@/modules/tts-engine"
 import { runSttPcmPooled, getSttEngine } from "@/modules/stt-engine"
 import { warmTurnDetector } from "@/modules/turn-detector"
 import { warmupLLM } from "@/modules/llm-engine"
 import type { RuntimeCapabilitiesType } from "@/setups/environment"
 
-const STT_SAMPLE_RATE = 16000
+const STT_SAMPLE_RATE = DEFAULT_PCM_SAMPLE_RATE
 const STT_WARM_SILENCE = Buffer.alloc(STT_SAMPLE_RATE * 2)
 const TTS_WARM_TEXT = "Ready when you are."
 const ONNX_WARM_PASSES = 2
@@ -31,7 +32,6 @@ const warmStt = (domia: DomiaType): Promise<void> =>
 		for (let i = 0; i < ONNX_WARM_PASSES; i++) {
 			await runSttPcmPooled(domia, STT_WARM_SILENCE)
 		}
-		// streaming sessions pin one worker each — warm them concurrently so every worker is hot
 		const engine = domia.sttConfig?.engine
 			? getSttEngine(domia.sttConfig.engine)
 			: null
@@ -55,6 +55,15 @@ const warmTts = (domia: DomiaType): Promise<void> =>
 		}
 	})
 
+const warmPhrases = (domia: DomiaType): Promise<void> =>
+	timed("TTS phrase cache", async () => {
+		const engine = domia.ttsConfig?.engine
+		const adapter = engine ? getTtsEngine(engine) : null
+		if (!adapter) return
+		const warmed = await warmPhraseCache(domia, adapter)
+		warmupLogger.info(`🔥 phrase cache warmed (${warmed} phrases)`)
+	})
+
 const warmLlm = (domia: DomiaType): Promise<void> =>
 	timed("LLM", () => warmupLLM(domia))
 
@@ -72,7 +81,16 @@ export const warmupOnBoot = (
 		tasks.push(warmStt(domia))
 	if (capabilities.llm && domia.llmModelConfig?.modelName)
 		tasks.push(warmLlm(domia))
-	if (capabilities.tts && domia.ttsConfig?.modelPath) tasks.push(warmTts(domia))
+	if (capabilities.tts && domia.ttsConfig?.modelPath) {
+		const warmPhrasesEnabled =
+			domia.ttsConfig.phraseCacheEnabled &&
+			domia.ttsConfig.phraseCacheWarmupEnabled
+		tasks.push(
+			warmPhrasesEnabled
+				? warmTts(domia).then(() => warmPhrases(domia))
+				: warmTts(domia),
+		)
+	}
 	if (domia.wakeWordConfig?.acousticEndpointingEnabled)
 		warmTurnDetector(
 			domia.wakeWordConfig.turnDetectorModelPath,

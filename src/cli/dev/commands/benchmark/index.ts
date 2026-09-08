@@ -73,9 +73,9 @@ export const benchmarkCommand = async (
 				devCliLogger.error(`❌ Corpus not found: ${absCorpus}`)
 				process.exit(1)
 			}
-			const corpus: VoiceCorpusType = JSON.parse(
+			const corpus = JSON.parse(
 				fs.readFileSync(absCorpus, "utf8"),
-			)
+			) as VoiceCorpusType
 			devCliLogger.info(
 				`📊 Engine-direct benchmark over corpus "${corpusPath}" (${corpus.entries.length} entries)`,
 			)

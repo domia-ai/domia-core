@@ -7,7 +7,9 @@ import type {
 	ToolHintOverrideType,
 	ToolRiskClassType,
 	ToolAnnotationsType,
+	ArgNormalizeMapType,
 } from "@/db"
+import type { LanguageCatalogExtensionType } from "@/utils"
 
 export type ResolvedSkillResilienceType = {
 	retryMaxAttempts: number
@@ -15,6 +17,7 @@ export type ResolvedSkillResilienceType = {
 	breakerThreshold: number
 	breakerCooldownMs: number
 	idempotentWithinTurn: boolean
+	serveStaleTools: boolean
 }
 
 export type ResolvedSkillDescriptorType = {
@@ -27,10 +30,19 @@ export type ResolvedSkillDescriptorType = {
 	toolPolicy: Record<string, ToolPolicyType>
 	toolHints: Record<string, ToolHintOverrideType>
 	paramAllow: Record<string, string[]>
+	argNormalize: ArgNormalizeMapType
 	finalize: ToolFinalizeMapType
 	genericWords: string[]
 	resilience: ResolvedSkillResilienceType
 }
+
+export type HintSourceType = "descriptor" | "annotation" | "default"
+
+export type HintNameType =
+	| "readOnly"
+	| "destructive"
+	| "idempotent"
+	| "openWorld"
 
 export type ResolvedToolMetaType = {
 	rawName: string
@@ -40,6 +52,7 @@ export type ResolvedToolMetaType = {
 	cancellable: boolean
 	policy: ToolPolicyType
 	policySource: "descriptor" | "risk_default"
+	hintSources: Record<HintNameType, HintSourceType>
 	timeoutMs: number | null
 	allowedActors: string[] | null
 }
@@ -49,6 +62,7 @@ export type EffectiveHintsType = {
 	destructive: boolean | undefined
 	idempotent: boolean | undefined
 	openWorld: boolean | undefined
+	sources: Record<HintNameType, HintSourceType>
 }
 
 export type ToolShortlistResultType = {
@@ -102,131 +116,75 @@ export type SkillSpecializationType = {
 		key: string,
 		language: string | null,
 	) => { phrase: string; args: Record<string, unknown> }[] | null
+	describeInvocation?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		args: Record<string, unknown>,
+		language: string | null,
+	) => ToolInvocationDescriptionType | null
+	preCall?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		args: Record<string, unknown>,
+	) => Promise<Record<string, unknown>> | Record<string, unknown>
+	postCall?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		resolvedArgs: Record<string, unknown>,
+		result: SkillCallResultType,
+	) => Promise<SkillCallResultType> | SkillCallResultType
+	status?: (provider: SelectSkillProviderType) => Record<string, unknown> | null
+	discover?: (timeoutMs: number) => Promise<DiscoveredProviderType[]>
+	catalogExtensions?: Record<string, LanguageCatalogExtensionType>
 }
 
-export type HaEntityType = {
-	names: string[]
-	domain: string
-	area: string | null
-	entityId?: string
-	state?: string | null
-	lastChanged?: string | null
-}
-
-export type HaContextSourceType = "ws" | "poll"
-
-export type HaContextCacheType = {
-	entities: HaEntityType[]
-	areas: Set<string>
-	fetchedAt: number
-	handle: SkillConnHandleType
-	source?: HaContextSourceType
-}
-
-export type HaWsStateType =
-	| "idle"
-	| "connecting"
-	| "authenticating"
-	| "syncing"
-	| "live"
-	| "backoff"
-	| "closed"
-
-export type HaLiveEntityType = {
-	entityId: string
-	state: string | null
-	friendlyName: string | null
-	names: string[]
-	domain: string
-	area: string | null
-	lastChanged: string | null
-}
-
-export type HaRegistryEntityType = {
-	entityId: string
-	name: string | null
-	originalName: string | null
-	aliases: string[]
-	areaId: string | null
-	deviceId: string | null
-	disabled: boolean
-	hidden: boolean
-}
-
-export type HaRegistryAreaType = {
-	areaId: string
+export type DiscoveredProviderType = {
+	kind: string
 	name: string
+	url: string
+	host: string
+	port: number
+	version: string | null
 }
 
-export type HaRegistryDeviceType = {
-	deviceId: string
-	areaId: string | null
+export type SkillToolStatusType = {
+	rawName: string
+	riskClass: ToolRiskClassType
+	policy: ToolPolicyType
+	policySource: "descriptor" | "risk_default"
+	retryable: boolean
+	openWorld: boolean
+	hintSources: Record<HintNameType, HintSourceType>
 }
 
-export type HaStateObjectType = {
-	entity_id: string
-	state?: string | null
-	attributes?: Record<string, unknown>
-	last_changed?: string | null
+export type SkillProviderStatusType = {
+	id: string
+	name: string
+	kind: string | null
+	trustTier: string
+	connected: boolean
+	cachedTools: number
+	allowedTools: number
+	lastSyncAt: string | null
+	toolsTtlMs: number | null
+	toolsFreshUntil: string | null
+	toolsRefreshMs: number
+	tools: SkillToolStatusType[]
+	specialization: Record<string, unknown> | null
 }
 
-export type HaWsMessageType = {
-	id?: number
-	type?: string
-	success?: boolean
-	result?: unknown
-	error?: unknown
-	message?: string
-	event?: {
-		event_type?: string
-		data?: {
-			entity_id?: string
-			new_state?: HaStateObjectType | null
-		}
-	}
+export type SkillsRefreshOptionsType = {
+	force: boolean
 }
 
-export type HaWsSnapshotType = {
-	states: HaStateObjectType[]
-	entityRegistry: HaRegistryEntityType[]
-	areaRegistry: HaRegistryAreaType[]
-	deviceRegistry: HaRegistryDeviceType[]
-	exposedEntityIds: Set<string> | null
+export type ListToolsOptionsType = {
+	force?: boolean
 }
 
-export type HaWsClientOptionsType = {
-	wsUrl: string
-	token: string
-	onSync: (snapshot: HaWsSnapshotType) => void
-	onEvent: (entityId: string, newState: HaStateObjectType | null) => void
-	onStatus: (state: HaWsStateType, reason?: string) => void
-}
-
-export type HaWsClientType = {
-	connect: () => void
-	close: () => void
-	state: () => HaWsStateType
-}
-
-export type HaDestinationType = {
-	key: string
-	wsUrl: string
-	client: HaWsClientType
-	attachedProviderIds: Set<string>
-	entities: Map<string, HaLiveEntityType>
-	areasById: Map<string, string>
-	devicesById: Map<string, string | null>
-	registryByEntityId: Map<string, HaRegistryEntityType>
-	exposedEntityIds: Set<string> | null
-	live: boolean
-	dirty: boolean
-	snapshot: HaContextCacheType | null
-	overflowWarned: boolean
-}
-
-export type HaDataPlaneConfigType = {
-	dataPlane: "ws" | "poll"
-	wsUrl: string | null
+export type ToolInvocationDescriptionType = {
+	target?: string
+	targetNames?: string[]
+	summary?: string
 }
 
 export type SkillCallStatusType =
@@ -259,8 +217,13 @@ export type RawSkillToolType = {
 	annotations?: ToolAnnotationsType
 }
 
+export type RawSkillToolListType = {
+	tools: RawSkillToolType[]
+	ttlMs: number | null
+}
+
 export type SkillConnHandleType = {
-	listTools: () => Promise<RawSkillToolType[]>
+	listTools: () => Promise<RawSkillToolListType>
 	callTool: (
 		rawName: string,
 		args: Record<string, unknown>,
@@ -300,8 +263,12 @@ export type SkillConnectionType = {
 	allowedTools: Set<string>
 	descriptor: ResolvedSkillDescriptorType
 	toolMeta: Map<string, ResolvedToolMetaType>
+	toolsTtlMs: number | null
+	toolsFreshUntil: number | null
 	language: string | null
 	provider: SelectSkillProviderType
 	specialization: SkillSpecializationType | null
 	handle: SkillConnHandleType
 }
+
+export type BreakerStateType = { failures: number; openUntil: number }

@@ -10,6 +10,7 @@ import {
 	audioPlaybackLogger,
 	generateUuid,
 	wrapPcmToWav,
+	TTS_ERRORS,
 } from "@/utils"
 
 import { audioPlaybackEngines } from "../engines"
@@ -20,10 +21,10 @@ export const playAudio = async (
 	domia: DomiaType,
 	filePath: string,
 ): Promise<AudioPlaybackResult> => {
-	const audioPlaybackConfig = domia?.audioPlaybackConfig
+	const audioPlaybackConfig = domia.audioPlaybackConfig
 	const engine = audioPlaybackConfig?.engine
 
-	if (!engine || !AUDIO_PLAYBACK_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !AUDIO_PLAYBACK_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(AUDIO_PLAYBACK_ERRORS.AUDIO_PLAYBACK_ENGINE_NOT_FOUND, {
 			logger: audioPlaybackLogger,
 			meta: {
@@ -43,7 +44,7 @@ const collectAndPlayFile = async (
 	options: SoxStreamOptionsType,
 ): Promise<AudioPlaybackResult> => {
 	audioPlaybackLogger.info("🔊 Collecting streamed PCM for file playback", {
-		domiaId: domia?.id,
+		domiaId: domia.id,
 		sampleRate: options.sampleRate,
 		channels: options.channels,
 	})
@@ -57,7 +58,10 @@ const collectAndPlayFile = async (
 	}
 
 	if (totalBytes === 0) {
-		throw new Error("streamed TTS produced no PCM bytes")
+		throw domiaError(TTS_ERRORS.EMPTY_AUDIO, {
+			logger: audioPlaybackLogger,
+			meta: { domiaId: domia.id, site: "playStreamedAudio" },
+		})
 	}
 
 	const pcm = Buffer.concat(collected)
@@ -97,7 +101,7 @@ export const playAudioStream = async (
 	}
 	audioPlaybackLogger.warn(
 		"⚠️ audioPlaybackConfig.streamingEnabled=false — buffering full audio before playback (higher time-to-first-audio)",
-		{ domiaId: domia?.id },
+		{ domiaId: domia.id },
 	)
 	return collectAndPlayFile(domia, chunks, options)
 }

@@ -3,6 +3,11 @@ import type { modelInstallSpecSchema } from "../schemas"
 
 export type ModelInstallSpecType = z.infer<typeof modelInstallSpecSchema>
 
+export type ModelDownloadIntegrityType = {
+	sha256?: string
+	sizeBytes?: number
+}
+
 export type ModelJobStatusType = "running" | "done" | "error"
 
 export type ModelJobType = {

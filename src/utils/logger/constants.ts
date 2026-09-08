@@ -8,3 +8,6 @@ export const colors = {
 	debug: chalk.gray,
 	highlight: chalk.bold,
 } as const
+
+export const TRACE_ID_HEADER = "x-domia-trace-id"
+export const TRACE_ID_MAX_LENGTH = 128

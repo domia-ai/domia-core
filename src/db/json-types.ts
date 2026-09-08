@@ -1,3 +1,11 @@
+import type {
+	ArgNormalizeOpType,
+	HardwareClassType,
+	BenchStageType,
+} from "./types"
+
+export type { ArgNormalizeOpType, HardwareClassType, BenchStageType }
+
 export type SkillAuthType =
 	| { kind: "bearer"; token: string }
 	| { kind: "headers"; headers: Record<string, string> }
@@ -28,7 +36,7 @@ export type ToolFinalizeRuleType = {
 	ackAfterMs?: number
 }
 
-export type ToolFinalizeMapType = Record<string, ToolFinalizeRuleType>
+export type ToolFinalizeMapType = Partial<Record<string, ToolFinalizeRuleType>>
 
 export type SkillProviderConfigType = {
 	dataPlane?: "ws" | "poll"
@@ -50,6 +58,7 @@ export type SkillResilienceConfigType = {
 	breakerThreshold?: number
 	breakerCooldownMs?: number
 	idempotentWithinTurn?: boolean
+	serveStaleTools?: boolean
 }
 
 export type ToolPolicyType = "allow" | "block" | "confirm"
@@ -65,11 +74,17 @@ export type ToolHintOverrideType = {
 	cancellable?: boolean
 }
 
+export type ArgNormalizeMapType = Record<
+	string,
+	Record<string, ArgNormalizeOpType[]>
+>
+
 export type SkillDescriptorExecutionType = {
 	coreTools?: string[]
 	toolPolicy?: Record<string, ToolPolicyType>
 	toolHints?: Record<string, ToolHintOverrideType>
 	paramAllow?: Record<string, string[]>
+	argNormalize?: ArgNormalizeMapType
 	finalize?: ToolFinalizeMapType
 	genericWords?: string[]
 	resilience?: SkillResilienceConfigType
@@ -171,3 +186,8 @@ export type TtsEngineConfigType = {
 	lengthScale?: number
 	chunkStreaming?: boolean
 }
+
+export type BenchThresholdsType = Record<
+	HardwareClassType,
+	Record<BenchStageType, number>
+>

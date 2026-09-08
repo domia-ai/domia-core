@@ -19,9 +19,6 @@ import type { MindSnapshotType, MindTemplateType } from "../types"
 const ALL_MODULES_ON: MindSnapshotType["modules"] = {
 	emotionEngine: true,
 	memoryEngine: true,
-	collectiveMind: true,
-	remoteAccessEngine: true,
-	narrativeEngine: true,
 	identityEngine: true,
 }
 

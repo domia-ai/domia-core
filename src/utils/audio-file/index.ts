@@ -3,6 +3,7 @@ import { join } from "path"
 import { createWriteStream } from "fs"
 import { writeFile, readFile, open, unlink } from "fs/promises"
 
+import { DEFAULT_PCM_SAMPLE_RATE } from "@/db/constants"
 import { generateUuid } from "@/utils/db"
 import type { WavStreamWriterType } from "./types"
 
@@ -262,7 +263,7 @@ export const wavFileToPcmChunks = async function* (
 export const pcmChunksToWavFile = async (
 	chunks: AsyncIterable<Buffer>,
 	interactionId: string | (() => string),
-	sampleRate = 16000,
+	sampleRate: number = DEFAULT_PCM_SAMPLE_RATE,
 	channels = 1,
 ): Promise<string> => {
 	const parts: Buffer[] = []

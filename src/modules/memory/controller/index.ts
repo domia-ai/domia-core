@@ -5,6 +5,7 @@ import {
 	memoryLogger,
 	languageSetsFor,
 	sanitizeFactLine,
+	tokensOf,
 } from "@/utils"
 
 import {
@@ -51,13 +52,10 @@ const confFloor = (kind: FactKindEnumType): number =>
 			? MIN_RECALL_CONF_PREF
 			: MIN_RECALL_CONF_OBS
 
-const tokensOf = (s: string, stopwords: Set<string>): string[] =>
-	s
-		.toLowerCase()
-		.normalize("NFD")
-		.replace(/\p{M}/gu, "")
-		.split(/[^\p{L}\p{N}]+/u)
-		.filter((w) => w.length >= 3 && !stopwords.has(w))
+const FACT_TOKEN_MIN_LENGTH = 3
+
+const factTokensOf = (s: string, stopwords: Set<string>): string[] =>
+	tokensOf(s, { minLength: FACT_TOKEN_MIN_LENGTH, stopwords })
 
 const cosineSim = (a: number[], b: number[]): number => {
 	let dot = 0
@@ -79,10 +77,10 @@ const rankFactsLexical = (
 	limit: number,
 	stopwords: Set<string>,
 ): string[] => {
-	const q = new Set(tokensOf(queryText, stopwords))
+	const q = new Set(factTokensOf(queryText, stopwords))
 	if (q.size === 0) return facts.slice(0, limit)
 	const scored = facts.map((fact, index) => {
-		const ft = tokensOf(fact, stopwords)
+		const ft = factTokensOf(fact, stopwords)
 		let rel = 0
 		for (const t of ft) if (q.has(t)) rel++
 		return { fact, index, rel }
@@ -107,7 +105,7 @@ export const rankFactsByRelevance = async (
 	if (facts.length <= limit)
 		return rankFactsLexical(facts, queryText, limit, stopwords)
 	const vectors = await embed(domia, [queryText, ...facts])
-	if (!vectors || vectors.length !== facts.length + 1)
+	if (vectors?.length !== facts.length + 1)
 		return rankFactsLexical(facts, queryText, limit, stopwords)
 	const query = vectors[0]
 	return facts
@@ -141,9 +139,9 @@ export const getUserModelSummary = async (
 		if (!row) return null
 		const parts: string[] = []
 		if (row.summary?.trim()) parts.push(row.summary.trim())
-		const interests = (row.interests ?? []).filter((s) => s?.trim())
+		const interests = (row.interests ?? []).filter((s) => s.trim())
 		if (interests.length) parts.push(`They're into ${interests.join(", ")}.`)
-		const prefs = (row.prefs ?? []).filter((s) => s?.trim())
+		const prefs = (row.prefs ?? []).filter((s) => s.trim())
 		if (prefs.length) parts.push(`They prefer ${prefs.join(", ")}.`)
 		if (row.moodTendencies?.trim())
 			parts.push(`They tend to be ${row.moodTendencies.trim()}.`)
@@ -308,7 +306,7 @@ const rejectFact = (
 	if (subject !== SPEAKER_SUBJECT) return "subject not the user"
 	if (!RELATION_ALLOWLIST_RE.test(relation)) return "relation not state-shaped"
 	if (isEphemeralFact(relation, value)) return "ephemeral"
-	if (tokensOf(value, stopwords).length === 0 && value.length < 3)
+	if (factTokensOf(value, stopwords).length === 0 && value.length < 3)
 		return "value not meaningful"
 	return null
 }
@@ -324,7 +322,7 @@ const findSemanticDuplicate = async (
 ): Promise<{ id: string; confidence: number | null } | null> => {
 	if (!candidates.length) return null
 	const vectors = await embed(domia, [value, ...candidates.map((c) => c.value)])
-	if (!vectors || vectors.length !== candidates.length + 1) return null
+	if (vectors?.length !== candidates.length + 1) return null
 	const query = vectors[0]
 	const threshold = dedupThreshold(relation)
 	let best: { id: string; confidence: number | null } | null = null
@@ -387,7 +385,7 @@ const reconcileDeletes = async (
 			if (normalizeFactKey(row.relation) !== del.relation) continue
 			if (
 				!del.explicit &&
-				(row.confidence ?? 0) >= IDENTITY_PROTECT_FLOOR &&
+				row.confidence >= IDENTITY_PROTECT_FLOOR &&
 				row.kind === FACT_KIND_ENUM.USER_FACT
 			)
 				continue
@@ -601,13 +599,7 @@ export const getFactStrings = async (domia: DomiaType): Promise<string[]> => {
 		)
 		return (
 			rows
-				.filter(
-					(row) =>
-						(row.confidence ?? 0) >=
-						confFloor(
-							(row.kind ?? FACT_KIND_ENUM.OBSERVATION) as FactKindEnumType,
-						),
-				)
+				.filter((row) => row.confidence >= confFloor(row.kind))
 				.map(
 					(row) =>
 						sanitizeFactLine(`${row.subject} ${row.relation} ${row.value}`)

@@ -4,10 +4,16 @@ import { dbClient, STT_ENGINE_ENUM } from "@/db"
 import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
 import { getBootStatus } from "@/modules/runtime-control"
+import { getAecStatus } from "@/modules/aec"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { resolveSkillAdapter } from "@/modules/skill-engine"
 import { slotStats } from "@/modules/llm-slots"
-import { configEngineLogger } from "@/utils"
+import {
+	configEngineLogger,
+	domiaError,
+	setMeshAuthTunables,
+	VALIDATION_ERRORS,
+} from "@/utils"
 import dbAdapter from "../db-adapter"
 import { CONFIG_BUNDLE_VERSION, configBundleSchema } from "../schemas"
 import type {
@@ -82,6 +88,33 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			path: ww.vadModelPath,
 			status: fileInstalled(ww.vadModelPath) ? "ok" : "missing",
 		})
+		if (ww.denoiseEnabled)
+			entries.push({
+				stage: "denoise",
+				engine: ww.denoiseEngine,
+				configured: ww.denoiseEngine,
+				path: ww.denoiseModelPath,
+				status: fileInstalled(ww.denoiseModelPath) ? "ok" : "missing",
+				detail: fileInstalled(ww.denoiseModelPath)
+					? undefined
+					: "npm run setup:models:gtcrn",
+			})
+		if (ww.aecEnabled) {
+			const aec = getAecStatus()
+			entries.push({
+				stage: "aec",
+				engine: aec.backend,
+				configured: ww.aecSourceName,
+				path: null,
+				status:
+					aec.state === "active"
+						? "ok"
+						: aec.state === "off"
+							? "unknown"
+							: "missing",
+				detail: aec.detail ?? `state=${aec.state}`,
+			})
+		}
 	}
 	const llm = domia.llmModelConfig
 	if (llm && caps?.llm)
@@ -179,17 +212,45 @@ const SECTION_META_KEYS = new Set([
 	"updatedAt",
 ])
 
-const toBundleSection = <T extends object>(
-	row: T | null | undefined,
+const SNAPSHOT_SECRET_KEYS = ["apiKey", "password"] as const
+
+const stripSectionSecrets = (section: unknown): unknown => {
+	if (!section || typeof section !== "object" || Array.isArray(section))
+		return section
+	const entries = Object.entries(section as Record<string, unknown>).filter(
+		([key]) =>
+			!SNAPSHOT_SECRET_KEYS.includes(
+				key as (typeof SNAPSHOT_SECRET_KEYS)[number],
+			),
+	)
+	return Object.fromEntries(entries)
+}
+
+export const stripDomiaSnapshotSecrets = <T>(snapshot: T): T => {
+	if (!snapshot || typeof snapshot !== "object") return snapshot
+	const clone: Record<string, unknown> = {
+		...(snapshot as Record<string, unknown>),
+	}
+	for (const key of Object.keys(clone))
+		clone[key] = stripSectionSecrets(clone[key])
+	return clone as T
+}
+
+const bundleSection = (
+	row: object,
 	extraOmit: string[] = [],
-): Record<string, unknown> | null => {
-	if (!row) return null
-	return Object.fromEntries(
+): Record<string, unknown> =>
+	Object.fromEntries(
 		Object.entries(row).filter(
 			([key]) => !SECTION_META_KEYS.has(key) && !extraOmit.includes(key),
 		),
 	)
-}
+
+const toBundleSection = (
+	row: object | null | undefined,
+	extraOmit: string[] = [],
+): Record<string, unknown> | null =>
+	row ? bundleSection(row, extraOmit) : null
 
 export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 	({
@@ -204,6 +265,12 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 			voiceQueueTimeoutMs: domia.voiceQueueTimeoutMs,
 			ownConfigTtlMs: domia.ownConfigTtlMs,
 			warmupOnBoot: domia.warmupOnBoot,
+			modelInstallAllowedHosts: domia.modelInstallAllowedHosts,
+			heartbeatSignatureRequired: domia.heartbeatSignatureRequired,
+			meshSecretGraceMs: domia.meshSecretGraceMs,
+			knowledgeMaxChars: domia.knowledgeMaxChars,
+			benchTurns: domia.benchTurns,
+			benchThresholds: domia.benchThresholds,
 		},
 		character: toBundleSection(domia.characterProfile),
 		emotion: domia.emotionState
@@ -218,13 +285,13 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 		playback: toBundleSection(domia.audioPlaybackConfig),
 		mqttLocal: toBundleSection(domia.localMqttConfig, ["type", "password"]),
 		skillProviders: (domia.skillProviders ?? []).map((s) => {
-			const section = toBundleSection(s, ["auth"]) as Record<string, unknown>
+			const section = bundleSection(s, ["auth"])
 			section.id = s.id
 			if (s.auth?.kind) section.auth = { kind: s.auth.kind }
 			return section
 		}),
-		delegations: (domia.capabilityDelegations ?? []).map(
-			(d) => toBundleSection(d) as Record<string, unknown>,
+		delegations: (domia.capabilityDelegations ?? []).map((d) =>
+			bundleSection(d),
 		),
 	}) as ConfigSnapshotType
 
@@ -237,9 +304,9 @@ export const persistConfig = async (
 			? (input as { version?: unknown }).version
 			: undefined
 	if (typeof rawVersion === "number" && rawVersion > CONFIG_BUNDLE_VERSION)
-		throw new Error(
-			`Unsupported config bundle version ${rawVersion} (this node supports up to ${CONFIG_BUNDLE_VERSION})`,
-		)
+		throw domiaError(VALIDATION_ERRORS.UNSUPPORTED_CONFIG_VERSION, {
+			meta: { version: rawVersion, supported: CONFIG_BUNDLE_VERSION },
+		})
 	const bundle = configBundleSchema.parse(input)
 	dbClient.transaction((tx) => {
 		if (bundle.domia)
@@ -270,6 +337,7 @@ export const persistConfig = async (
 	invalidateOwnDomia(domia.domiaKey)
 	const fresh = (await getOwnDomia(domia.domiaKey)) ?? domia
 	setGrpcClientTunables(fresh)
+	setMeshAuthTunables(fresh)
 	configEngineLogger.info("📥 config persisted", { domiaId: domia.id })
 	return { config: serializeConfig(fresh) }
 }

@@ -2,16 +2,17 @@ import { createHash } from "crypto"
 import { EventEmitter } from "events"
 
 import type { SelectSkillProviderType } from "@/db"
+import { skillEngineLogger } from "@/utils"
+
+import type { SkillConnHandleType } from "../../types"
+import { createHaWsClient } from "./ws-client"
+import { foldText as fold } from "@/utils/text-tokens"
 import {
 	HA_DATA_PLANE_ENUM,
 	DEFAULT_HA_DATA_PLANE,
 	DEFAULT_HA_WS_PATH,
 	DEFAULT_HA_WS_MAX_ENTITIES,
-} from "@/db"
-import { skillEngineLogger } from "@/utils"
-
-import { createHaWsClient } from "./ws-client"
-import { fold } from "./text"
+} from "./constants"
 import type {
 	HaDestinationType,
 	HaDataPlaneConfigType,
@@ -20,8 +21,7 @@ import type {
 	HaStateObjectType,
 	HaContextCacheType,
 	HaEntityType,
-	SkillConnHandleType,
-} from "../../types"
+} from "./types"
 
 const destinations = new Map<string, HaDestinationType>()
 const providerAttachments = new Map<
@@ -270,6 +270,22 @@ export const attachDataPlane = (
 	created.client.connect()
 }
 
+export const dataPlaneStatus = (
+	providerId: string,
+): Record<string, unknown> => {
+	const attachment = providerAttachments.get(providerId)
+	const dest = attachment ? destinations.get(attachment.destKey) : undefined
+	if (!dest) return { dataPlane: "poll", live: false, entities: 0 }
+	return {
+		dataPlane: "ws",
+		live: dest.live,
+		entities: dest.entities.size,
+		areas: dest.areasById.size,
+		sharedBy: dest.attachedProviderIds.size,
+		state: dest.client.state(),
+	}
+}
+
 export const detachDataPlane = (providerId: string): void => {
 	const attachment = providerAttachments.get(providerId)
 	if (!attachment) return
@@ -330,15 +346,4 @@ export const liveEntities = (providerId: string): HaLiveEntityType[] | null => {
 	const dest = destinations.get(attachment.destKey)
 	if (!dest || !dest.live || dest.client.state() !== "live") return null
 	return [...dest.entities.values()]
-}
-
-export const queryEntityState = (
-	providerId: string,
-	entityId: string,
-): HaLiveEntityType | null => {
-	const attachment = providerAttachments.get(providerId)
-	if (!attachment) return null
-	const dest = destinations.get(attachment.destKey)
-	if (!dest || !dest.live) return null
-	return dest.entities.get(entityId) ?? null
 }

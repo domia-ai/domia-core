@@ -7,6 +7,7 @@ import {
 	AUDIO_ERRORS,
 	audioCaptureLogger,
 	domiaError,
+	int16BufferToFloat32,
 	normalizeRmsToDbfs,
 } from "@/utils"
 import { wakeWordEngines } from "../engines"
@@ -24,9 +25,10 @@ import {
 	attachSoxStderrFilter,
 	createStopSox,
 	createVadWindow,
+	enhancedSoxData,
+	enhancedSoxChunks,
 	observeIntraTurnPause,
 	ensureRecordingPath,
-	int16BufferToFloat32,
 	openMicSource,
 	spawnSoxCapture,
 	writePcmAsWav,
@@ -36,10 +38,6 @@ import {
 	predictTurnComplete,
 	turnDetectorAvailable,
 } from "@/modules/turn-detector"
-
-const ACOUSTIC_GATE_COOLDOWN_MS = 250
-const ACOUSTIC_TAIL_KEEP_MS = 150
-const ACOUSTIC_MAX_HOLD_MS = 1000
 
 const frameAlignedStart = (
 	byteOffset: number,
@@ -53,9 +51,9 @@ export const startCapture = async (
 	domia: DomiaType,
 	callbacks?: CaptureCallbacksType,
 ): Promise<CaptureHandleType> => {
-	const engine = domia?.wakeWordConfig?.engine
+	const engine = domia.wakeWordConfig?.engine
 	const adapter =
-		engine && WAKE_WORD_ENGINE_ENUM_VALUES?.includes(engine)
+		engine && WAKE_WORD_ENGINE_ENUM_VALUES.includes(engine)
 			? wakeWordEngines[engine]
 			: null
 	if (!adapter) {
@@ -88,7 +86,7 @@ export const startAudioRecording = async (
 	audioCaptureLogger.info(`[🎙️] Starting VAD-gated recording to: ${outputPath}`)
 
 	let endpointAnnounced = false
-	sox.stdout.on("data", (data: Buffer) => {
+	enhancedSoxData(sox, config, "recording", (data) => {
 		captured.push(data)
 		vad.feed(data)
 		if (vad.completed()) {
@@ -96,7 +94,8 @@ export const startAudioRecording = async (
 				endpointAnnounced = true
 				playFeedbackSound(domia, "endpoint")
 			}
-			return stopSox("vad detected end of speech")
+			stopSox("vad detected end of speech")
+			return
 		}
 		if (Date.now() - startedAt > config.maxRecordingMs) {
 			stopSox("max recording duration reached")
@@ -140,7 +139,7 @@ export const startFollowUpRecording = async (
 	const bytesPerMs =
 		(config.sampleRate * (config.bitsPerSample / 8) * config.channels) / 1000
 	let bytesSeen = 0
-	let speechStartByte: number | null = null
+	let speechStartByte = null as number | null
 	let speechEndAt: number | null = null
 	let endpointObservedMs: number | null = null
 
@@ -149,7 +148,7 @@ export const startFollowUpRecording = async (
 		`[🎙️] Follow-up window open (${config.followUpWindowMs}ms, no wake word needed)`,
 	)
 
-	sox.stdout.on("data", (data: Buffer) => {
+	enhancedSoxData(sox, config, "follow-up recording", (data) => {
 		captured.push(data)
 		bytesSeen += data.length
 		vad.feed(data)
@@ -173,7 +172,8 @@ export const startFollowUpRecording = async (
 				endpointObservedMs = debounceMs
 				playFeedbackSound(domia, "endpoint")
 			}
-			return stopSox("vad detected end of speech")
+			stopSox("vad detected end of speech")
+			return
 		}
 		if (
 			Date.now() - startedAt >
@@ -248,12 +248,12 @@ export const startSpeculativeCapture = (
 	let lastAcousticRunAt = 0
 	const runAcousticGate = (): void => {
 		if (acousticChecking || acousticComplete) return
-		if (Date.now() - lastAcousticRunAt < ACOUSTIC_GATE_COOLDOWN_MS) return
+		if (Date.now() - lastAcousticRunAt < config.acousticGateCooldownMs) return
 		acousticChecking = true
 		lastAcousticRunAt = Date.now()
 		const raw = Buffer.concat(captured)
 		const trailingSilenceMs = vad.silenceMs()
-		const trimMs = Math.max(0, trailingSilenceMs - ACOUSTIC_TAIL_KEEP_MS)
+		const trimMs = Math.max(0, trailingSilenceMs - config.acousticTailKeepMs)
 		const bytesPerMs = (config.sampleRate / 1000) * 2
 		const trimBytes = Math.min(raw.length, Math.floor(trimMs * bytesPerMs) & ~1)
 		const pcm = int16BufferToFloat32(
@@ -288,7 +288,8 @@ export const startSpeculativeCapture = (
 		} else baseReachedAt = 0
 		return (
 			base &&
-			(acousticComplete || Date.now() - baseReachedAt >= ACOUSTIC_MAX_HOLD_MS)
+			(acousticComplete ||
+				Date.now() - baseReachedAt >= config.acousticLocalMaxHoldMs)
 		)
 	}
 	let speculated = false
@@ -330,7 +331,8 @@ export const startSpeculativeCapture = (
 				endpointObservedMs = observed
 				playFeedbackSound(domia, "endpoint")
 			}
-			return stopSox("vad detected end of speech")
+			stopSox("vad detected end of speech")
+			return
 		}
 		if (Date.now() - startedAt > config.maxRecordingMs) {
 			stopSox("max recording duration reached")
@@ -394,7 +396,7 @@ export const startFollowUpSpeculativeCapture = (
 				vad.holdMs() + vad.silenceMs() >= currentDebounceMs
 			: vad.completed()
 	let bytesSeen = 0
-	let speechStartByte: number | null = null
+	let speechStartByte = null as number | null
 	let speechEndAt: number | null = null
 	let speculated = false
 	let speculatedAt = 0
@@ -466,7 +468,8 @@ export const startFollowUpSpeculativeCapture = (
 				endpointObservedMs = observed
 				playFeedbackSound(domia, "endpoint")
 			}
-			return stopSox("vad detected end of speech")
+			stopSox("vad detected end of speech")
+			return
 		}
 		if (
 			Date.now() - startedAt >
@@ -550,8 +553,11 @@ export const startAudioStream = (
 	})
 
 	const chunks = (async function* () {
-		for await (const data of sox.stdout) {
-			const buf = data as Buffer
+		for await (const buf of enhancedSoxChunks(
+			sox,
+			config,
+			"streaming capture",
+		)) {
 			captured.push(buf)
 			vad.feed(buf)
 			if (vad.completed()) {

@@ -2,18 +2,28 @@ import { type DomiaType, resolveOllamaHost } from "@/modules/core"
 import { requestRestart } from "@/modules/runtime-control"
 import {
 	getInteractionsSince,
+	getInteractionById,
 	getSessionsSince,
 	getAnnouncementsSince,
 	getTurnEventsSince,
 	getLatencyStats,
 } from "@/modules/session-manager"
-import { speculationStats, bargeInStats } from "@/modules/core-bus"
+import {
+	speculationStats,
+	bargeInStats,
+	twoTierStats,
+} from "@/modules/core-bus"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
 import { getFactsSince } from "@/modules/memory"
 import { listModels, startInstall, getModelJob } from "@/modules/model-manager"
-import type { GetSyncQueryType, GetSyncResponseType } from "../types"
+import { stripDomiaSnapshotSecrets } from "@/modules/config"
+import type {
+	GetSyncQueryType,
+	GetSyncResponseType,
+	GetInteractionResponseType,
+} from "../types"
 import { getSyncQuerySchema } from "../schemas"
-import { httpServerLogger } from "@/utils"
+import { httpServerLogger, isDomiaError, MODEL_MANAGER_ERRORS } from "@/utils"
 import type { FastifyReply } from "fastify"
 
 export const handleGetRoot = () => {
@@ -31,6 +41,23 @@ export const handleGetLatencyStats = async (domia: DomiaType) => {
 			...stats,
 			speculation: speculationStats(domia.id),
 			bargeIn: bargeInStats(domia.id),
+			twoTier: twoTierStats(domia.id),
+		},
+	}
+}
+
+export const handleGetInteraction = async (
+	domia: DomiaType,
+	interactionId: string,
+	reply: FastifyReply,
+): Promise<GetInteractionResponseType> => {
+	const interaction = await getInteractionById(interactionId)
+	if (interaction?.domiaId !== domia.id)
+		return reply.code(404).send({ error: "Interaction not found" })
+	return {
+		interaction: {
+			...interaction,
+			domiaSnapshot: stripDomiaSnapshotSecrets(interaction.domiaSnapshot),
 		},
 	}
 }
@@ -45,10 +72,21 @@ export const handlePostModelInstall = async (
 	reply: FastifyReply,
 ) => {
 	try {
-		return { job: startInstall(body, resolveOllamaHost(domia)) }
+		return {
+			job: startInstall(
+				body,
+				resolveOllamaHost(domia),
+				domia.modelInstallAllowedHosts,
+			),
+		}
 	} catch (err) {
 		httpServerLogger.error("Model install request failed", { err })
-		return reply.code(400).send({ error: "Invalid model install spec" })
+		const overloaded =
+			isDomiaError(err) &&
+			err.code === MODEL_MANAGER_ERRORS.TOO_MANY_INSTALL_JOBS.code
+		return reply.code(overloaded ? 429 : 400).send({
+			error: isDomiaError(err) ? err.message : "Invalid model install spec",
+		})
 	}
 }
 
@@ -58,7 +96,7 @@ export const handleGetModelJob = async (id: string, reply: FastifyReply) => {
 	return { job }
 }
 
-export const handleRestart = async () => {
+export const handleRestart = () => {
 	requestRestart()
 	return { restarting: true }
 }
@@ -117,18 +155,21 @@ export const handleGetSync = async (
 			? allMaxes.reduce((a, b) => (a > b ? a : b))
 			: since
 
-	const lastTurn = turnEvents[turnEvents.length - 1]
+	const lastTurn = turnEvents.at(-1)
 	const nextTurnCursor = lastTurn
 		? { since: lastTurn.createdAt, id: lastTurn.id }
 		: null
 
-	const lastFact = facts[facts.length - 1]
+	const lastFact = facts.at(-1)
 	const nextFactsCursor = lastFact
 		? { since: lastFact.updatedAt, id: lastFact.id }
 		: null
 
 	return {
-		interactions,
+		interactions: interactions.map((row) => ({
+			...row,
+			domiaSnapshot: stripDomiaSnapshotSecrets(row.domiaSnapshot),
+		})),
 		sessions,
 		emotionEvents,
 		facts,

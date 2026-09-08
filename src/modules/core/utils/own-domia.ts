@@ -1,4 +1,3 @@
-import { DEFAULT_OWN_CONFIG_TTL_MS } from "@/db"
 import { env } from "@/config/env"
 import { appLogger } from "@/utils"
 
@@ -35,7 +34,7 @@ export const getOwnDomia = async (
 	const pending = (async () => {
 		const fresh = await getDomia(domiaKey)
 		if (fresh && (versions.get(domiaKey) ?? 0) === startVersion) {
-			const ttl = fresh.ownConfigTtlMs ?? DEFAULT_OWN_CONFIG_TTL_MS
+			const ttl = fresh.ownConfigTtlMs
 			cache.set(domiaKey, {
 				value: fresh,
 				expiresAt: ttl > 0 ? Date.now() + ttl : 0,

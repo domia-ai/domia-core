@@ -4,6 +4,8 @@ import { STT_ENGINE_ENUM_VALUES } from "@/db"
 
 import {
 	environmentCommand,
+	setupModelsCommand,
+	doctorCommand,
 	wakeWordCommand,
 	audioRecordingCommand,
 	sttCommand,
@@ -31,6 +33,19 @@ import {
 	factsAuditCommand,
 	factsCleanupCommand,
 } from "./commands"
+import type {
+	SttCliOptionsType,
+	LlmCliOptionsType,
+	LlmBatchCliOptionsType,
+	TtsCliOptionsType,
+	AudioFileCliOptionsType,
+	BenchmarkCliOptionsType,
+	CorpusCliOptionsType,
+	CorpusRunCliOptionsType,
+	CorpusCompareCliOptionsType,
+	OutputPathCliOptionsType,
+	FactsCleanupCliOptionsType,
+} from "./types"
 
 const program = new Command()
 
@@ -43,6 +58,18 @@ program
 	.command("environment")
 	.description("🧪 Check environment variables and required paths for Domia")
 	.action(environmentCommand)
+
+program
+	.command("setup-models <name>")
+	.description(
+		"📥 Download a model set by name (see scripts/download-models.sh)",
+	)
+	.action(setupModelsCommand)
+
+program
+	.command("doctor")
+	.description("🩺 Check system binaries and which runtime services answer")
+	.action(doctorCommand)
 
 program
 	.command("status")
@@ -74,7 +101,7 @@ program
 	.option("-m, --model <model>", "Model name (engine-specific)")
 	.option("-u, --base-url <url>", "Server URL for remote engines (include /v1)")
 	.option("-k, --api-key <key>", "API key for remote engines")
-	.action((options) =>
+	.action((options: SttCliOptionsType) =>
 		sttCommand(
 			options.file,
 			options.engine,
@@ -92,7 +119,7 @@ program
 		"Prompt text to send to the LLM",
 		"Good morning, Domia. How are you feeling today?",
 	)
-	.action((options) => llmCommand(options.prompt))
+	.action((options: LlmCliOptionsType) => llmCommand(options.prompt))
 
 program
 	.command("llm-batch")
@@ -109,7 +136,9 @@ program
 		"Path to save the output .jsonl file with responses and timing",
 		"tmp/llm-batch/output.jsonl",
 	)
-	.action((options) => llmBatchCommand(options.input, options.output))
+	.action((options: LlmBatchCliOptionsType) =>
+		llmBatchCommand(options.input, options.output),
+	)
 
 program
 	.command("tts")
@@ -124,7 +153,9 @@ program
 		"TTS engine to use (KOKORO). Defaults to mock factory value.",
 	)
 	.option("-v, --voice <voice>", "Voice name (engine-specific)")
-	.action((options) => ttsCommand(options.text, options.engine, options.voice))
+	.action((options: TtsCliOptionsType) =>
+		ttsCommand(options.text, options.engine, options.voice),
+	)
 
 program
 	.command("play-audio")
@@ -134,7 +165,7 @@ program
 		"Path to audio file to play",
 		"tmp/mic_test_output.wav",
 	)
-	.action((options) => playAudioCommand(options.file))
+	.action((options: AudioFileCliOptionsType) => playAudioCommand(options.file))
 
 program
 	.command("benchmark")
@@ -158,7 +189,7 @@ program
 		"-u, --stt-base-url <url>",
 		"STT server URL for remote engines (include /v1)",
 	)
-	.action((options) =>
+	.action((options: BenchmarkCliOptionsType) =>
 		benchmarkCommand(
 			options.file,
 			options.corpus,
@@ -182,7 +213,9 @@ program
 		"Path to audio file to inject as AUDIO_READY",
 		"tmp/mic_test_output.wav",
 	)
-	.action((options) => simulateVoiceCommand(options.file))
+	.action((options: AudioFileCliOptionsType) =>
+		simulateVoiceCommand(options.file),
+	)
 
 const testCorpus = program
 	.command("test-corpus")
@@ -194,21 +227,25 @@ testCorpus
 		"Synthesize and resample audio for each corpus entry (idempotent)",
 	)
 	.option("-c, --corpus <path>", "Path to corpus JSON", DEFAULT_CORPUS_PATH)
-	.action((options) => prepareCorpus(options.corpus))
+	.action((options: CorpusCliOptionsType) => prepareCorpus(options.corpus))
 
 testCorpus
 	.command("run")
 	.description("Run the full corpus through the bus and capture timings")
 	.option("-c, --corpus <path>", "Path to corpus JSON", DEFAULT_CORPUS_PATH)
 	.option("-o, --out <path>", "Path to write JSON results")
-	.action((options) => runCorpus(options.corpus, options.out))
+	.action((options: CorpusRunCliOptionsType) =>
+		runCorpus(options.corpus, options.out),
+	)
 
 testCorpus
 	.command("compare")
 	.description("Compare two run JSONs and print regression deltas")
 	.requiredOption("-b, --baseline <path>", "Baseline JSON")
 	.requiredOption("-c, --candidate <path>", "Candidate JSON")
-	.action((options) => compareCorpus(options.baseline, options.candidate))
+	.action((options: CorpusCompareCliOptionsType) =>
+		compareCorpus(options.baseline, options.candidate),
+	)
 
 const mind = program
 	.command("mind")
@@ -233,12 +270,12 @@ mind
 	.command("export")
 	.description("Export the current mind bundle to a JSON file")
 	.option("-o, --out <path>", "Output path", "tmp/mind.json")
-	.action((options) => mindExportCommand(options.out))
+	.action((options: OutputPathCliOptionsType) => mindExportCommand(options.out))
 
 mind
 	.command("import <file>")
 	.description("Import a mind bundle from a JSON file into the live mind")
-	.action((file) => mindImportCommand(file))
+	.action((file: string) => mindImportCommand(file))
 
 const config = program
 	.command("config")
@@ -258,12 +295,14 @@ config
 	.command("export")
 	.description("Export the current full config to a JSON file")
 	.option("-o, --out <path>", "Output path", "tmp/config.json")
-	.action((options) => configExportCommand(options.out))
+	.action((options: OutputPathCliOptionsType) =>
+		configExportCommand(options.out),
+	)
 
 config
 	.command("import <file>")
 	.description("Import a config bundle (partial or full) from a JSON file")
-	.action((file) => configImportCommand(file))
+	.action((file: string) => configImportCommand(file))
 
 const facts = program
 	.command("facts")
@@ -278,12 +317,12 @@ facts
 	.command("cleanup")
 	.description("Back up and delete facts failing the quality guard")
 	.option("--apply", "Actually delete (default is dry run)")
-	.action((options) => factsCleanupCommand(options))
+	.action((options: FactsCleanupCliOptionsType) => factsCleanupCommand(options))
 
 program
 	.parseAsync()
 	.then(() => process.exit(0))
-	.catch((err) => {
+	.catch((err: unknown) => {
 		devCliLogger.error("dev cli command failed", { err })
 		process.exit(1)
 	})

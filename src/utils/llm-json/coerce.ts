@@ -3,7 +3,9 @@ const schemaTypeOf = (prop: unknown): string | null => {
 	const t = (prop as { type?: unknown }).type
 	if (typeof t === "string") return t
 	if (Array.isArray(t)) {
-		const first = t.find((x) => typeof x === "string" && x !== "null")
+		const first = (t as unknown[]).find(
+			(x) => typeof x === "string" && x !== "null",
+		)
 		return typeof first === "string" ? first : null
 	}
 	return null
@@ -33,7 +35,7 @@ const coerceScalar = (value: unknown, type: string): unknown => {
 	return value
 }
 
-const parseJsonContainer = (value: string): unknown | undefined => {
+const parseJsonContainer = (value: string): unknown => {
 	const trimmed = value.trim()
 	if (!/^[[{]/.test(trimmed)) return undefined
 	try {

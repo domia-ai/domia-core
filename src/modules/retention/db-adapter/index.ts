@@ -44,7 +44,7 @@ const pruneOlderThan = (
 	client
 		.delete(table)
 		.where(lt(dateColumn, sql`datetime('now', ${secondsAgo(maxAgeMs)})`))
-		.run().changes ?? 0
+		.run().changes
 
 const prunePerDomiaCap = (
 	table: SQLiteTable,
@@ -67,9 +67,7 @@ const prunePerDomiaCap = (
 		.select({ id: ranked.id })
 		.from(ranked)
 		.where(gt(ranked.rn, cap))
-	return (
-		client.delete(table).where(inArray(idColumn, overflow)).run().changes ?? 0
-	)
+	return client.delete(table).where(inArray(idColumn, overflow)).run().changes
 }
 
 const pruneGlobalCap = (
@@ -84,9 +82,7 @@ const pruneGlobalCap = (
 		.from(table)
 		.orderBy(desc(orderColumn))
 		.limit(cap)
-	return (
-		client.delete(table).where(notInArray(idColumn, keep)).run().changes ?? 0
-	)
+	return client.delete(table).where(notInArray(idColumn, keep)).run().changes
 }
 
 const dbAdapter = {
@@ -221,7 +217,7 @@ const dbAdapter = {
 						.from(interactionTrace),
 				),
 			)
-			.run().changes ?? 0,
+			.run().changes,
 }
 
 export default dbAdapter

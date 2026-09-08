@@ -32,7 +32,9 @@ const runBench = (label: string): void => {
 	})
 }
 
-const readSummary = (label: string): Record<string, BenchStatsType> => {
+const readSummary = (
+	label: string,
+): Partial<Record<string, BenchStatsType>> => {
 	const file = path.join(OUT_DIR, `${label}.json`)
 	const data = JSON.parse(readFileSync(file, "utf8")) as {
 		summary: { all: Record<string, BenchStatsType> }
@@ -100,7 +102,7 @@ const main = async (): Promise<void> => {
 	process.exit(restored ? 0 : 1)
 }
 
-void main().catch((e) => {
+void main().catch((e: unknown) => {
 	console.error(e)
 	process.exit(1)
 })

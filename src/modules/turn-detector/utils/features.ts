@@ -1,7 +1,9 @@
+import { DEFAULT_PCM_SAMPLE_RATE } from "@/db/constants"
+
 const N_FFT = 400
 const HOP = 160
 const N_MELS = 80
-const SR = 16000
+const SR = DEFAULT_PCM_SAMPLE_RATE
 const MEL_FLOOR = 1e-10
 const VAR_EPS = 1e-7
 const BINS = N_FFT / 2 + 1

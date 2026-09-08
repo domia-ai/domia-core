@@ -90,7 +90,7 @@ export const createPlaybackLedger = (
 		anchors: () => anchors,
 		wordLevelHeard: opts.wordLevelHeard,
 		markFirstChunk: () => {
-			if (firstChunkAt === null) firstChunkAt = Date.now()
+			firstChunkAt ??= Date.now()
 		},
 		addBytes: (n) => {
 			totalBytes += n
@@ -106,7 +106,7 @@ export const createPlaybackLedger = (
 			}
 		},
 		pause: () => {
-			if (pausedAt === null) pausedAt = Date.now()
+			pausedAt ??= Date.now()
 		},
 		resume: () => {
 			if (pausedAt !== null) {

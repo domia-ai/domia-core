@@ -14,6 +14,7 @@ import { initialize, DEFAULT_CONFIG_VALUES } from "@/modules/config-engine"
 import { warmupOnBoot } from "@/modules/warmup"
 import { setupCoreBus, teardownCoreBus } from "@/setups/core-bus"
 import { setupSkills, stopSkills } from "@/setups/skills"
+import { setupProactivity, teardownProactivity } from "@/setups/proactivity"
 import { setupHeartbeat } from "@/setups/heartbeat"
 import { stopVoiceListener } from "@/setups/voice-listener"
 import { reloadSatelliteClientsForDomia } from "@/setups/satellite-clients"
@@ -46,12 +47,13 @@ const bootHostedIdentityLocked = async (
 	const caps = normalizeRuntimeCapabilities(domia.runtimeCapabilities)
 	setupCoreBus({ domia, runtimeCapabilities: caps })
 	registerHostedIdentity(domia.domiaKey)
-	await setupSkills(domia).catch((err) =>
+	await setupSkills(domia).catch((err: unknown) =>
 		appLogger.error("Skill setup failed (skills disabled)", {
 			err,
 			domiaKey: key,
 		}),
 	)
+	setupProactivity(domia)
 	const handle = setupHeartbeat({ domia })
 	if (typeof handle.unref === "function") handle.unref()
 	heartbeatHandles.set(key, handle)
@@ -73,6 +75,7 @@ const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 	const handle = heartbeatHandles.get(key)
 	if (handle) clearInterval(handle)
 	heartbeatHandles.delete(key)
+	teardownProactivity(key)
 	await stopSkills(key)
 	stopVoiceListener(key)
 	if (domia) teardownCoreBus(domia.id)
@@ -83,8 +86,6 @@ const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 }
 
 export const bootHostedIdentities = async (): Promise<void> => {
-	const roster = (await getHostedDomias()).filter(
-		(domia): domia is DomiaType => !!domia,
-	)
+	const roster = await getHostedDomias()
 	for (const entry of roster) await bootHostedIdentity(entry.domiaKey)
 }

@@ -5,6 +5,8 @@ import {
 	toError,
 	wrapPcmToWav,
 	writeWavToTemp,
+	domiaError,
+	GRPC_ERRORS,
 } from "@/utils"
 import {
 	DEFAULT_SAMPLE_RATE,
@@ -21,9 +23,8 @@ import {
 	isTurnAborted,
 	notifyTurnAborted,
 	emitTerminalCompletion,
-	createPlaybackLedger,
-	registerTurnLedger,
-	extractEmotionTags,
+	createSentencePipeline,
+	turnLedgerFor,
 	markLadderStage,
 } from "../utils"
 import {
@@ -57,23 +58,21 @@ import type {
 	LlmDonePayloadType,
 	LlmFlowSessionType,
 	PlaybackOutcomeType,
+	StreamingSinkFormatType,
 } from "../types"
 
-const singleReplyLedger = (
+const singleReplyAudio = (
 	domia: DomiaType,
 	interactionId: string,
 	reply: string,
-	format: { sampleRate: number; channels: 1 | 2 },
+	audio: AsyncIterable<Buffer>,
+	format: StreamingSinkFormatType,
 ) => {
-	const ledger = createPlaybackLedger(format, {
-		wordLevelHeard: domia.audioPlaybackConfig?.wordLevelHeardEnabled ?? false,
-	})
-	registerTurnLedger(interactionId, ledger)
-	return {
-		ledger,
-		wrap: (audio: AsyncIterable<Buffer>) =>
-			ledger.wrapSentence(extractEmotionTags(reply).clean, audio),
-	}
+	const ledger = turnLedgerFor(domia, interactionId, format)
+	const pipeline = createSentencePipeline(domia, ledger)
+	pipeline.push(reply, audio, { primed: false })
+	pipeline.close()
+	return { ledger, audio: pipeline.audio }
 }
 
 const buildLlmFlowSession = (
@@ -141,6 +140,7 @@ const forwardLlmDoneToOrigin = async (
 				domiaId: originDomia.id,
 				localIp: originDomia.localIp,
 				grpcPort: originDomia.grpcPort,
+				grpcTls: originDomia.grpcTls,
 				source: "explicit",
 				streamingCapabilities: resolveDomiaStreamingCapabilities(originDomia),
 			},
@@ -179,18 +179,16 @@ const tryLocalStreamingTtsPlayback = async (
 	const ttsStart = Date.now()
 	markLadderStage(session.interactionId, "ttsFirstUnitAt", ttsStart)
 	try {
-		const single = singleReplyLedger(
+		const single = singleReplyAudio(
 			domia,
 			session.interactionId,
 			session.reply,
-			{
-				sampleRate: caps.sampleRate,
-				channels: caps.channels,
-			},
+			cachedTtsPcmChunks(domia, tts.adapter, session.reply),
+			{ sampleRate: caps.sampleRate, channels: caps.channels },
 		)
 		playback = await playStreamedAudio(
 			ctx,
-			single.wrap(cachedTtsPcmChunks(domia, tts.adapter, session.reply)),
+			single.audio,
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
@@ -300,12 +298,18 @@ const runDelegatedStreamingTts = async (
 	})
 
 	if (!streamed.delivered || !streamed.audio) {
-		throw new Error(
-			`LLM_DONE→TTS delegation failed: ${streamed.error ?? "unknown"} (tried ${streamed.attemptedTargets})`,
-		)
+		throw domiaError(GRPC_ERRORS.DELEGATION_FAILED, {
+			logger: domiaBusLogger,
+			meta: {
+				stage: "tts",
+				interactionId: session.interactionId,
+				error: streamed.error,
+				attemptedTargets: streamed.attemptedTargets,
+			},
+		})
 	}
 
-	const channels = (streamed.channels === 2 ? 2 : 1) as 1 | 2
+	const channels = streamed.channels === 2 ? 2 : 1
 	const sampleRate = streamed.sampleRate ?? DEFAULT_SAMPLE_RATE
 
 	if (!ctx.features.canPlayback && !getStreamingSink(session.interactionId)) {
@@ -330,18 +334,16 @@ const runDelegatedStreamingTts = async (
 	let ttfaMs: number | undefined
 	let perceivedTtfaMs: number | undefined
 	try {
-		const single = singleReplyLedger(
+		const single = singleReplyAudio(
 			domia,
 			session.interactionId,
 			session.reply,
-			{
-				sampleRate,
-				channels,
-			},
+			streamed.audio,
+			{ sampleRate, channels },
 		)
 		const playback = await playStreamedAudio(
 			ctx,
-			single.wrap(streamed.audio),
+			single.audio,
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,

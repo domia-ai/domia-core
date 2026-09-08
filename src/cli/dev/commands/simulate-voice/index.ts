@@ -9,7 +9,7 @@ import { devCliLogger } from "@/utils"
 
 export const simulateVoiceCommand = async (filePath: string) => {
 	const domia = await initialize()
-	if (!domia?.runtimeCapabilities) {
+	if (!domia.runtimeCapabilities) {
 		devCliLogger.error(
 			"❌ Could not load DOMIA from DB (run npm run dev once to seed)",
 		)

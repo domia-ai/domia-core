@@ -25,13 +25,17 @@ the turn), follow-up mode, and feedback sounds are part of the same flow.
   validated live on hardware. Absolute numbers vary by machine, the shape does not.
 - **Observability:** every turn persists ~20 stage timings (`stt_ms`, `llm_queue_ms`, `llm_ttft_ms`,
   `tts_first_chunk_ms`, `ttfa_ms`, `rss_mb`, …) to `interaction_trace`, emits one greppable `TURN_COMPLETE`
-  log line, and `npm run bench:voice` runs a golden corpus end-to-end and prints a labeled, comparable
-  scorecard.
+  log line, and `npm run evals -- bench-voice` runs a golden corpus end-to-end and prints a labeled,
+  comparable scorecard.
 
 Speech inference runs **in-process** via `sherpa-onnx-node` (no Python, no sidecar): KWS wake word, Silero
-VAD, five STT engines (Whisper, Moonshine, Zipformer, Parakeet, Parakeet-streaming), two TTS engines (Kokoro
-— default; Pocket — faster, reference-voice). The LLM runs on local **Ollama**. Heavy inference goes through
-child-process worker pools (warm/lazy/reap/recycle) so one hub can serve several rooms in parallel.
+VAD, a smart-turn turn detector, a GTCRN speech enhancer, a wake-word verifier, and optional acoustic echo
+cancellation (AEC). **Seven STT engines** — Whisper, Moonshine, Zipformer, Parakeet, and streaming-transducer
+in-process, plus **OpenAI-compatible** and **NeMo-Speech** talked to over HTTP as external GGML servers — and
+**six TTS engines** (Kokoro — default — Vits, Matcha, Kitten, Pocket, Supertonic). The LLM runs on a local
+**OpenAI-compatible server** (llama.cpp `llama-server`, the template default on `:11435/v1`) or **Ollama**.
+Heavy inference goes through child-process worker pools (warm/lazy/reap/recycle) so one hub can serve several
+rooms in parallel.
 
 ## The mesh: delegation, multi-hub, multi-tenant
 
@@ -50,13 +54,16 @@ child-process worker pools (warm/lazy/reap/recycle) so one hub can serve several
 
 ## Satellites
 
-A satellite is a small far-field mic/speaker device in a room; the Domia node does everything else. Three
-protocols are implemented behind one adapter contract:
+A satellite is a small far-field mic/speaker device in a room; the Domia node does everything else. Five
+protocols are implemented behind one adapter contract (`NATIVE`, `WYOMING`, `ESPHOME`, `LIVEKIT`,
+`OPENAI_REALTIME`):
 
 1. **ESPHome** — stock Home Assistant voice hardware (e.g. the Voice PE) connects with **factory firmware,
    no reflash**, over the native ESPHome API. Verified end-to-end on real hardware.
 2. **Wyoming** — the Home Assistant satellite protocol; Domia connects out to the satellite.
-3. **WebSocket** — Domia's reference protocol for custom satellite builds. Clients may send a
+3. **LiveKit** — a WebRTC room transport for network satellites.
+4. **OpenAI-Realtime** — Domia acts as a local backend speaking the OpenAI Realtime event contract.
+5. **WebSocket (NATIVE)** — Domia's reference protocol for custom satellite builds. Clients may send a
    `{"type": "audio_played", "interactionId": "..."}` control message when the reply's first audio actually
    starts on their speaker. The `interactionId` (echoed from `audio_stream_begin`) is required for the
    stamp: a message whose id is missing, mismatched, or stale is ignored. (`audio_stream_begin` carries an
@@ -144,16 +151,30 @@ The character layers are prompt text over the same single LLM call — they cost
 
 ## Operability
 
-HTTP control API (`/voice`, `/chat`, `/speak`, `/mind`, `/knowledge`, `/identities`, `/satellites`,
-`/templates`, `/config`, `/config/health`, `/models`, `/admin/restart`), a dev CLI, and the separate web
-console (**domia-app**) for fleet observability + remote config across every node (read-only demo at
-console.domia.ai). Testing without a microphone: POST a WAV to `/voice`; the whole pipeline past the mic is
-production code.
+HTTP control API (see the table below), a dev CLI, and the separate web console (**domia-app**) for fleet
+observability + remote config across every node (read-only demo at console.domia.ai). Testing without a
+microphone: POST a WAV to `/voice`; the whole pipeline past the mic is production code. Every non-loopback
+request needs `Authorization: Bearer <DOMIA_MESH_SECRET>`.
+
+The routes (from `src/setups/http-server/http-server.ts`):
+
+| Area                    | Routes                                                                                                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Turn / voice            | `POST /voice`, `POST /chat`, `POST /chat/stream`, `POST /speak`, `POST /turn/cancel`, `POST /announce-audio`, `POST /intercom`, `GET /presence`, `WS /satellite`                                                |
+| Config                  | `GET`/`POST /config`, `GET /config/schema`, `GET /config/health`, `POST /config/refresh`                                                                                                                        |
+| Mind / knowledge        | `GET /mind`, `GET`/`POST /knowledge`                                                                                                                                                                            |
+| Identities              | `GET`/`POST /identities`, `DELETE /identity-data`, `POST /admin/reset-conversation`                                                                                                                             |
+| Satellites              | `GET /satellites`, `GET /satellites/discover`, `POST /satellites`, `PUT /satellites/:id/{wake-words,numbers,follow-up,volume,timers}`, `POST /satellites/:id/test-speaker`, `GET /satellites/:id/livekit-token` |
+| Models / skills / bench | `GET /models`, `POST /models/install`, `GET /skills`, `GET /skills/discover`, `POST /bench/run`, `GET /templates`                                                                                               |
+| Proactivity             | `GET /proactivity/status`, `GET`/`POST /proactivity/schedule`                                                                                                                                                   |
+| Sync / ops              | `GET /sync`, `GET /health`, `GET /`, `GET /stats/latency`, `POST /mesh/rotate`, `POST /admin/restart`                                                                                                           |
 
 ## Honest not-done list
 
-- **No authentication** on the HTTP API (LAN/dev posture; deferred deliberately — required before any remote
-  exposure).
+- **No per-user authentication yet.** The HTTP/mesh API is guarded by a shared **mesh secret**: every
+  non-loopback request must carry `Authorization: Bearer <DOMIA_MESH_SECRET>` (loopback is exempt for local
+  dev), and the same secret signs heartbeats, with a rotation grace window via `POST /mesh/rotate`. What is
+  deferred is per-user identity/accounts — required before any public remote exposure.
 - **Only two language catalogs seeded so far.** Multilingual speech itself ships (English default + Spanish,
   end to end: multilingual STT, a Spanish TTS voice, multilingual intent embeddings, language catalogs for
   every spoken fixed string, per-identity language config — each room can speak its own language), and adding

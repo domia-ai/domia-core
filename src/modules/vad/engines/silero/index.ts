@@ -2,7 +2,7 @@ import fs from "fs"
 import path from "path"
 
 import { audioCaptureLogger, domiaError, AUDIO_ERRORS } from "@/utils"
-import { VAD_ENGINE_ENUM } from "@/db"
+import { VAD_ENGINE_ENUM, DEFAULT_PCM_SAMPLE_RATE } from "@/db"
 import { createVad } from "@/utils/ml-runtime"
 import type {
 	VadEngineAdapterType,
@@ -10,7 +10,7 @@ import type {
 	VadTuningType,
 } from "../../types"
 
-const SAMPLE_RATE = 16000
+const SAMPLE_RATE = DEFAULT_PCM_SAMPLE_RATE
 const WINDOW_SIZE = 512
 
 const buildConfig = (modelPath: string, tuning: VadTuningType) => {
@@ -19,7 +19,7 @@ const buildConfig = (modelPath: string, tuning: VadTuningType) => {
 		throw domiaError(AUDIO_ERRORS.WAKE_WORD_CONFIG_NOT_FOUND, {
 			logger: audioCaptureLogger,
 			meta: {
-				message: `Silero VAD model not found at ${resolved}. Run npm run setup:models:vad`,
+				message: `Silero VAD model not found at ${resolved}. Run: bash scripts/download-models.sh vad`,
 				modelPath: resolved,
 			},
 		})

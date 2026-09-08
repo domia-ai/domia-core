@@ -27,7 +27,7 @@ export const ollamaEmbedBackend: EmbedBackendType = {
 				model: resolveEmbedModel(domia),
 				input: texts,
 			})
-			return res.embeddings ?? null
+			return res.embeddings
 		} catch (err) {
 			embeddingsLogger.warn("ollama embed failed", { err, domiaId: domia.id })
 			return null

@@ -24,7 +24,7 @@ export const sttEngineRegistry: Record<
 
 export const getSttEngine = (
 	id: SttEngineEnumType,
-): SttEngineAdapterType | null => sttEngineRegistry[id] ?? null
+): SttEngineAdapterType | null => sttEngineRegistry[id]
 
 export const sttEngines = {
 	[STT_ENGINE_ENUM.WHISPER]: whisperEngine.run,

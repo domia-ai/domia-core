@@ -22,4 +22,5 @@ export type SentenceFlushTuningType = {
 	mediumFlushChars: number
 	hardFlushChars: number
 	firstFlushMaxMs: number
+	firstFragmentMaxWords: number
 }

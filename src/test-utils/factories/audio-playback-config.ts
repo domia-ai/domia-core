@@ -5,7 +5,7 @@ export const getAudioPlaybackConfig = (
 	overrides: Partial<SelectAudioPlaybackConfigType> = {},
 ): SelectAudioPlaybackConfigType => {
 	return {
-		...baseAudioPlaybackConfig(overrides?.domiaId),
+		...baseAudioPlaybackConfig(overrides.domiaId),
 		...overrides,
 	}
 }

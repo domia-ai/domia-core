@@ -2,6 +2,7 @@ import WebSocket from "ws"
 import { env } from "./env"
 import { fabricateSegmentPcm } from "./fake-audio"
 import { parseWavPcm } from "./wav"
+import { rawDataToString } from "./coerce"
 import type {
 	SatelliteTurnOptionsType,
 	SatelliteTurnResultType,
@@ -48,7 +49,7 @@ export const satelliteTurn = (
 					domiaKey: env.EVAL_DOMIA_KEY,
 					sampleRate,
 					channels,
-					...(token !== undefined ? { token } : {}),
+					token,
 				}),
 			)
 		})
@@ -103,7 +104,7 @@ export const satelliteTurn = (
 					void runBargeIn()
 				return
 			}
-			const msg = JSON.parse(data.toString()) as {
+			const msg = JSON.parse(rawDataToString(data)) as {
 				type: string
 				text?: string
 				reply?: string

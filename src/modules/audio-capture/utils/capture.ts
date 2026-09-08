@@ -9,7 +9,12 @@ import {
 	getVadEngine,
 	type VadTuningType,
 } from "@/modules/vad"
-import { audioCaptureLogger, generateUuid, wrapPcmToWav } from "@/utils"
+import {
+	audioCaptureLogger,
+	generateUuid,
+	int16BufferToFloat32,
+	wrapPcmToWav,
+} from "@/utils"
 import type { DomiaType } from "@/modules/core"
 import { RECORDINGS_DIR } from "../constants"
 import type {
@@ -19,18 +24,9 @@ import type {
 	MicSourceType,
 } from "../types"
 import { micTapAvailable, tapMicStream } from "./mic-tap"
+import { createCaptureEnhancer } from "@/modules/speech-enhancer"
 
-const STDERR_NOISE_PATTERN = /can't set sample rate/
-const INT16_MAX = 32768
 const STOP_KILL_GRACE_MS = 2000
-
-export const int16BufferToFloat32 = (chunk: Buffer): Float32Array => {
-	const samples = new Float32Array(chunk.length / 2)
-	for (let i = 0; i < samples.length; i++) {
-		samples[i] = chunk.readInt16LE(i * 2) / INT16_MAX
-	}
-	return samples
-}
 
 export const ensureRecordingPath = (domiaId: string | undefined): string => {
 	mkdirSync(RECORDINGS_DIR, { recursive: true })
@@ -63,7 +59,7 @@ export const attachSoxStderrFilter = (
 ): void => {
 	proc.stderr.on("data", (data: Buffer) => {
 		const msg = data.toString().trim()
-		if (!msg || STDERR_NOISE_PATTERN.test(msg)) return
+		if (!msg || msg.includes("can't set sample rate")) return
 		audioCaptureLogger.warn(`[sox stderr]: ${msg}`)
 	})
 }
@@ -173,15 +169,64 @@ export const openMicSource = (
 	const sox = spawnSoxCapture(config)
 	attachSoxStderrFilter(sox)
 	const stopSox = createStopSox(sox, label)
+	const enhancer = createCaptureEnhancer(config, label)
+	let dataHandler: ((data: Buffer) => void) | null = null
 	const closed = new Promise<void>((resolve) => {
-		sox.on("close", () => resolve())
+		sox.on("close", () => {
+			const tail = enhancer.flush()
+			if (tail.length > 0) dataHandler?.(tail)
+			enhancer.close()
+			resolve()
+		})
 	})
 	return {
 		viaTap: false,
 		onData: (handler) => {
-			sox.stdout.on("data", handler)
+			dataHandler = handler
+			sox.stdout.on("data", (raw: Buffer) => {
+				const data = enhancer.process(raw)
+				if (data.length > 0) handler(data)
+			})
 		},
 		stop: (reason) => stopSox(reason),
 		closed,
 	}
+}
+
+export const enhancedSoxData = (
+	sox: ChildProcessWithoutNullStreams,
+	config: SelectWakeWordConfigType,
+	label: string,
+	handler: (data: Buffer) => void,
+): void => {
+	const enhancer = createCaptureEnhancer(config, label)
+	sox.stdout.on("data", (raw: Buffer) => {
+		const data = enhancer.process(raw)
+		if (data.length > 0) handler(data)
+	})
+	sox.on("close", () => {
+		const tail = enhancer.flush()
+		if (tail.length > 0) handler(tail)
+		enhancer.close()
+	})
+}
+
+export const enhancedSoxChunks = (
+	sox: ChildProcessWithoutNullStreams,
+	config: SelectWakeWordConfigType,
+	label: string,
+): AsyncIterable<Buffer> => {
+	const enhancer = createCaptureEnhancer(config, label)
+	return (async function* () {
+		try {
+			for await (const raw of sox.stdout) {
+				const data = enhancer.process(raw as Buffer)
+				if (data.length > 0) yield data
+			}
+			const tail = enhancer.flush()
+			if (tail.length > 0) yield tail
+		} finally {
+			enhancer.close()
+		}
+	})()
 }

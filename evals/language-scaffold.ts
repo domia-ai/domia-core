@@ -1,0 +1,209 @@
+import { configSchema } from "@/modules/config-engine/schemas"
+import {
+	SUPPORTED_LANGUAGES,
+	languageSetsFor,
+	registerLanguageCatalog,
+} from "@/utils/language-catalogs"
+import type { LanguageCatalogType } from "@/utils/language-catalogs"
+
+import { makeChecker } from "./lib"
+
+const SYNTHETIC_CODE = "xx"
+
+const validConfig = (language: string): Record<string, unknown> => ({
+	domiaKey: "EVAL",
+	name: "eval",
+	language,
+	languagesSpoken: [language],
+})
+
+const syntheticCatalogFromEn = (): LanguageCatalogType => {
+	const en = languageSetsFor("en")
+	return {
+		displayName: "Synthetic",
+		locale: "en-US",
+		latinScript: false,
+		spokenTime: en.spokenTime,
+		interruptPhrases: [...en.interruptPhrases],
+		articles: ["zub"],
+		stopwords: [...en.stopwords],
+		numberWords: { ...en.numberWords },
+		numberJoiners: [...en.numberJoiners],
+		percentWords: [...en.percentWords],
+		questionStarters: [...en.questionStarters],
+		requestModals: [...en.requestModals],
+		conjunctions: [...en.conjunctions],
+		timerKeywords: ["timer", "alarm"],
+		memoryCommandKeywords: ["remember", "forget"],
+		unitWords: { ...en.unitWords },
+		affirmations: ["yar", "aye"],
+		negations: ["nay"],
+		fastPathBlockers: [...en.fastPathBlockers],
+		routingBlockers: [...en.routingBlockers],
+		phrases: { done: "Zub done." },
+	}
+}
+
+const run = (): void => {
+	const c = makeChecker()
+
+	console.log("\nregistry")
+	c.check(
+		"en and es are catalog keys",
+		["en", "es"].every((k) => SUPPORTED_LANGUAGES.has(k)),
+	)
+	c.check(
+		"unknown code not supported before registration",
+		!SUPPORTED_LANGUAGES.has(SYNTHETIC_CODE),
+	)
+	c.check(
+		"unknown code resolves to en before registration",
+		languageSetsFor(SYNTHETIC_CODE).displayName === "English",
+	)
+	c.check(
+		"config schema rejects unknown language",
+		!configSchema.safeParse(validConfig(SYNTHETIC_CODE)).success,
+	)
+	c.check(
+		"config schema accepts en and es",
+		["en", "es"].every((l) => configSchema.safeParse(validConfig(l)).success),
+	)
+
+	registerLanguageCatalog(SYNTHETIC_CODE, syntheticCatalogFromEn())
+	const xx = languageSetsFor(SYNTHETIC_CODE)
+
+	console.log("\nsynthetic third catalog")
+	c.check(
+		"registered code becomes supported",
+		SUPPORTED_LANGUAGES.has(SYNTHETIC_CODE),
+	)
+	c.check(
+		"languageSetsFor resolves the synthetic catalog",
+		xx.displayName === "Synthetic",
+	)
+	c.check(
+		"region suffix normalizes to the synthetic code",
+		languageSetsFor("xx-ZZ").displayName === "Synthetic",
+	)
+	c.check(
+		"config schema accepts the synthetic language once registered",
+		configSchema.safeParse(validConfig(SYNTHETIC_CODE)).success,
+	)
+	c.check(
+		"synthetic affirmations override en",
+		xx.affirmations.has("yar") && !xx.affirmations.has("yes"),
+	)
+	c.check(
+		"synthetic phrases fall back to en per key",
+		xx.phrases.done === "Zub done." && xx.phrases.gotIt === "Got it.",
+	)
+	c.check("synthetic latinScript is honored", !xx.latinScript)
+	c.check(
+		"synthetic article regex strips its own article",
+		"zub lamp".replace(xx.articlePrefixRe, "") === "lamp",
+	)
+
+	const en = languageSetsFor("en")
+	const es = languageSetsFor("es")
+
+	console.log("\nspoken time per language")
+	const at = (h: number, m: number): Date => new Date(2026, 8, 2, h, m)
+	c.check(
+		"en spoken time keeps the historical form",
+		en.spokenTime(at(16, 52)) === "four fifty-two in the afternoon" &&
+			en.spokenTime(at(9, 0)) === "nine o'clock in the morning" &&
+			en.spokenTime(at(0, 5)) === "twelve oh five in the morning",
+	)
+	c.check(
+		"es spoken time is idiomatic",
+		es.spokenTime(at(16, 52)) === "las cuatro y cincuenta y dos de la tarde" &&
+			es.spokenTime(at(13, 15)) === "la una y cuarto de la tarde" &&
+			es.spokenTime(at(21, 45)) === "las diez menos cuarto de la noche" &&
+			es.spokenTime(at(12, 30)) === "las doce y media de la tarde",
+	)
+	c.check(
+		"es date locale renders Spanish month names",
+		new Intl.DateTimeFormat(es.locale, { month: "long" })
+			.format(at(16, 52))
+			.toLowerCase() === "septiembre",
+	)
+	c.check(
+		"synthetic catalog inherits a spoken-time renderer",
+		xx.spokenTime(at(16, 52)) === en.spokenTime(at(16, 52)),
+	)
+
+	console.log("\noverride vs merge")
+	c.check(
+		"es affirmations carry no en-only words",
+		["yes", "yeah", "sure", "go ahead"].every((w) => !es.affirmations.has(w)),
+	)
+	c.check(
+		"es affirmations keep native words",
+		["si", "sí", "claro", "vale"].every((w) => es.affirmations.has(w)),
+	)
+	c.check(
+		"es negations carry no en-only words",
+		["nope", "cancel", "never mind"].every((w) => !es.negations.has(w)) &&
+			es.negations.has("no"),
+	)
+	c.check(
+		"es stopwords carry no en-only words",
+		!es.stopwords.has("the") && es.stopwords.has("el"),
+	)
+	c.check(
+		"en sets unchanged",
+		en.affirmations.has("yes") &&
+			en.negations.has("nope") &&
+			en.stopwords.has("the"),
+	)
+	c.check(
+		"numberWords stay merged for es",
+		es.numberWords.dos === 2 && es.numberWords.two === 2,
+	)
+	c.check(
+		"timer keywords stay merged for es",
+		es.timerKeywordsRe.test("temporizador") && es.timerKeywordsRe.test("timer"),
+	)
+
+	console.log("\narticle regex per language")
+	c.check(
+		"es regex strips la/el/los/las",
+		["la luz", "el foco", "los focos", "las luces"].every(
+			(s) => !/^(la|el|los|las) /.test(s.replace(es.articlePrefixRe, "")),
+		),
+	)
+	c.check(
+		"es regex keeps 'lampara' intact (no partial article)",
+		"lampara".replace(es.articlePrefixRe, "") === "lampara",
+	)
+	c.check(
+		"en regex does not strip es articles",
+		["la luz", "el foco", "los focos", "las luces"].every(
+			(s) => s.replace(en.articlePrefixRe, "") === s,
+		),
+	)
+	c.check(
+		"en regex strips the/my/our",
+		["the lamp", "my lamp", "our lamp"].every(
+			(s) => s.replace(en.articlePrefixRe, "") === "lamp",
+		),
+	)
+	c.check(
+		"es regex does not strip en articles",
+		"the lamp".replace(es.articlePrefixRe, "") === "the lamp",
+	)
+
+	console.log("\ndisplay names + script")
+	c.check(
+		"en/es display names",
+		en.displayName === "English" && es.displayName === "Spanish",
+	)
+	c.check("en/es are latin script", en.latinScript && es.latinScript)
+
+	console.log(
+		`\nlanguage-scaffold: ${c.passCount()} passed, ${c.failCount()} failed`,
+	)
+	if (c.failCount() > 0) process.exit(1)
+}
+
+run()

@@ -64,13 +64,13 @@ export const getEmotionVectorFromEmotionState = (
 	if (!state) return getInitEmotionVector()
 
 	return normalizeEmotionVector({
-		joy: state.joy ?? 0,
-		sadness: state.sadness ?? 0,
-		anger: state.anger ?? 0,
-		fear: state.fear ?? 0,
-		trust: state.trust ?? 0,
-		disgust: state.disgust ?? 0,
-		anticipation: state.anticipation ?? 0,
-		surprise: state.surprise ?? 0,
+		joy: state.joy,
+		sadness: state.sadness,
+		anger: state.anger,
+		fear: state.fear,
+		trust: state.trust,
+		disgust: state.disgust,
+		anticipation: state.anticipation,
+		surprise: state.surprise,
 	})
 }

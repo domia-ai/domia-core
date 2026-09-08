@@ -106,6 +106,22 @@ export type KeywordSpotterConfig = Record<string, unknown>
 
 export type VadConfig = Record<string, unknown>
 
+export type SpeechDenoiserConfig = Record<string, unknown>
+
+export type SpeechDenoiserRunRequest = {
+	samples: Float32Array
+	sampleRate: number
+	enableExternalBuffer?: boolean
+}
+
+export type OnlineSpeechDenoiserInstance = {
+	sampleRate: number
+	frameShiftInSamples: number
+	run: (req: SpeechDenoiserRunRequest) => GeneratedAudio
+	flush: (enableExternalBuffer?: boolean) => GeneratedAudio
+	reset: () => void
+}
+
 export type VadInstance = {
 	acceptWaveform: (samples: Float32Array) => void
 	isDetected: () => boolean
@@ -120,6 +136,7 @@ export type RuntimeAddon = {
 	OfflineTts: new (config: unknown) => unknown
 	KeywordSpotter: new (config: unknown) => unknown
 	Vad: new (config: unknown, bufferSizeInSeconds: number) => unknown
+	OnlineSpeechDenoiser: new (config: unknown) => unknown
 	readWave: (filePath: string) => Waveform
 	writeWave: (filePath: string, wave: Waveform) => void
 }

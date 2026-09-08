@@ -1,6 +1,17 @@
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import Fastify from "fastify"
-import { httpServerLogger, isLoopbackAddress, isValidMeshBearer } from "@/utils"
+import {
+	httpServerLogger,
+	isLoopbackAddress,
+	isValidMeshBearer,
+	ensureTraceId,
+	runWithTraceContext,
+	TRACE_ID_HEADER,
+	httpsServerOptions,
+	setMeshAuthTunables,
+	domiaError,
+	CORE_ERRORS,
+} from "@/utils"
 import { env } from "@/config"
 import {
 	type DomiaType,
@@ -35,7 +46,14 @@ import {
 	handleDeleteKnowledge,
 	handlePostConfig,
 	handleGetConfigHealth,
+	handleGetConfigSchema,
+	handlePostBenchRun,
+	handleGetProactivitySchedule,
+	handlePostProactivitySchedule,
+	handleDeleteProactivitySchedule,
+	handleGetProactivityStatus,
 	handleGetLatencyStats,
+	handleGetInteraction,
 	handleRestart,
 	handleGetModels,
 	handlePostModelInstall,
@@ -48,6 +66,8 @@ import {
 	handleDeleteIdentity,
 	handleDiscoverSatellites,
 	handleGetSatellites,
+	handleGetSkills,
+	handleDiscoverSkills,
 	handlePostSatellite,
 	handleDeleteSatellite,
 	handleSetSatelliteWakeWords,
@@ -62,17 +82,20 @@ import {
 	handleListSatelliteTimers,
 	handleTestSatelliteSpeaker,
 	handleGetSync,
+	handlePostMeshRotate,
+	isAuthExemptRequest,
 	type PostChatRouteType,
 	type GetAudioRouteType,
 	type GetSyncRouteType,
+	type GetInteractionRouteType,
 	type PostVoiceRouteType,
 	type PostSpeakRouteType,
 	type PostImportMindRouteType,
 	type TemplateIdRouteType,
 } from "@/modules/http-api"
 
-const HTTP_SERVER_HOST = env?.HTTP_SERVER_HOST
-const HTTP_SERVER_PORT = Number(env?.HTTP_SERVER_PORT)
+const HTTP_SERVER_HOST = env.HTTP_SERVER_HOST
+const HTTP_SERVER_PORT = Number(env.HTTP_SERVER_PORT)
 const HTTP_BODY_LIMIT_BYTES = 32 * 1024 * 1024
 
 const liveDomia = async (
@@ -80,19 +103,29 @@ const liveDomia = async (
 	domiaKey?: string,
 ): Promise<DomiaType> => {
 	if (!domiaKey) {
-		const own = await getOwnDomia().catch((err) => {
+		const own = await getOwnDomia().catch((err: unknown) => {
 			httpServerLogger.warn("getOwnDomia failed — using boot domia", { err })
 			return null
 		})
 		const resolved = own ?? fallback
 		if (!isHostedIdentity(resolved.domiaKey))
-			throw new Error(`identity not hosted: ${resolved.domiaKey}`)
+			throw domiaError(CORE_ERRORS.IDENTITY_NOT_HOSTED, {
+				logger: httpServerLogger,
+				meta: { domiaKey: resolved.domiaKey },
+			})
 		return resolved
 	}
 	if (!isHostedIdentity(domiaKey))
-		throw new Error(`identity not hosted: ${domiaKey}`)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_HOSTED, {
+			logger: httpServerLogger,
+			meta: { domiaKey },
+		})
 	const live = await safeOwnDomia(domiaKey, "http liveDomia")
-	if (!live) throw new Error(`unknown identity: ${domiaKey}`)
+	if (!live)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_RESOLVABLE, {
+			logger: httpServerLogger,
+			meta: { domiaKey },
+		})
 	return live
 }
 
@@ -106,32 +139,32 @@ const queryDomiaKey = (query: unknown): string | undefined => {
 	return typeof key === "string" && key.length > 0 ? key : undefined
 }
 
-const AUTH_EXEMPT_PATHS = new Set(["/", "/health"])
-
-const isAuthExempt = (method: string, url: string): boolean => {
-	const pathname = url.split("?")[0]
-	if (AUTH_EXEMPT_PATHS.has(pathname)) return true
-	return method === "GET" && pathname.startsWith("/audio/")
-}
-
 export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 	httpServerLogger.info("🚀 Starting HTTP server...")
 
+	const https = httpsServerOptions()
 	const fastify = Fastify({
 		logger: false,
 		bodyLimit: HTTP_BODY_LIMIT_BYTES,
+		https,
+	})
+
+	fastify.addHook("onRequest", (request, reply, done) => {
+		const traceId = ensureTraceId(request.headers[TRACE_ID_HEADER])
+		void reply.header(TRACE_ID_HEADER, traceId)
+		runWithTraceContext({ traceId }, done)
 	})
 
 	fastify.addHook("onRequest", async (request, reply) => {
-		if (isAuthExempt(request.method, request.url)) return
+		if (isAuthExemptRequest(request.method, request.url)) return
 		if (isLoopbackAddress(request.socket.remoteAddress)) return
 		if (isValidMeshBearer(request.headers.authorization)) return
 		await reply.code(401).send({ error: "unauthorized" })
 	})
 
-	fastify.get("/", async () => handleGetRoot())
+	fastify.get("/", () => handleGetRoot())
 
-	fastify.get("/health", async () => handleGetHealth())
+	fastify.get("/health", () => handleGetHealth())
 
 	fastify.get<GetAudioRouteType>(
 		"/audio/:interactionId",
@@ -178,6 +211,7 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		invalidateOwnDomia()
 		const fresh = await liveDomia(domia)
 		setGrpcClientTunables(fresh)
+		setMeshAuthTunables(fresh)
 		void sendHeartbeat({ domia: fresh })
 		publishConfigChanged(fresh.domiaKey)
 		httpServerLogger.info("🔄 config cache invalidated via /config/refresh")
@@ -216,6 +250,8 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		return result
 	})
 
+	fastify.get("/config/schema", () => handleGetConfigSchema())
+
 	fastify.get("/config/health", async (request) =>
 		handleGetConfigHealth(await liveDomia(domia, queryDomiaKey(request.query))),
 	)
@@ -243,6 +279,25 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.get("/stats/latency", async (request) =>
 		handleGetLatencyStats(await liveDomia(domia, queryDomiaKey(request.query))),
+	)
+
+	fastify.get<GetInteractionRouteType>(
+		"/interactions/:interactionId",
+		async (request, reply) =>
+			handleGetInteraction(
+				await liveDomia(domia, queryDomiaKey(request.query)),
+				request.params.interactionId,
+				reply,
+			),
+	)
+
+	fastify.post("/mesh/rotate", async (request, reply) =>
+		handlePostMeshRotate(
+			request.body,
+			request.headers.authorization,
+			request.socket.remoteAddress,
+			reply,
+		),
 	)
 
 	fastify.post("/admin/restart", async () => {
@@ -277,7 +332,7 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		},
 	)
 
-	fastify.get("/templates", async () => handleGetTemplates())
+	fastify.get("/templates", () => handleGetTemplates())
 
 	fastify.post<TemplateIdRouteType>(
 		"/templates/:id/activate",
@@ -309,6 +364,16 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.get("/satellites", async (request, reply) =>
 		handleGetSatellites(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.post("/bench/run", async (request, reply) =>
+		handlePostBenchRun(queryDomiaKey(request.query), request.body, reply),
+	)
+
+	fastify.get("/skills/discover", async () => handleDiscoverSkills())
+
+	fastify.get("/skills", async (request, reply) =>
+		handleGetSkills(queryDomiaKey(request.query), reply),
 	)
 
 	fastify.post("/satellites", async (request, reply) =>
@@ -429,6 +494,36 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 			),
 	)
 
+	fastify.get("/proactivity/status", async (request, reply) =>
+		handleGetProactivityStatus(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.get("/proactivity/schedule", async (request, reply) =>
+		handleGetProactivitySchedule(
+			queryDomiaKey(request.query),
+			request.query,
+			reply,
+		),
+	)
+
+	fastify.post("/proactivity/schedule", async (request, reply) =>
+		handlePostProactivitySchedule(
+			queryDomiaKey(request.query),
+			request.body,
+			reply,
+		),
+	)
+
+	fastify.delete<{ Params: { id: string } }>(
+		"/proactivity/schedule/:id",
+		async (request, reply) =>
+			handleDeleteProactivitySchedule(
+				queryDomiaKey(request.query),
+				request.params.id,
+				reply,
+			),
+	)
+
 	const satelliteGateway = setupSatelliteGateway(domia)
 	const realtimeGateway = setupRealtimeGateway(domia)
 	registerShutdownTask("satellite-gateway", () => satelliteGateway.close())
@@ -450,7 +545,9 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	try {
 		await fastify.listen({ port: HTTP_SERVER_PORT, host: HTTP_SERVER_HOST })
-		httpServerLogger.success(`✅ HTTP server ready on port ${HTTP_SERVER_PORT}`)
+		httpServerLogger.success(
+			`✅ ${https ? "HTTPS" : "HTTP"} server ready on port ${HTTP_SERVER_PORT}`,
+		)
 	} catch (err) {
 		httpServerLogger.error("❌ Error starting HTTP server", { err })
 		process.exit(1)

@@ -7,6 +7,7 @@ import {
 	ttsEngineLogger,
 	TTS_ERRORS,
 	domiaError,
+	toError,
 	wrapPcmToWav,
 	applyEdgeFade,
 } from "@/utils"
@@ -76,7 +77,7 @@ const runPocket = async (
 			const result = await pool.submit<TtsWorkerResultType>(
 				jobOf(ttsConfig, sentence, voice.speed),
 			)
-			if (result.pcm && result.pcm.length > 0)
+			if (result.pcm.length > 0)
 				parts.push(applyEdgeFade(result.pcm, POCKET_SAMPLE_RATE))
 		}
 		const pcm = Buffer.concat(parts)
@@ -113,7 +114,7 @@ const streamSentenceChunks = (
 	const chunks: Buffer[] = []
 	let notify: (() => void) | null = null
 	let done = false
-	let failure: unknown = null
+	let failure: Error | null = null
 	const wake = (): void => {
 		notify?.()
 		notify = null
@@ -133,7 +134,7 @@ const streamSentenceChunks = (
 				wake()
 			},
 			(err: unknown) => {
-				failure = err
+				failure = toError(err)
 				done = true
 				wake()
 			},
@@ -171,7 +172,7 @@ const runPocketStream = async function* (
 			const result = await pool.submit<TtsWorkerResultType>(
 				jobOf(ttsConfig, sentence, voice.speed),
 			)
-			if (result.pcm && result.pcm.length > 0)
+			if (result.pcm.length > 0)
 				yield applyEdgeFade(result.pcm, POCKET_SAMPLE_RATE)
 			continue
 		}

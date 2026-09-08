@@ -5,7 +5,7 @@ export const getModuleSettings = (
 	overrides: Partial<SelectModuleSettingsType> = {},
 ): SelectModuleSettingsType => {
 	return {
-		...baseModuleSettings(overrides?.domiaId),
+		...baseModuleSettings(overrides.domiaId),
 		...overrides,
 	}
 }

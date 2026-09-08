@@ -73,7 +73,7 @@ export type EvalCaseModeType = "gate" | "advisory"
 export type EvalCaseType = {
 	name: string
 	suite: EvalSuiteType
-	language: "en" | "es"
+	language: string
 	runs?: number
 	passRatio?: number
 	mode?: EvalCaseModeType
@@ -283,6 +283,26 @@ export type MockHaServerType = {
 	close: () => Promise<void>
 }
 
+export type VirtualClockType = {
+	now: () => number
+	sleep: (ms: number) => Promise<void>
+	elapsed: () => number
+}
+
+export type ReflectionGateScenarioType = {
+	name: string
+	busyAt: (t: number) => boolean
+	settingsPatch?: Partial<{
+		onlyWhenIdle: boolean
+		maxIdleWaitMs: number
+		idleGraceMs: number
+		idlePollMs: number
+	}>
+	expectRan: boolean
+	minElapsedMs: number
+	maxElapsedMs: number
+}
+
 export type CheckerType = {
 	check: (name: string, cond: boolean, detail?: string) => void
 	passCount: () => number
@@ -380,4 +400,41 @@ export type TourneyModelResultType = {
 	llmMsP50: number | null
 	pairwise: { wins: number; losses: number; ties: number }
 	transcript: string
+}
+
+export type EvalBatteryType =
+	| "pure"
+	| "node"
+	| "tool"
+	| "quality"
+	| "hardware"
+	| "utility"
+
+export type EvalRegistrySuiteType = {
+	name: string
+	file: string
+	battery: EvalBatteryType
+	env?: Record<string, string>
+	requires?: EvalRequirementType[]
+	description: string
+}
+
+export type FakeWyomingEventType = {
+	type: string
+	data: Record<string, unknown>
+	payload: Buffer | null
+	at: number
+}
+
+export type FakeWyomingSatelliteType = {
+	port: number
+	events: FakeWyomingEventType[]
+	eventsOf: (type: string) => FakeWyomingEventType[]
+	waitFor: (
+		type: string,
+		count?: number,
+		timeoutMs?: number,
+	) => Promise<boolean>
+	send: (type: string, data?: Record<string, unknown>, payload?: Buffer) => void
+	close: () => void
 }

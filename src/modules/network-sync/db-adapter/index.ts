@@ -123,7 +123,7 @@ const dbAdapter = {
 			.set({ lastSeenAt: 0 })
 			.where(and(eq(domia.peerNodeId, nodeId), eq(domia.isHosted, false)))
 			.run()
-		return res.changes ?? 0
+		return res.changes
 	},
 	upsertDomia: (data: InsertDomiaType, client: DBClientOrTxType = dbClient) =>
 		client

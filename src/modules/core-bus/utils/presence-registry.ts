@@ -1,4 +1,4 @@
-import { domiaBusLogger, generateUuid } from "@/utils"
+import { generateUuid } from "@/utils"
 
 import type {
 	PresenceEntryType,
@@ -9,7 +9,6 @@ import type {
 	SatelliteCapabilitiesType,
 	SetSatellitePresenceMetaType,
 	SatelliteEventKindType,
-	PresenceListenerType,
 } from "../types"
 
 const MAX_SATELLITE_EVENTS = 10
@@ -28,37 +27,6 @@ const connectionIds = new Map<string, string>()
 
 const connKey = (domiaKey: string, satelliteId: string): string =>
 	`${domiaKey}\u0000${satelliteId}`
-
-const listeners = new Map<string, Set<PresenceListenerType>>()
-
-const emit = (domiaKey: string, status: PresenceStatusType): void => {
-	const set = listeners.get(domiaKey)
-	if (!set) return
-	for (const fn of set) {
-		try {
-			fn(status)
-		} catch (err) {
-			domiaBusLogger.warn("presence listener threw", {
-				domiaKey,
-				status,
-				err: err instanceof Error ? err.message : String(err),
-			})
-		}
-	}
-}
-
-export const onPresenceChange = (
-	domiaKey: string,
-	listener: PresenceListenerType,
-): (() => void) => {
-	const set = listeners.get(domiaKey) ?? new Set()
-	set.add(listener)
-	listeners.set(domiaKey, set)
-	return () => {
-		set.delete(listener)
-		if (set.size === 0) listeners.delete(domiaKey)
-	}
-}
 
 const ensure = (domiaKey: string): PresenceEntryType => {
 	const existing = presence.get(domiaKey)
@@ -161,17 +129,6 @@ export const setSatellitePresence = (
 	entry.status = "idle"
 }
 
-export const pushSatelliteEvent = (
-	domiaKey: string,
-	satelliteId: string,
-	kind: SatelliteEventKindType,
-	detail: string,
-): void => {
-	const entry = presence.get(domiaKey)
-	const sat = entry?.satellites.find((s) => s.satelliteId === satelliteId)
-	if (sat) pushEvent(sat, kind, detail)
-}
-
 export const setSatelliteError = (
 	domiaKey: string,
 	satelliteId: string,
@@ -229,7 +186,7 @@ const startSpeakingKeepalive = (domiaKey: string): void => {
 		() => speakingBroadcast?.(domiaKey, true),
 		SPEAKING_KEEPALIVE_MS,
 	)
-	timer.unref?.()
+	timer.unref()
 	speakingKeepalives.set(domiaKey, timer)
 }
 
@@ -242,7 +199,6 @@ export const setPresenceStatus = (
 	const prev = entry.status
 	entry.status = status
 	if (markActive) entry.lastActiveAt = Date.now()
-	emit(domiaKey, status)
 	if (prev !== status && (status === "speaking" || prev === "speaking")) {
 		const speaking = status === "speaking"
 		speakingBroadcast?.(domiaKey, speaking)
@@ -253,6 +209,9 @@ export const setPresenceStatus = (
 
 export const getPresence = (domiaKey: string): PresenceEntryType | undefined =>
 	presence.get(domiaKey)
+
+export const isPresenceListening = (domiaKey: string): boolean =>
+	presence.get(domiaKey)?.status === "listening"
 
 export const getAllPresence = (): PresenceEntryType[] => [...presence.values()]
 
@@ -269,7 +228,6 @@ export const mostRecentlyActiveSatellite = (): string | null => {
 export const clearDomiaPresence = (domiaKey: string): void => {
 	stopSpeakingKeepalive(domiaKey)
 	presence.delete(domiaKey)
-	listeners.delete(domiaKey)
 	const prefix = `${domiaKey}\u0000`
 	for (const key of connectionIds.keys()) {
 		if (key.startsWith(prefix)) connectionIds.delete(key)

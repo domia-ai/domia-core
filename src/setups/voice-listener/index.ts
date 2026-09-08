@@ -1,7 +1,14 @@
 import { existsSync, readdirSync } from "fs"
 import { resolve } from "path"
-import { startCapture, type CaptureHandleType } from "@/modules/audio-capture"
-import { isAnyPeerSpeaking } from "@/modules/core-bus"
+import {
+	startCapture,
+	liveSpeechSeenRecently,
+	matchStopPhrase,
+	type CaptureHandleType,
+} from "@/modules/audio-capture"
+import { ensureAec, releaseAec } from "@/modules/aec"
+import { hasActivePlayback, stopActivePlayback } from "@/modules/audio-playback"
+import { abortActiveTurn, isAnyPeerSpeaking } from "@/modules/core-bus"
 import { DOMIA_EVENT_BUS_ENUM, publishToDomiaBus } from "@/buses"
 import { type DomiaType } from "@/modules/core"
 import { setBootStatus } from "@/modules/runtime-control"
@@ -43,12 +50,39 @@ const startVoiceListener = async (
 	domia: DomiaType,
 ): Promise<CaptureHandleType> =>
 	startCapture(domia, {
-		onWake: () => {
+		onWake: (keyword) => {
+			const ww = domia.wakeWordConfig
 			if (
-				domia.wakeWordConfig?.suppressWakeWhilePeerSpeaks !== false &&
-				isAnyPeerSpeaking()
+				ww?.stopWordAbortEnabled &&
+				matchStopPhrase(
+					keyword,
+					domia.characterProfile?.language,
+					ww.stopWordMaxWords,
+				) !== null
 			) {
+				const aborted = abortActiveTurn(domia.id, "stop-word")
+				const stopped = stopActivePlayback(domia.id)
+				appLogger.info(
+					aborted || stopped
+						? "🛑 stop word — playback aborted"
+						: "🛑 stop word heard while idle — ignored",
+					{ keyword },
+				)
+				return
+			}
+			if (ww?.suppressWakeWhilePeerSpeaks !== false && isAnyPeerSpeaking()) {
 				appLogger.info("🙉 wake suppressed — a mesh peer is speaking")
+				return
+			}
+			if (
+				ww?.echoResidualGateEnabled &&
+				hasActivePlayback(domia.id) &&
+				!liveSpeechSeenRecently(domia.id)
+			) {
+				appLogger.info(
+					"🔇 wake rejected — captured energy is explained by our own playback (residual gate)",
+					{ keyword },
+				)
 				return
 			}
 			publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED)
@@ -67,7 +101,7 @@ export const setupVoiceListener = async (
 	missingBinaries: string[] = [],
 ): Promise<void> => {
 	const caps = domia.runtimeCapabilities
-	if (!caps?.wakeword || !caps?.record) {
+	if (!caps?.wakeword || !caps.record) {
 		setBootStatus({ missingBinaries, voice: "off", voiceMissing: [] })
 		return
 	}
@@ -85,6 +119,8 @@ export const setupVoiceListener = async (
 		return
 	}
 
+	if (domia.wakeWordConfig)
+		await ensureAec(domia.domiaKey, domia.wakeWordConfig)
 	const handle = await startVoiceListener(domia)
 	voiceHandles.set(domia.domiaKey, handle)
 	appLogger.info(`🤖 Running voice listener: ${domia.name}`)
@@ -94,9 +130,13 @@ export const setupVoiceListener = async (
 export const stopVoiceListener = (domiaKey: string): void => {
 	voiceHandles.get(domiaKey)?.stop()
 	voiceHandles.delete(domiaKey)
+	void releaseAec(domiaKey).catch((err: unknown) =>
+		appLogger.warn("AEC release failed", { domiaKey, err }),
+	)
 }
 
 export const reloadVoiceListener = async (domia: DomiaType): Promise<void> => {
-	stopVoiceListener(domia.domiaKey)
+	voiceHandles.get(domia.domiaKey)?.stop()
+	voiceHandles.delete(domia.domiaKey)
 	await setupVoiceListener(domia)
 }

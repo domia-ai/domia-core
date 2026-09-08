@@ -4,6 +4,7 @@ import {
 	CORE_ERRORS,
 	getErrorMessage,
 	serializeFatal,
+	setMeshAuthTunables,
 } from "@/utils"
 import { initialize } from "./modules/config-engine"
 import { setGrpcClientTunables } from "./modules/grpc-client"
@@ -12,6 +13,7 @@ import { setLocalMqttClient } from "./modules/heartbeat-manager"
 import { setupTempSweeper } from "./setups/temp-sweeper"
 import { setupRetention } from "./setups/retention"
 import { setupShutdown } from "./setups/shutdown"
+import { setupOtel } from "./setups/otel"
 import {
 	setupTurnEventLogging,
 	setupTurnEventPersistence,
@@ -43,15 +45,21 @@ process.on("unhandledRejection", (reason) => {
 async function main() {
 	appLogger.info("Initialize Domia with default config")
 	setupShutdown()
+	await setupOtel({
+		exporterUrl: env.DOMIA_OTEL_EXPORTER_URL,
+		serviceName: env.DOMIA_OTEL_SERVICE_NAME,
+		principalDomiaKey: env.DOMIA_KEY,
+	})
 	setupTurnEventLogging()
 	setupTurnEventPersistence()
 	const ownDomia = await initialize(undefined, { isHosted: true })
 	setGrpcClientTunables(ownDomia)
+	setMeshAuthTunables(ownDomia)
 	setupTempSweeper()
 	setupRetention()
 	setupConfigReloaders()
 
-	if (!ownDomia?.runtimeCapabilities) {
+	if (!ownDomia.runtimeCapabilities) {
 		appLogger.error(getErrorMessage(CORE_ERRORS.MISSING_CAPABILITIES))
 		process.exit(1)
 	}
@@ -71,7 +79,7 @@ async function main() {
 
 	await bootHostedIdentities()
 
-	setupHttpServer({ domia: ownDomia })
+	await setupHttpServer({ domia: ownDomia })
 	await setupGrpcServer({ domia: ownDomia, capabilities: runtimeCapabilities })
 	await setupSatelliteClients({ fallback: ownDomia })
 
@@ -86,7 +94,7 @@ async function main() {
 	appLogger.info(`DOMIA is running and waiting for events...`)
 }
 
-void main().catch((err) => {
+void main().catch((err: unknown) => {
 	appLogger.error("Boot failed", { err })
 	process.exit(1)
 })

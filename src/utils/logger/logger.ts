@@ -118,8 +118,9 @@ export const createLogger = (namespace: string) => {
 	const formatMessage = (level: LogLevelType, message: string): string => {
 		const { prefix, color } = getPrefix(level)
 		const trace = getTraceContext()
-		const traceSuffix =
-			trace && trace.interactionId ? ` [iid=${trace.interactionId}]` : ""
+		const traceSuffix = trace?.interactionId
+			? ` [iid=${trace.interactionId}]`
+			: ""
 		return `${color(prefix)}${traceSuffix} ${message}`
 	}
 
@@ -179,6 +180,7 @@ export const dbLogger = createLogger("db")
 export const emotionEngineLogger = createLogger("emotion-engine")
 export const configEngineLogger = createLogger("config-engine")
 export const audioCaptureLogger = createLogger("audio-capture")
+export const aecLogger = createLogger("aec")
 export const domiaBusLogger = createLogger("core-bus")
 export const mqttLogger = createLogger("mqtt")
 export const localMqttLogger = createLogger("local-mqtt")
@@ -187,14 +189,15 @@ export const sttEngineLogger = createLogger("stt-engine")
 export const llmEngineLogger = createLogger("llm-engine")
 export const ttsEngineLogger = createLogger("tts-engine")
 export const audioPlaybackLogger = createLogger("audio-playback")
-export const scriptsLogger = createLogger("scripts")
 export const devCliLogger = createLogger("dev-cli")
 export const httpServerLogger = createLogger("http-server")
 export const heartbeatLogger = createLogger("heartbeat")
 export const networkSyncLogger = createLogger("network-sync")
-export const promptContextBuilderLogger = createLogger("prompt-context-builder")
 export const grpcServerLogger = createLogger("grpc-server")
 export const grpcClientLogger = createLogger("grpc-client")
+export const tlsLogger = createLogger("tls")
+export const meshAuthLogger = createLogger("mesh-auth")
+export const otelLogger = createLogger("otel")
 export const mindLogger = createLogger("mind")
 export const modelManagerLogger = createLogger("model-manager")
 export const memoryLogger = createLogger("memory")
@@ -203,7 +206,6 @@ export const inferencePoolLogger = createLogger("inference-pool")
 export const skillEngineLogger = createLogger("skill-engine")
 export const intentRouterLogger = createLogger("intent-router")
 export const embeddingsLogger = createLogger("embeddings")
-export const matcherLogger = createLogger("matcher")
 export const agentLogger = createLogger("agent")
 export const satelliteGatewayLogger = createLogger("satellite-gateway")
 export const satelliteWyomingLogger = createLogger("satellite-wyoming")
@@ -213,3 +215,5 @@ export const realtimeGatewayLogger = createLogger("realtime-gateway")
 export const satelliteDiscoveryLogger = createLogger("satellite-discovery")
 export const turnEventsLogger = createLogger("turn-events")
 export const llmSlotsLogger = createLogger("llm-slots")
+export const benchLogger = createLogger("bench")
+export const proactivityLogger = createLogger("proactivity")

@@ -13,7 +13,7 @@ const dbAdapter = {
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client.query.runtimeCapabilities.findMany({
-			where: eq(runtimeCapabilities?.[capability], true),
+			where: eq(runtimeCapabilities[capability], true),
 			with: {
 				domia: true,
 			},

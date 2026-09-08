@@ -17,16 +17,13 @@
 		"memoryEngine": true,
 		"factCapture": true,
 		"factRecall": true,
-		"collectiveMind": true,
-		"narrativeEngine": true,
 		"identityEngine": true,
-		"remoteAccessEngine": true,
 		"skillsEngine": false
 	},
 	"stt": {
 		"name": "Español",
-		"engine": "PARAKEET",
-		"modelName": "parakeet-tdt-0.6b-v3",
+		"engine": "NEMO_SPEECH",
+		"modelName": "nemotron-3.5-asr-streaming-0.6b",
 		"language": "es",
 		"modelPath": "data/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
 		"quantization": "int8",
@@ -46,7 +43,8 @@
 		"poolIdleTimeoutMs": 60000,
 		"poolQueueMaxDepth": 8,
 		"poolQueueTimeoutMs": 15000,
-		"workerRecycleAfterJobs": 0
+		"workerRecycleAfterJobs": 0,
+		"baseUrl": "http://127.0.0.1:8600/v1"
 	},
 	"tts": {
 		"name": "Español",
@@ -72,7 +70,7 @@
 	},
 	"llm": {
 		"name": "Español",
-		"engine": "OLLAMA",
+		"engine": "OPENAI_COMPATIBLE",
 		"modelName": "llama3.2:3b",
 		"temperature": 0.7,
 		"contextWindow": 4096,
@@ -83,7 +81,8 @@
 		"embedModelPath": "data/models/paraphrase-multilingual-minilm-l12-v2",
 		"matcherSemanticThreshold": 0.42,
 		"skillsRouting": "embedding-gate",
-		"intentEmbedThreshold": 0.42
+		"intentEmbedThreshold": 0.42,
+		"baseUrl": "http://127.0.0.1:11435/v1"
 	},
 	"wakeWord": {
 		"name": "Default",

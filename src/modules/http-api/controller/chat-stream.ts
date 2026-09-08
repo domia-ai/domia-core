@@ -27,13 +27,13 @@ export const handlePostChatStream = async (
 		connection: "keep-alive",
 	})
 
-	let errored = false
+	const errored = { current: false }
 	const write = (event: string, data: unknown): void => {
 		if (!reply.raw.writableEnded) reply.raw.write(sseFrame(event, data))
 	}
 	const writeError = (message: string): void => {
-		if (errored) return
-		errored = true
+		if (errored.current) return
+		errored.current = true
 		write("RUN_ERROR", { runId: interactionId, message })
 	}
 
@@ -45,7 +45,8 @@ export const handlePostChatStream = async (
 			const mapped = toAgUiEvent(event)
 			if (!mapped) return
 			if (mapped.event === "RUN_ERROR") {
-				writeError(String(mapped.data.message ?? "turn failed"))
+				const message = mapped.data.message
+				writeError(typeof message === "string" ? message : "turn failed")
 			} else {
 				write(mapped.event, mapped.data)
 			}
@@ -58,7 +59,7 @@ export const handlePostChatStream = async (
 		write("TEXT_MESSAGE_START", { messageId, role: "assistant" })
 		write("TEXT_MESSAGE_CONTENT", { messageId, delta: result.reply })
 		write("TEXT_MESSAGE_END", { messageId })
-		if (!errored) write("RUN_FINISHED", { runId: interactionId })
+		if (!errored.current) write("RUN_FINISHED", { runId: interactionId })
 	} catch (err) {
 		httpServerLogger.error("chat stream failed", { domiaId: domia.id, err })
 		writeError(err instanceof Error ? err.message : String(err))

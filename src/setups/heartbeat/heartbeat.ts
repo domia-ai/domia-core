@@ -15,7 +15,7 @@ export const setupHeartbeat = ({
 			const live = (await safeOwnDomia(domiaKey, "heartbeat")) ?? domia
 			heartbeatLogger.info(`💓 Sending heartbeat for ${domiaKey}`)
 			await sendHeartbeat({ domia: live })
-		})().catch((err) =>
+		})().catch((err: unknown) =>
 			heartbeatLogger.warn(`heartbeat send failed for ${domiaKey}`, { err }),
 		)
 	}, intervalSeconds * 1000)

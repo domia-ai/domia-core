@@ -42,7 +42,10 @@ export const smartTurnDetector: TurnDetectorEngineAdapterType = {
 	capabilities: { sampleRate: 16000, mels: TURN_DETECTOR_MELS },
 	available,
 	warm: (modelPath) => {
-		if (available(modelPath)) void getSession(modelPath).catch(() => undefined)
+		if (available(modelPath))
+			void getSession(modelPath).catch((err: unknown) =>
+				audioCaptureLogger.warn("smart-turn warmup failed", { err, modelPath }),
+			)
 	},
 	predict: async (audio16k, modelPath, threshold = 0.5) => {
 		if (!available(modelPath)) return null

@@ -1,5 +1,10 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { getTraceContext } from "@/utils"
+import {
+	getTraceContext,
+	domiaError,
+	CORE_ERRORS,
+	domiaBusLogger,
+} from "@/utils"
 import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { reflectOnInteraction } from "@/modules/reflection"
@@ -106,12 +111,14 @@ export const publishInteractionInput = (
 	input: RunInteractionInputType,
 	responseType: (typeof RESPONSE_TYPE_ENUM)[keyof typeof RESPONSE_TYPE_ENUM],
 ): void => {
+	const traceId = getTraceContext()?.traceId
 	if (input.kind === "audio_file") {
 		publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath: input.filePath,
 			interactionId,
 			originDomiaKey: domia.domiaKey,
 			responseType,
+			traceId,
 		})
 	} else {
 		publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
@@ -119,6 +126,7 @@ export const publishInteractionInput = (
 			interactionId,
 			originDomiaKey: domia.domiaKey,
 			responseType,
+			traceId,
 		})
 	}
 }
@@ -165,7 +173,10 @@ export const runInteraction = async (
 		},
 	)
 	if (!handle) {
-		throw new Error("runInteraction: failed to create interaction")
+		throw domiaError(CORE_ERRORS.INTERACTION_CREATE_FAILED, {
+			logger: domiaBusLogger,
+			meta: { site: "runInteraction", domiaId: domia.id },
+		})
 	}
 	const { interactionId, turn } = handle
 

@@ -14,6 +14,8 @@ import {
 	endpointAckStats,
 	uniqueArtifactPath,
 	LADDER_STAGE_COLS,
+	rawDataToString,
+	stats,
 } from "./lib"
 
 const LABEL = process.argv[2] ?? "sat-bench"
@@ -40,9 +42,9 @@ type TraceMetricsType = {
 const MAX = Number(process.env.SATBENCH_MAX ?? "0")
 const CUSTOM_WAV = process.env.SATBENCH_WAV ?? ""
 const corpus = CUSTOM_WAV
-	? ({
+	? {
 			cases: [{ id: path.basename(CUSTOM_WAV, ".wav"), text: "" }],
-		} as CorpusType)
+		}
 	: (JSON.parse(
 			readFileSync(path.join(FIXTURES, "corpus.json"), "utf-8"),
 		) as CorpusType)
@@ -119,7 +121,7 @@ const drive = (satelliteId: string, wavPath: string): Promise<string | null> =>
 				}
 				return
 			}
-			const msg = JSON.parse(data.toString()) as {
+			const msg = JSON.parse(rawDataToString(data)) as {
 				type: string
 				interactionId?: string
 			}
@@ -145,21 +147,6 @@ const traceRow = (id: string): TraceMetricsType | undefined =>
 		`SELECT perceived_ttfa_ms, ttfa_ms, tts_first_chunk_ms, stt_ms, total_ms, llm_ttft_ms, llm_fresh_tokens, llm_cached_tokens, stt_result, status, ${LADDER_STAGE_COLS.join(", ")} FROM interaction_trace WHERE id = ?`,
 		[id],
 	)
-
-const pct = (xs: number[], p: number): number => {
-	if (xs.length === 0) return 0
-	const sorted = [...xs].sort((a, b) => a - b)
-	return sorted[
-		Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))
-	]
-}
-
-const stat = (xs: number[]): Record<string, number> => ({
-	p50: pct(xs, 50),
-	p95: pct(xs, 95),
-	min: xs.length ? Math.min(...xs) : 0,
-	max: xs.length ? Math.max(...xs) : 0,
-})
 
 const main = async (): Promise<void> => {
 	console.log(
@@ -190,9 +177,7 @@ const main = async (): Promise<void> => {
 			}
 			if (!row) continue
 			const speculative = wasSpeculationCommitted(id)
-			const issues = speculative
-				? []
-				: ladderViolations(row as unknown as Record<string, unknown>)
+			const issues = speculative ? [] : ladderViolations(row)
 			const ack = endpointAckStats(id)
 			if (LIVE && ack.ackCount !== 1)
 				issues.push(`endpoint.accepted count=${ack.ackCount} (expected 1)`)
@@ -204,7 +189,7 @@ const main = async (): Promise<void> => {
 				)
 			rows.push({
 				...row,
-				...ladderDeltas(row as unknown as Record<string, unknown>),
+				...ladderDeltas(row),
 				speculative,
 				endpointAckCount: ack.ackCount,
 				endpointAckBeforeSttFinal: ack.beforeSttFinal,
@@ -242,7 +227,7 @@ const main = async (): Promise<void> => {
 		const xs = warm
 			.map((r) => r[col])
 			.filter((v): v is number => typeof v === "number")
-		if (xs.length) summary[col] = stat(xs)
+		if (xs.length) summary[col] = stats(xs)
 	}
 	const violationCount = rows.reduce(
 		(acc, r) => acc + ((r.ladderIssues as string[] | undefined)?.length ?? 0),

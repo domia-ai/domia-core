@@ -46,7 +46,7 @@ export const initialize = async (
 		getDomiaCreateInputFromConfig(validatedConfig, isHosted),
 		dbClient,
 	)
-	const initializedDomia = await getDomia(insertedDomia?.id, false)
+	const initializedDomia = await getDomia(insertedDomia.id, false)
 	const domiaId = initializedDomia?.id
 
 	if (!domiaId) {

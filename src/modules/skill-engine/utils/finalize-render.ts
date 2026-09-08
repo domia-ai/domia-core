@@ -30,7 +30,7 @@ export const renderFinalizeText = (
 		if (key === "name") return nameFrom(rawArgs, resolvedArgs)
 		return stringArg(rawArgs[key]) ?? stringArg(resolvedArgs?.[key])
 	}
-	let missing = false
+	let missing = false as boolean
 	const rendered = template.replace(PLACEHOLDER_PATTERN, (_, key: string) => {
 		const value = valueFor(key)
 		if (value == null) {

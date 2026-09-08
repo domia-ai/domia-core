@@ -38,6 +38,11 @@ const splitAlternatives = (src: string): string[] => {
 	return parts
 }
 
+const lookupRule = (
+	rules: Record<string, string>,
+	name: string,
+): string | undefined => rules[name]
+
 export const parseTemplate = (
 	src: string,
 	expansionRules: Record<string, string>,
@@ -90,7 +95,7 @@ export const parseTemplate = (
 			if (end < 0) throw new Error(`unbalanced < in template: ${src}`)
 			flushText()
 			const ruleName = src.slice(i + 1, end).trim()
-			const rule = expansionRules[ruleName]
+			const rule = lookupRule(expansionRules, ruleName)
 			if (rule === undefined)
 				throw new Error(`unknown expansion rule <${ruleName}> in: ${src}`)
 			nodes.push(...parseTemplate(rule, expansionRules))

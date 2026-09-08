@@ -9,5 +9,3 @@ export const fold = (text: string): string =>
 
 export const tokensOf = (text: string): string[] =>
 	fold(text).split(" ").filter(Boolean)
-
-export const digitKey = (text: string): string => text.replace(/\d+/g, "#")

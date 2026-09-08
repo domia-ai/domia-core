@@ -1,5 +1,10 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { grpcServerLogger, runWithTraceContext, writeWavToTemp } from "@/utils"
+import {
+	ensureTraceId,
+	grpcServerLogger,
+	runWithTraceContext,
+	writeWavToTemp,
+} from "@/utils"
 import type { EventEnvelope, DeliveryAck } from "@/generated/proto/domia"
 import type { GrpcEventHandlerContextType, DedupEntry } from "../types"
 
@@ -38,6 +43,7 @@ export const handleDeliverEvent = async (
 
 	let event: DOMIA_EVENT_BUS_ENUM
 	let interactionId: string | undefined
+	let traceId: string | undefined
 	let publish: () => void
 
 	const rejectForeignOrigin = (
@@ -63,6 +69,7 @@ export const handleDeliverEvent = async (
 			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.AUDIO_READY
 			interactionId = p.interactionId
+			traceId = p.traceId
 			const filePath =
 				p.audio && p.audio.length > 0
 					? await writeWavToTemp(p.audio, p.interactionId ?? "", "audio-in")
@@ -73,6 +80,7 @@ export const handleDeliverEvent = async (
 					audioUrl: p.audioUrl,
 					originDomiaKey: p.originDomiaKey,
 					interactionId: p.interactionId,
+					traceId: p.traceId,
 				})
 			break
 		}
@@ -82,12 +90,14 @@ export const handleDeliverEvent = async (
 			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.STT_DONE
 			interactionId = p.interactionId
+			traceId = p.traceId
 			publish = () =>
 				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
 					transcript: p.transcript,
 					interactionId: p.interactionId ?? "",
 					originDomiaKey: p.originDomiaKey,
 					responseType: p.responseType,
+					traceId: p.traceId,
 				})
 			break
 		}
@@ -97,12 +107,14 @@ export const handleDeliverEvent = async (
 			if (rejected) return rejected
 			event = DOMIA_EVENT_BUS_ENUM.LLM_DONE
 			interactionId = p.interactionId
+			traceId = p.traceId
 			publish = () =>
 				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 					reply: p.reply,
 					interactionId: p.interactionId ?? "",
 					originDomiaKey: p.originDomiaKey,
 					responseType: p.responseType,
+					traceId: p.traceId,
 				})
 			break
 		}
@@ -110,6 +122,7 @@ export const handleDeliverEvent = async (
 			const p = envelope.payload.ttsDone
 			event = DOMIA_EVENT_BUS_ENUM.TTS_DONE
 			interactionId = p.interactionId
+			traceId = p.traceId
 			const filePath =
 				p.audio && p.audio.length > 0
 					? await writeWavToTemp(p.audio, p.interactionId ?? "", "tts-in")
@@ -120,6 +133,7 @@ export const handleDeliverEvent = async (
 					audioUrl: p.audioUrl,
 					interactionId: p.interactionId ?? "",
 					originDomiaKey: p.originDomiaKey,
+					traceId: p.traceId,
 				})
 			break
 		}
@@ -127,13 +141,15 @@ export const handleDeliverEvent = async (
 			const p = envelope.payload.interactionFailed
 			event = DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED
 			interactionId = p.interactionId
+			traceId = p.traceId
 			publish = () =>
 				publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.INTERACTION_FAILED, {
-					error: p.error ?? "unknown remote error",
+					error: p.error,
 					step: p.step,
 					interactionId: p.interactionId ?? "",
 					originDomiaKey: p.originDomiaKey,
 					responseType: p.responseType,
+					traceId: p.traceId,
 				})
 			break
 		}
@@ -156,7 +172,11 @@ export const handleDeliverEvent = async (
 	}
 
 	return runWithTraceContext(
-		{ interactionId, originDomiaKey: senderKey },
+		{
+			interactionId,
+			originDomiaKey: senderKey,
+			traceId: ensureTraceId(traceId),
+		},
 		() => {
 			grpcServerLogger.info(
 				`📥 deliverEvent ${event} from ${senderKey} → bus`,

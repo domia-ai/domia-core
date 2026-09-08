@@ -6,6 +6,7 @@ import {
 } from "@/buses"
 import {
 	domiaBusLogger,
+	ensureTraceId,
 	isSemaphoreBusyError,
 	onceFn,
 	setTraceContext,
@@ -28,6 +29,7 @@ import {
 	pushInteractionFirstAudio,
 	skillsMayIntercept,
 	emitTerminalCompletion,
+	twoTierEndpointArmed,
 } from "../utils"
 import type {
 	CoreBusContextType,
@@ -39,7 +41,7 @@ export const handlePlaybackStarted = (
 	_ctx: CoreBusContextType,
 	payload: PlaybackStartedPayloadType,
 ): void => {
-	if (payload?.interactionId) {
+	if (payload.interactionId) {
 		pushInteractionFirstAudio(payload.interactionId)
 		emitTurnEvent({
 			type: DOMIA_TURN_EVENT_ENUM.PLAYBACK_STARTED,
@@ -69,6 +71,10 @@ const speculationEligible = (ctx: CoreBusContextType): boolean => {
 	)
 }
 
+const eagerFollowUpEligible = (ctx: CoreBusContextType): boolean =>
+	twoTierEndpointArmed(ctx.domia, ctx.features) &&
+	Boolean(ctx.features.stt?.adapter.createSession)
+
 const runFollowUpSpeculative = async (
 	ctx: CoreBusContextType,
 ): Promise<void> => {
@@ -80,12 +86,15 @@ const runFollowUpSpeculative = async (
 		playFeedbackSound(domia, "done")
 		return
 	}
-	const admitted = await admitVoiceReply(domia).catch((err: unknown) => {
-		if (isSemaphoreBusyError(err)) return null
-		fu.stop()
-		throw err
-	})
-	if (!admitted) {
+	const decodeSpeculation = speculationEligible(ctx)
+	const admitted = decodeSpeculation
+		? await admitVoiceReply(domia).catch((err: unknown) => {
+				if (isSemaphoreBusyError(err)) return null
+				fu.stop()
+				throw err
+			})
+		: null
+	if (decodeSpeculation && !admitted) {
 		domiaBusLogger.warn(
 			`🔮 follow-up speculation skipped — at voice capacity, consuming as batch`,
 			{ domiaId },
@@ -111,30 +120,34 @@ const runFollowUpSpeculative = async (
 		})
 		return
 	}
-	const release = onceFn(admitted)
+	const release = admitted ? onceFn(admitted) : undefined
 	try {
+		setTraceContext({ traceId: ensureTraceId() })
 		const interactionId = await getOrCreateInteractionId(domia, undefined, {
 			inputType: INTERACTION_INPUT_TYPE_ENUM.VOICE,
 			responseType: RESPONSE_TYPE_ENUM.VOICE,
 		})
 		if (!interactionId) {
-			release()
+			release?.()
 			fu.stop()
 			return
 		}
 		prefetchMemoryBundle(domia, interactionId)
 		setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
-		domiaBusLogger.info(`🔮 follow-up speculative turn`, {
-			domiaId,
-			interactionId,
-		})
+		domiaBusLogger.info(
+			decodeSpeculation
+				? `🔮 follow-up speculative turn`
+				: `🔥 follow-up two-tier endpoint turn`,
+			{ domiaId, interactionId },
+		)
 		await runSpeculativeTurn(ctx, {
 			interactionId,
 			release,
+			decodeSpeculation,
 			captureFactory: fu.attach,
 		})
 	} catch (err) {
-		release()
+		release?.()
 		throw err
 	}
 }
@@ -148,8 +161,8 @@ export const handlePlaybackFinished = async (
 	const domiaId = domia.id
 
 	const ownsTrace =
-		!payload?.originDomiaKey || payload.originDomiaKey === domia.domiaKey
-	if (payload?.interactionId && ownsTrace) {
+		!payload.originDomiaKey || payload.originDomiaKey === domia.domiaKey
+	if (payload.interactionId && ownsTrace) {
 		completeInteraction(payload.interactionId, {
 			interrupted: payload.status !== "completed",
 		})
@@ -172,8 +185,8 @@ export const handlePlaybackFinished = async (
 		)
 	}
 
-	if (payload?.status !== "completed" || payload?.playedLocally !== true) return
-	if (payload?.liveVoice !== true) return
+	if (payload.status !== "completed" || payload.playedLocally !== true) return
+	if (payload.liveVoice !== true) return
 
 	const windowMs = domia.wakeWordConfig?.followUpWindowMs ?? 0
 	const willFollowUp =
@@ -191,7 +204,7 @@ export const handlePlaybackFinished = async (
 	}
 
 	try {
-		if (speculationEligible(ctx)) {
+		if (speculationEligible(ctx) || eagerFollowUpEligible(ctx)) {
 			await runFollowUpSpeculative(ctx)
 			return
 		}

@@ -1,3 +1,4 @@
+import { stringOrEmpty } from "./coerce"
 import type {
 	EvalTurnRecordType,
 	EvalExpectType,
@@ -77,7 +78,7 @@ const promptSectionBody = (prompt: string, section: string): string => {
 	if (start < 0) return ""
 	const body: string[] = []
 	for (let i = start + 1; i < lines.length; i++) {
-		if (/^### /.test(lines[i])) break
+		if (lines[i].startsWith("### ")) break
 		body.push(lines[i])
 	}
 	return body.join("\n").trim()
@@ -143,15 +144,14 @@ export const assertTurn = (
 		)
 	}
 
-	if (expect.anyArgMatches) {
+	const anyArgMatches = expect.anyArgMatches
+	if (anyArgMatches) {
 		const allArgs = tools.map((t) =>
 			JSON.stringify(t.resolvedArgs ?? t.args ?? {}),
 		)
 		add(
 			`anyArgMatches~/${expect.anyArgMatches}/`,
-			allArgs.some((a) =>
-				new RegExp(expect.anyArgMatches as string, "i").test(a),
-			),
+			allArgs.some((a) => new RegExp(anyArgMatches, "i").test(a)),
 			`args=${allArgs.join(" ")}`,
 		)
 	}
@@ -160,10 +160,7 @@ export const assertTurn = (
 		const target = tools.find(
 			(t) => !wantedTools || wantedTools.includes(rawName(t.tool ?? "")),
 		)
-		const resolved = (target?.resolvedArgs ?? target?.args ?? {}) as Record<
-			string,
-			unknown
-		>
+		const resolved = target?.resolvedArgs ?? target?.args ?? {}
 		if (expect.argsSubset)
 			add(
 				"argsSubset",
@@ -174,7 +171,7 @@ export const assertTurn = (
 			for (const [k, pat] of Object.entries(expect.argMatchers))
 				add(
 					`argMatch:${k}~/${pat}/`,
-					new RegExp(pat, "i").test(String(resolved[k] ?? "")),
+					new RegExp(pat, "i").test(stringOrEmpty(resolved[k])),
 					`${k}=${String(resolved[k])}`,
 				)
 	}

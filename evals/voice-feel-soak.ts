@@ -14,6 +14,7 @@ import {
 	runtimeSnapshot,
 	uniqueArtifactPath,
 	endpointAckStats,
+	rawDataToString,
 } from "./lib"
 
 const MODE = process.env.SOAK_MODE ?? "stack"
@@ -136,7 +137,7 @@ const liveEscalationProbe = (): Promise<{
 		)
 		ws.on("message", (data, isBinary) => {
 			if (isBinary) return
-			const msg = JSON.parse(data.toString()) as {
+			const msg = JSON.parse(rawDataToString(data)) as {
 				type: string
 				text?: string
 			}
@@ -161,8 +162,8 @@ const liveEscalationProbe = (): Promise<{
 	})
 
 const main = async (): Promise<void> => {
+	if (!(MODE in FLAG_SETS)) throw new Error(`unknown SOAK_MODE ${MODE}`)
 	const flagSet = FLAG_SETS[MODE]
-	if (!flagSet) throw new Error(`unknown SOAK_MODE ${MODE}`)
 	console.log(`=== voice-feel soak · mode=${MODE} · rounds=${ROUNDS} ===`)
 	await applyFlags(flagSet)
 	const rows: Record<string, unknown>[] = []
@@ -312,7 +313,7 @@ const main = async (): Promise<void> => {
 	process.exit(summary.fail === 0 ? 0 : 1)
 }
 
-void main().catch((e) => {
+void main().catch((e: unknown) => {
 	console.error(e)
 	process.exit(1)
 })

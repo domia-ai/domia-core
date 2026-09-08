@@ -41,6 +41,7 @@ message AudioReadyPayload {
   optional string origin_domia_key = 3;
   optional string interaction_id = 4;
   optional bytes audio = 5;
+  optional string trace_id = 6;
 }
 
 message SttDonePayload {
@@ -48,6 +49,7 @@ message SttDonePayload {
   optional string interaction_id = 2;
   optional string origin_domia_key = 3;
   optional string response_type = 4;
+  optional string trace_id = 5;
 }
 
 message LlmDonePayload {
@@ -55,6 +57,7 @@ message LlmDonePayload {
   optional string interaction_id = 2;
   optional string origin_domia_key = 3;
   optional string response_type = 4;
+  optional string trace_id = 5;
 }
 
 message TtsDonePayload {
@@ -63,6 +66,7 @@ message TtsDonePayload {
   optional string interaction_id = 3;
   optional string origin_domia_key = 4;
   optional bytes audio = 5;
+  optional string trace_id = 6;
 }
 
 message InteractionFailedPayload {
@@ -71,6 +75,7 @@ message InteractionFailedPayload {
   optional string interaction_id = 3;
   optional string origin_domia_key = 4;
   optional string response_type = 5;
+  optional string trace_id = 6;
 }
 
 message EventEnvelope {
@@ -98,6 +103,7 @@ message StreamSttMeta {
   optional string response_type = 4;
   optional string persona_context_json = 5;
   optional string target_domia_key = 6;
+  optional string trace_id = 7;
 }
 
 message ReflectionReport {
@@ -108,6 +114,7 @@ message ReflectionReport {
   optional string cause = 5;
   optional string facts_json = 6;
   optional string user_emotion_json = 7;
+  optional string trace_id = 8;
 }
 
 message ReflectionAck {
@@ -134,6 +141,7 @@ message StageExecutionReport {
   optional string origin_domia_key = 2;
   optional string interaction_id = 3;
   repeated StageMetric stages = 4;
+  optional string trace_id = 5;
 }
 
 message StageExecutionAck {
@@ -159,6 +167,7 @@ message LlmStreamRequest {
   optional string response_type = 5;
   optional string persona_context_json = 6;
   optional string target_domia_key = 7;
+  optional string trace_id = 8;
 }
 
 message InferenceRequest {
@@ -169,6 +178,7 @@ message InferenceRequest {
   optional string interaction_id = 5;
   optional string session_id = 6;
   optional string target_domia_key = 7;
+  optional string trace_id = 8;
 }
 
 message InferenceResponse {
@@ -183,6 +193,7 @@ message TtsStreamRequest {
   optional string interaction_id = 4;
   optional string tts_voice_json = 5;
   optional string target_domia_key = 6;
+  optional string trace_id = 7;
 }
 
 message ReplyAudioMessage {

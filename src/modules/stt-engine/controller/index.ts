@@ -9,10 +9,10 @@ export const runSTT = async (
 	filePath: string,
 	onTiming?: PoolJobTimingCbType,
 ) => {
-	const sttConfig = domia?.sttConfig
+	const sttConfig = domia.sttConfig
 	const engine = sttConfig?.engine
 
-	if (!engine || !STT_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !STT_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(STT_ERRORS.STT_ENGINE_NOT_FOUND, {
 			logger: sttEngineLogger,
 			meta: {

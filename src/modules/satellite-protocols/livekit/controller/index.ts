@@ -15,13 +15,14 @@ import {
 import { AccessToken } from "livekit-server-sdk"
 
 import { type DomiaType } from "@/modules/core"
+import { DEFAULT_PCM_SAMPLE_RATE } from "@/db"
 import {
 	createSatelliteSession,
 	createReconnectScheduler,
 	type SatelliteTransportType,
 } from "@/modules/satellite-core"
 import { setSatelliteConnecting, setSatelliteError } from "@/modules/core-bus"
-import { satelliteLivekitLogger } from "@/utils"
+import { satelliteLivekitLogger, domiaError, SATELLITE_ERRORS } from "@/utils"
 
 import type {
 	LivekitSatelliteConfigType,
@@ -31,7 +32,7 @@ import type {
 
 const RECONNECT_MS = 3000
 const PACE_MAX_QUEUED_S = 0.25
-const INPUT_SAMPLE_RATE = 16000
+const INPUT_SAMPLE_RATE = DEFAULT_PCM_SAMPLE_RATE
 const INPUT_CHANNELS = 1
 const TTS_TRACK_NAME = "domia-tts"
 
@@ -131,8 +132,7 @@ export const connectLivekitSatellite = (
 			serverEndpointing: true,
 			beginAudio: (format) => {
 				if (
-					output &&
-					output.format.sampleRate === format.sampleRate &&
+					output?.format.sampleRate === format.sampleRate &&
 					output.format.channels === format.channels
 				)
 					return
@@ -142,7 +142,10 @@ export const connectLivekitSatellite = (
 				const ready = (async () => {
 					if (stale) await teardownOutput(stale)
 					const local = room.localParticipant
-					if (!local) throw new Error("livekit room has no local participant")
+					if (!local)
+						throw domiaError(SATELLITE_ERRORS.LIVEKIT_NO_LOCAL_PARTICIPANT, {
+							logger: satelliteLivekitLogger,
+						})
 					return local.publishTrack(
 						track,
 						new TrackPublishOptions({
@@ -201,7 +204,7 @@ export const connectLivekitSatellite = (
 			})
 			const stream = new AudioStream(track)
 			const reader = stream.getReader()
-			let stopped = false
+			let stopped = false as boolean
 			let frames = 0
 			let resampler: AudioResampler | null = null
 			let resamplerRate = 0
@@ -244,16 +247,17 @@ export const connectLivekitSatellite = (
 				stopped = true
 				void reader.cancel().catch(() => undefined)
 			}
+			const isStopped = (): boolean => stopped
 			void (async () => {
 				await helloReady
-				if (stopped) return
+				if (isStopped()) return
 				if (!inputFormatSent) {
 					inputFormatSent = true
 					session.setFormat(INPUT_SAMPLE_RATE, INPUT_CHANNELS)
 				}
 				for (;;) {
 					const { done, value: frame } = await reader.read()
-					if (done || stopped || !frame) break
+					if (done || isStopped()) break
 					frames++
 					for (const resampled of toInputRate(frame)) {
 						session.onAudio(
@@ -325,10 +329,7 @@ export const connectLivekitSatellite = (
 
 		for (const participant of room.remoteParticipants.values()) {
 			for (const publication of participant.trackPublications.values()) {
-				if (
-					publication.track &&
-					publication.track.kind === TrackKind.KIND_AUDIO
-				) {
+				if (publication.track?.kind === TrackKind.KIND_AUDIO) {
 					startInputPump(publication.track)
 				}
 			}

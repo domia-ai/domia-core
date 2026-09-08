@@ -1,6 +1,7 @@
 import WebSocket from "ws"
 import { env } from "./env"
 import { parseWavPcm } from "./wav"
+import { rawDataToString } from "./coerce"
 import type { RealtimeTurnOptionsType, RealtimeTurnResultType } from "../types"
 
 const defaultWsUrl = (): string =>
@@ -69,7 +70,7 @@ export const realtimeTurn = (
 			}
 		}
 		ws.on("message", (data) => {
-			const msg = JSON.parse(data.toString()) as {
+			const msg = JSON.parse(rawDataToString(data)) as {
 				type: string
 				transcript?: string
 				delta?: string

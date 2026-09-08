@@ -5,7 +5,10 @@ import {
 	type SkillToolType,
 } from "@/db"
 import { hashCanonical, skillEngineLogger } from "@/utils"
-import type { SkillConnectionType } from "@/modules/skill-engine"
+import {
+	genericInvocationTarget,
+	type SkillConnectionType,
+} from "@/modules/skill-engine"
 
 import { fold } from "./normalize"
 import { parseTemplate, lintTemplate, prefilterOf } from "./grammar"
@@ -20,7 +23,7 @@ const schemaEnumValues = (
 	tool: SkillToolType | undefined,
 	arg: string,
 ): string[] => {
-	const props = tool?.inputSchema?.properties as
+	const props = tool?.inputSchema.properties as
 		| Record<string, unknown>
 		| undefined
 	const prop = props?.[arg] as { enum?: unknown } | undefined
@@ -37,6 +40,15 @@ const compileSlot = (
 	language: string | null,
 ): CompiledSlotType | null => {
 	const argName = slot.arg ?? slotName
+	const slotValue = (
+		phrase: string,
+		args: Record<string, unknown>,
+	): FastPathSlotValueType => ({
+		phrase,
+		folded: fold(phrase),
+		args,
+		target: genericInvocationTarget(args),
+	})
 	if (slot.source.kind === "range")
 		return {
 			kind: "range",
@@ -46,22 +58,12 @@ const compileSlot = (
 		}
 	if (slot.source.kind === "enum")
 		return valuesSlot(
-			slot.source.values.map((v) => ({
-				phrase: v,
-				folded: fold(v),
-				args: { [argName]: v },
-			})),
+			slot.source.values.map((v) => slotValue(v, { [argName]: v })),
 		)
 	if (slot.source.kind === "schemaEnum") {
 		const values = schemaEnumValues(tool, slot.source.arg)
 		if (values.length === 0) return null
-		return valuesSlot(
-			values.map((v) => ({
-				phrase: v,
-				folded: fold(v),
-				args: { [argName]: v },
-			})),
-		)
+		return valuesSlot(values.map((v) => slotValue(v, { [argName]: v })))
 	}
 	const provided = conn.specialization?.fastPathSlotValues?.(
 		conn.provider,
@@ -70,7 +72,7 @@ const compileSlot = (
 	)
 	if (!provided || provided.length === 0) return null
 	const values: FastPathSlotValueType[] = provided
-		.map((p) => ({ phrase: p.phrase, folded: fold(p.phrase), args: p.args }))
+		.map((p) => slotValue(p.phrase, p.args))
 		.filter((p) => p.folded.length > 0)
 		.sort((a, b) => b.folded.length - a.folded.length)
 	return valuesSlot(values)

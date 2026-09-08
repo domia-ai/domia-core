@@ -53,17 +53,17 @@ export const getLastEmotionEventAt = async (domiaId: string) => {
 const EMOTION_KEYS = Object.keys(emotionSchema.shape) as (keyof EmotionType)[]
 
 const baselineFor = (domia: DomiaType): EmotionType => {
-	const personality = domia?.characterProfile?.personality
+	const personality = domia.characterProfile?.personality
 	return (personality && EMOTION_PRESETS[personality]) ?? DEFAULT_EMOTION_PRESET
 }
 
 const applyInMemory = (domia: DomiaType, vector: EmotionType): void => {
-	if (domia?.emotionState)
+	if (domia.emotionState)
 		Object.assign(domia.emotionState, vector, { updatedAt: now() })
 }
 
 const elapsedSinceUpdate = (domia: DomiaType): number => {
-	const parsed = parseDbTimestamp(domia?.emotionState?.updatedAt)
+	const parsed = parseDbTimestamp(domia.emotionState?.updatedAt)
 	const last = Number.isNaN(parsed) ? Date.now() : parsed
 	return Math.max(0, Date.now() - last)
 }
@@ -75,7 +75,7 @@ const renderTrajectory = (trajectory: EmotionTrajectoryEntryType[]): string => {
 	if (!trajectory.length) return ""
 	const lines = trajectory.map((entry) => {
 		const moves = Object.entries(entry.delta)
-			.map(([k, v]) => `${k}${(v ?? 0) >= 0 ? "↑" : "↓"}`)
+			.map(([k, v]) => `${k}${v >= 0 ? "↑" : "↓"}`)
 			.join(" ")
 		return `- ${entry.cause}${moves ? ` (${moves})` : ""}`
 	})
@@ -180,7 +180,7 @@ export const getRecentTrajectory = async (
 		return rows
 			.map((row) => ({
 				cause: row.cause,
-				delta: (row.delta ?? {}) as EmotionPartialType,
+				delta: row.delta ?? {},
 			}))
 			.reverse()
 	} catch {
@@ -193,8 +193,8 @@ export const applyMoodDelta = (
 	delta: EmotionPartialType,
 	cause = "conversation",
 ): void => {
-	if (!delta || Object.keys(delta).length === 0) return
-	const current = getEmotionVectorFromEmotionState(origin?.emotionState)
+	if (Object.keys(delta).length === 0) return
+	const current = getEmotionVectorFromEmotionState(origin.emotionState)
 	const relaxed = decayTowardBaseline(
 		current,
 		baselineFor(origin),
@@ -202,9 +202,9 @@ export const applyMoodDelta = (
 		EMOTION_DECAY_HALF_LIFE_MS,
 	)
 	const next = applyDelta(relaxed, delta)
-	const base = origin?.emotionState ?? {
+	const base = origin.emotionState ?? {
 		id: generateUuid(),
-		domiaId: origin?.id,
+		domiaId: origin.id,
 	}
 	dbClient.transaction((tx) => {
 		dbAdapter.upsertEmotionState({ ...base, ...next }, tx).run()
@@ -212,7 +212,7 @@ export const applyMoodDelta = (
 			.createEmotionEvent(
 				{
 					id: generateUuid(),
-					domiaId: origin?.id,
+					domiaId: origin.id,
 					cause,
 					delta,
 				},
@@ -221,9 +221,9 @@ export const applyMoodDelta = (
 			.run()
 	})
 	applyInMemory(origin, next)
-	if (origin?.domiaKey) invalidateOwnDomia(origin.domiaKey)
+	if (origin.domiaKey) invalidateOwnDomia(origin.domiaKey)
 	emotionEngineLogger.info("Mood delta applied", {
-		domiaId: origin?.id,
+		domiaId: origin.id,
 		cause,
 		delta,
 		from: current,
@@ -235,11 +235,11 @@ export const applyUserEmotionInfluence = (
 	origin: DomiaType,
 	userEmotion: UserEmotionType,
 ): void => {
-	if (origin?.moduleSettings?.emotionEngine === false) return
+	if (origin.moduleSettings?.emotionEngine === false) return
 	const primary = userEmotion.primary.toLowerCase()
 	const axis = EMOTION_TAG_AXES.find((a) => a === primary)
 	if (!axis) return
-	const personality = origin?.characterProfile?.personality
+	const personality = origin.characterProfile?.personality
 	const susceptibility =
 		(personality && EMOTION_USER_SUSCEPTIBILITY[personality]) ??
 		EMOTION_USER_SUSCEPTIBILITY[PERSONALITY_ENUM.NEUTRAL]
@@ -252,7 +252,7 @@ export const applyUserEmotionInfluence = (
 			-EMOTION_APPRAISAL_MAX_DELTA,
 			Math.min(
 				EMOTION_APPRAISAL_MAX_DELTA,
-				(weight ?? 0) * intensity * susceptibility,
+				weight * intensity * susceptibility,
 			),
 		)
 		if (Math.abs(value) < EMOTION_USER_INFLUENCE_MIN_DELTA) continue
@@ -266,7 +266,7 @@ export const applyExpressedEmotionTags = (
 	origin: DomiaType,
 	tags: string[],
 ): void => {
-	if (origin?.moduleSettings?.emotionEngine === false) return
+	if (origin.moduleSettings?.emotionEngine === false) return
 	const delta: EmotionPartialType = {}
 	for (const tag of tags) {
 		const axis = EMOTION_TAG_AXES.find((a) => a === tag.toLowerCase())

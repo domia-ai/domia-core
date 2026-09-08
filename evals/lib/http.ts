@@ -1,8 +1,12 @@
 import { env } from "./env"
 
-export const meshHeaders = (): Record<string, string> => ({
-	authorization: `Bearer ${env.DOMIA_MESH_SECRET}`,
-})
+export const meshHeaders = (): Record<string, string> => {
+	if (!env.DOMIA_MESH_SECRET)
+		throw new Error(
+			"DOMIA_MESH_SECRET is required for calls against a live node — set it in the environment",
+		)
+	return { authorization: `Bearer ${env.DOMIA_MESH_SECRET}` }
+}
 
 export const sleep = (ms: number): Promise<void> =>
 	new Promise((r) => setTimeout(r, ms))
@@ -79,17 +83,21 @@ export const resetConversation = async (): Promise<void> => {
 export const postModules = (modules: Record<string, unknown>): Promise<void> =>
 	postConfig({ modules })
 
-export const getConfigModules = async (): Promise<Record<string, unknown>> => {
+export const getConfig = async (): Promise<Record<string, unknown>> => {
 	const res = await fetch(
 		`${env.EVAL_URL}/config?domiaKey=${env.EVAL_DOMIA_KEY}`,
 		{ headers: meshHeaders() },
 	)
 	if (!res.ok) throw new Error(`GET /config ${res.status}`)
 	const body = (await res.json()) as {
-		config?: { modules?: Record<string, unknown> }
-		modules?: Record<string, unknown>
-	}
-	const modules = body.config?.modules ?? body.modules
+		config?: Record<string, unknown>
+	} & Record<string, unknown>
+	return body.config ?? body
+}
+
+export const getConfigModules = async (): Promise<Record<string, unknown>> => {
+	const config = await getConfig()
+	const modules = config.modules as Record<string, unknown> | undefined
 	if (!modules) throw new Error("GET /config returned no modules section")
 	return modules
 }

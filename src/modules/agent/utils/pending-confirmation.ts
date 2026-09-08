@@ -95,7 +95,12 @@ const persistReasked = (scope: string): void => {
 		.update(pendingConfirmationRow)
 		.set({ reasked: true })
 		.where(eq(pendingConfirmationRow.scope, scope))
-		.catch(() => undefined)
+		.catch((err: unknown) =>
+			agentLogger.warn("pending confirmation reasked flag not persisted", {
+				err,
+				scope,
+			}),
+		)
 }
 
 const liveEntry = (scope: string): PendingConfirmationType | null => {
@@ -194,11 +199,6 @@ export const markConfirmationReasked = (scope: string): void => {
 	if (!e) return
 	e.reasked = true
 	persistReasked(scope)
-}
-
-export const clearPendingConfirmation = (scope: string): void => {
-	if (store.delete(scope))
-		persistSettle(scope, CONFIRMATION_STATUS_ENUM.SUPERSEDED)
 }
 
 export const clearConfirmationsForDomia = (domiaKey: string): void => {

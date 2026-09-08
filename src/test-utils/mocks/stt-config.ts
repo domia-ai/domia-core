@@ -65,12 +65,3 @@ export const baseSttConfig = (domiaId?: string): SelectSttConfigType => {
 		updatedAt: now(),
 	}
 }
-
-export const remoteSttConfig = (domiaId?: string): SelectSttConfigType => ({
-	...baseSttConfig(domiaId),
-	engine: STT_ENGINE_ENUM.NEMO_SPEECH,
-	modelName: "nemotron-3.5-asr-streaming-0.6b",
-	modelPath: "",
-	baseUrl: "http://127.0.0.1:8600/v1",
-	apiKey: null,
-})

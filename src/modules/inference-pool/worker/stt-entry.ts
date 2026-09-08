@@ -19,24 +19,21 @@ const send = (msg: WorkerResponseMessageType): void => {
 process.on("disconnect", () => process.exit(0))
 
 process.on("message", (msg: WorkerRequestMessageType) => {
-	if (!msg || typeof msg !== "object") return
 	if (msg.type === "shutdown") {
 		process.exit(0)
 	}
-	if (msg.type === "job") {
-		try {
-			const payload = msg.payload as { kind?: string }
-			const result = payload?.kind?.startsWith("session-")
-				? handleSttSessionJob(msg.payload as SttSessionJobType)
-				: transcribeSttJob(msg.payload as SttWorkerJobType)
-			send({ type: "result", id: msg.id, result })
-		} catch (err) {
-			send({
-				type: "error",
-				id: msg.id,
-				message: err instanceof Error ? err.message : String(err),
-			})
-		}
+	try {
+		const payload = msg.payload as { kind?: string }
+		const result = payload.kind?.startsWith("session-")
+			? handleSttSessionJob(msg.payload as SttSessionJobType)
+			: transcribeSttJob(msg.payload as SttWorkerJobType)
+		send({ type: "result", id: msg.id, result })
+	} catch (err) {
+		send({
+			type: "error",
+			id: msg.id,
+			message: err instanceof Error ? err.message : String(err),
+		})
 	}
 })
 

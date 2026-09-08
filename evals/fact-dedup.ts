@@ -58,7 +58,7 @@ const main = async (): Promise<void> => {
 			FACT_DEDUP_RELATION_THRESHOLDS[pair.relation] ??
 			FACT_DEDUP_DEFAULT_THRESHOLD
 		const vectors = await embed(domia, [pair.a, pair.b])
-		if (!vectors || vectors.length !== 2) {
+		if (vectors?.length !== 2) {
 			checker.check(`embed available for "${pair.a}" / "${pair.b}"`, false)
 			continue
 		}

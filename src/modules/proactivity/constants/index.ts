@@ -1,0 +1,7 @@
+export const PROACTIVE_BROADCAST_PREFIX = "proactive:"
+export const PROACTIVE_NUDGE_BROADCAST_ID = "proactive:nudge"
+export const PROACTIVE_IDLE_POLL_MS = 250
+export const PROACTIVE_CRITICAL_DEFER_MAX_MS = 300_000
+export const PROACTIVE_LEASE_RENEW_MARGIN_MS = 5_000
+export const PROACTIVE_SCHEDULE_LIST_LIMIT = 200
+export const PROACTIVE_CLAIM_BATCH = 8

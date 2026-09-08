@@ -10,12 +10,14 @@ import {
 	RESPONSE_TYPE_ENUM,
 	AUDIO_PLAYBACK_ENGINE_ENUM,
 	DEFAULT_STT_DECODE_PADDING_MS,
+	INTERACTION_STATUS_ENUM,
 } from "@/db"
 import { prewarmSoxPlayer } from "@/modules/audio-playback"
 import {
 	startSpeculativeCapture,
 	type SpeculativeCaptureResultType,
 	endpointHintMs,
+	matchStopPhrase,
 	type SpeculativeCaptureHooksType,
 } from "@/modules/audio-capture"
 import { markPipelineStart, updateInteraction } from "@/modules/session-manager"
@@ -46,12 +48,16 @@ import {
 	looksSkillish,
 	prewarmFastPathPhrase,
 	markLadderStage,
+	completeInteraction,
+	persistTerminal,
+	normalizeWords,
 } from "../utils"
 import type {
 	CoreBusContextType,
 	SpeculationType,
 	SpeculativeTurnArgsType,
 } from "../types"
+import { createEagerPrefill } from "./eager-prefill"
 
 const SPECULATION_MAX_ATTEMPTS = 3
 const SPECULATION_MAX_UTTERANCE_MS = 10000
@@ -118,7 +124,15 @@ const wireFirstUnitDivert = (
 					!ttsPoolBusy()
 				if (eligible) {
 					me.firstUnitText = cut.sentence
-					me.firstUnitPcm = collectPcm(ctx, cut.sentence).catch(() => null)
+					me.firstUnitPcm = collectPcm(ctx, cut.sentence).catch(
+						(err: unknown) => {
+							domiaBusLogger.warn("spec-TTS first unit failed (best-effort)", {
+								err,
+								generation: me.generation,
+							})
+							return null
+						},
+					)
 					domiaBusLogger.info(
 						`🔮 spec-TTS priming first unit g${me.generation}: "${cut.sentence.slice(0, 40)}"`,
 						{ domiaId: domia.id, interactionId },
@@ -135,6 +149,9 @@ const wireFirstUnitDivert = (
 		}
 	})()
 }
+
+const isCancelled = (speculation: SpeculationType): boolean =>
+	speculation.cancelled
 
 const startSpeculation = (
 	ctx: CoreBusContextType,
@@ -167,7 +184,7 @@ const startSpeculation = (
 	}
 	me.ready = (async (): Promise<string | null> => {
 		const transcript = await resolveTranscript()
-		if (me.cancelled) return null
+		if (isCancelled(me)) return null
 		if (!transcript.trim()) {
 			domiaBusLogger.info(`🔮 speculation g${generation}: empty transcript`, {
 				domiaId: domia.id,
@@ -187,10 +204,10 @@ const startSpeculation = (
 			me.queue.close()
 			return transcript
 		}
-		if (me.cancelled) return null
+		if (isCancelled(me)) return null
 		const bundle = await takeMemoryBundle(domia, args.interactionId)
 		prefetchMemoryBundle(domia, args.interactionId)
-		if (me.cancelled) return null
+		if (isCancelled(me)) return null
 		me.prompt = buildPromptContext(domia, transcript, bundle)
 		if (isIdentitySlotBusy(domia)) {
 			domiaBusLogger.info(
@@ -226,16 +243,16 @@ const startSpeculation = (
 				})()
 			: features.llm?.adapter.runStream?.(
 					domia,
-					me.prompt ?? "",
+					me.prompt,
 					() => me.cancelled || me.queue.isClosed(),
 				)
-		if (!tokens || me.cancelled) {
+		if (!tokens || isCancelled(me)) {
 			if (tokens)
 				void (tokens as AsyncGenerator<string>)
-					.return?.(undefined)
+					.return(undefined)
 					.catch(() => undefined)
 			me.queue.close()
-			return me.cancelled ? null : transcript
+			return isCancelled(me) ? null : transcript
 		}
 		me.tokenSource = tokens
 		me.started = true
@@ -278,7 +295,7 @@ const startSpeculation = (
 			}
 		})()
 		return transcript
-	})().catch((err) => {
+	})().catch((err: unknown) => {
 		domiaBusLogger.warn(`🔮 speculation g${generation}: failed`, {
 			domiaId: domia.id,
 			err,
@@ -288,14 +305,6 @@ const startSpeculation = (
 	})
 	return me
 }
-
-const normalizeWords = (text: string): string =>
-	text
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}\s]/gu, "")
-		.split(/\s+/)
-		.filter(Boolean)
-		.join(" ")
 
 const transcriptsCompatible = (speculative: string, final: string): boolean =>
 	normalizeWords(speculative) === normalizeWords(final)
@@ -345,6 +354,16 @@ export const runSpeculativeTurn = async (
 		if (!stt.session) return
 		stt.session.reset(pcm)
 	}
+	const decodeSpeculation = args.decodeSpeculation !== false
+	const captureRef: { current: SpeculativeCaptureResultType | null } = {
+		current: null,
+	}
+	const eager = llmTargets
+		? null
+		: createEagerPrefill(ctx, args.interactionId, {
+				debounceMs: () => captureRef.current?.debounceMs ?? 0,
+				eagerSilenceMs: domia.wakeWordConfig?.speculativeSilenceMs ?? 0,
+			})
 
 	const cancelActive = (reason: string): void => {
 		if (!active) return
@@ -372,14 +391,37 @@ export const runSpeculativeTurn = async (
 		active.queue.close()
 		active.outQueue?.close()
 		void (active.tokenSource as AsyncGenerator<string> | null)
-			?.return?.(undefined)
+			?.return(undefined)
 			.catch(() => undefined)
 		active = null
 	}
 
 	let setDebounce: ((ms: number) => void) | null = null
+	let stopCapture: (() => void) | null = null
+	const stopPhrase = { heard: null as string | null }
 	const onPartial = (partial: string): void => {
 		const config = domia.wakeWordConfig
+		if (
+			args.bargeIn &&
+			config?.stopWordAbortEnabled &&
+			stopPhrase.heard === null &&
+			stopCapture
+		) {
+			const phrase = matchStopPhrase(
+				partial,
+				domia.characterProfile?.language,
+				config.stopWordMaxWords,
+			)
+			if (phrase !== null) {
+				stopPhrase.heard = phrase
+				domiaBusLogger.info(
+					`🛑 stop word "${phrase}" on interim decode — utterance discarded`,
+					{ domiaId: domia.id, interactionId: args.interactionId },
+				)
+				stopCapture()
+				return
+			}
+		}
 		if (!config?.semanticEndpointingEnabled || !setDebounce) return
 		const hint = endpointHintMs(
 			partial,
@@ -404,43 +446,67 @@ export const runSpeculativeTurn = async (
 		onSpeculate: (pcm) => {
 			cancelActive("superseded")
 			generation += 1
-			if (generation > SPECULATION_MAX_ATTEMPTS) {
+			const session = stt.session
+			const resolveTranscript = session
+				? () =>
+						session.flushPartial(
+							domia.sttConfig?.decodePaddingMs ?? DEFAULT_STT_DECODE_PADDING_MS,
+						)
+				: () =>
+						features.stt?.adapter.runPcm?.(domia, pcm) ?? Promise.resolve("")
+			const budgetExhausted = generation > SPECULATION_MAX_ATTEMPTS
+			const tooLong = Date.now() - turnStartedAt > SPECULATION_MAX_UTTERANCE_MS
+			if (decodeSpeculation && budgetExhausted)
 				domiaBusLogger.info(
 					`🔮 speculation retry budget exhausted (g${generation}) — waiting for final`,
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
-				return
-			}
-			if (Date.now() - turnStartedAt > SPECULATION_MAX_UTTERANCE_MS) {
+			else if (decodeSpeculation && tooLong)
 				domiaBusLogger.info(
 					`🔮 utterance too long for speculation (${Date.now() - turnStartedAt}ms) — waiting for final`,
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
+			else if (decodeSpeculation) {
+				active = startSpeculation(
+					ctx,
+					args,
+					generation,
+					resolveTranscript,
+					llmTargets,
+					onPartial,
+				)
 				return
 			}
-			const session = stt.session
-			active = startSpeculation(
-				ctx,
-				args,
-				generation,
-				session
-					? () =>
-							session.flushPartial(
-								domia.sttConfig?.decodePaddingMs ??
-									DEFAULT_STT_DECODE_PADDING_MS,
-							)
-					: () =>
-							features.stt?.adapter.runPcm?.(domia, pcm) ?? Promise.resolve(""),
-				llmTargets,
-				onPartial,
+			if (!eager) return
+			if (budgetExhausted || tooLong || !eager.accepting()) {
+				domiaBusLogger.debug(
+					`🔥 eager decode skipped (g${generation}) — budget/exhausted`,
+					{ domiaId: domia.id, interactionId: args.interactionId },
+				)
+				return
+			}
+			void resolveTranscript().then(
+				(partial) => {
+					onPartial(partial)
+					eager.onEager(partial)
+				},
+				(err: unknown) =>
+					domiaBusLogger.warn("🔥 eager partial decode failed (best-effort)", {
+						domiaId: domia.id,
+						interactionId: args.interactionId,
+						err,
+					}),
 			)
 		},
 		onResume: (pcm) => {
 			cancelActive("speech resumed")
+			eager?.onResume()
 			rebuildSttSession(pcm)
 		},
 	})
+	captureRef.current = capture
 	setDebounce = capture.setDebounceMs ?? null
+	stopCapture = capture.stop
 
 	void capture.finalPcmPromise.then(
 		() =>
@@ -458,7 +524,7 @@ export const runSpeculativeTurn = async (
 				inputAudioPath: filePath,
 			}),
 		)
-		.catch((err) =>
+		.catch((err: unknown) =>
 			domiaBusLogger.warn("speculative capture: audio persistence failed", {
 				domiaId: domia.id,
 				err,
@@ -470,12 +536,20 @@ export const runSpeculativeTurn = async (
 		finalPcm = await capture.finalPcmPromise
 	} catch (err) {
 		cancelActive("capture aborted")
-		args.release()
+		eager?.discard("capture aborted")
+		args.release?.()
 		domiaBusLogger.info(`🔮 speculative turn aborted before endpoint`, {
 			domiaId: domia.id,
 			interactionId: args.interactionId,
 			err,
 		})
+		return
+	}
+	if (stopPhrase.heard !== null) {
+		cancelActive("stop word")
+		eager?.discard("stop word")
+		stt.session?.abort()
+		args.release?.()
 		return
 	}
 	const finalTranscript = await (async (): Promise<string | null> => {
@@ -489,10 +563,38 @@ export const runSpeculativeTurn = async (
 		}
 		return await stt.session.finish()
 	})()
+	if (
+		args.bargeIn &&
+		domia.wakeWordConfig?.stopWordAbortEnabled &&
+		finalTranscript
+	) {
+		const phrase = matchStopPhrase(
+			finalTranscript,
+			domia.characterProfile?.language,
+			domia.wakeWordConfig.stopWordMaxWords,
+		)
+		if (phrase !== null) {
+			domiaBusLogger.info(
+				`🛑 stop word "${phrase}" on final decode — utterance discarded`,
+				{ domiaId: domia.id, interactionId: args.interactionId },
+			)
+			cancelActive("stop word")
+			eager?.discard("stop word")
+			stt.session?.abort()
+			args.release?.()
+			await persistTerminal(
+				args.interactionId,
+				INTERACTION_STATUS_ENUM.ABORTED,
+				{ errorStep: "stop-word" },
+			)
+			completeInteraction(args.interactionId, { interrupted: true })
+			return
+		}
+	}
 	const winner = active as SpeculationType | null
 	if (winner && !winner.cancelled) {
 		const transcript = await winner.ready
-		if (transcript && !winner.cancelled) {
+		if (transcript && !isCancelled(winner)) {
 			const final = finalTranscript?.trim()
 			const finalDisagrees =
 				final !== undefined &&
@@ -506,7 +608,7 @@ export const runSpeculativeTurn = async (
 						executorKey: winner.executorKey ?? undefined,
 					})
 				domiaBusLogger.info(
-					`🔮 speculation g${winner.generation} discarded — final decode disagrees ("${transcript.slice(0, 40)}" vs "${(final ?? "").slice(0, 40)}")`,
+					`🔮 speculation g${winner.generation} discarded — final decode disagrees ("${transcript.slice(0, 40)}" vs "${final.slice(0, 40)}")`,
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
 			} else if (winner.started) {
@@ -522,6 +624,7 @@ export const runSpeculativeTurn = async (
 					`🔮 speculation g${winner.generation} confirmed — LLM already running${winner.firstUnitText ? " + first-unit TTS primed" : ""}`,
 					{ domiaId: domia.id, interactionId: args.interactionId },
 				)
+				eager?.discard("speculation committed")
 				markPipelineStart(args.interactionId)
 				if (winner.llmQueuedAt)
 					markLadderStage(args.interactionId, "llmQueuedAt", winner.llmQueuedAt)
@@ -570,6 +673,7 @@ export const runSpeculativeTurn = async (
 		interactionId: args.interactionId,
 		originDomiaKey: domia.domiaKey,
 		prestartedRelease: args.release,
+		eagerPrefill: eager?.handle(transcript),
 		speechEndAt: capture.speechEndAt() ?? undefined,
 		endpointDecisionAt: resolveEndpointDecisionAt(capture),
 		endpointDelayMs: capture.endpointObservedMs() ?? undefined,

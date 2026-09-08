@@ -322,7 +322,7 @@ const dbAdapter = {
 			),
 		})
 		if (!row) return []
-		const desiredNumbers = { ...(row.desiredNumbers ?? {}), [entityId]: value }
+		const desiredNumbers = { ...row.desiredNumbers, [entityId]: value }
 		return client
 			.update(satelliteConfig)
 			.set({ desiredNumbers, updatedAt: new Date().toISOString() })

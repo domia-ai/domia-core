@@ -1,5 +1,8 @@
 import WebSocket from "ws"
 
+import { rawDataToString, skillEngineLogger } from "@/utils"
+import { createReconnectScheduler } from "@/modules/satellite-core"
+
 import {
 	DEFAULT_HA_WS_HANDSHAKE_TIMEOUT_MS,
 	DEFAULT_HA_WS_AUTH_TIMEOUT_MS,
@@ -9,9 +12,7 @@ import {
 	DEFAULT_HA_WS_RECONNECT_MS,
 	DEFAULT_HA_WS_RECONNECT_MAX_MS,
 	DEFAULT_HA_WS_RECONNECT_JITTER,
-} from "@/db"
-import { createReconnectScheduler } from "@/modules/satellite-core"
-
+} from "./constants"
 import type {
 	HaWsClientOptionsType,
 	HaWsClientType,
@@ -22,9 +23,8 @@ import type {
 	HaRegistryEntityType,
 	HaRegistryAreaType,
 	HaRegistryDeviceType,
-} from "../../types"
-
-import type { PendingCommandType } from "./types"
+	PendingCommandType,
+} from "./types"
 
 const asString = (v: unknown): string | null =>
 	typeof v === "string" && v.trim() ? v : null
@@ -135,7 +135,7 @@ export const createHaWsClient = (
 
 	const send = (payload: Record<string, unknown>): Promise<unknown> => {
 		const socket = ws
-		if (!socket || socket.readyState !== WebSocket.OPEN)
+		if (socket?.readyState !== WebSocket.OPEN)
 			return Promise.reject(new Error("socket not open"))
 		const id = nextId++
 		socket.send(JSON.stringify({ id, ...payload }))
@@ -185,7 +185,13 @@ export const createHaWsClient = (
 			type: "homeassistant/expose_entity/list",
 		})
 			.then(parseExposed)
-			.catch(() => null)
+			.catch((err: unknown) => {
+				skillEngineLogger.warn(
+					"HA exposed-entity list unavailable — exposure filter skipped",
+					{ err },
+				)
+				return null
+			})
 		const snapshot: HaWsSnapshotType = {
 			states,
 			entityRegistry,
@@ -207,8 +213,11 @@ export const createHaWsClient = (
 	const onMessage = (data: WebSocket.RawData): void => {
 		let msg: HaWsMessageType
 		try {
-			msg = JSON.parse(data.toString()) as HaWsMessageType
-		} catch {
+			msg = JSON.parse(rawDataToString(data)) as HaWsMessageType
+		} catch (err) {
+			skillEngineLogger.warn("HA ws: unparseable message frame — dropped", {
+				err,
+			})
 			return
 		}
 		if (msg.type === "auth_required") {
@@ -220,15 +229,17 @@ export const createHaWsClient = (
 			clearTimers()
 			discardSocket(true)
 			scheduler.close()
-			setState("closed", `auth rejected: ${String(msg.message ?? "")}`)
+			setState("closed", `auth rejected: ${msg.message ?? ""}`)
 			return
 		}
 		if (msg.type === "auth_ok") {
 			if (guardTimer) clearTimeout(guardTimer)
 			guardTimer = null
 			startHeartbeat()
-			void sync().catch((err) =>
-				dropAndRetry(`sync failed: ${String(err?.message ?? err)}`),
+			void sync().catch((err: unknown) =>
+				dropAndRetry(
+					`sync failed: ${err instanceof Error ? err.message : String(err)}`,
+				),
 			)
 			return
 		}

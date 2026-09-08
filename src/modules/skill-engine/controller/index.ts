@@ -1,12 +1,15 @@
 import {
 	SKILL_TOOL_NAME_SEPARATOR,
-	DEFAULT_SKILL_MAX_RESULT_CHARS,
-	DEFAULT_SKILL_TRUST_TIER,
 	TOOL_RUN_STATUS_ENUM,
 	type SelectSkillProviderType,
 	type SkillToolType,
 	type ToolFinalizeRuleType,
+	type ToolHintOverrideType,
 	type ToolPolicyType,
+	DEFAULT_PROVIDER_DISCOVERY_MS,
+	DEFAULT_SKILL_LIST_CHANGED_DEBOUNCE_MS,
+	DEFAULT_SKILL_REFRESH_MS,
+	SKILL_TOOLS_TTL_FLOOR_MS,
 } from "@/db"
 import {
 	skillEngineLogger,
@@ -22,8 +25,10 @@ import type { DomiaType } from "@/modules/core"
 
 import dbAdapter from "../db-adapter"
 import { resolveSkillAdapter } from "../adapters"
-import { resolveSpecialization } from "../specializations"
+import { resolveSpecialization, listSpecializations } from "../specializations"
 import { resolveDescriptor } from "../utils/descriptor"
+import { describeConnectionInvocation } from "../utils/invocation"
+import { normalizeArgs } from "../utils/arg-normalize"
 import {
 	effectiveHints,
 	deriveRiskClass,
@@ -48,6 +53,12 @@ import type {
 	ResolvedToolMetaType,
 	SkillConnHooksType,
 	SkillElicitResultType,
+	ToolInvocationDescriptionType,
+	SkillProviderStatusType,
+	SkillToolStatusType,
+	SkillsRefreshOptionsType,
+	ListToolsOptionsType,
+	DiscoveredProviderType,
 } from "../types"
 
 const connections = new Map<string, SkillConnectionType>()
@@ -59,6 +70,8 @@ const findConn = (
 	[...connections.values()].find(
 		(c) => c.provider.domiaId === domiaId && c.providerSlug === providerSlug,
 	)
+
+import { toolBaseName } from "../utils"
 
 export const getProviderResilience = (
 	domiaId: string,
@@ -79,6 +92,18 @@ const splitName = (
 	}
 }
 
+const declaredToolPolicy = (
+	descriptor: ResolvedSkillDescriptorType,
+	rawName: string,
+): ToolPolicyType | undefined =>
+	descriptor.toolPolicy[rawName] ?? descriptor.toolPolicy["*"]
+
+const declaredToolHint = (
+	descriptor: ResolvedSkillDescriptorType,
+	rawName: string,
+): ToolHintOverrideType | undefined =>
+	descriptor.toolHints[rawName] ?? descriptor.toolHints["*"]
+
 const buildToolMeta = (
 	tools: SkillToolType[],
 	descriptor: ResolvedSkillDescriptorType,
@@ -86,12 +111,10 @@ const buildToolMeta = (
 ): Map<string, ResolvedToolMetaType> => {
 	const meta = new Map<string, ResolvedToolMetaType>()
 	for (const t of tools) {
-		const override =
-			descriptor.toolHints[t.rawName] ?? descriptor.toolHints["*"]
+		const override = declaredToolHint(descriptor, t.rawName)
 		const hints = effectiveHints(t.annotations, override, trustTier)
 		const riskClass = deriveRiskClass(hints)
-		const declaredPolicy =
-			descriptor.toolPolicy[t.rawName] ?? descriptor.toolPolicy["*"]
+		const declaredPolicy = declaredToolPolicy(descriptor, t.rawName)
 		meta.set(t.rawName, {
 			rawName: t.rawName,
 			riskClass,
@@ -100,6 +123,7 @@ const buildToolMeta = (
 			cancellable: override?.cancellable ?? true,
 			policy: declaredPolicy ?? deriveDefaultPolicy(riskClass),
 			policySource: declaredPolicy ? "descriptor" : "risk_default",
+			hintSources: hints.sources,
 			timeoutMs: override?.timeoutMs ?? null,
 			allowedActors: null,
 		})
@@ -116,8 +140,7 @@ export const getToolPolicy = (
 	if (!conn) return "allow"
 	return (
 		conn.toolMeta.get(rawName)?.policy ??
-		conn.descriptor.toolPolicy[rawName] ??
-		conn.descriptor.toolPolicy["*"] ??
+		declaredToolPolicy(conn.descriptor, rawName) ??
 		"allow"
 	)
 }
@@ -168,6 +191,21 @@ export const markDispatchedToolRunsLost = (): void => {
 	}
 }
 
+export const describeInvocation = (
+	domiaId: string,
+	namespacedName: string,
+	args: Record<string, unknown>,
+	language?: string | null,
+): ToolInvocationDescriptionType => {
+	const { providerSlug, rawName } = splitName(namespacedName)
+	return describeConnectionInvocation(
+		findConn(domiaId, providerSlug),
+		rawName,
+		args,
+		language,
+	)
+}
+
 export const getInvocationPolicy = (
 	domiaId: string,
 	namespacedName: string,
@@ -178,10 +216,7 @@ export const getInvocationPolicy = (
 	if (!conn) return { policy: "allow", escalated: false }
 	const meta = conn.toolMeta.get(rawName)
 	const basePolicy =
-		meta?.policy ??
-		conn.descriptor.toolPolicy[rawName] ??
-		conn.descriptor.toolPolicy["*"] ??
-		"allow"
+		meta?.policy ?? declaredToolPolicy(conn.descriptor, rawName) ?? "allow"
 	if (!conn.specialization?.invocationRisk || !meta)
 		return { policy: basePolicy, escalated: false }
 	const invocation = conn.specialization.invocationRisk(
@@ -219,7 +254,7 @@ const buildSlugMap = (
 	return map
 }
 
-const refreshHooks = new Map<string, () => void>()
+const refreshHooks = new Map<string, (opts: SkillsRefreshOptionsType) => void>()
 const refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const elicitPresenters = new Map<
 	string,
@@ -229,7 +264,10 @@ const elicitPresenters = new Map<
 	) => Promise<SkillElicitResultType>
 >()
 
-export const setSkillsRefreshHook = (domiaId: string, fn: () => void): void => {
+export const setSkillsRefreshHook = (
+	domiaId: string,
+	fn: (opts: SkillsRefreshOptionsType) => void,
+): void => {
 	refreshHooks.set(domiaId, fn)
 }
 
@@ -254,20 +292,20 @@ export const clearElicitationPresenter = (domiaId: string): void => {
 	elicitPresenters.delete(domiaId)
 }
 
-const REFRESH_DEBOUNCE_MS = 2000
-
-const scheduleToolRefresh = (domiaId: string): void => {
+export const invalidateToolList = (domiaId: string): void => {
+	for (const conn of connections.values())
+		if (conn.provider.domiaId === domiaId) conn.toolsFreshUntil = null
 	if (refreshTimers.has(domiaId)) return
 	const timer = setTimeout(() => {
 		refreshTimers.delete(domiaId)
-		refreshHooks.get(domiaId)?.()
-	}, REFRESH_DEBOUNCE_MS)
+		refreshHooks.get(domiaId)?.({ force: true })
+	}, DEFAULT_SKILL_LIST_CHANGED_DEBOUNCE_MS)
 	if (typeof timer.unref === "function") timer.unref()
 	refreshTimers.set(domiaId, timer)
 }
 
 const connHooksFor = (cfg: SelectSkillProviderType): SkillConnHooksType => ({
-	onToolListChanged: () => scheduleToolRefresh(cfg.domiaId),
+	onToolListChanged: () => invalidateToolList(cfg.domiaId),
 	onElicit: async (message, requestedSchema) => {
 		const presenter = elicitPresenters.get(cfg.domiaId)
 		if (!presenter) return { action: "decline" }
@@ -301,7 +339,7 @@ export const connectProvider = async (
 		const specialization = resolveSpecialization(cfg)
 		if (specialization?.onConnected)
 			void Promise.resolve(specialization.onConnected(cfg, handle)).catch(
-				(err) =>
+				(err: unknown) =>
 					skillEngineLogger.warn("specialization onConnected failed", {
 						provider: cfg.name,
 						err,
@@ -312,15 +350,13 @@ export const connectProvider = async (
 			providerId: cfg.id,
 			providerSlug: slug,
 			name: cfg.name,
-			maxResultChars: cfg.maxResultChars ?? DEFAULT_SKILL_MAX_RESULT_CHARS,
+			maxResultChars: cfg.maxResultChars,
 			timeoutMs: cfg.timeout,
 			allowedTools: new Set((cfg.toolsCache ?? []).map((t) => t.rawName)),
 			descriptor,
-			toolMeta: buildToolMeta(
-				cfg.toolsCache ?? [],
-				descriptor,
-				cfg.trustTier ?? DEFAULT_SKILL_TRUST_TIER,
-			),
+			toolMeta: buildToolMeta(cfg.toolsCache ?? [], descriptor, cfg.trustTier),
+			toolsTtlMs: null,
+			toolsFreshUntil: null,
 			language,
 			provider: cfg,
 			specialization,
@@ -364,19 +400,12 @@ export const connectAll = async (domia: DomiaType): Promise<void> => {
 const fireOnDisconnected = (conn: SkillConnectionType): void => {
 	const hook = conn.specialization?.onDisconnected
 	if (!hook) return
-	void (async () => hook(conn.provider))().catch((err) =>
+	void (async () => hook(conn.provider))().catch((err: unknown) =>
 		skillEngineLogger.warn("specialization onDisconnected failed", {
 			provider: conn.name,
 			err,
 		}),
 	)
-}
-
-export const disconnectAll = async (): Promise<void> => {
-	const all = [...connections.values()]
-	connections.clear()
-	for (const conn of all) fireOnDisconnected(conn)
-	await Promise.allSettled(all.map((c) => c.handle.close()))
 }
 
 export const disconnectProviders = async (ids: string[]): Promise<void> => {
@@ -409,7 +438,10 @@ export const resolveToolFinalize = (
 	)
 	if (!conn) return null
 	return (
-		conn.descriptor.finalize[rawName] ?? conn.descriptor.finalize["*"] ?? null
+		conn.descriptor.finalize[rawName] ??
+		conn.descriptor.finalize[toolBaseName(rawName)] ??
+		conn.descriptor.finalize["*"] ??
+		null
 	)
 }
 
@@ -450,13 +482,112 @@ const toCachedTools = (
 			}
 		})
 
-export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
+export const discoverProviders = async (
+	timeoutMs: number = DEFAULT_PROVIDER_DISCOVERY_MS,
+): Promise<DiscoveredProviderType[]> => {
+	const found = await Promise.all(
+		listSpecializations().map((spec) =>
+			spec.discover
+				? spec.discover(timeoutMs).catch((err: unknown) => {
+						skillEngineLogger.warn("provider discovery failed", {
+							kind: spec.kind,
+							err,
+						})
+						return []
+					})
+				: Promise.resolve([]),
+		),
+	)
+	return found.flat()
+}
+
+const toolStatuses = (
+	conn: SkillConnectionType | undefined,
+): SkillToolStatusType[] =>
+	conn
+		? [...conn.toolMeta.values()].map((m) => ({
+				rawName: m.rawName,
+				riskClass: m.riskClass,
+				policy: m.policy,
+				policySource: m.policySource,
+				retryable: m.idempotent,
+				openWorld: m.openWorld,
+				hintSources: m.hintSources,
+			}))
+		: []
+
+export const nextToolsRefreshMs = (domia: DomiaType): number => {
+	const candidates = (domia.skillProviders ?? [])
+		.filter((cfg) => cfg.isActive)
+		.map((cfg) => connections.get(cfg.id)?.toolsTtlMs ?? cfg.toolsRefreshMs)
+	if (candidates.length === 0) return DEFAULT_SKILL_REFRESH_MS
+	return Math.max(SKILL_TOOLS_TTL_FLOOR_MS, Math.min(...candidates))
+}
+
+export const providerStatuses = (
+	domia: DomiaType,
+): SkillProviderStatusType[] => {
+	const language = domia.characterProfile?.language ?? null
+	return (domia.skillProviders ?? [])
+		.filter((cfg) => cfg.isActive)
+		.map((cfg) => {
+			const conn = connections.get(cfg.id)
+			return {
+				id: cfg.id,
+				name: cfg.name,
+				kind: (conn?.descriptor ?? resolveDescriptor(cfg, language)).kind,
+				trustTier: cfg.trustTier,
+				connected: conn !== undefined,
+				cachedTools: cfg.toolsCache?.length ?? 0,
+				allowedTools: conn?.allowedTools.size ?? 0,
+				lastSyncAt: cfg.lastSyncAt ?? null,
+				toolsTtlMs: conn?.toolsTtlMs ?? null,
+				toolsFreshUntil: conn?.toolsFreshUntil
+					? new Date(conn.toolsFreshUntil).toISOString()
+					: null,
+				toolsRefreshMs: cfg.toolsRefreshMs,
+				tools: toolStatuses(conn),
+				specialization: conn?.specialization?.status?.(conn.provider) ?? null,
+			}
+		})
+}
+
+const cacheIsFresh = (conn: SkillConnectionType): boolean =>
+	conn.toolsFreshUntil !== null && Date.now() < conn.toolsFreshUntil
+
+export const listTools = async (
+	domia: DomiaType,
+	opts: ListToolsOptionsType = {},
+): Promise<SkillToolType[]> => {
 	const providers = (domia.skillProviders ?? []).filter((s) => s.isActive)
+	const language = domia.characterProfile?.language ?? null
 	const result: SkillToolType[] = []
+	const staleTools = (cfg: SelectSkillProviderType): SkillToolType[] => {
+		const cached = cfg.toolsCache ?? []
+		if (cached.length === 0) return []
+		if (resolveDescriptor(cfg, language).resilience.serveStaleTools)
+			return cached
+		skillEngineLogger.warn(
+			"skill provider disconnected — cached tools withheld until it reconnects",
+			{ provider: cfg.name, cachedTools: cached.length },
+		)
+		return []
+	}
 	for (const cfg of providers) {
 		const conn = connections.get(cfg.id)
 		if (!conn) {
-			if (cfg.toolsCache?.length) result.push(...cfg.toolsCache)
+			result.push(...staleTools(cfg))
+			continue
+		}
+		if (!opts.force && cacheIsFresh(conn)) {
+			skillEngineLogger.debug(
+				"skill tool list served from cache (server ttl)",
+				{
+					provider: cfg.name,
+					ttlMs: conn.toolsTtlMs,
+				},
+			)
+			result.push(...(conn.provider.toolsCache ?? []))
 			continue
 		}
 		try {
@@ -464,20 +595,21 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 			const paramAllow = conn.descriptor.paramAllow
 			const tools = toCachedTools(
 				conn,
-				listed,
+				listed.tools,
 				cfg.toolWhitelist ?? null,
 				Object.keys(paramAllow).length ? paramAllow : null,
 			)
 			conn.allowedTools = new Set(tools.map((t) => t.rawName))
 			const syncedAt = now()
 			dbAdapter.cacheTools(cfg.id, tools, syncedAt).run()
+			conn.toolsTtlMs = listed.ttlMs
+			conn.toolsFreshUntil =
+				listed.ttlMs !== null && listed.ttlMs > 0
+					? Date.now() + listed.ttlMs
+					: null
 			conn.provider = { ...cfg, toolsCache: tools, lastSyncAt: syncedAt }
 			conn.descriptor = resolveDescriptor(conn.provider, conn.language)
-			conn.toolMeta = buildToolMeta(
-				tools,
-				conn.descriptor,
-				cfg.trustTier ?? DEFAULT_SKILL_TRUST_TIER,
-			)
+			conn.toolMeta = buildToolMeta(tools, conn.descriptor, cfg.trustTier)
 			result.push(...tools)
 		} catch (error) {
 			skillEngineLogger.warn("skill listTools failed — dropping connection", {
@@ -486,8 +618,13 @@ export const listTools = async (domia: DomiaType): Promise<SkillToolType[]> => {
 			})
 			connections.delete(cfg.id)
 			fireOnDisconnected(conn)
-			void conn.handle.close().catch(() => undefined)
-			if (cfg.toolsCache?.length) result.push(...cfg.toolsCache)
+			void conn.handle.close().catch((err: unknown) =>
+				skillEngineLogger.warn("skill connection close failed after drop", {
+					provider: cfg.name,
+					err,
+				}),
+			)
+			result.push(...staleTools(cfg))
 		}
 	}
 	return result
@@ -515,21 +652,65 @@ export const resolveSkillArgs = async (
 			c.allowedTools.has(rawName),
 	)
 	if (!conn) return { ok: false, resolvedArgs: args, error: "tool unavailable" }
-	if (!conn.specialization?.resolveArgs) return { ok: true, resolvedArgs: args }
+	const normalized = normalizeArgs(conn.descriptor.argNormalize, rawName, args)
+	if (!conn.specialization?.resolveArgs)
+		return { ok: true, resolvedArgs: normalized }
 	try {
 		const resolvedArgs = await conn.specialization.resolveArgs(
 			conn.provider,
 			rawName,
-			args,
+			normalized,
 			conn.language,
 		)
 		return { ok: true, resolvedArgs }
 	} catch (error) {
 		return {
 			ok: false,
-			resolvedArgs: args,
+			resolvedArgs: normalized,
 			error: error instanceof Error ? error.message : String(error),
 		}
+	}
+}
+
+const runPreCall = async (
+	conn: SkillConnectionType,
+	rawName: string,
+	args: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+	const hook = conn.specialization?.preCall
+	if (!hook) return args
+	try {
+		return await hook(conn.provider, rawName, args)
+	} catch (error) {
+		skillEngineLogger.warn("specialization preCall failed — args unchanged", {
+			provider: conn.name,
+			tool: rawName,
+			error,
+		})
+		return args
+	}
+}
+
+const runPostCall = async (
+	conn: SkillConnectionType,
+	rawName: string,
+	resolvedArgs: Record<string, unknown>,
+	result: SkillCallResultType,
+): Promise<SkillCallResultType> => {
+	const hook = conn.specialization?.postCall
+	if (!hook) return result
+	try {
+		return await hook(conn.provider, rawName, resolvedArgs, result)
+	} catch (error) {
+		skillEngineLogger.warn(
+			"specialization postCall failed — result unchanged",
+			{
+				provider: conn.name,
+				tool: rawName,
+				error,
+			},
+		)
+		return result
 	}
 }
 
@@ -572,8 +753,7 @@ export const callTool = async (
 	}
 	const policy =
 		conn.toolMeta.get(rawName)?.policy ??
-		conn.descriptor.toolPolicy[rawName] ??
-		conn.descriptor.toolPolicy["*"]
+		declaredToolPolicy(conn.descriptor, rawName)
 	if (policy === "block") {
 		skillEngineLogger.warn("skill callTool blocked by policy", {
 			tool: namespacedName,
@@ -629,15 +809,18 @@ export const callTool = async (
 			resolvedArgs: args,
 		}
 	}
+	const normalizedArgs = preResolved
+		? args
+		: normalizeArgs(conn.descriptor.argNormalize, rawName, args)
 	let resolvedArgs: Record<string, unknown>
 	try {
 		resolvedArgs =
 			preResolved || !conn.specialization?.resolveArgs
-				? args
+				? normalizedArgs
 				: await conn.specialization.resolveArgs(
 						conn.provider,
 						rawName,
-						args,
+						normalizedArgs,
 						conn.language,
 					)
 	} catch (error) {
@@ -649,12 +832,12 @@ export const callTool = async (
 			text: `Could not resolve the target for "${rawName}": ${error instanceof Error ? error.message : String(error)}.`,
 			status: "error",
 			isError: true,
-			resolvedArgs: args,
+			resolvedArgs: normalizedArgs,
 		}
 	}
 	if (!preResolved && conn.specialization?.invocationRisk) {
 		const meta = conn.toolMeta.get(rawName)
-		if (meta && meta.policySource === "risk_default") {
+		if (meta?.policySource === "risk_default") {
 			const invocation = conn.specialization.invocationRisk(
 				conn.provider,
 				rawName,
@@ -678,6 +861,7 @@ export const callTool = async (
 			}
 		}
 	}
+	resolvedArgs = await runPreCall(conn, rawName, resolvedArgs)
 	skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
 
 	const traceCtx = getTraceContext()
@@ -695,7 +879,7 @@ export const callTool = async (
 			providerSlug,
 			argsHash,
 			riskClass: auditMeta?.riskClass ?? null,
-			policyDecision: policy ?? "allow",
+			policyDecision: policy,
 			policySource: auditMeta?.policySource ?? null,
 		})
 		if (!claimed) {
@@ -717,7 +901,7 @@ export const callTool = async (
 			toolName: namespacedName,
 			provider: providerSlug || undefined,
 			riskClass: auditMeta?.riskClass,
-			policyDecision: policy ?? "allow",
+			policyDecision: policy,
 			argsHash,
 		})
 	}
@@ -768,7 +952,7 @@ export const callTool = async (
 		if (signal?.aborted) break
 		const deadline = new AbortController()
 		const timer = setTimeout(() => deadline.abort(), effectiveTimeoutMs + 250)
-		timer.unref?.()
+		timer.unref()
 		const attemptSignals = [deadline.signal]
 		if (cancellable && signal) attemptSignals.push(signal)
 		const attemptSignal =
@@ -776,11 +960,13 @@ export const callTool = async (
 				? attemptSignals[0]
 				: AbortSignal.any(attemptSignals)
 		try {
-			const res = await conn.handle.callTool(
+			const res = await runPostCall(
+				conn,
 				rawName,
 				resolvedArgs,
-				attemptSignal,
-				{ timeoutMs: effectiveTimeoutMs },
+				await conn.handle.callTool(rawName, resolvedArgs, attemptSignal, {
+					timeoutMs: effectiveTimeoutMs,
+				}),
 			)
 			if (res.structured !== undefined) {
 				const outputSchema = (conn.provider.toolsCache ?? []).find(

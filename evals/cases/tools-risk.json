@@ -42,7 +42,7 @@
 		"name": "risk: denied confirmation never executes the lock",
 		"suite": "tools",
 		"language": "en",
-		"mode": "advisory",
+		"mode": "gate",
 		"turns": [
 			{
 				"text": "Lock the front door",
@@ -65,7 +65,7 @@
 		"name": "risk: approved confirmation executes the lock",
 		"suite": "tools",
 		"language": "en",
-		"mode": "advisory",
+		"mode": "gate",
 		"turns": [
 			{
 				"text": "Lock the front door",

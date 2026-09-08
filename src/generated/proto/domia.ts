@@ -36,6 +36,7 @@ export interface AudioReadyPayload {
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
   audio?: Uint8Array | undefined;
+  traceId?: string | undefined;
 }
 
 export interface SttDonePayload {
@@ -43,6 +44,7 @@ export interface SttDonePayload {
   interactionId?: string | undefined;
   originDomiaKey?: string | undefined;
   responseType?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface LlmDonePayload {
@@ -50,6 +52,7 @@ export interface LlmDonePayload {
   interactionId?: string | undefined;
   originDomiaKey?: string | undefined;
   responseType?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface TtsDonePayload {
@@ -58,6 +61,7 @@ export interface TtsDonePayload {
   interactionId?: string | undefined;
   originDomiaKey?: string | undefined;
   audio?: Uint8Array | undefined;
+  traceId?: string | undefined;
 }
 
 export interface InteractionFailedPayload {
@@ -66,6 +70,7 @@ export interface InteractionFailedPayload {
   interactionId?: string | undefined;
   originDomiaKey?: string | undefined;
   responseType?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface EventEnvelope {
@@ -93,6 +98,7 @@ export interface StreamSttMeta {
   responseType?: string | undefined;
   personaContextJson?: string | undefined;
   targetDomiaKey?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface ReflectionReport {
@@ -103,6 +109,7 @@ export interface ReflectionReport {
   cause?: string | undefined;
   factsJson?: string | undefined;
   userEmotionJson?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface ReflectionAck {
@@ -129,6 +136,7 @@ export interface StageExecutionReport {
   originDomiaKey?: string | undefined;
   interactionId?: string | undefined;
   stages: StageMetric[];
+  traceId?: string | undefined;
 }
 
 export interface StageExecutionAck {
@@ -154,6 +162,7 @@ export interface LlmStreamRequest {
   responseType?: string | undefined;
   personaContextJson?: string | undefined;
   targetDomiaKey?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface InferenceRequest {
@@ -164,6 +173,7 @@ export interface InferenceRequest {
   interactionId?: string | undefined;
   sessionId?: string | undefined;
   targetDomiaKey?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface InferenceResponse {
@@ -178,6 +188,7 @@ export interface TtsStreamRequest {
   interactionId?: string | undefined;
   ttsVoiceJson?: string | undefined;
   targetDomiaKey?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export interface ReplyAudioMessage {
@@ -513,6 +524,7 @@ function createBaseAudioReadyPayload(): AudioReadyPayload {
     originDomiaKey: undefined,
     interactionId: undefined,
     audio: undefined,
+    traceId: undefined,
   };
 }
 
@@ -532,6 +544,9 @@ export const AudioReadyPayload: MessageFns<AudioReadyPayload> = {
     }
     if (message.audio !== undefined) {
       writer.uint32(42).bytes(message.audio);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(50).string(message.traceId);
     }
     return writer;
   },
@@ -583,6 +598,14 @@ export const AudioReadyPayload: MessageFns<AudioReadyPayload> = {
           message.audio = reader.bytes();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -615,6 +638,11 @@ export const AudioReadyPayload: MessageFns<AudioReadyPayload> = {
         ? globalThis.String(object.interaction_id)
         : undefined,
       audio: isSet(object.audio) ? bytesFromBase64(object.audio) : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -635,6 +663,9 @@ export const AudioReadyPayload: MessageFns<AudioReadyPayload> = {
     if (message.audio !== undefined) {
       obj.audio = base64FromBytes(message.audio);
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -648,12 +679,19 @@ export const AudioReadyPayload: MessageFns<AudioReadyPayload> = {
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
     message.audio = object.audio ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
 
 function createBaseSttDonePayload(): SttDonePayload {
-  return { transcript: "", interactionId: undefined, originDomiaKey: undefined, responseType: undefined };
+  return {
+    transcript: "",
+    interactionId: undefined,
+    originDomiaKey: undefined,
+    responseType: undefined,
+    traceId: undefined,
+  };
 }
 
 export const SttDonePayload: MessageFns<SttDonePayload> = {
@@ -669,6 +707,9 @@ export const SttDonePayload: MessageFns<SttDonePayload> = {
     }
     if (message.responseType !== undefined) {
       writer.uint32(34).string(message.responseType);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(42).string(message.traceId);
     }
     return writer;
   },
@@ -712,6 +753,14 @@ export const SttDonePayload: MessageFns<SttDonePayload> = {
           message.responseType = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -739,6 +788,11 @@ export const SttDonePayload: MessageFns<SttDonePayload> = {
         : isSet(object.response_type)
         ? globalThis.String(object.response_type)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -756,6 +810,9 @@ export const SttDonePayload: MessageFns<SttDonePayload> = {
     if (message.responseType !== undefined) {
       obj.responseType = message.responseType;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -768,12 +825,19 @@ export const SttDonePayload: MessageFns<SttDonePayload> = {
     message.interactionId = object.interactionId ?? undefined;
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.responseType = object.responseType ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
 
 function createBaseLlmDonePayload(): LlmDonePayload {
-  return { reply: "", interactionId: undefined, originDomiaKey: undefined, responseType: undefined };
+  return {
+    reply: "",
+    interactionId: undefined,
+    originDomiaKey: undefined,
+    responseType: undefined,
+    traceId: undefined,
+  };
 }
 
 export const LlmDonePayload: MessageFns<LlmDonePayload> = {
@@ -789,6 +853,9 @@ export const LlmDonePayload: MessageFns<LlmDonePayload> = {
     }
     if (message.responseType !== undefined) {
       writer.uint32(34).string(message.responseType);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(42).string(message.traceId);
     }
     return writer;
   },
@@ -832,6 +899,14 @@ export const LlmDonePayload: MessageFns<LlmDonePayload> = {
           message.responseType = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -859,6 +934,11 @@ export const LlmDonePayload: MessageFns<LlmDonePayload> = {
         : isSet(object.response_type)
         ? globalThis.String(object.response_type)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -876,6 +956,9 @@ export const LlmDonePayload: MessageFns<LlmDonePayload> = {
     if (message.responseType !== undefined) {
       obj.responseType = message.responseType;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -888,6 +971,7 @@ export const LlmDonePayload: MessageFns<LlmDonePayload> = {
     message.interactionId = object.interactionId ?? undefined;
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.responseType = object.responseType ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -899,6 +983,7 @@ function createBaseTtsDonePayload(): TtsDonePayload {
     interactionId: undefined,
     originDomiaKey: undefined,
     audio: undefined,
+    traceId: undefined,
   };
 }
 
@@ -918,6 +1003,9 @@ export const TtsDonePayload: MessageFns<TtsDonePayload> = {
     }
     if (message.audio !== undefined) {
       writer.uint32(42).bytes(message.audio);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(50).string(message.traceId);
     }
     return writer;
   },
@@ -969,6 +1057,14 @@ export const TtsDonePayload: MessageFns<TtsDonePayload> = {
           message.audio = reader.bytes();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1001,6 +1097,11 @@ export const TtsDonePayload: MessageFns<TtsDonePayload> = {
         ? globalThis.String(object.origin_domia_key)
         : undefined,
       audio: isSet(object.audio) ? bytesFromBase64(object.audio) : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -1021,6 +1122,9 @@ export const TtsDonePayload: MessageFns<TtsDonePayload> = {
     if (message.audio !== undefined) {
       obj.audio = base64FromBytes(message.audio);
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -1034,12 +1138,20 @@ export const TtsDonePayload: MessageFns<TtsDonePayload> = {
     message.interactionId = object.interactionId ?? undefined;
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.audio = object.audio ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
 
 function createBaseInteractionFailedPayload(): InteractionFailedPayload {
-  return { error: "", step: undefined, interactionId: undefined, originDomiaKey: undefined, responseType: undefined };
+  return {
+    error: "",
+    step: undefined,
+    interactionId: undefined,
+    originDomiaKey: undefined,
+    responseType: undefined,
+    traceId: undefined,
+  };
 }
 
 export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
@@ -1058,6 +1170,9 @@ export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
     }
     if (message.responseType !== undefined) {
       writer.uint32(42).string(message.responseType);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(50).string(message.traceId);
     }
     return writer;
   },
@@ -1109,6 +1224,14 @@ export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
           message.responseType = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1137,6 +1260,11 @@ export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
         : isSet(object.response_type)
         ? globalThis.String(object.response_type)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -1157,6 +1285,9 @@ export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
     if (message.responseType !== undefined) {
       obj.responseType = message.responseType;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -1170,6 +1301,7 @@ export const InteractionFailedPayload: MessageFns<InteractionFailedPayload> = {
     message.interactionId = object.interactionId ?? undefined;
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.responseType = object.responseType ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -1491,6 +1623,7 @@ function createBaseStreamSttMeta(): StreamSttMeta {
     responseType: undefined,
     personaContextJson: undefined,
     targetDomiaKey: undefined,
+    traceId: undefined,
   };
 }
 
@@ -1513,6 +1646,9 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     }
     if (message.targetDomiaKey !== undefined) {
       writer.uint32(50).string(message.targetDomiaKey);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(58).string(message.traceId);
     }
     return writer;
   },
@@ -1572,6 +1708,14 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
           message.targetDomiaKey = reader.string();
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1613,6 +1757,11 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
         : isSet(object.target_domia_key)
         ? globalThis.String(object.target_domia_key)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -1636,6 +1785,9 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     if (message.targetDomiaKey !== undefined) {
       obj.targetDomiaKey = message.targetDomiaKey;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -1650,6 +1802,7 @@ export const StreamSttMeta: MessageFns<StreamSttMeta> = {
     message.responseType = object.responseType ?? undefined;
     message.personaContextJson = object.personaContextJson ?? undefined;
     message.targetDomiaKey = object.targetDomiaKey ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -1663,6 +1816,7 @@ function createBaseReflectionReport(): ReflectionReport {
     cause: undefined,
     factsJson: undefined,
     userEmotionJson: undefined,
+    traceId: undefined,
   };
 }
 
@@ -1688,6 +1842,9 @@ export const ReflectionReport: MessageFns<ReflectionReport> = {
     }
     if (message.userEmotionJson !== undefined) {
       writer.uint32(58).string(message.userEmotionJson);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(66).string(message.traceId);
     }
     return writer;
   },
@@ -1755,6 +1912,14 @@ export const ReflectionReport: MessageFns<ReflectionReport> = {
           message.userEmotionJson = reader.string();
           continue;
         }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1797,6 +1962,11 @@ export const ReflectionReport: MessageFns<ReflectionReport> = {
         : isSet(object.user_emotion_json)
         ? globalThis.String(object.user_emotion_json)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -1823,6 +1993,9 @@ export const ReflectionReport: MessageFns<ReflectionReport> = {
     if (message.userEmotionJson !== undefined) {
       obj.userEmotionJson = message.userEmotionJson;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -1838,6 +2011,7 @@ export const ReflectionReport: MessageFns<ReflectionReport> = {
     message.cause = object.cause ?? undefined;
     message.factsJson = object.factsJson ?? undefined;
     message.userEmotionJson = object.userEmotionJson ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -2182,7 +2356,7 @@ export const StageMetric: MessageFns<StageMetric> = {
 };
 
 function createBaseStageExecutionReport(): StageExecutionReport {
-  return { senderDomiaKey: "", originDomiaKey: undefined, interactionId: undefined, stages: [] };
+  return { senderDomiaKey: "", originDomiaKey: undefined, interactionId: undefined, stages: [], traceId: undefined };
 }
 
 export const StageExecutionReport: MessageFns<StageExecutionReport> = {
@@ -2198,6 +2372,9 @@ export const StageExecutionReport: MessageFns<StageExecutionReport> = {
     }
     for (const v of message.stages) {
       StageMetric.encode(v!, writer.uint32(34).fork()).join();
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(42).string(message.traceId);
     }
     return writer;
   },
@@ -2241,6 +2418,14 @@ export const StageExecutionReport: MessageFns<StageExecutionReport> = {
           message.stages.push(StageMetric.decode(reader, reader.uint32()));
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2268,6 +2453,11 @@ export const StageExecutionReport: MessageFns<StageExecutionReport> = {
         ? globalThis.String(object.interaction_id)
         : undefined,
       stages: globalThis.Array.isArray(object?.stages) ? object.stages.map((e: any) => StageMetric.fromJSON(e)) : [],
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -2285,6 +2475,9 @@ export const StageExecutionReport: MessageFns<StageExecutionReport> = {
     if (message.stages?.length) {
       obj.stages = message.stages.map((e) => StageMetric.toJSON(e));
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -2297,6 +2490,7 @@ export const StageExecutionReport: MessageFns<StageExecutionReport> = {
     message.originDomiaKey = object.originDomiaKey ?? undefined;
     message.interactionId = object.interactionId ?? undefined;
     message.stages = object.stages?.map((e) => StageMetric.fromPartial(e)) || [];
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -2540,6 +2734,7 @@ function createBaseLlmStreamRequest(): LlmStreamRequest {
     responseType: undefined,
     personaContextJson: undefined,
     targetDomiaKey: undefined,
+    traceId: undefined,
   };
 }
 
@@ -2565,6 +2760,9 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     }
     if (message.targetDomiaKey !== undefined) {
       writer.uint32(58).string(message.targetDomiaKey);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(66).string(message.traceId);
     }
     return writer;
   },
@@ -2632,6 +2830,14 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
           message.targetDomiaKey = reader.string();
           continue;
         }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2674,6 +2880,11 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
         : isSet(object.target_domia_key)
         ? globalThis.String(object.target_domia_key)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -2700,6 +2911,9 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     if (message.targetDomiaKey !== undefined) {
       obj.targetDomiaKey = message.targetDomiaKey;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -2715,6 +2929,7 @@ export const LlmStreamRequest: MessageFns<LlmStreamRequest> = {
     message.responseType = object.responseType ?? undefined;
     message.personaContextJson = object.personaContextJson ?? undefined;
     message.targetDomiaKey = object.targetDomiaKey ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -2728,6 +2943,7 @@ function createBaseInferenceRequest(): InferenceRequest {
     interactionId: undefined,
     sessionId: undefined,
     targetDomiaKey: undefined,
+    traceId: undefined,
   };
 }
 
@@ -2753,6 +2969,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     }
     if (message.targetDomiaKey !== undefined) {
       writer.uint32(58).string(message.targetDomiaKey);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(66).string(message.traceId);
     }
     return writer;
   },
@@ -2820,6 +3039,14 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
           message.targetDomiaKey = reader.string();
           continue;
         }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2866,6 +3093,11 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
         : isSet(object.target_domia_key)
         ? globalThis.String(object.target_domia_key)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -2892,6 +3124,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     if (message.targetDomiaKey !== undefined) {
       obj.targetDomiaKey = message.targetDomiaKey;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -2907,6 +3142,7 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     message.interactionId = object.interactionId ?? undefined;
     message.sessionId = object.sessionId ?? undefined;
     message.targetDomiaKey = object.targetDomiaKey ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };
@@ -2999,6 +3235,7 @@ function createBaseTtsStreamRequest(): TtsStreamRequest {
     interactionId: undefined,
     ttsVoiceJson: undefined,
     targetDomiaKey: undefined,
+    traceId: undefined,
   };
 }
 
@@ -3021,6 +3258,9 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     }
     if (message.targetDomiaKey !== undefined) {
       writer.uint32(50).string(message.targetDomiaKey);
+    }
+    if (message.traceId !== undefined) {
+      writer.uint32(58).string(message.traceId);
     }
     return writer;
   },
@@ -3080,6 +3320,14 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
           message.targetDomiaKey = reader.string();
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.traceId = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3117,6 +3365,11 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
         : isSet(object.target_domia_key)
         ? globalThis.String(object.target_domia_key)
         : undefined,
+      traceId: isSet(object.traceId)
+        ? globalThis.String(object.traceId)
+        : isSet(object.trace_id)
+        ? globalThis.String(object.trace_id)
+        : undefined,
     };
   },
 
@@ -3140,6 +3393,9 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     if (message.targetDomiaKey !== undefined) {
       obj.targetDomiaKey = message.targetDomiaKey;
     }
+    if (message.traceId !== undefined) {
+      obj.traceId = message.traceId;
+    }
     return obj;
   },
 
@@ -3154,6 +3410,7 @@ export const TtsStreamRequest: MessageFns<TtsStreamRequest> = {
     message.interactionId = object.interactionId ?? undefined;
     message.ttsVoiceJson = object.ttsVoiceJson ?? undefined;
     message.targetDomiaKey = object.targetDomiaKey ?? undefined;
+    message.traceId = object.traceId ?? undefined;
     return message;
   },
 };

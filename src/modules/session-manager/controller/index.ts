@@ -1,6 +1,12 @@
 import { type DomiaType } from "@/modules/core"
-import { generateUuid, memoryLogger, parseLlmJson } from "@/utils"
+import {
+	generateUuid,
+	getTraceContext,
+	memoryLogger,
+	parseLlmJson,
+} from "@/utils"
 import { runLLMJson } from "@/modules/llm-engine"
+import { stripDomiaSnapshotSecrets } from "@/modules/config"
 import { activeVoiceReplies } from "@/modules/voice-admission"
 import { recordEpisode, patchUserModel } from "@/modules/memory"
 
@@ -23,7 +29,6 @@ import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import dbAdapter from "../db-adapter"
 import {
 	RECENT_TURNS_WINDOW,
-	RECENT_TURNS_MAX_AGE_MS,
 	SUMMARIZE_IDLE_POLL_MS,
 	SUMMARIZE_MAX_IDLE_WAIT_MS,
 } from "../constants"
@@ -139,7 +144,7 @@ export const persistTurnEventBatch = async (
 	const interaction = await dbAdapter.getInteractionById(interactionId)
 	if (!interaction) return
 	const settings = await dbAdapter.getTurnEventsPersist(interaction.domiaId)
-	if (settings && settings.turnEventsPersist === false) return
+	if (settings?.turnEventsPersist === false) return
 	const rows: InsertTurnEventType[] = events.map((e) => {
 		const payload: Record<string, unknown> = {}
 		for (const [k, v] of Object.entries(e))
@@ -151,7 +156,7 @@ export const persistTurnEventBatch = async (
 			type: e.type,
 			seq: e.seq,
 			ts: e.ts,
-			originDomiaKey: e.originDomiaKey ?? null,
+			originDomiaKey: e.originDomiaKey,
 			executorDomiaKey: e.executorDomiaKey ?? null,
 			satelliteId: e.satelliteId ?? null,
 			traceId: e.traceId ?? null,
@@ -224,7 +229,7 @@ export const summarizeSession = async (
 			await new Promise((r) => setTimeout(r, SUMMARIZE_IDLE_POLL_MS))
 		}
 
-		const name = domia.characterProfile?.name?.trim() || "Domia"
+		const name = domia.characterProfile?.name.trim() || "Domia"
 		const prompt = `You are ${name}. The conversation below just ended. Summarize it for your own memory. Return ONLY a JSON object:
 {"summary":"2-3 sentences: what happened, the emotional arc, and what you learned about this person","moodArc":"a short phrase","topics":["a","few","topics"],"userSummary":"one line updating your private model of this person — who they are and how they relate to you","moodTendencies":"a short phrase","interests":["their","interests"]}
 
@@ -279,10 +284,10 @@ ${turns.join("\n")}`
 
 export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	const now = Date.now()
-	const domiaId = domia?.id
-	const timeoutMs = domia?.sessionIdTimeoutMs ?? 300_000
+	const domiaId = domia.id
+	const timeoutMs = domia.sessionIdTimeoutMs
 
-	const [existingSession] =
+	const existingSession =
 		await dbAdapter.getExistingInteractionSessionTrace(domiaId)
 	const lastUsedAt = existingSession?.lastUsedAt
 		? new Date(existingSession.lastUsedAt + "Z").getTime()
@@ -297,9 +302,7 @@ export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 		}
 	}
 
-	if (existingSession && expired) {
-		void summarizeSession(domia, existingSession.sessionId)
-	}
+	if (existingSession) void summarizeSession(domia, existingSession.sessionId)
 
 	const newId = generateUuid()
 	const newSessionId = generateUuid()
@@ -316,16 +319,17 @@ export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	}
 }
 
-const buildDomiaSnapshot = (domia: DomiaType) => ({
-	emotion: domia.emotionState ?? null,
-	character: domia.characterProfile ?? null,
-	stt: domia.sttConfig ?? null,
-	llm: domia.llmModelConfig ?? null,
-	tts: domia.ttsConfig ?? null,
-	wakeWord: domia.wakeWordConfig ?? null,
-	modules: domia.moduleSettings ?? null,
-	capabilities: domia.runtimeCapabilities ?? null,
-})
+const buildDomiaSnapshot = (domia: DomiaType) =>
+	stripDomiaSnapshotSecrets({
+		emotion: domia.emotionState ?? null,
+		character: domia.characterProfile ?? null,
+		stt: domia.sttConfig ?? null,
+		llm: domia.llmModelConfig ?? null,
+		tts: domia.ttsConfig ?? null,
+		wakeWord: domia.wakeWordConfig ?? null,
+		modules: domia.moduleSettings ?? null,
+		capabilities: domia.runtimeCapabilities ?? null,
+	})
 
 const buildUsedDiscriminators = (domia: DomiaType) => ({
 	sttModelUsed: domia.sttConfig?.modelName ?? null,
@@ -350,6 +354,7 @@ export const registerNewInteraction = async (
 		{
 			domiaSnapshot: buildDomiaSnapshot(domia),
 			...buildUsedDiscriminators(domia),
+			traceId: getTraceContext()?.traceId ?? null,
 			...data,
 			id: interactionId,
 			domiaId: domia.id,
@@ -413,7 +418,11 @@ export const getOrCreateInteractionId = async (
 		)
 		emitStarted(interactionId)
 		return interactionId
-	} catch {
+	} catch (err: unknown) {
+		memoryLogger.warn("⚠️ interaction row could not be created", {
+			domiaId: domia.id,
+			err,
+		})
 		return null
 	}
 }
@@ -431,7 +440,12 @@ export const recordImplicitFeedback = (
 ): void => {
 	void dbAdapter
 		.updateInteractionTrace({ id: interactionId, implicitFeedback: signal })
-		.catch(() => undefined)
+		.catch((err: unknown) =>
+			memoryLogger.warn("implicit feedback not persisted", {
+				err,
+				interactionId,
+			}),
+		)
 }
 
 export const getInteractionById = async (
@@ -505,11 +519,7 @@ export const getRecentUserMoods = async (
 			domia.id,
 			limit * 3,
 		)
-		return mapRowsToMoods(
-			rows,
-			domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS,
-			limit,
-		)
+		return mapRowsToMoods(rows, domia.memoryMaxAgeMs, limit)
 	} catch {
 		return []
 	}
@@ -520,7 +530,7 @@ export const getRecentTurns = async (
 	excludeInteractionId: string | undefined,
 ): Promise<RecentTurnType[]> => {
 	try {
-		const limit = domia?.memoryWindowTurns ?? RECENT_TURNS_WINDOW
+		const limit = domia.memoryWindowTurns
 		if (limit <= 0) return []
 		const rows = await dbAdapter.getRecentInteractionsForDomia(
 			domia.id,
@@ -528,7 +538,7 @@ export const getRecentTurns = async (
 		)
 		return mapRowsToTurns(
 			rows,
-			domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS,
+			domia.memoryMaxAgeMs,
 			limit,
 			excludeInteractionId,
 		)
@@ -542,13 +552,13 @@ export const getRecentTurnsAndMoods = async (
 	excludeInteractionId: string | undefined,
 ): Promise<RecentTurnsAndMoodsType> => {
 	try {
-		const turnsLimit = domia?.memoryWindowTurns ?? RECENT_TURNS_WINDOW
+		const turnsLimit = domia.memoryWindowTurns
 		const moodLimit = RECENT_TURNS_WINDOW
 		const rows = await dbAdapter.getRecentInteractionsForDomia(
 			domia.id,
 			Math.max(turnsLimit, moodLimit) * 3,
 		)
-		const maxAgeMs = domia?.memoryMaxAgeMs ?? RECENT_TURNS_MAX_AGE_MS
+		const maxAgeMs = domia.memoryMaxAgeMs
 		return {
 			recentTurns:
 				turnsLimit > 0

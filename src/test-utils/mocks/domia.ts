@@ -2,6 +2,7 @@ import { faker } from "@faker-js/faker"
 
 import { generateUuid, now } from "@/utils"
 import { type SelectDomiaType } from "@/db"
+import { DEFAULT_BENCH_THRESHOLDS } from "@/db/constants"
 
 export const baseDomia: SelectDomiaType = {
 	id: generateUuid(),
@@ -25,6 +26,13 @@ export const baseDomia: SelectDomiaType = {
 	peerStaleAfterMs: 90_000,
 	configRevision: 0,
 	configReloadDrainMs: 5_000,
+	modelInstallAllowedHosts: ["huggingface.co", "github.com"],
+	heartbeatSignatureRequired: true,
+	knowledgeMaxChars: 20_000,
+	meshSecretGraceMs: 86_400_000,
+	grpcTls: false,
+	benchTurns: 3,
+	benchThresholds: DEFAULT_BENCH_THRESHOLDS,
 	localIp: `192.168.${faker.number.int(255)}.${faker.number.int({ min: 1, max: 254 })}`,
 	grpcPort: 5052,
 	createdAt: now(),

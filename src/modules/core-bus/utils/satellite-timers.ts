@@ -22,7 +22,7 @@ export const parseTimerIntent = (
 	const sets = languageSetsFor(language)
 	if (!sets.timerKeywordsRe.test(text)) return null
 	const lower = text.toLowerCase()
-	const numMatch = lower.match(/(\d+)/)
+	const numMatch = /(\d+)/.exec(lower)
 	let amount = numMatch ? Number(numMatch[1]) : null
 	if (amount === null) {
 		for (const [word, val] of Object.entries(sets.numberWords)) {
@@ -71,7 +71,7 @@ export const startSatelliteTimer = (
 		})
 		timers.delete(timerId)
 	}, seconds * 1000)
-	handle.unref?.()
+	handle.unref()
 	const timer: ActiveTimerType = {
 		timerId,
 		domiaKey,

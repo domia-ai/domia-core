@@ -17,10 +17,10 @@ export const runLLM = async (
 	promptContext: string,
 	onUsage?: LlmUsageSinkType,
 ) => {
-	const llmModelConfig = domia?.llmModelConfig
+	const llmModelConfig = domia.llmModelConfig
 	const engine = llmModelConfig?.engine
 
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
 			logger: llmEngineLogger,
 			meta: {
@@ -35,8 +35,8 @@ export const runLLM = async (
 }
 
 export const warmupLLM = async (domia: DomiaType): Promise<void> => {
-	const engine = domia?.llmModelConfig?.engine
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) return
+	const engine = domia.llmModelConfig?.engine
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) return
 	await getLlmEngine(engine)?.warmup?.(domia)
 }
 
@@ -45,9 +45,9 @@ export const runLLMJson = async (
 	promptContext: string,
 	shouldAbort?: () => boolean,
 ) => {
-	const engine = domia?.llmModelConfig?.engine
+	const engine = domia.llmModelConfig?.engine
 
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
 			logger: llmEngineLogger,
 			meta: { engine },
@@ -75,9 +75,9 @@ export const runLLMWithTools = async (
 	toolChoice?: ToolChoiceType,
 	signal?: AbortSignal,
 ): Promise<ToolCallOrReplyType> => {
-	const engine = domia?.llmModelConfig?.engine
+	const engine = domia.llmModelConfig?.engine
 
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
 			logger: llmEngineLogger,
 			meta: { engine },
@@ -109,9 +109,9 @@ export const runLLMReplyStreamOrTools = async (
 	toolChoice?: ToolChoiceType,
 	signal?: AbortSignal,
 ): Promise<StreamReplyOrToolsType> => {
-	const engine = domia?.llmModelConfig?.engine
+	const engine = domia.llmModelConfig?.engine
 
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(LLM_ERRORS.LLM_ENGINE_NOT_FOUND, {
 			logger: llmEngineLogger,
 			meta: { engine },
@@ -140,8 +140,8 @@ export const runLLMConstrainedJson = async (
 	prompt: string,
 	schema: Record<string, unknown>,
 ): Promise<string | null> => {
-	const engine = domia?.llmModelConfig?.engine
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) return null
+	const engine = domia.llmModelConfig?.engine
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) return null
 	const adapter = getLlmEngine(engine)
 	if (!adapter?.runConstrainedJson) return null
 	return await adapter.runConstrainedJson(domia, prompt, schema)
@@ -154,8 +154,8 @@ export const runLLMChatConstrainedJson = async (
 	onUsage?: LlmUsageSinkType,
 	signal?: AbortSignal,
 ): Promise<string | null> => {
-	const engine = domia?.llmModelConfig?.engine
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) return null
+	const engine = domia.llmModelConfig?.engine
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) return null
 	const adapter = getLlmEngine(engine)
 	if (!adapter?.runChatConstrainedJson) return null
 	return await adapter.runChatConstrainedJson(
@@ -172,8 +172,8 @@ export const runLLMIntent = async (
 	prompt: string,
 	modelName: string,
 ): Promise<string | null> => {
-	const engine = domia?.llmModelConfig?.engine
-	if (!engine || !LLM_ENGINE_ENUM_VALUES?.includes(engine)) return null
+	const engine = domia.llmModelConfig?.engine
+	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) return null
 	const adapter = getLlmEngine(engine)
 	if (!adapter?.runIntent) return null
 	return await adapter.runIntent(domia, prompt, modelName)

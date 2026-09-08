@@ -7,6 +7,7 @@ import { reloadMqtt } from "../mqtt"
 import { reloadVoiceListener } from "../voice-listener"
 import { reloadSkills } from "../skills"
 import { reloadSatelliteClientsForDomia } from "../satellite-clients"
+import { reloadProactivity } from "../proactivity"
 import {
 	bootHostedIdentity,
 	teardownHostedIdentity,
@@ -51,6 +52,13 @@ export const setupConfigReloaders = (): void => {
 		scope: "per-identity",
 		reload: async (domia) => {
 			await reloadSatelliteClientsForDomia(domia)
+		},
+	})
+	registerReloader("proactivity", {
+		scope: "per-identity",
+		reload: (domia) => {
+			reloadProactivity(domia)
+			return Promise.resolve()
 		},
 	})
 	registerReloader("identity", {

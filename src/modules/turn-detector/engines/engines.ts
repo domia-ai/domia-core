@@ -14,5 +14,4 @@ export const turnDetectorEngineRegistry: Record<
 
 export const getTurnDetectorEngine = (
 	id: TurnDetectorEngineEnumType,
-): TurnDetectorEngineAdapterType | null =>
-	turnDetectorEngineRegistry[id] ?? null
+): TurnDetectorEngineAdapterType | null => turnDetectorEngineRegistry[id]

@@ -1,7 +1,13 @@
 import WebSocket from "ws"
 
 import { DEFAULT_STT_TIMEOUT_MS } from "@/db"
-import { sttEngineLogger, STT_ERRORS, domiaError } from "@/utils"
+import {
+	sttEngineLogger,
+	STT_ERRORS,
+	domiaError,
+	sleep,
+	rawDataToString,
+} from "@/utils"
 import type { DomiaType } from "@/modules/core"
 
 import type {
@@ -24,9 +30,6 @@ const COMMITTED_EVENT = "input_audio_buffer.committed"
 
 export const realtimeUrlOf = (baseUrl: string): string =>
 	`${baseUrl.replace(/\/$/, "").replace(/^http/, "ws")}/realtime`
-
-const sleep = (ms: number): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, ms))
 
 const silenceOf = (padMs: number): Buffer =>
 	Buffer.alloc(Math.round(padMs * BYTES_PER_MS) & ~1)
@@ -154,7 +157,9 @@ export const createNemoSpeechSession = (
 		socket.on("message", (data, isBinary) => {
 			if (isBinary) return
 			try {
-				handleEvent(JSON.parse(String(data)) as NemoSpeechServerEventType)
+				handleEvent(
+					JSON.parse(rawDataToString(data)) as NemoSpeechServerEventType,
+				)
 			} catch {
 				sttEngineLogger.warn("nemo-speech unparseable realtime message", {
 					domiaId: domia.id,
@@ -179,7 +184,7 @@ export const createNemoSpeechSession = (
 
 	const send = (chunk: Buffer): void => {
 		if (closed || chunk.length === 0) return
-		if (!ws) ws = connect()
+		ws ??= connect()
 		if (opened && ws.readyState === WebSocket.OPEN) ws.send(chunk)
 		else backlog.push(chunk)
 	}

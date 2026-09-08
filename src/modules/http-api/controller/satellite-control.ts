@@ -19,6 +19,7 @@ import {
 	postSatelliteTimerBodySchema,
 	postSatelliteFollowUpBodySchema,
 } from "../schemas"
+import { badRequest } from "../utils/http-errors"
 import {
 	renderAnnouncementUrl,
 	getSatelliteControl,
@@ -51,11 +52,7 @@ export const handleGetSatelliteLivekitToken = async (
 	const row = (await getSatellitesForDomia(domia.id)).find(
 		(s) => s.satelliteId === satelliteId,
 	)
-	if (
-		!row ||
-		row.protocol !== SATELLITE_PROTOCOL_ENUM.LIVEKIT ||
-		!row.isActive
-	) {
+	if (row?.protocol !== SATELLITE_PROTOCOL_ENUM.LIVEKIT || !row.isActive) {
 		return reply
 			.code(404)
 			.send({ error: `no active livekit satellite: ${satelliteId}` })
@@ -97,9 +94,8 @@ export const handleSetSatelliteWakeWords = async (
 		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
 	}
 	const parsed = postSatelliteWakeWordsBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid wake words body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid wake words body")
 	const updated = await setSatelliteDesiredWakeWords(
 		domia.id,
 		satelliteId,
@@ -133,9 +129,8 @@ export const handleSetSatelliteNumber = async (
 		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
 	}
 	const parsed = postSatelliteNumberBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid number body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid number body")
 	const { entityId, value } = parsed.data
 	const entity = getPresence(domiaKey)
 		?.satellites.find((s) => s.satelliteId === satelliteId)
@@ -190,9 +185,8 @@ export const handleSetSatelliteFollowUp = async (
 		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
 	}
 	const parsed = postSatelliteFollowUpBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid follow-up body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid follow-up body")
 	const updated = await setSatelliteFollowUp(
 		domia.id,
 		satelliteId,
@@ -219,9 +213,8 @@ export const handleStartSatelliteTimer = async (
 		return reply.code(400).send({ error: "missing domiaKey" })
 	}
 	const parsed = postSatelliteTimerBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid timer body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid timer body")
 	const control = getSatelliteControl(domiaKey, satelliteId)
 	if (!control?.sendTimerEvent) {
 		return reply.code(409).send({
@@ -290,9 +283,8 @@ export const handleSetSatelliteVolume = async (
 		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
 	}
 	const parsed = postSatelliteVolumeBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid volume body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid volume body")
 	const updated = await setSatelliteDesiredVolume(
 		domia.id,
 		satelliteId,
@@ -317,7 +309,10 @@ export const handleTestSatelliteSpeaker = async (
 	if (!domiaKey) {
 		return reply.code(400).send({ error: "missing domiaKey" })
 	}
-	const domia = await getOwnDomia(domiaKey).catch(() => null)
+	const domia = await getOwnDomia(domiaKey).catch((err: unknown) => {
+		httpServerLogger.warn("identity lookup failed", { err, domiaKey })
+		return null
+	})
 	if (!domia) {
 		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
 	}

@@ -1,4 +1,6 @@
 export * from "./capture"
 export * from "./dynamic-endpointing"
+export * from "./echo-gate"
 export * from "./endpoint-hint"
 export * from "./mic-tap"
+export * from "./stop-word"

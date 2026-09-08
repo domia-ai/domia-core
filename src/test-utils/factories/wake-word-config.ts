@@ -5,7 +5,7 @@ export const getWakeWordConfig = (
 	overrides: Partial<SelectWakeWordConfigType> = {},
 ): SelectWakeWordConfigType => {
 	return {
-		...baseWakeWordConfig(overrides?.domiaId),
+		...baseWakeWordConfig(overrides.domiaId),
 		...overrides,
 	}
 }

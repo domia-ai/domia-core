@@ -20,7 +20,7 @@ Unlike a traditional assistant, Domia is not a single service in someone else's 
 
 ## ✅ What works today
 
-Every capability below is implemented and runs end-to-end on your own hardware — speech inference in-process via `sherpa-onnx-node`, the LLM via local Ollama, no cloud.
+Every capability below is implemented and runs end-to-end on your own hardware — speech inference in-process via `sherpa-onnx-node`, the LLM on a local OpenAI-compatible server (llama.cpp `llama-server`, the template default) or Ollama, no cloud.
 
 - **Full voice-to-voice (S2S) pipeline** — wake word + VAD → speech-to-text → local LLM → text-to-speech → playback, with **per-sentence LLM→TTS pipelining** so it starts speaking before the full answer is generated.
   `src/modules/{audio-capture,vad,stt-engine,llm-engine,tts-engine,audio-playback}` · `src/modules/core-bus`
@@ -44,12 +44,14 @@ Every capability below is implemented and runs end-to-end on your own hardware �
   `src/modules/{skill-engine,agent,matcher,embeddings,intent-router}` · `src/modules/llm-engine` (tool-calling)
 - **Everything is DB-driven + remotely reconfigurable** — engines, models, voices, thread counts, concurrency are all config in SQLite (Drizzle); a Domia boots minimal and gets its role by importing a config bundle (`POST /config`), which persists and restarts it to reload cleanly.
   `src/db` · `src/modules/config-engine` · HTTP `POST /config`
-- **Operability** — HTTP control API (`/voice`, `/chat`, `/speak`, `/mind`, `/knowledge`, `/identities`, `/satellites`, `/templates`, `/config`, `/config/health`, `/admin/restart`), a developer CLI to exercise STT/TTS/LLM/mind in isolation, per-turn stage metrics persisted for every interaction, and a repeatable voice benchmark (`npm run bench:voice`). A separate **web console** — [domia-app](https://github.com/domia-ai/domia-app) — drives this API across every Domia (fleet observability + remote config); [live read-only demo](https://console.domia.ai).
+- **Operability** — HTTP control API (`/voice`, `/chat`, `/speak`, `/mind`, `/knowledge`, `/identities`, `/satellites`, `/templates`, `/config`, `/config/health`, `/admin/restart`), a developer CLI to exercise STT/TTS/LLM/mind in isolation, per-turn stage metrics persisted for every interaction, and a repeatable voice benchmark (`npm run evals -- bench-voice`). A separate **web console** — [domia-app](https://github.com/domia-ai/domia-app) — drives this API across every Domia (fleet observability + remote config); [live read-only demo](https://console.domia.ai).
   `src/setups/http-server` · `src/cli/dev`
 - **Voice UX** — wake word, barge-in (interrupt a reply), follow-up conversation mode (keep talking without re-waking), model warm-up on boot, and non-verbal feedback sounds — all DB-configurable.
 - **Adapts to your hardware** — the same code runs on a thin edge device or a powerful hub; model size, engine, and thread counts are just DB config, never hardcoded. Better hardware, better experience.
 
-**On the roadmap (not built yet):** multilingual speech, API authentication, GPU-accelerated inference on dedicated hub hardware, fine-tuned lightweight models, and a marketplace for voices/characters.
+**Already shipped, still maturing:** multilingual speech (English + Spanish, end to end) and GPU-accelerated inference on dedicated hub hardware (validated on Jetson Orin). The mesh/HTTP API is guarded today by a shared **mesh secret** (`Authorization: Bearer <DOMIA_MESH_SECRET>`, loopback exempt).
+
+**On the roadmap (not built yet):** per-user API authentication and accounts, fine-tuned lightweight models, and a marketplace for voices/characters.
 
 ---
 
@@ -95,18 +97,20 @@ For the full architecture and current state, see [`docs/ARCHITECTURE.md`](./docs
 # 1. install deps
 npm install
 
-# 2. start Ollama (LLM) + Mosquitto (MQTT) and pull the models
-docker compose up -d ollama mosquitto
-docker exec -it domia-ollama ollama pull llama3.1:8b
-docker exec -it domia-ollama ollama pull llama3.2:1b   # background "thinker" (reflection/memory)
-# (Ollama can also run natively instead of Docker — install it from ollama.com,
-#  pull the same models, and point OLLAMA_HOST in .env at it.)
+# 2. start Mosquitto (MQTT) and an LLM server
+docker compose up -d mosquitto
+make llm-service        # llama.cpp llama-server as a service (systemd on Linux, launchd on macOS): builds it,
+                        # stages the templates' default model (llama3.2:3b) and serves it on :11435
+# Alternative: Ollama (simplest model management, lenient tool-call parsing — the templates point at
+# llama-server; switch llm.engine to OLLAMA in the console if you prefer it):
+#   docker compose up -d ollama && docker exec -it domia-ollama ollama pull llama3.2:3b
 
 # 3. download the on-device speech models (STT / TTS / VAD / wake word)
 npm run setup:models
 
-# 4. create the database from the schema (no migrations — drizzle-kit push)
-npm run db:reset
+# 4. create this node's env file (gitignored; only .env.example is tracked), then the database
+cp .env.example .env     # edit DOMIA_KEY, ports, DATABASE_URL, DOMIA_MESH_SECRET
+npm run db:reset         # from the schema, no migrations — drizzle-kit push
 
 # 5. run your Domia (boots minimal — every capability off, no models needed yet)
 npm run dev
@@ -123,32 +127,49 @@ npm run dev-cli -- tts -t "hello, this is my own voice"
 
 **Born minimal, configured externally.** A Domia has no baked-in role — it boots minimal and you apply a config template (`full-hub`, `standalone`, `thin-client`, `snappy`, `jetson`, or your own) via the CLI or the web console; the change persists and the Domia restarts to apply it.
 
-**Many Domias (delegation / multi-space):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. A second `.env.b` is provided: `npm run db:reset:b` then `npm run dev:b`. Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
+**Many Domias (delegation / multi-space):** one **env file** per instance (device identity), launched with `DOMIA_ENV=<file> npm run dev` — no per-instance scripts. Create a second identity with `cp .env.example .env.b` (edit its `DOMIA_KEY`, ports and `DATABASE_URL`), then `npm run db:reset:b` and `npm run dev:b` (both wired to `.env.b`). Give one `full-hub` and another `thin-client`, and they discover each other over the mesh and delegate STT/LLM/TTS.
 
-See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and per-component testing.
+**Verify:** `npm test` runs the pure eval battery (no node needed); `npm run evals -- --list` shows every suite and battery (`pure`, `node`, `tool`, `quality`, `hardware`, plus `utility` suites by name); `npm run evals -- <suite>` runs one against the node at `EVAL_URL`; `npm run dev-cli -- doctor` checks binaries and which runtime services answer; `bash scripts/download-models.sh <name>` downloads a model set.
+
+See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and per-component testing, and **[docs/DEPLOY.md](./docs/DEPLOY.md)** to take a node to production (packaging, services, TLS, secret rotation, MQTT ACLs, tracing).
 
 ---
 
 ## 🗺️ Architecture at a glance
 
-`sherpa-onnx-node` (STT/TTS/VAD/wake, in-process) · **Ollama** (LLM) · **SQLite + Drizzle** (all config & state) · **gRPC streaming** (Domia↔Domia) · **MQTT** (discovery + heartbeat) · **TypeScript / Node 24**.
+`sherpa-onnx-node` (STT/TTS/VAD/wake, in-process) · **llama.cpp `llama-server`** (OpenAI-compatible LLM, default) or **Ollama** · **SQLite + Drizzle** (all config & state) · **gRPC streaming** (Domia↔Domia) · **MQTT** (discovery + heartbeat) · **TypeScript / Node 24**.
 
 `src/modules/` grouped by role:
 
 - **Voice pipeline** — `audio-capture`, `vad`, `stt-engine`, `tts-engine`, `audio-playback`
 - **Cognition** — `llm-engine`, `prompt-context-builder`, `reflection`
-- **Identity** — `character-engine`, `emotion-engine`, `memory`, `mind`
+- **Identity** — `emotion-engine`, `memory`, `mind`
 - **Action** — `skill-engine`, `agent`, `matcher`, `embeddings`, `intent-router`
-- **Satellites** — `satellite-core`, `satellite-protocols` (ESPHome / Wyoming / WebSocket), `satellite-discovery`
+- **Satellites** — `satellite-core`, `satellite-protocols` (ESPHome / Wyoming / LiveKit / OpenAI-Realtime / WebSocket), `satellite-discovery`
 - **Distribution** — `grpc-client`, `capability-resolver`, `network-sync`, `heartbeat-manager`, `mqtt-event-handler`
 - **Performance & ops** — `inference-pool`, `voice-admission`, `config-engine`, `session-manager`
+
+### HTTP control API
+
+Every non-loopback request carries `Authorization: Bearer <DOMIA_MESH_SECRET>` (loopback is exempt). Routes come from `src/setups/http-server/http-server.ts`:
+
+| Area                    | Routes                                                                                                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Turn / voice            | `POST /voice`, `POST /chat`, `POST /chat/stream`, `POST /speak`, `POST /turn/cancel`, `POST /announce-audio`, `POST /intercom`, `GET /presence`, `WS /satellite`                                                |
+| Config                  | `GET`/`POST /config`, `GET /config/schema`, `GET /config/health`, `POST /config/refresh`                                                                                                                        |
+| Mind / knowledge        | `GET /mind`, `GET`/`POST /knowledge`                                                                                                                                                                            |
+| Identities              | `GET`/`POST /identities`, `DELETE /identity-data`, `POST /admin/reset-conversation`                                                                                                                             |
+| Satellites              | `GET /satellites`, `GET /satellites/discover`, `POST /satellites`, `PUT /satellites/:id/{wake-words,numbers,follow-up,volume,timers}`, `POST /satellites/:id/test-speaker`, `GET /satellites/:id/livekit-token` |
+| Models / skills / bench | `GET /models`, `POST /models/install`, `GET /skills`, `GET /skills/discover`, `POST /bench/run`, `GET /templates`                                                                                               |
+| Proactivity             | `GET /proactivity/status`, `GET`/`POST /proactivity/schedule`                                                                                                                                                   |
+| Sync / ops              | `GET /sync`, `GET /health`, `GET /`, `GET /stats/latency`, `POST /mesh/rotate`, `POST /admin/restart`                                                                                                           |
 
 ---
 
 ## 📦 Roadmap
 
-- **Now → next:** live soak of the companion layers, real-world Home Assistant deployment, GPU hub validation (Jetson-class), test suite + CI.
-- **Then:** multilingual speech, API authentication, vector long-term memory at scale, fine-tuned lightweight models.
+- **Now → next:** live soak of the companion layers, real-world Home Assistant deployment, broader GPU hub validation (Jetson-class already live), test suite + CI.
+- **Then:** per-user API authentication and accounts, vector long-term memory at scale, fine-tuned lightweight models, more language catalogs beyond EN/ES.
 
 ---
 

@@ -1,6 +1,12 @@
 export const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms))
 
+export const emptyAsyncIterable = <T>(): AsyncIterable<T> => ({
+	[Symbol.asyncIterator]: () => ({
+		next: () => Promise.resolve({ done: true, value: undefined }),
+	}),
+})
+
 export const onceFn = (fn: () => void): (() => void) => {
 	let called = false
 	return () => {
@@ -22,7 +28,7 @@ export const withTimeout = <T>(
 				() => reject(new Error(`${label} timed out after ${ms}ms`)),
 				ms,
 			)
-			timer.unref?.()
+			timer.unref()
 		}),
 	])
 

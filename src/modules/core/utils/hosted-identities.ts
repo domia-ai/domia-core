@@ -10,5 +10,3 @@ export const unregisterHostedIdentity = (domiaKey: string): void => {
 
 export const isHostedIdentity = (domiaKey: string): boolean =>
 	hosted.has(domiaKey)
-
-export const getHostedIdentities = (): string[] => [...hosted]

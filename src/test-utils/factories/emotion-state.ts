@@ -5,7 +5,7 @@ export const getEmotionState = (
 	overrides: Partial<SelectEmotionStateType> = {},
 ): SelectEmotionStateType => {
 	return {
-		...baseEmotionState(overrides?.domiaId),
+		...baseEmotionState(overrides.domiaId),
 		...overrides,
 	}
 }

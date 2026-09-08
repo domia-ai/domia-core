@@ -5,7 +5,7 @@ export const getSttConfig = (
 	overrides: Partial<SelectSttConfigType> = {},
 ): SelectSttConfigType => {
 	return {
-		...baseSttConfig(overrides?.domiaId),
+		...baseSttConfig(overrides.domiaId),
 		...overrides,
 	}
 }

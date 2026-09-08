@@ -1,7 +1,19 @@
 import { createServer, ServerError, Status, type Server } from "nice-grpc"
 
 import { env } from "@/config"
-import { grpcServerLogger, setTraceContext, isValidMeshBearer } from "@/utils"
+import {
+	bytesToAudioMs,
+	grpcServerLogger,
+	setTraceContext,
+	runWithTraceContext,
+	ensureTraceId,
+	isValidMeshBearer,
+	grpcServerCredentials,
+	isTlsEnabled,
+	domiaError,
+	GRPC_ERRORS,
+} from "@/utils"
+import type { TraceContextType } from "@/utils"
 import { resolveLiveDomia, resolveLiveIdentity } from "@/setups/live-domia"
 import { safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import { speak as speakOnDomia } from "@/modules/core-bus"
@@ -39,6 +51,7 @@ import {
 	type TokenChunk,
 	type LlmStreamRequest,
 	type TtsStreamRequest,
+	type StreamSttMeta,
 	type ReplyAudioMessage,
 	type ReflectionReport,
 	type ReflectionAck,
@@ -51,7 +64,6 @@ import {
 } from "@/generated/proto/domia"
 import type { GrpcServerArgsType } from "./types"
 import {
-	bytesToAudioMs,
 	canStreamLlm,
 	ttsCapsOrDefaults,
 	ttsTextToChunks,
@@ -64,6 +76,12 @@ import {
 } from "./utils"
 
 let server: Server | null = null
+
+const capabilityDisabled = (capability: string, domiaKey: string) =>
+	domiaError(GRPC_ERRORS.CAPABILITY_DISABLED, {
+		logger: grpcServerLogger,
+		meta: { capability, domiaKey },
+	})
 
 const buildImplementation = ({
 	domia: bootDomia,
@@ -94,21 +112,32 @@ const buildImplementation = ({
 		request: AsyncIterable<AudioChunk>,
 	): Promise<{
 		targetDomiaKey?: string
+		head?: StreamSttMeta
 		stream: AsyncIterable<AudioChunk>
 	}> => {
 		const iterator = request[Symbol.asyncIterator]()
 		const first = await iterator.next()
-		const targetDomiaKey = first.value?.meta?.targetDomiaKey
+		const head = first.done ? undefined : first.value.meta
 		const stream = (async function* (): AsyncIterable<AudioChunk> {
-			if (!first.done) yield first.value as AudioChunk
+			if (!first.done) yield first.value
 			while (true) {
 				const next = await iterator.next()
 				if (next.done) break
 				yield next.value
 			}
 		})()
-		return { targetDomiaKey, stream }
+		return { targetDomiaKey: head?.targetDomiaKey, head, stream }
 	}
+
+	const traceOf = (request?: {
+		interactionId?: string
+		originDomiaKey?: string
+		traceId?: string
+	}): TraceContextType => ({
+		interactionId: request?.interactionId,
+		originDomiaKey: request?.originDomiaKey,
+		traceId: ensureTraceId(request?.traceId),
+	})
 
 	return {
 		async health(): Promise<HealthResponse> {
@@ -131,64 +160,60 @@ const buildImplementation = ({
 		async streamStt(
 			request: AsyncIterable<AudioChunk>,
 		): Promise<SttDonePayload> {
-			const { targetDomiaKey, stream } = await peekAudioTarget(request)
-			const { domia, features } = await resolveTarget(targetDomiaKey)
-			if (!features.canRunStt) {
-				throw new Error("stt capability disabled on this domia")
-			}
-			try {
-				const sttStart = Date.now()
-				let sttExecMs: number | null = null
-				const { transcript, meta } = await transcribeAudioStream(
-					domia,
-					stream,
-					features,
-					(t) => {
-						sttExecMs = t.execMs
-					},
-				)
-				setTraceContext({
-					interactionId: meta?.interactionId,
-					originDomiaKey: meta?.originDomiaKey,
-				})
-				grpcServerLogger.info(`📥 streamStt → "${transcript}"`, {
-					domiaId: domia.id,
-					interactionId: meta?.interactionId,
-				})
-				void reportStageExecution(
-					domia,
-					meta?.originDomiaKey,
-					meta?.interactionId,
-					[
-						{
-							stage: "stt",
-							executorDomiaKey: domia.domiaKey,
-							stageMs: sttExecMs ?? Date.now() - sttStart,
-							model: domia.sttConfig?.modelName,
-							engine: domia.sttConfig?.engine,
-						},
-					],
-				)
-				return {
-					transcript,
-					interactionId: meta?.interactionId,
-					originDomiaKey: meta?.originDomiaKey,
-					responseType: meta?.responseType,
+			const { targetDomiaKey, head, stream } = await peekAudioTarget(request)
+			return runWithTraceContext(traceOf(head), async () => {
+				const { domia, features } = await resolveTarget(targetDomiaKey)
+				if (!features.canRunStt) {
+					throw capabilityDisabled("stt", domia.domiaKey)
 				}
-			} catch (err) {
-				grpcServerLogger.error("❌ streamStt failed", { err })
-				throw err
-			}
+				try {
+					const sttStart = Date.now()
+					let sttExecMs = null as number | null
+					const { transcript, meta } = await transcribeAudioStream(
+						domia,
+						stream,
+						features,
+						(t) => {
+							sttExecMs = t.execMs
+						},
+					)
+					grpcServerLogger.info(`📥 streamStt → "${transcript}"`, {
+						domiaId: domia.id,
+						interactionId: meta?.interactionId,
+					})
+					void reportStageExecution(
+						domia,
+						meta?.originDomiaKey,
+						meta?.interactionId,
+						[
+							{
+								stage: "stt",
+								executorDomiaKey: domia.domiaKey,
+								stageMs: sttExecMs ?? Date.now() - sttStart,
+								model: domia.sttConfig?.modelName,
+								engine: domia.sttConfig?.engine,
+							},
+						],
+					)
+					return {
+						transcript,
+						interactionId: meta?.interactionId,
+						originDomiaKey: meta?.originDomiaKey,
+						responseType: meta?.responseType,
+						traceId: meta?.traceId,
+					}
+				} catch (err) {
+					grpcServerLogger.error("❌ streamStt failed", { err })
+					throw err
+				}
+			})
 		},
 
 		async *streamLlm(request: LlmStreamRequest): AsyncIterable<TokenChunk> {
-			setTraceContext({
-				interactionId: request.interactionId,
-				originDomiaKey: request.originDomiaKey,
-			})
+			setTraceContext(traceOf(request))
 			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunLlm) {
-				throw new Error("llm capability disabled on this domia")
+				throw capabilityDisabled("llm", domia.domiaKey)
 			}
 			const persona = resolvePersonaContext(request.personaContextJson, domia)
 			const promptContext = buildPromptFromPersona(persona, request.transcript)
@@ -244,13 +269,10 @@ const buildImplementation = ({
 		},
 
 		async *streamTts(request: TtsStreamRequest): AsyncIterable<AudioChunk> {
-			setTraceContext({
-				interactionId: request.interactionId,
-				originDomiaKey: request.originDomiaKey,
-			})
+			setTraceContext(traceOf(request))
 			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunTts) {
-				throw new Error("tts capability disabled on this domia")
+				throw capabilityDisabled("tts", domia.domiaKey)
 			}
 			const { sampleRate, channels } = ttsCapsOrDefaults(features)
 			const ttsOptions = resolveTtsVoiceOptions(request.ttsVoiceJson)
@@ -311,13 +333,10 @@ const buildImplementation = ({
 		async *streamReplyAudio(
 			request: LlmStreamRequest,
 		): AsyncIterable<ReplyAudioMessage> {
-			setTraceContext({
-				interactionId: request.interactionId,
-				originDomiaKey: request.originDomiaKey,
-			})
+			setTraceContext(traceOf(request))
 			const { domia, features } = await resolveTarget(request.targetDomiaKey)
 			if (!features.canRunLlm || !features.canRunTts) {
-				throw new Error("llm+tts capabilities required for streamReplyAudio")
+				throw capabilityDisabled("llm+tts", domia.domiaKey)
 			}
 			const release = await admitVoiceReplyOrBusy(domia, {
 				interactionId: request.interactionId,
@@ -347,17 +366,16 @@ const buildImplementation = ({
 		async *streamVoiceReply(
 			request: AsyncIterable<AudioChunk>,
 		): AsyncIterable<ReplyAudioMessage> {
-			const { targetDomiaKey, stream } = await peekAudioTarget(request)
+			const { targetDomiaKey, head, stream } = await peekAudioTarget(request)
+			setTraceContext(traceOf(head))
 			const { domia, features } = await resolveTarget(targetDomiaKey)
 			if (!features.canRunStt || !features.canRunLlm || !features.canRunTts) {
-				throw new Error(
-					"stt+llm+tts capabilities required for streamVoiceReply",
-				)
+				throw capabilityDisabled("stt+llm+tts", domia.domiaKey)
 			}
 			const release = await admitVoiceReplyOrBusy(domia, {})
 			try {
 				const sttStart = Date.now()
-				let sttExecMs: number | null = null
+				let sttExecMs = null as number | null
 				const { transcript, meta } = await transcribeAudioStream(
 					domia,
 					stream,
@@ -366,10 +384,6 @@ const buildImplementation = ({
 						sttExecMs = t.execMs
 					},
 				)
-				setTraceContext({
-					interactionId: meta?.interactionId,
-					originDomiaKey: meta?.originDomiaKey,
-				})
 				grpcServerLogger.info(`📥 streamVoiceReply STT → "${transcript}"`, {
 					domiaId: domia.id,
 					interactionId: meta?.interactionId,
@@ -404,149 +418,164 @@ const buildImplementation = ({
 			}
 		},
 
-		async reportReflection(request: ReflectionReport): Promise<ReflectionAck> {
-			setTraceContext({ interactionId: request.interactionId })
-			const { domia } = await resolveTarget(request.originDomiaKey)
-			if (request.originDomiaKey && request.originDomiaKey !== domia.domiaKey) {
-				grpcServerLogger.warn(
-					"⚠️ reflection report misrouted — origin mismatch, rejecting",
-					{ origin: request.originDomiaKey, self: domia.domiaKey },
-				)
-				return { accepted: false }
-			}
-			try {
-				if (request.emotionDeltaJson) {
-					try {
-						const parsed = emotionPartialSchema.safeParse(
-							JSON.parse(request.emotionDeltaJson),
-						)
-						if (parsed.success)
-							applyMoodDelta(domia, parsed.data, request.cause)
-						else
-							grpcServerLogger.warn("⚠️ reflection emotion delta invalid", {
-								issues: parsed.error.issues,
+		reportReflection: (request: ReflectionReport): Promise<ReflectionAck> =>
+			runWithTraceContext(traceOf(request), async () => {
+				const { domia } = await resolveTarget(request.originDomiaKey)
+				if (
+					request.originDomiaKey &&
+					request.originDomiaKey !== domia.domiaKey
+				) {
+					grpcServerLogger.warn(
+						"⚠️ reflection report misrouted — origin mismatch, rejecting",
+						{ origin: request.originDomiaKey, self: domia.domiaKey },
+					)
+					return { accepted: false }
+				}
+				try {
+					if (request.emotionDeltaJson) {
+						try {
+							const parsed = emotionPartialSchema.safeParse(
+								JSON.parse(request.emotionDeltaJson),
+							)
+							if (parsed.success)
+								applyMoodDelta(domia, parsed.data, request.cause)
+							else
+								grpcServerLogger.warn("⚠️ reflection emotion delta invalid", {
+									issues: parsed.error.issues,
+								})
+						} catch (err) {
+							grpcServerLogger.warn("⚠️ reflection emotion delta unparseable", {
+								err,
 							})
-					} catch (err) {
-						grpcServerLogger.warn("⚠️ reflection emotion delta unparseable", {
-							err,
-						})
+						}
 					}
-				}
-				if (request.factsJson) {
-					try {
-						const raw = JSON.parse(request.factsJson)
-						const explicitKeys = new Set(
-							(Array.isArray(raw) ? raw : [])
-								.filter((f) => f?.explicit === true)
-								.map((f) => `${f.subject}|${f.relation}|${f.value}`),
-						)
-						const facts = parseFacts(raw).map((f) =>
-							explicitKeys.has(`${f.subject}|${f.relation}|${f.value}`)
-								? { ...f, explicit: true }
-								: f,
-						)
-						await upsertFacts(domia, facts, request.interactionId)
-					} catch (err) {
-						grpcServerLogger.warn("⚠️ reflection facts failed", { err })
+					if (request.factsJson) {
+						try {
+							const raw: unknown = JSON.parse(request.factsJson)
+							const rawFacts: unknown[] = Array.isArray(raw) ? raw : []
+							const explicitKeys = new Set(
+								rawFacts
+									.filter(
+										(f): f is Record<string, unknown> =>
+											typeof f === "object" &&
+											f !== null &&
+											(f as Record<string, unknown>).explicit === true,
+									)
+									.map((f) =>
+										[f.subject, f.relation, f.value]
+											.map((v) => String(v))
+											.join("|"),
+									),
+							)
+							const facts = parseFacts(raw).map((f) =>
+								explicitKeys.has(`${f.subject}|${f.relation}|${f.value}`)
+									? { ...f, explicit: true }
+									: f,
+							)
+							await upsertFacts(domia, facts, request.interactionId)
+						} catch (err) {
+							grpcServerLogger.warn("⚠️ reflection facts failed", { err })
+						}
 					}
-				}
-				if (request.userEmotionJson) {
-					try {
-						const userEmotion = parseUserEmotionFromObject(
-							JSON.parse(request.userEmotionJson),
-						)
-						if (userEmotion && request.interactionId)
-							await updateInteraction({
-								id: request.interactionId,
-								userEmotionSnapshot: userEmotion,
+					if (request.userEmotionJson) {
+						try {
+							const userEmotion = parseUserEmotionFromObject(
+								JSON.parse(request.userEmotionJson),
+							)
+							if (userEmotion && request.interactionId)
+								await updateInteraction({
+									id: request.interactionId,
+									userEmotionSnapshot: userEmotion,
+								})
+							if (userEmotion) applyUserEmotionInfluence(domia, userEmotion)
+						} catch (err) {
+							grpcServerLogger.warn("⚠️ reflection user emotion failed", {
+								err,
 							})
-						if (userEmotion) applyUserEmotionInfluence(domia, userEmotion)
-					} catch (err) {
-						grpcServerLogger.warn("⚠️ reflection user emotion failed", { err })
+						}
 					}
+					return { accepted: true }
+				} catch (err) {
+					grpcServerLogger.error("❌ reportReflection failed", { err })
+					return { accepted: false }
 				}
-				return { accepted: true }
-			} catch (err) {
-				grpcServerLogger.error("❌ reportReflection failed", { err })
-				return { accepted: false }
-			}
-		},
+			}),
 
-		async reportStageExecution(
+		reportStageExecution: (
 			request: StageExecutionReport,
-		): Promise<StageExecutionAck> {
-			setTraceContext({ interactionId: request.interactionId })
-			const id = request.interactionId
-			if (!id) return { accepted: false }
-			const { domia } = await resolveTarget(request.originDomiaKey)
-			if (request.originDomiaKey && request.originDomiaKey !== domia.domiaKey) {
-				grpcServerLogger.warn(
-					"⚠️ stage report misrouted — origin mismatch, rejecting",
-					{ origin: request.originDomiaKey, self: domia.domiaKey },
-				)
-				return { accepted: false }
-			}
-			try {
-				for (const m of request.stages) {
-					if (m.stage === "stt") {
-						await updateInteraction({
-							id,
-							sttMs: m.stageMs,
-							sttModelUsed: m.model ?? null,
-							sttExecutorKey: m.executorDomiaKey,
-						})
-					} else if (m.stage === "llm") {
-						await updateInteraction({
-							id,
-							llmMs: m.stageMs,
-							llmModelUsed: m.model ?? null,
-							llmExecutorKey: m.executorDomiaKey,
-							llmPromptTokens: m.promptTokens ?? null,
-							llmCompletionTokens: m.completionTokens ?? null,
-							llmTokensPerSec: m.tokensPerSec ?? null,
-							llmTtftMs: m.ttftMs ?? null,
-							llmContextWindow: m.contextWindow ?? null,
-							llmFinishReason: m.finishReason ?? null,
-						})
-					} else if (m.stage === "tts") {
-						await updateInteraction({
-							id,
-							ttsMs: m.stageMs,
-							ttsEngineUsed: m.engine ?? null,
-							ttsVoiceUsed: m.voice ?? null,
-							ttsExecutorKey: m.executorDomiaKey,
-						})
-					}
+		): Promise<StageExecutionAck> =>
+			runWithTraceContext(traceOf(request), async () => {
+				const id = request.interactionId
+				if (!id) return { accepted: false }
+				const { domia } = await resolveTarget(request.originDomiaKey)
+				if (
+					request.originDomiaKey &&
+					request.originDomiaKey !== domia.domiaKey
+				) {
+					grpcServerLogger.warn(
+						"⚠️ stage report misrouted — origin mismatch, rejecting",
+						{ origin: request.originDomiaKey, self: domia.domiaKey },
+					)
+					return { accepted: false }
 				}
-				return { accepted: true }
-			} catch (err) {
-				grpcServerLogger.error("❌ reportStageExecution failed", { err })
-				return { accepted: false }
-			}
-		},
+				try {
+					for (const m of request.stages) {
+						if (m.stage === "stt") {
+							await updateInteraction({
+								id,
+								sttMs: m.stageMs,
+								sttModelUsed: m.model ?? null,
+								sttExecutorKey: m.executorDomiaKey,
+							})
+						} else if (m.stage === "llm") {
+							await updateInteraction({
+								id,
+								llmMs: m.stageMs,
+								llmModelUsed: m.model ?? null,
+								llmExecutorKey: m.executorDomiaKey,
+								llmPromptTokens: m.promptTokens ?? null,
+								llmCompletionTokens: m.completionTokens ?? null,
+								llmTokensPerSec: m.tokensPerSec ?? null,
+								llmTtftMs: m.ttftMs ?? null,
+								llmContextWindow: m.contextWindow ?? null,
+								llmFinishReason: m.finishReason ?? null,
+							})
+						} else if (m.stage === "tts") {
+							await updateInteraction({
+								id,
+								ttsMs: m.stageMs,
+								ttsEngineUsed: m.engine ?? null,
+								ttsVoiceUsed: m.voice ?? null,
+								ttsExecutorKey: m.executorDomiaKey,
+							})
+						}
+					}
+					return { accepted: true }
+				} catch (err) {
+					grpcServerLogger.error("❌ reportStageExecution failed", { err })
+					return { accepted: false }
+				}
+			}),
 
-		async runInferenceWithTools(
+		runInferenceWithTools: (
 			request: InferenceRequest,
-		): Promise<InferenceResponse> {
-			setTraceContext({
-				interactionId: request.interactionId,
-				originDomiaKey: request.originDomiaKey,
-			})
-			const { domia, features } = await resolveTarget(request.targetDomiaKey)
-			if (!features.canRunLlm) {
-				throw new Error("llm capability disabled on this domia")
-			}
-			const messages = JSON.parse(request.messagesJson) as ChatMessageType[]
-			const tools = JSON.parse(request.toolsJson) as ToolDefinitionType[]
-			grpcServerLogger.info("🛠️ RunInferenceWithTools (hub inference only)", {
-				toolCount: tools.length,
-				model: domia.llmModelConfig?.modelName,
-				origin: request.originDomiaKey,
-			})
-			const out = await runLLMWithTools(domia, messages, tools)
-			if (out.kind === "reply") return { reply: out.text }
-			return { toolCallsJson: JSON.stringify(out.calls) }
-		},
+		): Promise<InferenceResponse> =>
+			runWithTraceContext(traceOf(request), async () => {
+				const { domia, features } = await resolveTarget(request.targetDomiaKey)
+				if (!features.canRunLlm) {
+					throw capabilityDisabled("llm", domia.domiaKey)
+				}
+				const messages = JSON.parse(request.messagesJson) as ChatMessageType[]
+				const tools = JSON.parse(request.toolsJson) as ToolDefinitionType[]
+				grpcServerLogger.info("🛠️ RunInferenceWithTools (hub inference only)", {
+					toolCount: tools.length,
+					model: domia.llmModelConfig?.modelName,
+					origin: request.originDomiaKey,
+				})
+				const out = await runLLMWithTools(domia, messages, tools)
+				if (out.kind === "reply") return { reply: out.text }
+				return { toolCallsJson: JSON.stringify(out.calls) }
+			}),
 
 		async speak(request: SpeakRequest): Promise<SpeakAck> {
 			if (!isHostedIdentity(request.targetDomiaKey)) {
@@ -565,8 +594,10 @@ const buildImplementation = ({
 				})
 				return { delivered: false, target: "unknown" }
 			}
-			setTraceContext({ originDomiaKey: target.domiaKey })
-			const result = await speakOnDomia(target, request.text)
+			const result = await runWithTraceContext(
+				{ originDomiaKey: target.domiaKey, traceId: ensureTraceId() },
+				() => speakOnDomia(target, request.text),
+			)
 			grpcServerLogger.info(`📢 Speak → ${result.target}`, {
 				targetDomiaKey: target.domiaKey,
 				delivered: result.delivered,
@@ -600,10 +631,12 @@ export const setupGrpcServer = async ({
 
 	const addr = `${env.GRPC_HOST}:${env.GRPC_PORT}`
 	try {
-		await server.listen(addr)
-		grpcServerLogger.success(`✅ gRPC server ready on ${addr}`)
+		await server.listen(addr, grpcServerCredentials())
+		grpcServerLogger.success(
+			`✅ gRPC server ready on ${addr} (${isTlsEnabled() ? "tls" : "plaintext"})`,
+		)
 	} catch (err) {
-		grpcServerLogger.error(`❌ gRPC server failed to start: ${err}`)
+		grpcServerLogger.error("❌ gRPC server failed to start", { err })
 		server = null
 		throw err
 	}
@@ -614,7 +647,7 @@ export const setupGrpcServer = async ({
 		try {
 			await server.shutdown()
 		} catch (err) {
-			grpcServerLogger.warn(`gRPC server shutdown error: ${err}`)
+			grpcServerLogger.warn("gRPC server shutdown error", { err })
 		}
 		closeAllChannels()
 		server = null

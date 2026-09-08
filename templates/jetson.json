@@ -17,10 +17,7 @@
 		"memoryEngine": true,
 		"factCapture": true,
 		"factRecall": true,
-		"collectiveMind": true,
-		"narrativeEngine": true,
 		"identityEngine": true,
-		"remoteAccessEngine": true,
 		"skillsEngine": false
 	},
 	"stt": {

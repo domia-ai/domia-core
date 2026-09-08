@@ -16,6 +16,15 @@ import {
 	configShowCommand,
 	configHealthCommand,
 } from "../"
+import type {
+	InteractiveMenuAnswersType,
+	InteractiveSttAnswersType,
+	InteractiveBaseUrlAnswersType,
+	InteractivePromptAnswersType,
+	InteractiveBatchAnswersType,
+	InteractiveTextAnswersType,
+	InteractiveFileAnswersType,
+} from "../../types"
 
 const REMOTE_STT_ENGINES: string[] = [
 	STT_ENGINE_ENUM.NEMO_SPEECH,
@@ -23,7 +32,7 @@ const REMOTE_STT_ENGINES: string[] = [
 ]
 
 export const interactiveCommand = async () => {
-	const { command } = await inquirer.prompt([
+	const { command } = await inquirer.prompt<InteractiveMenuAnswersType>([
 		{
 			type: "list",
 			name: "command",
@@ -47,7 +56,7 @@ export const interactiveCommand = async () => {
 
 	switch (command) {
 		case "environment":
-			await environmentCommand()
+			environmentCommand()
 			break
 		case "wake-word":
 			await wakeWordCommand()
@@ -56,23 +65,25 @@ export const interactiveCommand = async () => {
 			await audioRecordingCommand()
 			break
 		case "stt": {
-			const { file, engine } = await inquirer.prompt([
-				{
-					type: "input",
-					name: "file",
-					message: "📝 Path to audio file:",
-					default: "tmp/mic_test_output.wav",
-				},
-				{
-					type: "list",
-					name: "engine",
-					message: "📝 STT engine:",
-					choices: [...STT_ENGINE_ENUM_VALUES],
-				},
-			])
+			const { file, engine } = await inquirer.prompt<InteractiveSttAnswersType>(
+				[
+					{
+						type: "input",
+						name: "file",
+						message: "📝 Path to audio file:",
+						default: "tmp/mic_test_output.wav",
+					},
+					{
+						type: "list",
+						name: "engine",
+						message: "📝 STT engine:",
+						choices: [...STT_ENGINE_ENUM_VALUES],
+					},
+				],
+			)
 			let baseUrl: string | undefined
 			if (REMOTE_STT_ENGINES.includes(engine)) {
-				const answers = await inquirer.prompt([
+				const answers = await inquirer.prompt<InteractiveBaseUrlAnswersType>([
 					{
 						type: "input",
 						name: "baseUrl",
@@ -86,7 +97,7 @@ export const interactiveCommand = async () => {
 			break
 		}
 		case "llm": {
-			const { prompt } = await inquirer.prompt([
+			const { prompt } = await inquirer.prompt<InteractivePromptAnswersType>([
 				{
 					type: "input",
 					name: "prompt",
@@ -99,26 +110,27 @@ export const interactiveCommand = async () => {
 		}
 
 		case "llm-batch": {
-			const { input, output } = await inquirer.prompt([
-				{
-					type: "input",
-					name: "input",
-					message: "📥 Path to input .jsonl file:",
-					default: "tmp/llm-batch/input.jsonl",
-				},
-				{
-					type: "input",
-					name: "output",
-					message: "📤 Path to output .jsonl file:",
-					default: "tmp/llm-batch/output.jsonl",
-				},
-			])
+			const { input, output } =
+				await inquirer.prompt<InteractiveBatchAnswersType>([
+					{
+						type: "input",
+						name: "input",
+						message: "📥 Path to input .jsonl file:",
+						default: "tmp/llm-batch/input.jsonl",
+					},
+					{
+						type: "input",
+						name: "output",
+						message: "📤 Path to output .jsonl file:",
+						default: "tmp/llm-batch/output.jsonl",
+					},
+				])
 			await llmBatchCommand(input, output)
 			break
 		}
 
 		case "tts": {
-			const { text } = await inquirer.prompt([
+			const { text } = await inquirer.prompt<InteractiveTextAnswersType>([
 				{
 					type: "input",
 					name: "text",
@@ -131,7 +143,7 @@ export const interactiveCommand = async () => {
 		}
 
 		case "play-audio": {
-			const { file } = await inquirer.prompt([
+			const { file } = await inquirer.prompt<InteractiveFileAnswersType>([
 				{
 					type: "input",
 					name: "file",
@@ -144,7 +156,7 @@ export const interactiveCommand = async () => {
 		}
 
 		case "benchmark": {
-			const { file } = await inquirer.prompt([
+			const { file } = await inquirer.prompt<InteractiveFileAnswersType>([
 				{
 					type: "input",
 					name: "file",

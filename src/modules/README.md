@@ -17,7 +17,6 @@ Each DOMIA module includes the following standard folders:
 | `schemas/`    | Includes validation schemas (e.g., with Zod) to enforce input/output integrity.           |
 | `types/`      | TypeScript interfaces and types shared within the module.                                 |
 | `utils/`      | Stateless utility functions used internally.                                              |
-| `__tests__/`  | Unit tests scoped to the module’s functionality.                                          |
 | `index.ts`    | Entry point that re-exports selected functionality for simplified imports.                |
 
 ### 🧩 Why Modular?

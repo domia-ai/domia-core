@@ -15,13 +15,13 @@ export const setupEnvironment = (
 	for (const capability of Object.keys(
 		runtimeCapabilities,
 	) as CapabilityKeyType[]) {
-		if (!runtimeCapabilities?.[capability]) continue
+		if (!runtimeCapabilities[capability]) continue
 
-		const resources = CAPABILITY_RESOURCES?.[capability]
+		const resources = CAPABILITY_RESOURCES[capability]
 		if (!resources) continue
 
-		resources?.binaries?.forEach((bin) => binariesToCheck.push(bin))
-		resources?.tempDirs?.forEach((dir) => tempDirsToEnsure.add(dir))
+		resources.binaries?.forEach((bin) => binariesToCheck.push(bin))
+		resources.tempDirs?.forEach((dir) => tempDirsToEnsure.add(dir))
 	}
 
 	const missingBinaries: string[] = []

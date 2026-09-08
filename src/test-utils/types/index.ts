@@ -13,6 +13,10 @@ import {
 	type SelectMqttConfigType,
 	type SelectCapabilityDelegationType,
 } from "@/db"
+import type {
+	ConfigReloaderType,
+	ReloaderScopeType,
+} from "@/modules/config-apply/types"
 
 export type GetDomiaParamsType = {
 	domiaOverrides?: Partial<SelectDomiaType>
@@ -45,4 +49,15 @@ export type VoiceCorpusType = {
 	ttsVoice: string
 	sampleRateHz: number
 	entries: VoiceCorpusEntryType[]
+}
+
+export type StubReloaderType = ConfigReloaderType & {
+	calls: () => number
+	failures: () => number
+}
+
+export type StubReloaderOptionsType = {
+	scope?: ReloaderScopeType
+	failTimes?: number
+	message?: string
 }

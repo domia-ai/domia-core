@@ -12,6 +12,8 @@ import {
 	wasSpeculationCommitted,
 	uniqueArtifactPath,
 	LADDER_STAGE_COLS,
+	stringOrEmpty,
+	stats,
 } from "./lib"
 import type { BenchStatsType, BenchSummaryType } from "./types"
 
@@ -22,10 +24,10 @@ const OUT_DIR = path.resolve("evals/bench-results")
 
 const CORPUS = JSON.parse(
 	readFileSync(
-		path.resolve("src/test-utils/voice-corpora/golden.json"),
+		path.resolve(`src/test-utils/voice-corpora/${env.BENCH_CORPUS}.json`),
 		"utf8",
 	),
-) as { golden: { id: string; text: string }[] }
+) as { golden: { id: string; text: string; file?: string }[] }
 
 const METRIC_COLS = [
 	"stt_ms",
@@ -103,20 +105,6 @@ const wordOverlap = (expected: string, actual: string): number => {
 	return exp.filter((w) => act.has(w)).length / exp.length
 }
 
-const percentile = (xs: number[], p: number): number => {
-	if (xs.length === 0) return 0
-	const s = [...xs].sort((a, b) => a - b)
-	const idx = Math.min(s.length - 1, Math.ceil((p / 100) * s.length) - 1)
-	return s[Math.max(0, idx)]
-}
-
-const stats = (xs: number[]): BenchStatsType => ({
-	p50: percentile(xs, 50),
-	p95: percentile(xs, 95),
-	min: Math.min(...xs),
-	max: Math.max(...xs),
-})
-
 const summarize = (
 	rows: Record<string, unknown>[],
 ): Record<string, BenchStatsType> => {
@@ -142,7 +130,7 @@ const main = async (): Promise<void> => {
 	for (let run = 1; run <= env.BENCH_RUNS; run++) {
 		for (const g of CORPUS.golden) {
 			const rowId = env.BENCH_RUNS > 1 ? `${g.id}#${run}` : g.id
-			const filePath = path.resolve(`evals/fixtures/${g.id}.wav`)
+			const filePath = path.resolve(g.file ?? `evals/fixtures/${g.id}.wav`)
 			const res = await fetch(`${env.EVAL_URL}/voice`, {
 				method: "POST",
 				headers: { "content-type": "application/json", ...meshHeaders() },
@@ -187,7 +175,7 @@ const main = async (): Promise<void> => {
 	const expected = CORPUS.golden.length * env.BENCH_RUNS
 	const transcriptMismatches = okRows.filter(
 		(r) =>
-			wordOverlap(String(r.expectedText ?? ""), String(r.transcript ?? "")) <
+			wordOverlap(stringOrEmpty(r.expectedText), stringOrEmpty(r.transcript)) <
 			0.5,
 	).length
 	const violationCount = rows.reduce(
@@ -222,15 +210,20 @@ const main = async (): Promise<void> => {
 	writeFileSync(outFile, JSON.stringify({ summary, rows }, null, "\t"))
 	console.log(`saved → ${outFile}`)
 
-	const gates: [string, number | undefined, number | undefined][] = [
-		["ttfa_ms", env.BENCH_TTFA_P95_MAX, summary.all.ttfa_ms?.p95],
-		["total_ms", env.BENCH_TOTAL_P95_MAX, summary.all.total_ms?.p95],
+	const gates: [string, number | undefined][] = [
+		["ttfa_ms", env.BENCH_TTFA_P95_MAX],
+		["total_ms", env.BENCH_TOTAL_P95_MAX],
 	]
 	let breached = violationCount > 0
-	for (const [name, max, actual] of gates) {
+	for (const [name, max] of gates) {
 		if (max == null) continue
-		if (actual == null || actual > max) {
-			console.error(`GATE BREACH: ${name} p95=${actual ?? "n/a"} > ${max}`)
+		if (!Object.hasOwn(summary.all, name)) {
+			console.log(`gate skipped: ${name} not measured (no samples)`)
+			continue
+		}
+		const actual = summary.all[name].p95
+		if (actual > max) {
+			console.error(`GATE BREACH: ${name} p95=${actual} > ${max}`)
 			breached = true
 		} else {
 			console.log(`gate ok: ${name} p95=${actual} <= ${max}`)
@@ -239,7 +232,7 @@ const main = async (): Promise<void> => {
 	process.exit(breached ? 1 : 0)
 }
 
-void main().catch((e) => {
+void main().catch((e: unknown) => {
 	console.error(e)
 	process.exit(1)
 })

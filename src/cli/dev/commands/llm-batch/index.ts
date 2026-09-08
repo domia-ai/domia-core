@@ -30,7 +30,7 @@ export const llmBatchCommand = async (
 		const results: ResultType[] = []
 
 		for await (const line of rl) {
-			const { transcript }: BatchInputType = JSON.parse(line)
+			const { transcript } = JSON.parse(line) as BatchInputType
 			const prompt = buildPromptContext(domia, transcript)
 
 			devCliLogger.info(`🧠 Prompt: "${transcript}"`)
@@ -58,8 +58,7 @@ export const llmBatchCommand = async (
 		outputStream.close()
 		devCliLogger.info("✅ Batch process completed.")
 
-		const avg =
-			results?.reduce((a, b) => a + b?.durationMs, 0) / results?.length
+		const avg = results.reduce((a, b) => a + b.durationMs, 0) / results.length
 
 		const min = Math.min(...results.map((r) => r.durationMs))
 		const max = Math.max(...results.map((r) => r.durationMs))

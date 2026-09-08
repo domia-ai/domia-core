@@ -7,15 +7,23 @@ FILE="${DATABASE_URL:-}"
 	exit 1
 }
 case "$FILE" in
-data/db/*.db) ;;
+*..*)
+	echo "❌ DATABASE_URL must not contain '..' (got '$FILE')" >&2
+	exit 1
+	;;
+esac
+case "$FILE" in
+*.db) ;;
 *)
-	echo "❌ DATABASE_URL must be under data/db/ and end in .db (got '$FILE')" >&2
+	echo "❌ DATABASE_URL must end in .db (got '$FILE')" >&2
 	exit 1
 	;;
 esac
 
-echo "🗑  Removing $FILE"
 mkdir -p "$(dirname "$FILE")"
+FILE="$(cd "$(dirname "$FILE")" && pwd)/$(basename "$FILE")"
+
+echo "🗑  Removing $FILE"
 rm -f "$FILE" "$FILE-wal" "$FILE-shm"
 
 echo "📐 Applying schema (push)…"

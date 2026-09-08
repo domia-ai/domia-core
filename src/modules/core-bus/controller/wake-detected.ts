@@ -27,6 +27,7 @@ import {
 	abortActiveTurn,
 	getIntercom,
 	skillsMayIntercept,
+	twoTierEndpointArmed,
 } from "../utils"
 import { runSpeculativeTurn } from "./speculative-turn"
 import type { CoreBusContextType } from "../types"
@@ -66,11 +67,14 @@ export const handleWakeDetected = async (
 	}
 
 	if (domia.wakeWordConfig) observeBargeIn(domiaId, domia.wakeWordConfig)
+	let bargeIn = false
 	if (abortActiveTurn(domiaId, "wake-bargein")) {
+		bargeIn = true
 		domiaBusLogger.info(`🛑 barge-in: in-flight turn aborted by wake word`, {
 			domiaId,
 		})
 	} else if (stopActivePlayback(domiaId)) {
+		bargeIn = true
 		domiaBusLogger.info(`🛑 barge-in: playback interrupted by wake word`, {
 			domiaId,
 		})
@@ -88,18 +92,24 @@ export const handleWakeDetected = async (
 		const speculationBlockedBySkills =
 			skillsMayIntercept(domia) &&
 			domia.wakeWordConfig?.speculateWithSkills !== true
-		if (
+		const decodeSpeculation =
 			speculativeMs > 0 &&
 			!speculationBlockedBySkills &&
-			stt?.adapter.runPcm &&
+			Boolean(stt?.adapter.runPcm) &&
 			(localSpeculation || !features.canRunLlm)
-		) {
-			const admitted = await admitVoiceReply(domia).catch((err: unknown) => {
-				if (isSemaphoreBusyError(err)) return null
-				throw err
-			})
-			if (admitted) {
-				const release = onceFn(admitted)
+		const eagerOnly =
+			!decodeSpeculation &&
+			twoTierEndpointArmed(domia, features) &&
+			Boolean(stt?.adapter.createSession)
+		if (decodeSpeculation || eagerOnly) {
+			const admitted = decodeSpeculation
+				? await admitVoiceReply(domia).catch((err: unknown) => {
+						if (isSemaphoreBusyError(err)) return null
+						throw err
+					})
+				: null
+			if (admitted || eagerOnly) {
+				const release = admitted ? onceFn(admitted) : undefined
 				try {
 					const interactionId = await getOrCreateInteractionId(
 						domia,
@@ -110,18 +120,25 @@ export const handleWakeDetected = async (
 						},
 					)
 					if (!interactionId) {
-						release()
+						release?.()
 						return
 					}
 					prefetchMemoryBundle(domia, interactionId)
 					setTraceContext({ interactionId, originDomiaKey: domia.domiaKey })
+					if (eagerOnly)
+						domiaBusLogger.info(`🔥 two-tier endpoint: eager prefill turn`, {
+							domiaId,
+							interactionId,
+						})
 					await runSpeculativeTurn(ctx, {
 						interactionId,
 						release,
+						decodeSpeculation,
 						replaySinceTs: wakeAt,
+						bargeIn,
 					})
 				} catch (err) {
-					release()
+					release?.()
 					throw err
 				}
 				return
@@ -192,7 +209,7 @@ export const handleWakeDetected = async (
 						sttResult: transcript,
 					}),
 				)
-				.catch((err) =>
+				.catch((err: unknown) =>
 					domiaBusLogger.error("WAKE_DETECTED: audio persistence failed", {
 						domiaId,
 						interactionId,

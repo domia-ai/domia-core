@@ -2,7 +2,14 @@ import { execFileSync } from "child_process"
 import { mkdirSync, readFileSync, writeFileSync } from "fs"
 import path from "path"
 
-import { env, meshHeaders, queryAll, sleep, judgePairwise } from "./lib"
+import {
+	env,
+	meshHeaders,
+	queryAll,
+	sleep,
+	judgePairwise,
+	percentile,
+} from "./lib"
 import { BENCH_DOMIA_KEY, ensureBenchIdentity } from "./lib/bench-identity"
 import { runtimeSnapshot } from "./lib/snapshot"
 import type {
@@ -102,17 +109,17 @@ const parseTranscript = (
 	let turnIndex = -1
 	let lastUser = ""
 	for (const line of text.split("\n")) {
-		const caseHead = line.match(/^## (.+) — (PASS|FAIL)$/)
+		const caseHead = /^## (.+) — (PASS|FAIL)$/.exec(line)
 		if (caseHead) {
 			currentCase = caseHead[1]
 			turnIndex = -1
 			cases.push({ name: currentCase, passed: caseHead[2] === "PASS" })
 			continue
 		}
-		if (/^### Turn /.test(line)) turnIndex++
-		const user = line.match(/^- \*\*User:\*\* (.*)$/)
+		if (line.startsWith("### Turn ")) turnIndex++
+		const user = /^- \*\*User:\*\* (.*)$/.exec(line)
 		if (user) lastUser = user[1]
-		const domia = line.match(/^- \*\*Domia:\*\* (.*)$/)
+		const domia = /^- \*\*Domia:\*\* (.*)$/.exec(line)
 		if (domia && currentCase)
 			replies.push({
 				caseName: currentCase,
@@ -144,11 +151,8 @@ const speedStats = (
 		[BENCH_DOMIA_KEY, model, sinceIso],
 	)
 	const p50 = (values: (number | null)[]): number | null => {
-		const nums = values
-			.filter((v): v is number => v !== null)
-			.sort((a, z) => a - z)
-		if (!nums.length) return null
-		return Math.round(nums[Math.floor(nums.length / 2)])
+		const nums = values.filter((v): v is number => v !== null)
+		return nums.length ? Math.round(percentile(nums, 50)) : null
 	}
 	return {
 		ttftP50Ms: p50(rows.map((r) => r.ttft)),
@@ -166,7 +170,7 @@ const main = async (): Promise<void> => {
 	try {
 		await runTournament(results, repliesByModel)
 	} finally {
-		await setModel(INCUMBENT).catch((err) =>
+		await setModel(INCUMBENT).catch((err: unknown) =>
 			console.error("incumbent restore failed:", err),
 		)
 	}

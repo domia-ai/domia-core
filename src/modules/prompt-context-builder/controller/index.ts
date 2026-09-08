@@ -1,4 +1,5 @@
 import { DomiaType } from "@/modules/core"
+import { languageSetsFor } from "@/utils"
 
 import {
 	STATIC_DOMIA_PROMPT_FULL,
@@ -29,9 +30,9 @@ export const personaContextFromDomia = (
 	previously?: string[],
 	userModel?: string | null,
 ): PersonaContextType => {
-	const cp = domia?.characterProfile
-	const es = domia?.emotionState
-	const ms = domia?.moduleSettings
+	const cp = domia.characterProfile
+	const es = domia.emotionState
+	const ms = domia.moduleSettings
 	return {
 		characterProfile: cp
 			? {
@@ -52,14 +53,14 @@ export const personaContextFromDomia = (
 			: null,
 		emotionState: es
 			? {
-					joy: es.joy ?? 0,
-					sadness: es.sadness ?? 0,
-					anger: es.anger ?? 0,
-					fear: es.fear ?? 0,
-					trust: es.trust ?? 0,
-					disgust: es.disgust ?? 0,
-					anticipation: es.anticipation ?? 0,
-					surprise: es.surprise ?? 0,
+					joy: es.joy,
+					sadness: es.sadness,
+					anger: es.anger,
+					fear: es.fear,
+					trust: es.trust,
+					disgust: es.disgust,
+					anticipation: es.anticipation,
+					surprise: es.surprise,
 				}
 			: null,
 		moduleSettings: ms
@@ -74,7 +75,7 @@ export const personaContextFromDomia = (
 					skillsEngine: ms.skillsEngine,
 				}
 			: null,
-		useCompactPrompt: domia?.llmModelConfig?.useCompactPrompt ?? false,
+		useCompactPrompt: domia.llmModelConfig?.useCompactPrompt ?? false,
 		recentTurns: recentTurns?.length ? recentTurns : null,
 		knownFacts: knownFacts?.length ? knownFacts : null,
 		knowledgeBase: knowledgeBase?.length ? knowledgeBase : null,
@@ -83,9 +84,9 @@ export const personaContextFromDomia = (
 		userMoodTrend: userMoodTrend?.length ? userMoodTrend : null,
 		promptOverrides:
 			cp?.promptOverrides && typeof cp.promptOverrides === "object"
-				? (cp.promptOverrides as PersonaContextType["promptOverrides"])
+				? cp.promptOverrides
 				: null,
-		ttsVoice: domia?.ttsConfig
+		ttsVoice: domia.ttsConfig
 			? {
 					voiceName: domia.ttsConfig.voiceName,
 					speed: domia.ttsConfig.speed,
@@ -157,14 +158,8 @@ const renderPersonaSignature = (
 const renderTransparency = (name: string): string =>
 	substituteName(TRANSPARENCY_CLAUSE, name)
 
-const LANGUAGE_NAMES: Record<string, string> = {
-	en: "English",
-	es: "Spanish",
-}
-
 const renderLanguageClause = (persona: PersonaContextType): string => {
-	const lang = persona.characterProfile?.language ?? "en"
-	const name = LANGUAGE_NAMES[lang] ?? lang
+	const name = languageSetsFor(persona.characterProfile?.language).displayName
 	return `Your language is ${name} — ALWAYS reply in ${name}, never mix languages, unless the person clearly writes in a different language.`
 }
 
@@ -201,14 +196,14 @@ const renderEmotionalState = (persona: PersonaContextType): string => {
 	const state = persona.emotionState
 	if (!state) return ""
 	const entries: EmotionEntryType[] = [
-		["joy", state.joy ?? 0],
-		["sadness", state.sadness ?? 0],
-		["anger", state.anger ?? 0],
-		["fear", state.fear ?? 0],
-		["trust", state.trust ?? 0],
-		["disgust", state.disgust ?? 0],
-		["anticipation", state.anticipation ?? 0],
-		["surprise", state.surprise ?? 0],
+		["joy", state.joy],
+		["sadness", state.sadness],
+		["anger", state.anger],
+		["fear", state.fear],
+		["trust", state.trust],
+		["disgust", state.disgust],
+		["anticipation", state.anticipation],
+		["surprise", state.surprise],
 	]
 	const significant = entries
 		.filter(([, v]) => v > EMOTION_NOISE_THRESHOLD)
@@ -278,78 +273,21 @@ const renderCharacter = (persona: PersonaContextType, name: string): string => {
 	return `${name} ${parts.join(", ")}.`
 }
 
-const nowDateFormat = (): Intl.DateTimeFormat =>
-	new Intl.DateTimeFormat("en-US", {
+const nowDateFormat = (locale: string): Intl.DateTimeFormat =>
+	new Intl.DateTimeFormat(locale, {
 		weekday: "long",
 		year: "numeric",
 		month: "long",
 		day: "numeric",
 	})
 
-const ONES_WORDS = [
-	"twelve",
-	"one",
-	"two",
-	"three",
-	"four",
-	"five",
-	"six",
-	"seven",
-	"eight",
-	"nine",
-	"ten",
-	"eleven",
-]
-
-const MINUTE_WORDS = [
-	"",
-	"one",
-	"two",
-	"three",
-	"four",
-	"five",
-	"six",
-	"seven",
-	"eight",
-	"nine",
-	"ten",
-	"eleven",
-	"twelve",
-	"thirteen",
-	"fourteen",
-	"fifteen",
-	"sixteen",
-	"seventeen",
-	"eighteen",
-	"nineteen",
-]
-
-const TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty"]
-
-const minuteToWords = (m: number): string => {
-	if (m < 20) return MINUTE_WORDS[m]
-	const tens = TENS_WORDS[Math.floor(m / 10)]
-	const ones = m % 10
-	return ones === 0 ? tens : `${tens}-${MINUTE_WORDS[ones]}`
-}
-
-const spokenTime = (d: Date): string => {
-	const hour = ONES_WORDS[d.getHours() % 12]
-	const minutes = d.getMinutes()
-	const period =
-		d.getHours() < 12
-			? "in the morning"
-			: d.getHours() < 18
-				? "in the afternoon"
-				: "in the evening"
-	if (minutes === 0) return `${hour} o'clock ${period}`
-	if (minutes < 10) return `${hour} oh ${minuteToWords(minutes)} ${period}`
-	return `${hour} ${minuteToWords(minutes)} ${period}`
-}
-
-const renderNow = (epochMs?: number): string => {
+export const renderNow = (
+	epochMs?: number,
+	language?: string | null,
+): string => {
 	const d = epochMs !== undefined ? new Date(epochMs) : new Date()
-	return `Background data, not something to announce: today is ${nowDateFormat().format(d)}, and the time right now is ${spokenTime(d)} (spoken form).
+	const sets = languageSetsFor(language)
+	return `Background data, not something to announce: today is ${nowDateFormat(sets.locale).format(d)}, and the time right now is ${sets.spokenTime(d)} (spoken form).
 Mention the time or date ONLY when the user explicitly asks for it — never as an answer to anything else.
 Times mentioned in earlier turns are in the past; the current time is only the one above.`
 }
@@ -362,7 +300,7 @@ const clipReply = (text: string): string => {
 }
 
 const renderRecentTurns = (turns: RecentTurnType[]): string => {
-	if (!turns?.length) return ""
+	if (!turns.length) return ""
 	const lines = turns.flatMap((turn) => {
 		const out: string[] = []
 		if (turn.userText) out.push(`User: ${turn.userText}`)
@@ -494,11 +432,17 @@ export const buildPromptFromPersona = (
 	}
 
 	if (moduleSettings?.environmentTimeEnabled !== false) {
-		sections.push(["NOW", renderNow(persona.originEpochMs ?? undefined)])
+		sections.push([
+			"NOW",
+			renderNow(
+				persona.originEpochMs ?? undefined,
+				persona.characterProfile?.language,
+			),
+		])
 	}
 
 	if (!options?.omitUserInput) {
-		sections.push(["USER INPUT", transcript?.trim() ?? ""])
+		sections.push(["USER INPUT", transcript.trim()])
 	}
 
 	const body = sections

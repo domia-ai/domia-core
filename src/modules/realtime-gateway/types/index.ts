@@ -21,6 +21,11 @@ export type RealtimeClientEventType =
 	| { type: "response.create" }
 	| { type: "response.cancel" }
 
+export type RealtimeParsedEventType =
+	| { kind: "event"; event: RealtimeClientEventType }
+	| { kind: "unsupported"; type: string }
+	| { kind: "invalid" }
+
 export type RealtimeServerEventType = {
 	type: string
 	event_id: string

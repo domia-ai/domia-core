@@ -1,3 +1,4 @@
+import { toolBaseName } from "./tool-name"
 import type { DomiaType } from "@/modules/core"
 
 import type { ToolManifestType } from "../types"
@@ -9,10 +10,7 @@ const mergeAliases = (
 ): void => {
 	for (const [key, value] of Object.entries(from)) {
 		const token = key.toLowerCase()
-		into[token] = [
-			...(into[token] ?? []),
-			...value.map((v) => String(v).toLowerCase()),
-		]
+		into[token] = [...(into[token] ?? []), ...value.map((v) => v.toLowerCase())]
 	}
 }
 
@@ -29,7 +27,8 @@ export const buildToolManifest = (domia: DomiaType): ToolManifestType => {
 		mergeAliases(aliases, descriptor.aliases)
 		const core = new Set(descriptor.coreTools)
 		for (const tool of tools)
-			if (core.has(tool.rawName)) coreNames.add(tool.namespacedName)
+			if (core.has(tool.rawName) || core.has(toolBaseName(tool.rawName)))
+				coreNames.add(tool.namespacedName)
 		exampleUtterances.push(...descriptor.exampleUtterances)
 		keywords.push(...descriptor.keywords)
 	}

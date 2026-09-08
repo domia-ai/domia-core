@@ -32,37 +32,6 @@ export type SttEngineAdapterType = {
 	createSession?: (domia: DomiaType) => SttStreamSessionType | null
 }
 
-export type WhisperPathsType = {
-	dir: string
-	encoder: string
-	decoder: string
-	tokens: string
-}
-
-export type MoonshinePathsType = {
-	dir: string
-	preprocessor: string
-	encoder: string
-	uncachedDecoder: string
-	cachedDecoder: string
-	tokens: string
-}
-
-export type ZipformerPathsType = {
-	dir: string
-	encoder: string
-	decoder: string
-	joiner: string
-	tokens: string
-}
-
-export type ZipformerEndpointConfigType = {
-	enableEndpoint: boolean
-	rule1MinTrailingSilence: number
-	rule2MinTrailingSilence: number
-	rule3MinUtteranceLength: number
-}
-
 export type SttWorkerEngineConfigType = {
 	engine: SttEngineEnumType
 	modelPath: string

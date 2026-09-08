@@ -1,6 +1,9 @@
 import { AsyncLocalStorage } from "async_hooks"
+import { randomUUID } from "crypto"
 
 import type { TraceContextType } from "./types"
+
+const TRACE_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/
 
 const traceContextStore = new AsyncLocalStorage<TraceContextType>()
 
@@ -15,6 +18,10 @@ export const setTraceContext = (ctx: TraceContextType): void => {
 	traceContextStore.enterWith({ ...current, ...ctx })
 }
 
-export const clearTraceContext = (): void => {
-	traceContextStore.enterWith({})
+export const ensureTraceId = (incoming?: unknown): string => {
+	if (typeof incoming === "string") {
+		const candidate = incoming.trim()
+		if (TRACE_ID_RE.test(candidate)) return candidate
+	}
+	return randomUUID()
 }

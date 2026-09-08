@@ -35,10 +35,10 @@ const connectBindings = async (
 						host: row.host,
 						port: row.port,
 						encryptionKey: row.encryptionKey,
-						desiredWakeWords: row.desiredWakeWords ?? [],
-						desiredNumbers: row.desiredNumbers ?? {},
+						desiredWakeWords: row.desiredWakeWords,
+						desiredNumbers: row.desiredNumbers,
 						desiredVolume: row.desiredVolume ?? null,
-						followUpEnabled: row.followUpEnabled ?? false,
+						followUpEnabled: row.followUpEnabled,
 						followUpNoSpeechMs: row.followUpNoSpeechMs,
 						playbackDrainMarginMs: row.playbackDrainMarginMs,
 						runListeningMaxMs: row.runListeningMaxMs,
@@ -55,6 +55,7 @@ const connectBindings = async (
 					fallback,
 					row.domia.domiaKey,
 					row.satelliteId,
+					{ streamingTts: row.wyomingStreamingTts },
 				).close
 				break
 			case SATELLITE_PROTOCOL_ENUM.LIVEKIT: {

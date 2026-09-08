@@ -89,7 +89,7 @@ export const createInferencePool = (
 			}
 			if (msg.type === "chunk") {
 				const job = ws.currentJob
-				if (job && job.id === msg.id) {
+				if (job?.id === msg.id) {
 					job.pending.onChunk?.(msg.chunk)
 					if (job.execTimer && executionTimeoutMs > 0) {
 						clearTimeout(job.execTimer)
@@ -102,9 +102,7 @@ export const createInferencePool = (
 				finishJob(ws, msg.id, null, msg.result)
 				return
 			}
-			if (msg.type === "error") {
-				finishJob(ws, msg.id, new Error(msg.message), null)
-			}
+			finishJob(ws, msg.id, new Error(msg.message), null)
 		})
 		ws.handle.onExit((code) => onWorkerExit(ws, code))
 		return ws
@@ -175,7 +173,7 @@ export const createInferencePool = (
 		ws.currentJob = null
 		ws.jobs++
 		if (job?.execTimer) clearTimeout(job.execTimer)
-		if (job && job.id === id) {
+		if (job?.id === id) {
 			const p = job.pending
 			if (p.onTiming && p.startedAt !== null) {
 				p.onTiming({
@@ -421,7 +419,7 @@ export const createInferencePool = (
 					resolve()
 				}
 			}, 50)
-			poll.unref?.()
+			poll.unref()
 		})
 		for (const ws of [...workers]) {
 			inferencePoolLogger.warn(

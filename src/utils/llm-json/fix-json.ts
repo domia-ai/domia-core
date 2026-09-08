@@ -3,7 +3,7 @@ import type { FixJsonStateType } from "./types"
 export const fixJson = (input: string): string => {
 	const stack: FixJsonStateType[] = ["ROOT"]
 	let lastValidIndex = -1
-	let literalStart: number | null = null
+	let literalStart = null as number | null
 	let unicodeEscapeDigits = 0
 
 	const isHexDigit = (char: string) =>

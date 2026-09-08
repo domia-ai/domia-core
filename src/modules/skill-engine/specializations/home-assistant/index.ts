@@ -1,3 +1,4 @@
+import { browseService } from "@/modules/satellite-discovery"
 import type {
 	SelectSkillProviderType,
 	ToolFinalizeMapType,
@@ -6,51 +7,45 @@ import type {
 	FastPathBlockType,
 	FastPathIntentType,
 } from "@/db"
-import { skillEngineLogger, languageSetsFor, parseLlmJson } from "@/utils"
+import {
+	skillEngineLogger,
+	languageSetsFor,
+	parseLlmJson,
+	domiaError,
+	SKILL_ERRORS,
+} from "@/utils"
+import { foldText as fold, tokensOf } from "@/utils/text-tokens"
 
-import type {
-	SkillSpecializationType,
-	SkillConnHandleType,
-	HaEntityType,
-	HaContextCacheType,
-} from "../../types"
+import type { SkillSpecializationType, SkillConnHandleType } from "../../types"
 import { resolveDescriptor } from "../../utils/descriptor"
-import { fold, tokensOf } from "./text"
+import { findToolByBaseName, toolBaseName } from "../../utils/tool-name"
+import type { HaEntityType, HaContextCacheType } from "./types"
+import {
+	HA_SPECIALIZATION_KIND,
+	HA_ALIASES,
+	HA_CORE_RE,
+	HA_PLACEHOLDER_RE,
+	HA_CONTEXT_TTL_MS,
+	HA_CONTEXT_TOOL,
+	HA_NAME_MATCH_MIN,
+	HA_FULL_COVERAGE_SCORE,
+	HA_SENSITIVE_TOOL_RE,
+	HA_SENSITIVE_DOMAIN_RE,
+	HA_READ_TOOL_RE,
+	HA_ACTION_VERBS,
+	HA_CATALOG_EXTENSIONS,
+	HA_FAST_PATH_LANGUAGES,
+	HA_EXAMPLE_UTTERANCES,
+	HA_MDNS_SERVICE_TYPE,
+	HA_MCP_PATH,
+} from "./constants"
 import {
 	attachDataPlane,
 	detachDataPlane,
 	snapshotContext,
 	liveEntities,
+	dataPlaneStatus,
 } from "./data-plane"
-
-const HA_ALIASES: Record<string, string[]> = {
-	brighter: ["brightness", "light", "bright"],
-	dimmer: ["dim", "light", "brightness"],
-	dim: ["light", "brightness"],
-	lights: ["light"],
-	lamp: ["light"],
-	warmer: ["temperature", "warm", "heat", "climate"],
-	cooler: ["temperature", "cool", "climate"],
-	colder: ["temperature", "cold", "climate"],
-	degrees: ["temperature", "climate"],
-	thermostat: ["temperature", "climate"],
-	ac: ["climate", "temperature", "cool"],
-	heating: ["climate", "temperature", "heat"],
-	blinds: ["cover"],
-	curtains: ["cover"],
-	shades: ["cover"],
-	shutters: ["cover"],
-}
-
-const CORE_RE =
-	/turn.?on|turn.?off|light.?set|set.?temp|climate|cover|hass(turnon|turnoff|lightset)/i
-
-const PLACEHOLDER_RE = /^(\[\]|\{\}|null|none|n\/a|undefined)$/i
-
-const CONTEXT_TTL_MS = 5 * 60 * 1000
-const CONTEXT_TOOL = "GetLiveContext"
-const NAME_MATCH_MIN = 0.5
-const FULL_COVERAGE_SCORE = 0.75
 
 const genericWordsFor = (
 	provider: SelectSkillProviderType,
@@ -68,7 +63,7 @@ const parseLiveContext = (text: string): HaEntityType[] => {
 		null
 	for (const raw of text.split("\n")) {
 		const line = raw.trimEnd()
-		const namesMatch = line.match(/^- names:\s*(.*)$/)
+		const namesMatch = /^- names:\s*(.*)$/.exec(line)
 		if (namesMatch) {
 			if (current) entities.push(current)
 			current = {
@@ -82,7 +77,7 @@ const parseLiveContext = (text: string): HaEntityType[] => {
 			continue
 		}
 		if (!current) continue
-		const cont = line.match(/^\s{4}(\S.*)$/)
+		const cont = /^\s{4}(\S.*)$/.exec(line)
 		if (cont && !line.includes(":")) {
 			current.names.push(
 				...cont[1]
@@ -92,21 +87,52 @@ const parseLiveContext = (text: string): HaEntityType[] => {
 			)
 			continue
 		}
-		const domainMatch = line.match(/^\s+domain:\s*(\S+)/)
+		const domainMatch = /^\s+domain:\s*(\S+)/.exec(line)
 		if (domainMatch) current.domain = domainMatch[1]
-		const areaMatch = line.match(/^\s+areas:\s*(.+)$/)
+		const areaMatch = /^\s+areas:\s*(.+)$/.exec(line)
 		if (areaMatch) current.area = areaMatch[1].trim()
 	}
 	if (current) entities.push(current)
 	return entities
 }
 
+const contextToolNames = new Map<string, string>()
+
+const resolveContextToolName = async (
+	providerId: string,
+	handle: SkillConnHandleType,
+	cached: readonly { rawName: string }[],
+): Promise<string> => {
+	const known = contextToolNames.get(providerId)
+	if (known) return known
+	const fromCache = findToolByBaseName(cached, HA_CONTEXT_TOOL)?.rawName
+	if (fromCache) {
+		contextToolNames.set(providerId, fromCache)
+		return fromCache
+	}
+	try {
+		const listed = await handle.listTools()
+		const live = listed.tools.find(
+			(t) => toolBaseName(t.name) === HA_CONTEXT_TOOL,
+		)?.name
+		if (live) {
+			contextToolNames.set(providerId, live)
+			return live
+		}
+	} catch (err) {
+		skillEngineLogger.warn("ha context tool lookup failed", { providerId, err })
+	}
+	return HA_CONTEXT_TOOL
+}
+
 const refreshContext = async (
 	providerId: string,
 	handle: SkillConnHandleType,
+	cached: readonly { rawName: string }[] = [],
 ): Promise<void> => {
 	try {
-		const res = await handle.callTool(CONTEXT_TOOL, {})
+		const contextTool = await resolveContextToolName(providerId, handle, cached)
+		const res = await handle.callTool(contextTool, {})
 		if (res.isError) return
 		let body = res.text
 		const { value: parsed } = parseLlmJson<{ result?: string }>(res.text)
@@ -138,7 +164,7 @@ const contextFor = (providerId: string): HaContextCacheType | null => {
 	if (live) return live
 	const cached = contextCache.get(providerId)
 	if (!cached) return null
-	if (Date.now() - cached.fetchedAt > CONTEXT_TTL_MS) {
+	if (Date.now() - cached.fetchedAt > HA_CONTEXT_TTL_MS) {
 		cached.fetchedAt = Date.now()
 		void refreshContext(providerId, cached.handle)
 	}
@@ -178,7 +204,7 @@ const nameScore = (
 		}
 	}
 	const ratio = hits / Math.max(q.size, c.length)
-	return covered === q.size ? Math.max(ratio, FULL_COVERAGE_SCORE) : ratio
+	return covered === q.size ? Math.max(ratio, HA_FULL_COVERAGE_SCORE) : ratio
 }
 
 const stripTokens = (candidate: string, drop: Set<string>): string =>
@@ -214,11 +240,11 @@ const bestEntityIn = (
 		if (entityScore > (best?.score ?? 0)) {
 			best = { entity, score: entityScore }
 			tied = false
-		} else if (best && entityScore === best.score && entityScore > 0) {
+		} else if (entityScore === best?.score && entityScore > 0) {
 			tied = true
 		}
 	}
-	if (!best || best.score < NAME_MATCH_MIN || tied) return null
+	if (!best || best.score < HA_NAME_MATCH_MIN || tied) return null
 	return best.entity
 }
 
@@ -248,7 +274,7 @@ const fuzzyArea = (ctx: HaContextCacheType, query: string): string | null => {
 		if (hits > (best?.hits ?? 0)) {
 			best = { area, hits }
 			tied = false
-		} else if (best && hits === best.hits && hits > 0) {
+		} else if (hits === best?.hits && hits > 0) {
 			tied = true
 		}
 	}
@@ -265,6 +291,35 @@ const echoesName = (value: string, name: string): boolean => {
 	const nameTokens = new Set(tokensOf(name))
 	const valueTokens = tokensOf(value)
 	return valueTokens.length > 0 && valueTokens.every((t) => nameTokens.has(t))
+}
+
+const invocationTarget = (args: Record<string, unknown>): string | null => {
+	for (const key of ["name", "area"]) {
+		const value = args[key]
+		if (typeof value === "string" && value.trim()) return value.trim()
+	}
+	return null
+}
+
+const foldedEntitiesOf = (
+	ctx: HaContextCacheType,
+): Map<string, HaEntityType> => {
+	if (ctx.foldedByName) return ctx.foldedByName
+	const map = new Map<string, HaEntityType>()
+	for (const e of ctx.entities)
+		for (const n of e.names) {
+			const f = fold(n)
+			if (!map.has(f)) map.set(f, e)
+		}
+	ctx.foldedByName = map
+	return ctx.foldedByName
+}
+
+const entityNamesFor = (providerId: string, target: string): string[] => {
+	const ctx = contextCache.get(providerId)
+	if (!ctx) return [target]
+	const entity = foldedEntitiesOf(ctx).get(fold(target))
+	return entity ? [...entity.names] : [target]
 }
 
 const haFinalizeTemplates = (language: string | null): ToolFinalizeMapType => {
@@ -291,23 +346,17 @@ const haFinalizeTemplates = (language: string | null): ToolFinalizeMapType => {
 	}
 }
 
-const SENSITIVE_TOOL_RE = /lock|unlock|cover|garage|alarm|siren/i
-
-const SENSITIVE_DOMAIN_RE = /^(lock|alarm_control_panel|cover|siren)$/
-
-const READ_TOOL_RE = /getlivecontext|getstate|get_state|query|status/i
-
 const haToolHints = (
 	tools: SkillToolType[],
 ): Record<string, ToolHintOverrideType> => {
 	const hints: Record<string, ToolHintOverrideType> = {}
 	for (const t of tools) {
-		if (READ_TOOL_RE.test(t.rawName))
+		if (HA_READ_TOOL_RE.test(toolBaseName(t.rawName)))
 			hints[t.rawName] = { readOnlyHint: true, openWorldHint: false }
 		else
 			hints[t.rawName] = {
 				readOnlyHint: false,
-				destructiveHint: SENSITIVE_TOOL_RE.test(t.rawName),
+				destructiveHint: HA_SENSITIVE_TOOL_RE.test(toolBaseName(t.rawName)),
 				idempotentHint: true,
 				openWorldHint: false,
 			}
@@ -318,7 +367,8 @@ const haToolHints = (
 const haToolPolicy = (tools: SkillToolType[]): Record<string, "confirm"> => {
 	const policy: Record<string, "confirm"> = {}
 	for (const t of tools)
-		if (SENSITIVE_TOOL_RE.test(t.rawName)) policy[t.rawName] = "confirm"
+		if (HA_SENSITIVE_TOOL_RE.test(toolBaseName(t.rawName)))
+			policy[t.rawName] = "confirm"
 	return policy
 }
 
@@ -331,10 +381,7 @@ const resolvedEntityDomain = (
 	if (!name) return null
 	const ctx = contextCache.get(provider.id)
 	if (!ctx) return null
-	const folded = fold(name)
-	const entity = ctx.entities.find((e) =>
-		e.names.some((n) => fold(n) === folded),
-	)
+	const entity = foldedEntitiesOf(ctx).get(fold(name))
 	return entity?.domain ?? null
 }
 
@@ -346,103 +393,13 @@ const forLanguage = <T>(
 	language: string | null,
 ): T => byLanguage[baseLanguage(language)] ?? byLanguage.en
 
-type HaFastPathLanguagePackType = {
-	turnOnTemplates: string[]
-	turnOnAreaTemplates: string[]
-	turnOnKeywords: string[][]
-	turnOffTemplates: string[]
-	turnOffAreaTemplates: string[]
-	turnOffKeywords: string[][]
-	lightSetTemplates: string[]
-	expansionRules: Record<string, string>
-}
-
-const HA_FAST_PATH_LANGUAGES: Record<string, HaFastPathLanguagePackType> = {
-	en: {
-		turnOnTemplates: ["<turnon> [<the>] {entity}", "turn [<the>] {entity} on"],
-		turnOnAreaTemplates: [
-			"<turnon> [<the>] lights in [<the>] {area}",
-			"<turnon> [<the>] {area} lights",
-		],
-		turnOnKeywords: [["on"]],
-		turnOffTemplates: [
-			"<turnoff> [<the>] {entity}",
-			"turn [<the>] {entity} off",
-		],
-		turnOffAreaTemplates: [
-			"<turnoff> [<the>] lights in [<the>] {area}",
-			"<turnoff> [<the>] {area} lights",
-		],
-		turnOffKeywords: [["off"]],
-		lightSetTemplates: [
-			"(set|dim|brighten) [<the>] {entity} to {level} [percent] [brightness]",
-			"set [<the>] {entity} brightness to {level} [percent]",
-		],
-		expansionRules: {
-			turnon: "(turn on|switch on)",
-			turnoff: "(turn off|switch off)",
-			the: "(the|my|our)",
-		},
-	},
-	es: {
-		turnOnTemplates: ["<encender> [<articulo>] {entity}"],
-		turnOnAreaTemplates: [
-			"<encender> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}",
-		],
-		turnOnKeywords: [["enciende", "prende", "activa", "encender", "prender"]],
-		turnOffTemplates: ["<apagar> [<articulo>] {entity}"],
-		turnOffAreaTemplates: [
-			"<apagar> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}",
-		],
-		turnOffKeywords: [["apaga", "desactiva", "apagar", "desconecta"]],
-		lightSetTemplates: [
-			"(pon|ajusta) [<articulo>] {entity} al {level} [por ciento]",
-			"(pon|ajusta) [<articulo>] {entity} a {level} [por ciento]",
-		],
-		expansionRules: {
-			encender: "(enciende|encienda|prende|prenda|activa|active)",
-			apagar: "(apaga|apague|desactiva|desactive|desconecta)",
-			articulo: "(la|el|las|los|mi|mis)",
-		},
-	},
-}
-
-const HA_EXAMPLE_UTTERANCES: Record<string, string[]> = {
-	en: [
-		"turn on the kitchen light",
-		"turn off the bedroom light",
-		"switch on the living room lamp",
-		"set the light to fifty percent",
-		"dim the living room light",
-		"brighten the kitchen",
-		"turn everything off",
-		"is the kitchen light on?",
-		"which lights are on right now?",
-		"I need the light on",
-		"make the room brighter",
-		"switch off the hallway light",
-	],
-	es: [
-		"enciende la luz de la cocina",
-		"apaga la luz del dormitorio",
-		"prende la lámpara de la sala",
-		"pon la luz al cincuenta por ciento",
-		"baja el brillo de la sala",
-		"sube el brillo de la cocina",
-		"desconecta la luz del pasillo",
-		"apaga todas las luces",
-		"¿está encendida la luz de la cocina?",
-		"¿cuáles luces están encendidas?",
-		"necesito la luz encendida",
-		"pon más brillante la habitación",
-	],
-}
-
 const haFastPathBlock = (
 	tools: SkillToolType[],
 	language: string | null,
 ): FastPathBlockType | undefined => {
-	const has = (name: string): boolean => tools.some((t) => t.rawName === name)
+	const turnOn = findToolByBaseName(tools, "HassTurnOn")?.rawName
+	const turnOff = findToolByBaseName(tools, "HassTurnOff")?.rawName
+	const lightSet = findToolByBaseName(tools, "HassLightSet")?.rawName
 	const pack = forLanguage(HA_FAST_PATH_LANGUAGES, language)
 	const intents: FastPathIntentType[] = []
 	const entitySlot = {
@@ -451,39 +408,39 @@ const haFastPathBlock = (
 	const areaSlot = {
 		area: { source: { kind: "context", key: "area" } },
 	} as FastPathIntentType["slots"]
-	if (has("HassTurnOn"))
+	if (turnOn)
 		intents.push({
-			tool: "HassTurnOn",
+			tool: turnOn,
 			templates: pack.turnOnTemplates,
 			slots: entitySlot,
 			requiredKeywords: pack.turnOnKeywords,
 		})
-	if (has("HassTurnOn") && pack.turnOnAreaTemplates.length > 0)
+	if (turnOn && pack.turnOnAreaTemplates.length > 0)
 		intents.push({
-			tool: "HassTurnOn",
+			tool: turnOn,
 			templates: pack.turnOnAreaTemplates,
 			slots: areaSlot,
 			requiredKeywords: pack.turnOnKeywords,
 			argDefaults: { domain: ["light"] },
 		})
-	if (has("HassTurnOff"))
+	if (turnOff)
 		intents.push({
-			tool: "HassTurnOff",
+			tool: turnOff,
 			templates: pack.turnOffTemplates,
 			slots: entitySlot,
 			requiredKeywords: pack.turnOffKeywords,
 		})
-	if (has("HassTurnOff") && pack.turnOffAreaTemplates.length > 0)
+	if (turnOff && pack.turnOffAreaTemplates.length > 0)
 		intents.push({
-			tool: "HassTurnOff",
+			tool: turnOff,
 			templates: pack.turnOffAreaTemplates,
 			slots: areaSlot,
 			requiredKeywords: pack.turnOffKeywords,
 			argDefaults: { domain: ["light"] },
 		})
-	if (has("HassLightSet"))
+	if (lightSet)
 		intents.push({
-			tool: "HassLightSet",
+			tool: lightSet,
 			templates: pack.lightSetTemplates,
 			slots: {
 				...entitySlot,
@@ -501,10 +458,11 @@ const haFastPathBlock = (
 }
 
 export const homeAssistantSpecialization: SkillSpecializationType = {
-	kind: "home-assistant",
+	kind: HA_SPECIALIZATION_KIND,
+	catalogExtensions: HA_CATALOG_EXTENSIONS,
 	descriptorDefaults: (tools, language) => ({
 		version: 1,
-		kind: "home-assistant",
+		kind: HA_SPECIALIZATION_KIND,
 		routing: {
 			aliases: HA_ALIASES,
 			exampleUtterances: forLanguage(HA_EXAMPLE_UTTERANCES, language),
@@ -513,18 +471,45 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 			coreTools: tools
 				.filter(
 					(t) =>
-						t.rawName === CONTEXT_TOOL ||
-						CORE_RE.test(t.rawName) ||
-						CORE_RE.test(t.description ?? ""),
+						toolBaseName(t.rawName) === HA_CONTEXT_TOOL ||
+						HA_CORE_RE.test(toolBaseName(t.rawName)) ||
+						HA_CORE_RE.test(t.description ?? ""),
 				)
 				.map((t) => t.rawName),
 			toolHints: haToolHints(tools),
 			toolPolicy: haToolPolicy(tools),
 			finalize: haFinalizeTemplates(language),
-			genericWords: [...languageSetsFor(language).deviceGenericWords],
+			genericWords: [...languageSetsFor(language).genericWords],
 		},
 		fastPath: haFastPathBlock(tools, language),
 	}),
+	status: (provider) => dataPlaneStatus(provider.id),
+	discover: async (timeoutMs) =>
+		(await browseService(HA_MDNS_SERVICE_TYPE, timeoutMs)).map((service) => {
+			const base =
+				service.txt.base_url ??
+				service.txt.internal_url ??
+				`http://${service.host}:${service.port}`
+			return {
+				kind: HA_SPECIALIZATION_KIND,
+				name: service.txt.location_name ?? service.name,
+				url: `${base.replace(/\/$/, "")}${HA_MCP_PATH}`,
+				host: service.host,
+				port: service.port,
+				version: service.txt.version ?? null,
+			}
+		}),
+	describeInvocation: (provider, rawName, args, language) => {
+		const target = invocationTarget(args)
+		if (!target) return null
+		const verb = forLanguage(HA_ACTION_VERBS, language)[toolBaseName(rawName)]
+		const targetNames = entityNamesFor(provider.id, target)
+		return {
+			target,
+			targetNames,
+			...(verb ? { summary: `${verb} ${target}` } : {}),
+		}
+	},
 	fastPathSlotValues: (provider, key) => {
 		const ctx = contextCache.get(provider.id)
 		if (!ctx) return null
@@ -544,12 +529,13 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 	},
 	invocationRisk: (provider, _rawName, resolvedArgs) => {
 		const domain = resolvedEntityDomain(provider, resolvedArgs)
-		if (domain && SENSITIVE_DOMAIN_RE.test(domain)) return "write_destructive"
+		if (domain && HA_SENSITIVE_DOMAIN_RE.test(domain))
+			return "write_destructive"
 		const domainsArg = resolvedArgs.domain
 		if (
 			Array.isArray(domainsArg) &&
 			domainsArg.some(
-				(d) => typeof d === "string" && SENSITIVE_DOMAIN_RE.test(d),
+				(d) => typeof d === "string" && HA_SENSITIVE_DOMAIN_RE.test(d),
 			)
 		)
 			return "write_destructive"
@@ -559,15 +545,16 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		provider: SelectSkillProviderType,
 		handle: SkillConnHandleType,
 	) => {
-		await refreshContext(provider.id, handle)
+		await refreshContext(provider.id, handle, provider.toolsCache ?? [])
 		attachDataPlane(provider, handle)
 	},
 	onDisconnected: (provider: SelectSkillProviderType) => {
 		detachDataPlane(provider.id)
 		contextCache.delete(provider.id)
+		contextToolNames.delete(provider.id)
 	},
 	interceptToolCall: (provider, rawName) => {
-		if (rawName !== "GetLiveContext") return null
+		if (toolBaseName(rawName) !== HA_CONTEXT_TOOL) return null
 		const entities = liveEntities(provider.id)
 		if (!entities || entities.length === 0) return null
 		const lines = entities.map((e) => {
@@ -598,14 +585,17 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 					/* not json */
 				}
 			}
-			if (typeof v === "string" && (v.length === 0 || PLACEHOLDER_RE.test(v)))
+			if (
+				typeof v === "string" &&
+				(v.length === 0 || HA_PLACEHOLDER_RE.test(v))
+			)
 				continue
 			if (v !== null && typeof v === "object" && !Array.isArray(v)) continue
 			if (Array.isArray(v)) {
 				const kept = v.filter(
 					(item) =>
 						typeof item !== "string" ||
-						(item.trim().length > 0 && !PLACEHOLDER_RE.test(item)),
+						(item.trim().length > 0 && !HA_PLACEHOLDER_RE.test(item)),
 				)
 				if (kept.length === 0) continue
 				out[key] = kept
@@ -661,7 +651,7 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 					)
 					if (kept.length > 0) out.device_class = kept
 					else delete out.device_class
-					const domain = Array.isArray(out.domain) ? out.domain : []
+					const domain: unknown[] = Array.isArray(out.domain) ? out.domain : []
 					out.domain = [...new Set([...domain, ...misplaced])]
 				}
 			}
@@ -703,11 +693,14 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 			)
 		}
 		if (typeof out.name === "string") {
-			skillEngineLogger.warn(
-				"HA entity context not ready — failing closed rather than mis-target",
-				{ provider: provider.id, name: out.name },
-			)
-			throw new Error("device list not ready yet")
+			throw domiaError(SKILL_ERRORS.PROVIDER_NOT_READY, {
+				logger: skillEngineLogger,
+				meta: {
+					provider: provider.id,
+					name: out.name,
+					reason: "HA entity context not ready — failing closed",
+				},
+			})
 		}
 		return out
 	},

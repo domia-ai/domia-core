@@ -14,14 +14,14 @@ const makeReplaySocket = (): ReplaySocketType => {
 	const written: Buffer[] = []
 	let destroyed = false
 	const socket = emitter as unknown as Socket
-	socket.write = ((chunk: string | Buffer) => {
+	socket.write = (chunk: string | Buffer) => {
 		written.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
 		return true
-	}) as Socket["write"]
-	socket.destroy = (() => {
+	}
+	socket.destroy = () => {
 		destroyed = true
 		return socket
-	}) as Socket["destroy"]
+	}
 	return {
 		socket,
 		feed: (chunk) => emitter.emit("data", chunk),

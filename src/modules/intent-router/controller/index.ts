@@ -79,7 +79,7 @@ const numericFollowUp = (
 	if (tokens.length === 0 || tokens.length > 4) return false
 	let hasNumber = false
 	for (const token of tokens) {
-		if (/^\d+$/.test(token) || sets.numberWords[token] !== undefined) {
+		if (/^\d+$/.test(token) || token in sets.numberWords) {
 			hasNumber = true
 			continue
 		}

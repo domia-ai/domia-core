@@ -9,13 +9,22 @@ import {
 	domiaError,
 	AUDIO_ERRORS,
 	findOnnxFile,
+	int16BufferToFloat32,
 	resolveQuantization,
 	type QuantizationType,
 } from "@/utils"
 import { createKeywordSpotter } from "@/utils/ml-runtime"
+import { createCaptureEnhancer } from "@/modules/speech-enhancer"
+import { verifyWake, wakeVerifierWindowBytes } from "@/modules/wake-verifier"
+import { WAKE_VERIFIER_ENUM } from "@/db"
 
-import { type CaptureCallbacksType, type KwsPathsType } from "../../types"
+import {
+	type CaptureCallbacksType,
+	type CaptureHandleType,
+	type KwsPathsType,
+} from "../../types"
 import { publishMicChunk, setMicTapFormat } from "../../utils/mic-tap"
+import { createEchoGate, clearPlaybackReference } from "../../utils/echo-gate"
 
 export const KWS_SAMPLE_RATE = 16000
 const SAMPLE_RATE = KWS_SAMPLE_RATE
@@ -43,53 +52,54 @@ const resolveKwsPaths = (
 	}
 }
 
-const int16BufferToFloat32 = (chunk: Buffer): Float32Array => {
-	const samples = new Float32Array(chunk.length / 2)
-	for (let i = 0; i < samples.length; i++) {
-		samples[i] = chunk.readInt16LE(i * 2) / 32768
-	}
-	return samples
-}
-
-export const runKws = async (
+export const runKws = (
 	domia: DomiaType,
 	callbacks?: CaptureCallbacksType,
-) => {
+): Promise<CaptureHandleType> => {
+	const fail = (err: Error): Promise<CaptureHandleType> => {
+		void callbacks?.onError?.(err)
+		return Promise.reject(err)
+	}
 	const wakeWordConfig = domia.wakeWordConfig
 	if (!wakeWordConfig) {
-		const err = domiaError(AUDIO_ERRORS.WAKE_WORD_CONFIG_NOT_FOUND, {
-			logger: audioCaptureLogger,
-		})
-		callbacks?.onError?.(err)
-		throw err
+		return fail(
+			domiaError(AUDIO_ERRORS.WAKE_WORD_CONFIG_NOT_FOUND, {
+				logger: audioCaptureLogger,
+			}),
+		)
 	}
 
 	const modelPath = wakeWordConfig.customModelPath
 	if (!modelPath) {
-		const err = new Error(
-			"KWS requires wakeWordConfig.customModelPath (model directory)",
+		return fail(
+			domiaError(AUDIO_ERRORS.WAKE_WORD_MODEL_PATH_MISSING, {
+				logger: audioCaptureLogger,
+				meta: { domiaId: domia.id, engine: "KWS" },
+			}),
 		)
-		callbacks?.onError?.(err)
-		throw err
 	}
 
 	const quantization = resolveQuantization(wakeWordConfig.quantization)
 	const paths = resolveKwsPaths(modelPath, quantization)
 	if (!paths) {
-		const err = new Error(
-			`KWS model files missing or incomplete at ${modelPath}. Run npm run setup:models:kws`,
+		return fail(
+			domiaError(AUDIO_ERRORS.WAKE_WORD_MODEL_FILES_MISSING, {
+				logger: audioCaptureLogger,
+				meta: { modelPath, hint: "npm run setup:models:kws" },
+			}),
 		)
-		callbacks?.onError?.(err)
-		throw err
 	}
 
 	const missing = [paths.tokens, paths.keywords].filter(
 		(p) => !fs.existsSync(p),
 	)
 	if (missing.length > 0) {
-		const err = new Error(`KWS missing required files: ${missing.join(", ")}`)
-		callbacks?.onError?.(err)
-		throw err
+		return fail(
+			domiaError(AUDIO_ERRORS.WAKE_WORD_MODEL_FILES_MISSING, {
+				logger: audioCaptureLogger,
+				meta: { modelPath, missing },
+			}),
+		)
 	}
 
 	const cooldownMs = Math.round(wakeWordConfig.cooldown * 1000)
@@ -121,11 +131,61 @@ export const runKws = async (
 
 	const kws = createKeywordSpotter(config)
 	const stream = kws.createStream()
+	const enhancer = createCaptureEnhancer(wakeWordConfig, "kws")
+	const echoGate = wakeWordConfig.echoResidualGateEnabled
+		? createEchoGate(domia.id, wakeWordConfig)
+		: null
+	const verifierWindowBytes =
+		wakeWordConfig.wakeVerifier === WAKE_VERIFIER_ENUM.NONE
+			? 0
+			: wakeVerifierWindowBytes(wakeWordConfig, SAMPLE_RATE)
+	let verifierWindow = Buffer.alloc(0)
+	let verifying = false
 	let lastDetectionAt = 0
 	let stopped = false
 	let recProc: ReturnType<typeof spawn> | null = null
 	let respawnDelayMs = RESPAWN_BASE_MS
 	const targetBytes = CHUNK_SAMPLES * 2
+
+	const rememberForVerifier = (data: Buffer): void => {
+		if (verifierWindowBytes === 0) return
+		verifierWindow = Buffer.concat([verifierWindow, data])
+		if (verifierWindow.length > verifierWindowBytes)
+			verifierWindow = verifierWindow.subarray(
+				verifierWindow.length - verifierWindowBytes,
+			)
+	}
+
+	const acceptWake = (keyword: string): void => {
+		if (verifierWindowBytes === 0) {
+			void callbacks?.onWake?.(keyword)
+			return
+		}
+		if (verifying) return
+		verifying = true
+		const window = Buffer.from(verifierWindow)
+		void verifyWake({ pcm: window, sampleRate: SAMPLE_RATE }, wakeWordConfig)
+			.then((verdict) => {
+				if (verdict.accepted) {
+					audioCaptureLogger.info("✅ wake verified", {
+						keyword,
+						verifier: wakeWordConfig.wakeVerifier,
+						score: Number(verdict.score.toFixed(3)),
+					})
+					void callbacks?.onWake?.(keyword)
+				} else {
+					audioCaptureLogger.info("🙈 wake rejected by verifier", {
+						keyword,
+						verifier: wakeWordConfig.wakeVerifier,
+						score: Number(verdict.score.toFixed(3)),
+						detail: verdict.detail,
+					})
+				}
+			})
+			.finally(() => {
+				verifying = false
+			})
+	}
 
 	setMicTapFormat(domia.id, {
 		sampleRate: SAMPLE_RATE,
@@ -152,12 +212,16 @@ export const runKws = async (
 		let leftover = Buffer.alloc(0)
 		let intercomWarned = false
 
-		proc.stdout?.on("data", (data: Buffer) => {
+		proc.stdout.on("data", (raw: Buffer) => {
 			respawnDelayMs = RESPAWN_BASE_MS
+			const data = enhancer.process(raw)
+			if (data.length === 0) return
 			publishMicChunk(domia.id, data)
+			rememberForVerifier(data)
+			echoGate?.observe(data)
 			const intercom = getIntercom(domia.domiaKey)
 			if (intercom) {
-				Promise.resolve(intercom.sink.write(data)).catch((err) => {
+				Promise.resolve(intercom.sink.write(data)).catch((err: unknown) => {
 					if (intercomWarned) return
 					intercomWarned = true
 					audioCaptureLogger.warn("[kws] intercom sink write failed", { err })
@@ -180,23 +244,23 @@ export const runKws = async (
 								keyword: result.keyword,
 							})
 							kws.reset(stream)
-							callbacks?.onWake?.()
+							acceptWake(result.keyword)
 						}
 					}
 				}
 			}
 		})
 
-		proc.stderr?.on("data", (data: Buffer) => {
+		proc.stderr.on("data", (data: Buffer) => {
 			const msg = data.toString().trim()
 			if (!msg) return
-			if (/can't set sample rate/.test(msg)) return
+			if (msg.includes("can't set sample rate")) return
 			audioCaptureLogger.warn(`[kws:rec] ${msg}`)
 		})
 
 		proc.on("error", (err) => {
 			audioCaptureLogger.error("[kws:rec] error", { err })
-			callbacks?.onError?.(err)
+			void callbacks?.onError?.(err)
 		})
 
 		proc.on("close", (code) => {
@@ -217,14 +281,16 @@ export const runKws = async (
 
 	startRec()
 
-	return {
+	return Promise.resolve({
 		stop: () => {
 			stopped = true
+			enhancer.close()
+			clearPlaybackReference(domia.id)
 			try {
 				recProc?.kill()
 			} catch {
 				/* already gone */
 			}
 		},
-	}
+	})
 }

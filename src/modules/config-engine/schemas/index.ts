@@ -10,15 +10,13 @@ import {
 	ROLE_MODE_ENUM_VALUES,
 } from "@/db"
 import { emotionSchema } from "@/modules/emotion-engine"
+import { SUPPORTED_LANGUAGES } from "@/utils"
 
 export const configSchema = z.object({
 	domiaKey: z.string(),
 	name: z.string().min(1),
 	emotionEngine: z.boolean().default(true),
 	memoryEngine: z.boolean().default(true),
-	collectiveMind: z.boolean().default(true),
-	remoteAccessEngine: z.boolean().default(true),
-	narrativeEngine: z.boolean().default(true),
 	identityEngine: z.boolean().default(true),
 	wakeword: z.boolean().default(false),
 	record: z.boolean().default(false),
@@ -31,7 +29,9 @@ export const configSchema = z.object({
 	playback: z.boolean().default(false),
 	emotion: emotionSchema.optional(),
 	personality: z.enum(PERSONALITY_ENUM_VALUES).optional(),
-	language: z.enum(["en", "es"]),
+	language: z.string().refine((code) => SUPPORTED_LANGUAGES.has(code), {
+		message: "language has no catalog",
+	}),
 	languagesSpoken: z.array(z.string()),
 	profession: z.enum(PROFESSION_ENUM_VALUES).optional(),
 	communicationStyle: z.enum(COMMUNICATION_STYLE_ENUM_VALUES).optional(),

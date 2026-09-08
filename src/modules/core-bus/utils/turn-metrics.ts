@@ -1,5 +1,10 @@
 import type { DomiaType } from "@/modules/core"
-import type { SpeculationStatsType, BargeInStatsType } from "../types"
+import type {
+	SpeculationStatsType,
+	BargeInStatsType,
+	TwoTierStatsType,
+	TwoTierCounterKindType,
+} from "../types"
 
 const replyQueueWaitByInteraction = new Map<string, number>()
 
@@ -53,6 +58,27 @@ export const speculationStats = (domiaId: string): SpeculationStatsType => {
 		wasteRate: total > 0 ? counters.discarded / total : 0,
 	}
 }
+
+const twoTierCountersByDomia = new Map<string, TwoTierStatsType>()
+
+const twoTierFor = (domiaId: string): TwoTierStatsType => {
+	const existing = twoTierCountersByDomia.get(domiaId)
+	if (existing) return existing
+	const fresh = { prefills: 0, cancelled: 0, reused: 0, reprefilled: 0 }
+	twoTierCountersByDomia.set(domiaId, fresh)
+	return fresh
+}
+
+export const countTwoTier = (
+	domiaId: string,
+	kind: TwoTierCounterKindType,
+): void => {
+	twoTierFor(domiaId)[kind] += 1
+}
+
+export const twoTierStats = (domiaId: string): TwoTierStatsType => ({
+	...twoTierFor(domiaId),
+})
 
 const bargeInCountersByDomia = new Map<
 	string,

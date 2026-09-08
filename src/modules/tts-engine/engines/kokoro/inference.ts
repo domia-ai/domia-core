@@ -63,7 +63,7 @@ const validatePaths = (paths: KokoroPathsType): void => {
 		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
 			logger: ttsEngineLogger,
 			meta: {
-				message: `Kokoro model files missing at ${paths.dir}. Run npm run setup:models:kokoro`,
+				message: `Kokoro model files missing at ${paths.dir}. Run: bash scripts/download-models.sh kokoro`,
 				dir: paths.dir,
 				missing,
 			},

@@ -1,7 +1,14 @@
 import { readFile } from "fs/promises"
 
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
-import { getWavDurationMs, domiaBusLogger, toError } from "@/utils"
+import {
+	getWavDurationMs,
+	domiaBusLogger,
+	toError,
+	domiaError,
+	AUDIO_PLAYBACK_ERRORS,
+	GRPC_ERRORS,
+} from "@/utils"
 import { CAPABILITY_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { playAudio } from "@/modules/audio-playback"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
@@ -100,8 +107,8 @@ export const deliverLocalPlayback = async (
 		})
 		return
 	}
-	const interrupted = playResult?.interrupted === true
-	if (playResult && playResult.success === false) {
+	const interrupted = playResult.interrupted === true
+	if (!playResult.success) {
 		notifyAudioFallback(ctx, {
 			interactionId,
 			originDomiaKey,
@@ -113,7 +120,7 @@ export const deliverLocalPlayback = async (
 	if (reply !== undefined) {
 		const wordLevel = domia.audioPlaybackConfig?.wordLevelHeardEnabled ?? false
 		const heardText =
-			interrupted && wordLevel && playResult?.playedMs !== undefined
+			interrupted && wordLevel && playResult.playedMs !== undefined
 				? heardTextFromUniformRate(
 						reply,
 						playResult.playedMs,
@@ -173,9 +180,10 @@ export const deliverDelegatedPlayback = async (
 		localPath = await downloadAudioToTemp(audioUrl, interactionId)
 	}
 	if (!localPath) {
-		throw new Error(
-			"TTS_DONE: cannot delegate playback without filePath or audioUrl",
-		)
+		throw domiaError(AUDIO_PLAYBACK_ERRORS.AUDIO_SOURCE_MISSING, {
+			logger: domiaBusLogger,
+			meta: { site: "TTS_DONE delegate", interactionId },
+		})
 	}
 	const audio = await readFile(localPath)
 	const result = await deliverEvent(domia.domiaKey, targets, "ttsDone", {
@@ -184,9 +192,10 @@ export const deliverDelegatedPlayback = async (
 		originDomiaKey,
 	})
 	if (!result.delivered) {
-		throw new Error(
-			`TTS_DONE→playback delegation failed: ${result.error ?? "unknown"}`,
-		)
+		throw domiaError(GRPC_ERRORS.DELEGATION_FAILED, {
+			logger: domiaBusLogger,
+			meta: { stage: "playback", interactionId, error: result.error },
+		})
 	}
 	publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.PLAYBACK_FINISHED, {
 		interactionId,

@@ -1,8 +1,8 @@
 import type { DomiaType } from "@/modules/core"
-import type { WakeWordEngineEnumType } from "@/db"
+import type { SelectWakeWordConfigType, WakeWordEngineEnumType } from "@/db"
 
 export type CaptureCallbacksType = {
-	onWake?: () => void | Promise<void>
+	onWake?: (keyword: string) => void | Promise<void>
 	onRecordingStart?: () => void | Promise<void>
 	onRecordingEnd?: (filePath: string) => void | Promise<void>
 	onError?: (error: Error) => void | Promise<void>
@@ -112,3 +112,38 @@ export type MicSourceType = {
 export type DynamicEndpointStateType = {
 	pauseEmaMs: number
 }
+
+export type PlaybackReferenceType = {
+	ring: Float32Array
+	writePos: number
+	totalWritten: number
+	lastSampleAt: number
+}
+
+export type EchoGateConfigType = Pick<
+	SelectWakeWordConfigType,
+	| "echoResidualGateEnabled"
+	| "echoResidualMinRatio"
+	| "echoResidualWindowMs"
+	| "echoResidualMaxDelayMs"
+	| "echoResidualMinRms"
+	| "echoResidualMinFrames"
+>
+
+export type EchoGateVerdictType = {
+	accept: boolean
+	frames: number
+	rms: number
+	residual: number | null
+	lagMs: number | null
+}
+
+export type EchoGateType = {
+	observe: (pcm16k: Buffer) => EchoGateVerdictType
+	reset: () => void
+}
+
+export type StopWordConfigType = Pick<
+	SelectWakeWordConfigType,
+	"stopWordAbortEnabled" | "stopWordMaxWords"
+>

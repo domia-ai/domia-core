@@ -5,7 +5,7 @@ export const getTtsConfig = (
 	overrides: Partial<SelectTtsConfigType> = {},
 ): SelectTtsConfigType => {
 	return {
-		...baseTtsConfig(overrides?.domiaId),
+		...baseTtsConfig(overrides.domiaId),
 		...overrides,
 	}
 }

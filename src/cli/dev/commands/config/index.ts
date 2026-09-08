@@ -4,11 +4,16 @@ import { env } from "@/config"
 import { getDomia } from "@/modules/core"
 import { serializeConfig, persistConfig, configHealth } from "@/modules/config"
 import { requestServiceRestart } from "@/modules/runtime-control"
-import { devCliLogger } from "@/utils"
+import { devCliLogger, domiaError, CORE_ERRORS } from "@/utils"
+
+import { unwrapBundle } from "../json-bundle"
 
 const loadDomia = async () => {
 	const domia = await getDomia(env.DOMIA_KEY)
-	if (!domia) throw new Error(`No domia found for key ${env.DOMIA_KEY}`)
+	if (!domia)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_RESOLVABLE, {
+			meta: { domiaKey: env.DOMIA_KEY },
+		})
 	return domia
 }
 
@@ -50,8 +55,10 @@ export const configExportCommand = async (out: string) => {
 export const configImportCommand = async (file: string) => {
 	try {
 		const domia = await loadDomia()
-		const parsed = JSON.parse(readFileSync(file, "utf-8"))
-		await persistConfig(domia, parsed.config ?? parsed)
+		await persistConfig(
+			domia,
+			unwrapBundle(readFileSync(file, "utf-8"), "config"),
+		)
 		await requestServiceRestart()
 		devCliLogger.info(`📥 Imported config from ${file} — restarting`)
 	} catch (error) {

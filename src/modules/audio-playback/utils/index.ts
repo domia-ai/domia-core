@@ -51,13 +51,3 @@ export const resumeActivePlayback = (domiaId: string): boolean => {
 	for (const c of [...ctrls]) if (c.resume()) resumed = true
 	return resumed
 }
-
-export const activePlaybackPositionMs = (domiaId: string): number | null => {
-	const ctrls = activeControls.get(domiaId)
-	if (!ctrls) return null
-	for (const c of ctrls) {
-		const pos = c.positionMs()
-		if (pos !== null) return pos
-	}
-	return null
-}

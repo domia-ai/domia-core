@@ -6,6 +6,11 @@ import { type DomiaType, safeOwnDomia, isHostedIdentity } from "@/modules/core"
 import {
 	INTERACTION_STATUS_ENUM,
 	DEFAULT_SATELLITE_TURN_TIMEOUT_MS,
+	DEFAULT_PCM_SAMPLE_RATE,
+	DEFAULT_BARGE_IN_MIN_RMS,
+	DEFAULT_ACOUSTIC_GATE_COOLDOWN_MS,
+	DEFAULT_ACOUSTIC_MAX_HOLD_MS,
+	type SelectWakeWordConfigType,
 } from "@/db"
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { RESPONSE_TYPE_ENUM } from "@/db"
@@ -59,9 +64,12 @@ import {
 	RECORDINGS_DIR,
 	adaptiveVadWindow,
 	observeBargeIn,
-	int16BufferToFloat32,
 	endpointHintMs,
 	clampEndpointDebounceMs,
+	createEchoGate,
+	notePlaybackReference,
+	matchStopPhrase,
+	type EchoGateType,
 	type VadWindowType,
 } from "@/modules/audio-capture"
 import {
@@ -73,10 +81,14 @@ import {
 	wavFileToPcmChunks,
 	generateUuid,
 	satelliteGatewayLogger,
+	ensureTraceId,
+	runWithTraceContext,
+	setTraceContext,
+	int16BufferToFloat32,
+	pcm16Rms,
 } from "@/utils"
 
 import {
-	DEFAULT_SATELLITE_SAMPLE_RATE,
 	DEFAULT_SATELLITE_CHANNELS,
 	MAX_UTTERANCE_BYTES,
 	NO_VAD_MAX_UTTERANCE_S,
@@ -89,20 +101,6 @@ import type {
 	SatelliteSpeculationType,
 } from "../types"
 
-const BARGE_IN_MIN_RMS = 0.008
-
-const frameRms = (pcm: Buffer): number => {
-	if (pcm.length < 2) return 0
-	let sum = 0
-	const samples = pcm.length >> 1
-	for (let i = 0; i < samples; i++) {
-		const v = pcm.readInt16LE(i << 1) / 32768
-		sum += v * v
-	}
-	return Math.sqrt(sum / samples)
-}
-
-// prime the static persona prefix into the LLM cache at speech start, so the real request hits a warm prefill
 const LLM_PRIME_MIN_INTERVAL_MS = 60_000
 const lastLlmPrimeAt = new Map<string, number>()
 const primeLlmPrefix = (domia: DomiaType): void => {
@@ -144,7 +142,12 @@ const primeLlmPrefix = (domia: DomiaType): void => {
 			prompt,
 		)
 		satelliteGatewayLogger.info("🔥 llm prefix primed")
-	})().catch(() => undefined)
+	})().catch((err: unknown) =>
+		satelliteGatewayLogger.warn("llm prefix priming failed (best-effort)", {
+			err,
+			domiaId: domia.id,
+		}),
+	)
 }
 
 const sendViaSink = async (
@@ -173,12 +176,14 @@ export const createSatelliteSession = (
 
 	let identity: DomiaType = fallback
 	let satelliteId = "unknown"
-	let sampleRate = DEFAULT_SATELLITE_SAMPLE_RATE
+	let sampleRate = DEFAULT_PCM_SAMPLE_RATE
 	let channels = DEFAULT_SATELLITE_CHANNELS
 	let chunks: Buffer[] = []
 	let bufferedBytes = 0
 	let helloReceived = false
 	let busy = false
+	let interruptingTurn = false
+	let echoGate: EchoGateType | null = null
 	let pausedBargeIn: ReturnType<typeof setTimeout> | null = null
 	let echoWindowUntil = 0
 	let ttsBytesSent = 0
@@ -190,16 +195,41 @@ export const createSatelliteSession = (
 	let sttSessionTried = false
 	const connectionId = generateUuid()
 
-	const STT_SAMPLE_RATE = 16000
 	const CONFIG_REFRESH_MS = 3000
-	const ACOUSTIC_GATE_COOLDOWN_MS = 250
-	const ACOUSTIC_MAX_HOLD_MS = 2000
+	const bargeInMinRms = (): number =>
+		identity.wakeWordConfig?.bargeInMinRms ?? DEFAULT_BARGE_IN_MIN_RMS
+	const referenceKey = (): string => `${identity.id}:${satelliteId}`
+	const echoGateFor = (): EchoGateType | null => {
+		const wc = identity.wakeWordConfig
+		if (
+			!wc?.echoResidualGateEnabled ||
+			sampleRate !== DEFAULT_PCM_SAMPLE_RATE ||
+			channels !== 1
+		)
+			return null
+		echoGate ??= createEchoGate(referenceKey(), wc)
+		return echoGate
+	}
+	const stopPhraseIn = (text: string): string | null => {
+		const wc = identity.wakeWordConfig
+		if (!wc?.stopWordAbortEnabled || !interruptingTurn) return null
+		return matchStopPhrase(
+			text,
+			identity.characterProfile?.language,
+			wc.stopWordMaxWords,
+		)
+	}
+	const acousticGateCooldownMs = (): number =>
+		identity.wakeWordConfig?.acousticGateCooldownMs ??
+		DEFAULT_ACOUSTIC_GATE_COOLDOWN_MS
+	const acousticMaxHoldMs = (): number =>
+		identity.wakeWordConfig?.acousticMaxHoldMs ?? DEFAULT_ACOUSTIC_MAX_HOLD_MS
 	let minListenUntil = 0
 
 	const streamingSttCreate = ():
 		| ((domia: DomiaType) => SttStreamSessionType | null)
 		| null => {
-		if (sampleRate !== STT_SAMPLE_RATE || channels !== 1) return null
+		if (sampleRate !== DEFAULT_PCM_SAMPLE_RATE || channels !== 1) return null
 		if (identity.runtimeCapabilities?.stt !== true) return null
 		const engine = identity.sttConfig?.engine
 		const create = engine ? getSttEngine(engine)?.createSession : null
@@ -238,6 +268,11 @@ export const createSatelliteSession = (
 	let pendingInteractionId: string | null = null
 	let spec: SatelliteSpeculationType | null = null
 	let specStarting = false
+	const speculationArmable = (
+		wc: SelectWakeWordConfigType | null | undefined,
+	): boolean =>
+		wc?.satelliteSpeculationEnabled === true ||
+		wc?.twoTierEndpointEnabled === true
 	const abortSpeculation = (reason: string): void => {
 		if (!spec) return
 		const s = spec
@@ -257,14 +292,14 @@ export const createSatelliteSession = (
 		const wc = identity.wakeWordConfig
 		return (
 			!!wc?.acousticEndpointingEnabled &&
-			sampleRate === STT_SAMPLE_RATE &&
+			sampleRate === DEFAULT_PCM_SAMPLE_RATE &&
 			channels === 1 &&
 			turnDetectorAvailable(wc.turnDetectorModelPath, wc.turnDetectorEngine)
 		)
 	}
 	const runAcousticGate = (): void => {
 		if (acousticChecking || acousticComplete) return
-		if (Date.now() - lastAcousticRunAt < ACOUSTIC_GATE_COOLDOWN_MS) return
+		if (Date.now() - lastAcousticRunAt < acousticGateCooldownMs()) return
 		const wc = identity.wakeWordConfig
 		if (!wc) return
 		acousticChecking = true
@@ -319,7 +354,7 @@ export const createSatelliteSession = (
 					setPresenceStatus(identity.domiaKey, "speaking")
 					transport.beginAudio(format, activeInteractionId ?? undefined)
 				} catch (err) {
-					release?.()
+					release()
 					release = null
 					throw err
 				}
@@ -328,10 +363,12 @@ export const createSatelliteSession = (
 				onWrite?.()
 				if (ttsFirstSentAt === 0) ttsFirstSentAt = Date.now()
 				ttsBytesSent += chunk.length
+				if (identity.wakeWordConfig?.echoResidualGateEnabled)
+					notePlaybackReference(referenceKey(), chunk, sinkRate, sinkChannels)
 				echoWindowUntil =
 					ttsFirstSentAt +
 					ttsBytesSent / ((sinkRate * sinkChannels * 2) / 1000) +
-					(identity?.wakeWordConfig?.echoSuppressMarginMs ?? 500)
+					(identity.wakeWordConfig?.echoSuppressMarginMs ?? 500)
 				return transport.writeAudio(chunk)
 			},
 			end: () => {
@@ -409,9 +446,34 @@ export const createSatelliteSession = (
 		busy = false
 	}
 
-	const handleUtterance = async (speechEndAt?: number): Promise<void> => {
+	const discardStopWordUtterance = (phrase: string, site: string): void => {
+		if (pausedBargeIn !== null) {
+			clearTimeout(pausedBargeIn)
+			pausedBargeIn = null
+		}
+		abortActiveTurn(identity.id, "stop-word")
+		activeFinalize?.()
+		busy = false
+		interruptingTurn = false
+		echoGate?.reset()
+		chunks = []
+		bufferedBytes = 0
+		pendingInteractionId = null
+		resetVad()
+		closeSttSession()
+		setPresenceStatus(identity.domiaKey, "listening")
+		satelliteGatewayLogger.info(
+			`🛑 stop word "${phrase}" (${site}) — turn aborted, utterance discarded`,
+			{ satelliteId, domiaKey: identity.domiaKey },
+		)
+	}
+
+	const runUtterance = async (speechEndAt?: number): Promise<void> => {
 		if (busy) return
 		const endpointDecisionAt = Date.now()
+		const wasInterrupting = interruptingTurn
+		interruptingTurn = false
+		echoGate?.reset()
 		const owned = spec
 		spec = null
 		const session = sttSession
@@ -438,6 +500,7 @@ export const createSatelliteSession = (
 		const interactionId = pendingInteractionId ?? generateUuid()
 		pendingInteractionId = null
 		minListenUntil = 0
+		setTraceContext({ interactionId })
 		transport.onTurnStarted?.(interactionId)
 		acknowledgeEndpoint(identity, interactionId, {
 			playSound: false,
@@ -447,8 +510,7 @@ export const createSatelliteSession = (
 		})
 		if (owned && owned.interactionId !== interactionId)
 			owned.abort("interaction mismatch")
-		const ownedTurn =
-			owned && owned.interactionId === interactionId ? owned : null
+		const ownedTurn = owned?.interactionId === interactionId ? owned : null
 		activeInteractionId = interactionId
 		let turn: TurnScopeType | null = null
 		const turnStart = Date.now()
@@ -481,6 +543,8 @@ export const createSatelliteSession = (
 				activeInteractionId = null
 				setPresenceStatus(identity.domiaKey, "idle", true)
 				busy = false
+				interruptingTurn = false
+				echoGate?.reset()
 				endpointed = false
 			}
 			transport.onTurnFinished?.(interactionId)
@@ -608,7 +672,7 @@ export const createSatelliteSession = (
 					endpointDecisionAt,
 					filePathPromise: archived,
 				})
-				void ownedTurn.done.catch((err) => {
+				void ownedTurn.done.catch((err: unknown) => {
 					satelliteGatewayLogger.warn(
 						"speculative turn failed post-handoff — batch fallback",
 						{ err, interactionId },
@@ -638,7 +702,28 @@ export const createSatelliteSession = (
 					partialAtEndpoint: usePartial && !!transcript,
 					interactionId,
 				})
-				void writeFile(path, wav).catch((err) =>
+				const stopPhrase =
+					wasInterrupting && identity.wakeWordConfig?.stopWordAbortEnabled
+						? matchStopPhrase(
+								transcript,
+								identity.characterProfile?.language,
+								identity.wakeWordConfig.stopWordMaxWords,
+							)
+						: null
+				if (stopPhrase !== null) {
+					satelliteGatewayLogger.info(
+						`🛑 stop word "${stopPhrase}" (final) — utterance discarded`,
+						{ satelliteId, domiaKey: identity.domiaKey, interactionId },
+					)
+					await persistTerminal(
+						interactionId,
+						INTERACTION_STATUS_ENUM.ABORTED,
+						{ errorStep: "stop-word" },
+					)
+					finalize()
+					return
+				}
+				void writeFile(path, wav).catch((err: unknown) =>
 					satelliteGatewayLogger.warn("satellite audio archive write failed", {
 						path,
 						err,
@@ -672,6 +757,12 @@ export const createSatelliteSession = (
 			finalize()
 		}
 	}
+
+	const handleUtterance = (speechEndAt?: number): Promise<void> =>
+		runWithTraceContext(
+			{ originDomiaKey: identity.domiaKey, traceId: ensureTraceId() },
+			() => runUtterance(speechEndAt),
+		)
 
 	return {
 		setMinListenUntil: (ts: number) => {
@@ -763,13 +854,27 @@ export const createSatelliteSession = (
 				!busy &&
 				identity.wakeWordConfig?.echoSuppressEnabled === true &&
 				Date.now() < echoWindowUntil &&
-				frameRms(pcm) < BARGE_IN_MIN_RMS * 2
+				pcm16Rms(pcm) < bargeInMinRms() * 2
 			)
 				return
 			if (busy) {
 				if (!(identity.wakeWordConfig?.bargeInEnabled ?? true)) return
-				if (pausedBargeIn === null && frameRms(pcm) < BARGE_IN_MIN_RMS) return
 				if (pausedBargeIn === null) {
+					const gate = echoGateFor()
+					if (gate) {
+						const verdict = gate.observe(pcm)
+						if (!verdict.accept) return
+						satelliteGatewayLogger.info(
+							"🔊 residual gate — live speech over playback",
+							{
+								satelliteId,
+								residual: verdict.residual,
+								lagMs: verdict.lagMs,
+								rms: Number(verdict.rms.toFixed(4)),
+							},
+						)
+					} else if (pcm16Rms(pcm) < bargeInMinRms()) return
+					interruptingTurn = true
 					if (identity.wakeWordConfig)
 						observeBargeIn(identity.id, identity.wakeWordConfig)
 					const pauseFirst =
@@ -820,7 +925,7 @@ export const createSatelliteSession = (
 				}
 			}
 			if (endpointed) return
-			if (pausedBargeIn !== null && frameRms(pcm) >= BARGE_IN_MIN_RMS) {
+			if (pausedBargeIn !== null && pcm16Rms(pcm) >= bargeInMinRms()) {
 				clearTimeout(pausedBargeIn)
 				pausedBargeIn = setTimeout(() => {
 					pausedBargeIn = null
@@ -871,9 +976,7 @@ export const createSatelliteSession = (
 				primeLlmPrefix(identity)
 			}
 
-			// gate on detected speech so ambient noise never pins a streaming pool worker
-			const speechSeen =
-				!serverEndpointing || (vad !== null && vad.everDetected())
+			const speechSeen = !serverEndpointing || vad?.everDetected() === true
 			if (!sttSession && !sttSessionTried && speechSeen) {
 				sttSessionTried = true
 				const create = streamingSttCreate()
@@ -895,6 +998,13 @@ export const createSatelliteSession = (
 			} else {
 				sttSession?.pushChunk(pcm)
 			}
+			if (sttSession) {
+				const phrase = stopPhraseIn(sttSession.partial())
+				if (phrase !== null) {
+					discardStopWordUtterance(phrase, "interim")
+					return
+				}
+			}
 
 			if (!serverEndpointing) return
 			if (!vad && identity.wakeWordConfig) {
@@ -914,7 +1024,7 @@ export const createSatelliteSession = (
 			vad.feed(pcm)
 			const wc = identity.wakeWordConfig
 			const semantic = !!wc?.semanticEndpointingEnabled && sttSession !== null
-			if (semantic && wc) {
+			if (semantic) {
 				const hint = endpointHintMs(
 					sttSession?.partial() ?? "",
 					wc.endpointCompleteMs,
@@ -965,7 +1075,7 @@ export const createSatelliteSession = (
 					!semanticHintApplied &&
 					acousticGateActive() &&
 					!acousticComplete &&
-					Date.now() - vadCompletedAt < ACOUSTIC_MAX_HOLD_MS
+					Date.now() - vadCompletedAt < acousticMaxHoldMs()
 				) {
 					gateHolding = true
 					runAcousticGate()
@@ -979,7 +1089,7 @@ export const createSatelliteSession = (
 				return
 			}
 			if (
-				(wc?.satelliteSpeculationEnabled ?? false) &&
+				speculationArmable(wc) &&
 				!busy &&
 				!spec &&
 				!specStarting &&
@@ -1002,7 +1112,7 @@ export const createSatelliteSession = (
 				pendingInteractionId !== null &&
 				sttSession !== null &&
 				vad.everDetected() &&
-				(wc?.satelliteSpeculationEnabled ?? false)
+				speculationArmable(wc)
 			) {
 				specStarting = true
 				const gen = utteranceGen
@@ -1013,6 +1123,7 @@ export const createSatelliteSession = (
 					sttSession: () => sttSession,
 					vadDebounceMs,
 					bufferedPcm: () => Buffer.concat(chunks),
+					bargeIn: interruptingTurn,
 				})
 					.then((started) => {
 						specStarting = false
@@ -1029,7 +1140,7 @@ export const createSatelliteSession = (
 							}
 						})
 					})
-					.catch((err) => {
+					.catch((err: unknown) => {
 						specStarting = false
 						satelliteGatewayLogger.warn("satellite speculation start failed", {
 							err,
@@ -1040,6 +1151,12 @@ export const createSatelliteSession = (
 		},
 
 		onSpeechEnd: async () => {
+			if (!helloReceived) {
+				satelliteGatewayLogger.debug("speech_end before hello — ignored", {
+					satelliteId,
+				})
+				return
+			}
 			escalatePausedBargeIn()
 			await handleUtterance(Date.now())
 		},
@@ -1051,6 +1168,12 @@ export const createSatelliteSession = (
 		},
 
 		onCancel: () => {
+			if (!helloReceived) {
+				satelliteGatewayLogger.debug("cancel before hello — ignored", {
+					satelliteId,
+				})
+				return
+			}
 			if (pausedBargeIn !== null) {
 				clearTimeout(pausedBargeIn)
 				pausedBargeIn = null

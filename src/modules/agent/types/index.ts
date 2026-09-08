@@ -32,6 +32,7 @@ export type AgentTurnOptionsType = {
 	confirmationChannel?: string
 	canConfirm?: boolean
 	recentToolsLine?: string
+	lastActedTarget?: string
 	constrainedRepair?: (
 		prompt: string,
 		schema: Record<string, unknown>,
@@ -58,6 +59,7 @@ export type AgentStopReasonType =
 	| "context_overflow"
 	| "confirm_required"
 	| "call_cap"
+	| "inference_error"
 
 export type ToolGuardConfigType = {
 	repeatWarnAt: number

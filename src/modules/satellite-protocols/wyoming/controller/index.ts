@@ -8,11 +8,14 @@ import {
 } from "@/modules/satellite-core"
 import { setSatelliteConnecting, setSatelliteError } from "@/modules/core-bus"
 import { satelliteWyomingLogger } from "@/utils"
+import { DEFAULT_SATELLITE_WYOMING_STREAMING_TTS } from "@/db"
 
 import type {
 	WyomingConnectionType,
 	WyomingEventHandlerType,
 	WyomingSatelliteHandleType,
+	WyomingSatelliteOptionsType,
+	WyomingTransportDepsType,
 } from "../types"
 
 const WYOMING_VERSION = "1.6.0"
@@ -43,7 +46,12 @@ export const createWyomingConnection = (
 			}
 			let header: Record<string, unknown>
 			try {
-				header = JSON.parse(buf.subarray(0, nl).toString("utf8"))
+				const parsed: unknown = JSON.parse(buf.subarray(0, nl).toString("utf8"))
+				if (typeof parsed !== "object" || parsed === null) {
+					buf = buf.subarray(nl + 1)
+					continue
+				}
+				header = parsed as Record<string, unknown>
 			} catch {
 				buf = buf.subarray(nl + 1)
 				continue
@@ -68,11 +76,11 @@ export const createWyomingConnection = (
 					: {}
 			if (dataLen > 0) {
 				try {
-					data = {
-						...data,
-						...JSON.parse(
-							buf.subarray(nl + 1, nl + 1 + dataLen).toString("utf8"),
-						),
+					const extra: unknown = JSON.parse(
+						buf.subarray(nl + 1, nl + 1 + dataLen).toString("utf8"),
+					)
+					if (typeof extra === "object" && extra !== null) {
+						data = { ...data, ...(extra as Record<string, unknown>) }
 					}
 				} catch {
 					/* empty */
@@ -111,11 +119,59 @@ const parseAddress = (address: string): { host: string; port: number } => {
 	return { host: address.slice(0, idx), port: Number(address.slice(idx + 1)) }
 }
 
+export const createWyomingTransport = (
+	deps: WyomingTransportDepsType,
+): SatelliteTransportType => {
+	const { conn, streamingTts } = deps
+	let outFormat = { sampleRate: 24000, channels: 1 as 1 | 2 }
+	let buffered: Buffer[] = []
+	const chunkData = (): Record<string, unknown> => ({
+		rate: outFormat.sampleRate,
+		width: 2,
+		channels: outFormat.channels,
+	})
+	const writeStart = (): void => conn.write("audio-start", chunkData())
+	return {
+		sendReady: () => undefined,
+		sendTranscript: (text) => conn.write("transcript", { text }),
+		sendReplyDone: () => undefined,
+		sendError: deps.warn,
+		beginAudio: (format, interactionId) => {
+			deps.onBeginAudio?.(interactionId)
+			outFormat = { sampleRate: format.sampleRate, channels: format.channels }
+			buffered = []
+			if (streamingTts) writeStart()
+		},
+		writeAudio: (chunk) => {
+			if (chunk.length === 0) return
+			if (streamingTts) conn.write("audio-chunk", chunkData(), chunk)
+			else buffered.push(chunk)
+		},
+		endAudio: () => {
+			if (!streamingTts) {
+				writeStart()
+				for (const chunk of buffered)
+					conn.write("audio-chunk", chunkData(), chunk)
+				buffered = []
+			}
+			conn.write("audio-stop", {})
+		},
+		close: deps.close,
+		outputCapabilities: {
+			pause: false,
+			position: "sentence",
+			urlPlayback: false,
+			captions: false,
+		},
+	}
+}
+
 export const connectWyomingSatellite = (
 	address: string,
 	fallback: DomiaType,
 	domiaKey?: string,
 	satelliteId?: string,
+	options?: WyomingSatelliteOptionsType,
 ): WyomingSatelliteHandleType => {
 	const presenceKey = domiaKey ?? fallback.domiaKey
 	const sid = satelliteId ?? address
@@ -128,41 +184,20 @@ export const connectWyomingSatellite = (
 		setSatelliteConnecting(presenceKey, sid, "wyoming")
 		const sock = connect({ host, port })
 		socket = sock
-		let outFormat = { sampleRate: 24000, channels: 1 as 1 | 2 }
-
-		const transport: SatelliteTransportType = {
-			sendReady: () => undefined,
-			sendTranscript: (text) => conn.write("transcript", { text }),
-			sendReplyDone: () => undefined,
-			sendError: (message) =>
-				satelliteWyomingLogger.warn("turn error", { address, message }),
-			beginAudio: (format) => {
-				outFormat = { sampleRate: format.sampleRate, channels: format.channels }
-				conn.write("audio-start", {
-					rate: format.sampleRate,
-					width: 2,
-					channels: format.channels,
-				})
+		let activeInteractionId: string | undefined
+		const transport = createWyomingTransport({
+			conn: {
+				write: (type, data, payload) => conn.write(type, data, payload),
 			},
-			writeAudio: (chunk) =>
-				conn.write(
-					"audio-chunk",
-					{
-						rate: outFormat.sampleRate,
-						width: 2,
-						channels: outFormat.channels,
-					},
-					chunk,
-				),
-			endAudio: () => conn.write("audio-stop", {}),
+			streamingTts:
+				options?.streamingTts ?? DEFAULT_SATELLITE_WYOMING_STREAMING_TTS,
 			close: () => sock.end(),
-			outputCapabilities: {
-				pause: false,
-				position: "sentence",
-				urlPlayback: false,
-				captions: false,
+			warn: (message) =>
+				satelliteWyomingLogger.warn("turn error", { address, message }),
+			onBeginAudio: (interactionId) => {
+				activeInteractionId = interactionId
 			},
-		}
+		})
 
 		const session = createSatelliteSession({
 			fallback,
@@ -173,7 +208,9 @@ export const connectWyomingSatellite = (
 		let lastEventAt = Date.now()
 		const conn = createWyomingConnection(sock, (type, data, payload) => {
 			lastEventAt = Date.now()
-			if (type === "audio-start") {
+			if (type === "played") {
+				session.onAudioPlayed(activeInteractionId)
+			} else if (type === "audio-start") {
 				session.setFormat(
 					Number(data.rate ?? 16000),
 					Number(data.channels ?? 1),

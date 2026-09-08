@@ -5,7 +5,7 @@ export const getCharacterProfile = (
 	overrides: Partial<SelectCharacterProfileType> = {},
 ): SelectCharacterProfileType => {
 	return {
-		...baseCharacterProfile(overrides?.domiaId),
+		...baseCharacterProfile(overrides.domiaId),
 		...overrides,
 	}
 }

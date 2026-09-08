@@ -34,7 +34,7 @@ export const transformersEmbedBackend: EmbedBackendType = {
 		if (!texts.length) return []
 		try {
 			const modelDir =
-				domia.llmModelConfig?.embedModelPath?.trim() || DEFAULT_EMBED_MODEL_PATH
+				domia.llmModelConfig?.embedModelPath.trim() || DEFAULT_EMBED_MODEL_PATH
 			const pipe = await getPipe(modelDir)
 			const out = await pipe(texts, { pooling: "mean", normalize: true })
 			return out.tolist() as number[][]

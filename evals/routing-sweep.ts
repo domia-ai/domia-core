@@ -7,7 +7,6 @@ import {
 	routingBlockerHit,
 } from "@/modules/intent-router"
 import { homeAssistantSpecialization } from "@/modules/skill-engine"
-import type { SkillToolType } from "@/db"
 import type { DomiaType } from "@/modules/core"
 
 import { makeChecker } from "./lib"
@@ -45,7 +44,9 @@ type SweepRowType = {
 
 const loadCorpus = (file: string): EvalCaseType[] => {
 	const dir = file.includes("-es") ? "fixtures" : "cases"
-	return JSON.parse(readFileSync(join("evals", dir, file), "utf8"))
+	return JSON.parse(
+		readFileSync(join("evals", dir, file), "utf8"),
+	) as EvalCaseType[]
 }
 
 const domiaFor = (embedModelPath: string): DomiaType =>
@@ -76,7 +77,7 @@ const hintsFor = (language: string): { exampleUtterances?: string[] } => {
 			namespacedName: `sweep__${t.name}`,
 			description: t.description,
 			inputSchema: { type: "object", properties: {} },
-		})) as SkillToolType[],
+		})),
 		language,
 	)
 	return { exampleUtterances: descriptor?.routing?.exampleUtterances }
@@ -166,7 +167,7 @@ const main = async (): Promise<void> => {
 	const enAt = gridOf(en).find((g) => g.threshold === 0.66)
 	checker.check(
 		"EN: current default 0.66 has zero fatal misses",
-		enAt !== undefined && enAt.fatalMiss === 0,
+		enAt?.fatalMiss === 0,
 		JSON.stringify(enAt),
 	)
 	const esBest = gridOf(esMultilingual).filter(

@@ -19,7 +19,11 @@ export const llmEngineRegistry: Record<
 
 export const getLlmEngine = (
 	id: LlmEngineEnumType,
-): LlmEngineAdapterType | null => llmEngineRegistry[id] ?? null
+): LlmEngineAdapterType | null => lookupEngine(id) ?? null
+
+const lookupEngine = (
+	id: LlmEngineEnumType,
+): LlmEngineAdapterType | undefined => llmEngineRegistry[id]
 
 export const llmEngines = {
 	[LLM_ENGINE_ENUM.OLLAMA]: ollamaEngine.run,

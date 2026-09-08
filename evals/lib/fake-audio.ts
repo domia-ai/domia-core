@@ -1,4 +1,5 @@
 import type { VadWindowType } from "@/modules/audio-capture"
+import { DEFAULT_PCM_SAMPLE_RATE } from "@/db/constants"
 
 import { sleep } from "./http"
 import type {
@@ -7,7 +8,7 @@ import type {
 	FakeAudioTickType,
 } from "../types"
 
-const DEFAULT_SAMPLE_RATE = 16000
+const DEFAULT_SAMPLE_RATE = DEFAULT_PCM_SAMPLE_RATE
 const DEFAULT_CHUNK_MS = 30
 const SPEECH_PEAK = 18000
 const SPEECH_F0_HZ = 120

@@ -19,6 +19,11 @@ import {
 } from "@/db"
 import { generateUuid } from "@/utils"
 
+const columnOf = (
+	columns: Record<string, { notNull?: boolean }>,
+	key: string,
+): { notNull?: boolean } | undefined => columns[key]
+
 const stamp = <T extends Record<string, unknown>>(table: Table, fields: T) => {
 	const columns = getTableColumns(table) as Record<
 		string,
@@ -29,7 +34,7 @@ const stamp = <T extends Record<string, unknown>>(table: Table, fields: T) => {
 		const value = fields[key]
 		if (value === undefined) continue
 		const isEmpty = value === null || value === ""
-		if (isEmpty && columns[key as string]?.notNull === true) continue
+		if (isEmpty && columnOf(columns, key as string)?.notNull === true) continue
 		cleaned[key] = value
 	}
 	return { ...cleaned, updatedAt: DEFAULT_TIMESTAMP }

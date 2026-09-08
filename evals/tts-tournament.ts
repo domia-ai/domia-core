@@ -214,7 +214,7 @@ const main = async (): Promise<void> => {
 				sampleRate: audio.sampleRate,
 				samples: audio.samples,
 			})
-			const heard = (await sttEngine.run(sttDomia, wavPath)) ?? ""
+			const heard = await sttEngine.run(sttDomia, wavPath)
 			const row: TtsTournamentRowType = {
 				candidate: c.label,
 				textClass: tc.cls,
@@ -250,7 +250,7 @@ const main = async (): Promise<void> => {
 	process.exit(0)
 }
 
-void main().catch((e) => {
+void main().catch((e: unknown) => {
 	console.error(e)
 	process.exit(1)
 })

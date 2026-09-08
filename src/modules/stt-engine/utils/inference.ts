@@ -8,6 +8,7 @@ import {
 	sttEngineLogger,
 	domiaError,
 	findOnnxFile,
+	int16BufferToFloat32,
 	resolveQuantization,
 } from "@/utils"
 import {
@@ -223,13 +224,6 @@ const getRecognizer = (
 	return cached
 }
 
-const int16BufferToFloat32 = (chunk: Buffer): Float32Array => {
-	const usable = chunk.length - (chunk.length % 2)
-	const out = new Float32Array(usable / 2)
-	for (let i = 0; i < out.length; i++) out[i] = chunk.readInt16LE(i * 2) / 32768
-	return out
-}
-
 const transcribe = (
 	entry: RecognizerEntryType,
 	samples: Float32Array,
@@ -282,12 +276,19 @@ export const handleSttSessionJob = (
 	if (job.kind === "session-start") {
 		const entry = getRecognizer(job.engineConfig)
 		if (!entry.online) {
-			throw new Error("STT sessions require a streaming (online) engine")
+			throw domiaError(STT_ERRORS.SESSION_ENGINE_NOT_STREAMING, {
+				logger: sttEngineLogger,
+				meta: { engine: job.engineConfig.engine },
+			})
 		}
 		activeSession = { stream: entry.rec.createStream(), entry }
 		return { ok: true }
 	}
-	if (!activeSession) throw new Error("no active STT session")
+	if (!activeSession)
+		throw domiaError(STT_ERRORS.NO_ACTIVE_SESSION, {
+			logger: sttEngineLogger,
+			meta: { kind: job.kind },
+		})
 	const { stream, entry } = activeSession
 	if (job.kind === "session-chunk") {
 		stream.acceptWaveform({

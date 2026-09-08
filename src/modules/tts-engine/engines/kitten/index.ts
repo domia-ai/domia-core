@@ -75,7 +75,7 @@ const runKitten = async (
 			const result = await pool.submit<TtsWorkerResultType>(
 				jobOf(ttsConfig, sentence, sid, voice.speed),
 			)
-			if (result.pcm && result.pcm.length > 0) {
+			if (result.pcm.length > 0) {
 				parts.push(applyEdgeFade(result.pcm, result.sampleRate))
 				sampleRate = result.sampleRate
 			}
@@ -116,7 +116,7 @@ const runKittenStream = async function* (
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, sid, voice.speed),
 		)
-		if (result.pcm && result.pcm.length > 0)
+		if (result.pcm.length > 0)
 			yield applyEdgeFade(result.pcm, result.sampleRate)
 	}
 }

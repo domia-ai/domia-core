@@ -2,15 +2,7 @@ import { ServerError, Status } from "nice-grpc"
 
 import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import type { CoreBusFeaturesType } from "@/modules/core-bus/types"
-import {
-	splitSentences,
-	createAsyncQueue,
-	concatStreams,
-	eagerTtsSlotsFromDomia,
-	pipelineDepthFromDomia,
-	primeStream,
-	sentenceTuningFromDomia,
-} from "@/modules/core-bus/utils/sentence-buffer"
+import { createSentencePipeline } from "@/modules/core-bus/utils/sentence-pipeline"
 import { resolveFallbackMessage } from "@/modules/core-bus/utils/fallback-messages"
 import {
 	buildPromptFromPersona,
@@ -36,10 +28,11 @@ import { runSTT } from "@/modules/stt-engine"
 import type { PoolJobTimingCbType } from "@/modules/inference-pool"
 import {
 	runTTS,
-	ttsAdapterToPcmChunks,
+	cachedTtsPcmChunks,
 	type RunTtsOptionsType,
 } from "@/modules/tts-engine"
 import {
+	bytesToAudioMs,
 	grpcServerLogger,
 	pcmChunksToWavFile,
 	wavFileToPcmChunks,
@@ -69,7 +62,7 @@ export const admitVoiceReplyOrBusy = async (
 	grpcServerLogger.warn(
 		"🚧 hub at capacity — rejecting voice reply (too many concurrent)",
 		{
-			domiaId: domia?.id,
+			domiaId: domia.id,
 			...logCtx,
 			active: activeVoiceReplies(),
 			queued: queuedVoiceReplies(),
@@ -132,6 +125,7 @@ export const reportStageExecution = async (
 				domiaId: origin.id,
 				localIp: origin.localIp,
 				grpcPort: origin.grpcPort,
+				grpcTls: origin.grpcTls,
 				source: "explicit",
 				streamingCapabilities: resolveDomiaStreamingCapabilities(origin),
 			},
@@ -139,7 +133,7 @@ export const reportStageExecution = async (
 		)
 	} catch (err) {
 		grpcServerLogger.warn("reportStageExecution failed (skipping)", {
-			responderId: responder?.id,
+			responderId: responder.id,
 			err,
 		})
 	}
@@ -164,12 +158,6 @@ export const ttsCapsOrDefaults = (
 	channels: features.tts?.adapter.capabilities.channels ?? DEFAULT_CHANNELS,
 })
 
-export const bytesToAudioMs = (
-	bytes: number,
-	sampleRate: number,
-	channels: number,
-): number => Math.round((bytes / (sampleRate * channels * 2)) * 1000)
-
 export const ttsTextToChunks = async function* (
 	domia: DomiaType,
 	text: string,
@@ -178,11 +166,11 @@ export const ttsTextToChunks = async function* (
 ): AsyncIterable<Buffer> {
 	const adapter = features.tts?.adapter
 	if (adapter) {
-		yield* ttsAdapterToPcmChunks(domia, adapter, text, options)
+		yield* cachedTtsPcmChunks(domia, adapter, text, options)
 		return
 	}
 	const result = await runTTS(domia, text, options)
-	if (!result?.filePath) return
+	if (!result.filePath) return
 	yield* wavFileToPcmChunks(result.filePath)
 }
 
@@ -197,38 +185,30 @@ export const pipelinedReplyChunks = async function* (
 	const llmRunStream = features.llm?.adapter.runStream
 	if (!llmRunStream) return
 	const tokens = llmRunStream(domia, promptContext, undefined, onUsage)
-	const ttsQueue = createAsyncQueue<AsyncIterable<Buffer>>()
-	const queueDepth = pipelineDepthFromDomia(domia)
-	const eagerSlots = eagerTtsSlotsFromDomia(domia)
-	let consumerClosed = false
+	const pipeline = createSentencePipeline(domia)
 	const producer = (async () => {
 		try {
-			for await (const sentence of splitSentences(
-				tokens,
-				sentenceTuningFromDomia(domia),
-			)) {
-				if (consumerClosed) break
-				await ttsQueue.waitForSpace(queueDepth)
-				if (consumerClosed) break
+			for await (const sentence of pipeline.sentencesOf(tokens)) {
+				if (pipeline.isClosed()) break
+				await pipeline.waitForSpace()
+				if (pipeline.isClosed()) break
 				onSentence(sentence)
-				ttsQueue.push(
-					primeStream(
-						ttsTextToChunks(domia, sentence, features, options),
-						eagerSlots,
-					),
+				pipeline.push(
+					sentence,
+					ttsTextToChunks(domia, sentence, features, options),
 				)
 			}
 		} finally {
-			ttsQueue.close()
+			pipeline.close()
 		}
 	})()
+	void producer.catch(() => undefined)
 	try {
-		yield* concatStreams(ttsQueue.iter())
+		yield* pipeline.audio
 	} finally {
-		consumerClosed = true
-		ttsQueue.close()
-		await producer.catch(() => undefined)
+		pipeline.close()
 	}
+	await producer
 }
 
 export const fullReplyChunks = async function* (
@@ -254,7 +234,7 @@ export const transcribeAudioStream = async (
 	const pcm = (async function* (): AsyncIterable<Buffer> {
 		for await (const chunk of request) {
 			if (chunk.meta && !captured.meta) captured.meta = chunk.meta
-			if (chunk.pcm && chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
+			if (chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
 		}
 	})()
 
@@ -289,7 +269,7 @@ export const streamReplyAudioMessages = async function* (
 	let chunkCount = 0
 	let totalBytes = 0
 	let firstChunkAt: number | null = null
-	let llmDoneAt: number | null = null
+	let llmDoneAt = null as number | null
 	let sentenceCount = 0
 	let assembled = ""
 	const usageRef: { current: LlmUsageType | null } = { current: null }
@@ -316,7 +296,7 @@ export const streamReplyAudioMessages = async function* (
 			llmDoneAt = Date.now()
 		}
 
-		const emptyTranscript = !transcript?.trim()
+		const emptyTranscript = !transcript.trim()
 		let audio: AsyncIterable<Buffer>
 		if (emptyTranscript) {
 			grpcServerLogger.warn(
@@ -352,7 +332,7 @@ export const streamReplyAudioMessages = async function* (
 		for await (const chunk of audio) {
 			chunkCount++
 			totalBytes += chunk.length
-			if (firstChunkAt === null) firstChunkAt = Date.now()
+			firstChunkAt ??= Date.now()
 			yield {
 				payload: {
 					$case: "audio",
@@ -378,7 +358,7 @@ export const streamReplyAudioMessages = async function* (
 			)) {
 				chunkCount++
 				totalBytes += chunk.length
-				if (firstChunkAt === null) firstChunkAt = Date.now()
+				firstChunkAt ??= Date.now()
 				yield {
 					payload: {
 						$case: "audio",

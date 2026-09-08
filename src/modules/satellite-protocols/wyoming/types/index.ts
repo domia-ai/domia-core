@@ -15,3 +15,15 @@ export type WyomingConnectionType = {
 export type WyomingSatelliteHandleType = {
 	close: () => void
 }
+
+export type WyomingSatelliteOptionsType = {
+	streamingTts?: boolean
+}
+
+export type WyomingTransportDepsType = {
+	conn: WyomingConnectionType
+	streamingTts: boolean
+	close: () => void
+	warn: (message: string) => void
+	onBeginAudio?: (interactionId: string | undefined) => void
+}

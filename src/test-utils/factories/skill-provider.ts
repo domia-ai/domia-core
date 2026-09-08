@@ -5,7 +5,7 @@ export const getSkillProvider = (
 	overrides: Partial<SelectSkillProviderType> = {},
 ): SelectSkillProviderType => {
 	return {
-		...baseSkillProvider(overrides?.domiaId),
+		...baseSkillProvider(overrides.domiaId),
 		...overrides,
 	}
 }

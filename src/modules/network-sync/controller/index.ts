@@ -3,7 +3,7 @@ import os from "os"
 import { env } from "@/config"
 import { dbClient } from "@/db"
 import { type DomiaType } from "@/modules/core"
-import { networkSyncLogger } from "@/utils"
+import { networkSyncLogger, isTlsEnabled } from "@/utils"
 import { invalidateCapabilityCache } from "@/modules/capability-resolver"
 import dbAdapter from "../db-adapter"
 import {
@@ -40,25 +40,29 @@ export const getLocalIp = (): string | null => {
 export const refreshDomiaLocalIp = (domia: DomiaType): DomiaType => {
 	const currentIp = getLocalIp()
 	const currentGrpcPort = Number(env.GRPC_PORT) || null
-	const ipChanged = currentIp && currentIp !== domia?.localIp
-	const grpcPortChanged = currentGrpcPort !== domia?.grpcPort
+	const currentGrpcTls = isTlsEnabled()
+	const ipChanged = currentIp && currentIp !== domia.localIp
+	const grpcPortChanged = currentGrpcPort !== domia.grpcPort
+	const grpcTlsChanged = currentGrpcTls !== domia.grpcTls
 
-	if (!ipChanged && !grpcPortChanged) return domia
+	if (!ipChanged && !grpcPortChanged && !grpcTlsChanged) return domia
 
 	networkSyncLogger.info("Refreshing self domia row", {
-		domiaId: domia?.id,
+		domiaId: domia.id,
 		ipChanged,
 		grpcPortChanged,
-		previousIp: domia?.localIp,
+		grpcTlsChanged,
+		previousIp: domia.localIp,
 		currentIp,
-		previousGrpcPort: domia?.grpcPort,
+		previousGrpcPort: domia.grpcPort,
 		currentGrpcPort,
 	})
 
 	const refreshed = {
 		...domia,
-		localIp: currentIp ?? domia?.localIp,
+		localIp: currentIp ?? domia.localIp,
 		grpcPort: currentGrpcPort,
+		grpcTls: currentGrpcTls,
 	}
 	dbAdapter.upsertDomia(normalizeDomia(refreshed)).run()
 	return refreshed
@@ -74,9 +78,9 @@ export const markPeerOfflineByNodeId = (nodeId: string): number => {
 	return changed
 }
 
-export const upsertDomiaFromNetwork = async (domia: DomiaType) => {
-	const domiaId = domia?.id
-	const domiaKey = domia?.domiaKey
+export const upsertDomiaFromNetwork = (domia: DomiaType): void => {
+	const domiaId = domia.id
+	const domiaKey = domia.domiaKey
 
 	const logParams = {
 		domiaId,

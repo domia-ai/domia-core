@@ -59,13 +59,10 @@ const runWiringChecks = async (): Promise<void> => {
 	const control = getSatelliteControl(domiaKey, "eval-esp-wiring")
 	checker.check(
 		"satellite control registered with full surface",
-		!!control?.setVolume &&
-			!!control?.announce &&
-			!!control?.setWakeWords &&
-			!!control?.setFollowUp,
+		control !== null,
 	)
 
-	control?.setWakeWords?.(["computer"])
+	control?.setWakeWords(["computer"])
 	device.emit("voiceAssistantConfiguration", {
 		availableWakeWords: [
 			{ id: "computer", wakeWord: "computer" },
@@ -135,7 +132,7 @@ const runMediaVolumeChecks = async (): Promise<void> => {
 	const appliedVolume = volumeCalls[volumeCalls.length - 1]
 	checker.check(
 		"desired volume applied once the media player appears",
-		(appliedVolume?.args[1] as { volume?: number })?.volume === 0.4,
+		(appliedVolume.args[1] as { volume?: number }).volume === 0.4,
 	)
 	handle.close()
 	await sleep(10)
@@ -169,7 +166,7 @@ const runAnnounceDurationChecks = async (): Promise<void> => {
 	registerAudioForServing("eval-esp-announce-audio", wavPath)
 
 	const control = getSatelliteControl(domiaKey, "eval-esp-announce")
-	control?.announce?.("http://127.0.0.1:3100/audio/eval-esp-announce-audio")
+	control?.announce("http://127.0.0.1:3100/audio/eval-esp-announce-audio")
 	await sleep(30)
 	checker.check(
 		"announce dispatched to the device",

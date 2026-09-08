@@ -5,7 +5,7 @@ import { WebSocketServer, type WebSocket } from "ws"
 import { createNemoSpeechSession } from "@/modules/stt-engine/engines/nemo-speech/session"
 import type { DomiaType } from "@/modules/core"
 
-import { makeChecker } from "./lib"
+import { makeChecker, rawDataToString, sleep } from "./lib"
 
 const checker = makeChecker()
 
@@ -30,7 +30,7 @@ const startServer = (onMessage: ServerScriptType): Promise<FakeServerType> =>
 			socket.on("message", (data, isBinary) => {
 				const parsed = isBinary
 					? { binary: true, size: (data as Buffer).length }
-					: JSON.parse(String(data))
+					: (JSON.parse(rawDataToString(data)) as unknown)
 				onMessage(socket, parsed)
 			})
 		})
@@ -60,9 +60,6 @@ const domiaFor = (port: number): DomiaType =>
 			modelName: null,
 		},
 	}) as unknown as DomiaType
-
-const sleep = (ms: number): Promise<void> =>
-	new Promise((resolve) => setTimeout(resolve, ms))
 
 const send = (socket: WebSocket, payload: Record<string, unknown>): void =>
 	socket.send(JSON.stringify(payload))

@@ -1,4 +1,4 @@
 import { getDomia } from "../"
-;(async () => {
+void (async () => {
 	await getDomia()
 })()

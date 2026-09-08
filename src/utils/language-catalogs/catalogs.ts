@@ -1,6 +1,155 @@
-import type { LanguageCatalogType, ResolvedLanguageSetsType } from "./types"
+import type {
+	AnaphoraRewriteType,
+	LanguageCatalogExtensionType,
+	LanguageCatalogType,
+	ResolvedLanguageSetsType,
+	SpokenTimeRendererType,
+} from "./types"
+
+const EN_HOUR_WORDS = [
+	"twelve",
+	"one",
+	"two",
+	"three",
+	"four",
+	"five",
+	"six",
+	"seven",
+	"eight",
+	"nine",
+	"ten",
+	"eleven",
+]
+const EN_UNIT_WORDS = [
+	"",
+	"one",
+	"two",
+	"three",
+	"four",
+	"five",
+	"six",
+	"seven",
+	"eight",
+	"nine",
+	"ten",
+	"eleven",
+	"twelve",
+	"thirteen",
+	"fourteen",
+	"fifteen",
+	"sixteen",
+	"seventeen",
+	"eighteen",
+	"nineteen",
+]
+const EN_TENS_WORDS = ["", "", "twenty", "thirty", "forty", "fifty"]
+
+const enMinuteWords = (m: number): string => {
+	if (m < 20) return EN_UNIT_WORDS[m]
+	const tens = EN_TENS_WORDS[Math.floor(m / 10)]
+	const ones = m % 10
+	return ones === 0 ? tens : `${tens}-${EN_UNIT_WORDS[ones]}`
+}
+
+const enSpokenTime: SpokenTimeRendererType = (d) => {
+	const hour = EN_HOUR_WORDS[d.getHours() % 12]
+	const minutes = d.getMinutes()
+	const period =
+		d.getHours() < 12
+			? "in the morning"
+			: d.getHours() < 18
+				? "in the afternoon"
+				: "in the evening"
+	if (minutes === 0) return `${hour} o'clock ${period}`
+	if (minutes < 10) return `${hour} oh ${enMinuteWords(minutes)} ${period}`
+	return `${hour} ${enMinuteWords(minutes)} ${period}`
+}
+
+const ES_HOUR_WORDS = [
+	"doce",
+	"una",
+	"dos",
+	"tres",
+	"cuatro",
+	"cinco",
+	"seis",
+	"siete",
+	"ocho",
+	"nueve",
+	"diez",
+	"once",
+]
+const ES_UNIT_WORDS = [
+	"",
+	"uno",
+	"dos",
+	"tres",
+	"cuatro",
+	"cinco",
+	"seis",
+	"siete",
+	"ocho",
+	"nueve",
+	"diez",
+	"once",
+	"doce",
+	"trece",
+	"catorce",
+	"quince",
+	"dieciséis",
+	"diecisiete",
+	"dieciocho",
+	"diecinueve",
+]
+const ES_TWENTIES = [
+	"veinte",
+	"veintiuno",
+	"veintidós",
+	"veintitrés",
+	"veinticuatro",
+	"veinticinco",
+	"veintiséis",
+	"veintisiete",
+	"veintiocho",
+	"veintinueve",
+]
+const ES_TENS_WORDS = ["", "", "", "treinta", "cuarenta", "cincuenta"]
+
+const esMinuteWords = (m: number): string => {
+	if (m < 20) return ES_UNIT_WORDS[m]
+	if (m < 30) return ES_TWENTIES[m - 20]
+	const tens = ES_TENS_WORDS[Math.floor(m / 10)]
+	const ones = m % 10
+	return ones === 0 ? tens : `${tens} y ${ES_UNIT_WORDS[ones]}`
+}
+
+const esHourPhrase = (hour24: number): string => {
+	const word = ES_HOUR_WORDS[hour24 % 12]
+	return hour24 % 12 === 1 ? `la ${word}` : `las ${word}`
+}
+
+const esPeriod = (hour24: number): string =>
+	hour24 < 12 ? "de la mañana" : hour24 < 20 ? "de la tarde" : "de la noche"
+
+const esSpokenTime: SpokenTimeRendererType = (d) => {
+	const hour = d.getHours()
+	const minutes = d.getMinutes()
+	if (minutes === 0) return `${esHourPhrase(hour)} en punto ${esPeriod(hour)}`
+	if (minutes === 15) return `${esHourPhrase(hour)} y cuarto ${esPeriod(hour)}`
+	if (minutes === 30) return `${esHourPhrase(hour)} y media ${esPeriod(hour)}`
+	if (minutes === 45) {
+		const next = (hour + 1) % 24
+		return `${esHourPhrase(next)} menos cuarto ${esPeriod(next)}`
+	}
+	return `${esHourPhrase(hour)} y ${esMinuteWords(minutes)} ${esPeriod(hour)}`
+}
 
 const EN: LanguageCatalogType = {
+	displayName: "English",
+	locale: "en-US",
+	latinScript: true,
+	spokenTime: enSpokenTime,
+	articles: ["the", "my", "our"],
 	stopwords: [
 		"the",
 		"a",
@@ -59,19 +208,6 @@ const EN: LanguageCatalogType = {
 		"in",
 		"on",
 	],
-	deviceGenericWords: [
-		"light",
-		"lights",
-		"lamp",
-		"lamps",
-		"switch",
-		"sensor",
-		"cover",
-		"the",
-		"in",
-		"on",
-		"of",
-	],
 	numberWords: {
 		one: 1,
 		two: 2,
@@ -104,6 +240,28 @@ const EN: LanguageCatalogType = {
 	},
 	numberJoiners: ["and"],
 	percentWords: ["percent"],
+	questionStarters: [
+		"is",
+		"are",
+		"was",
+		"were",
+		"do",
+		"does",
+		"did",
+		"can",
+		"could",
+		"will",
+		"would",
+		"what",
+		"which",
+		"who",
+		"when",
+		"where",
+		"why",
+		"how",
+	],
+	requestModals: ["can", "could", "would", "will", "please"],
+	conjunctions: ["and", "plus", "also"],
 	timerKeywords: ["timer", "alarm"],
 	memoryCommandKeywords: ["remember", "memorize", "forget", "don't forget"],
 	unitWords: { hour: "hour", minute: "minute", second: "second", plural: "s" },
@@ -135,6 +293,21 @@ const EN: LanguageCatalogType = {
 		"nevermind",
 		"forget it",
 		"negative",
+	],
+	interruptPhrases: [
+		"stop",
+		"stop it",
+		"stop talking",
+		"enough",
+		"that's enough",
+		"be quiet",
+		"quiet",
+		"shut up",
+		"hold on",
+		"never mind",
+		"nevermind",
+		"cancel",
+		"hush",
 	],
 	fastPathBlockers: [
 		"don't",
@@ -181,16 +354,6 @@ const EN: LanguageCatalogType = {
 		"suppose",
 		"if",
 	],
-	anaphoraRewrites: [
-		{
-			pattern: "^(?:please )?(?:turn|switch) it (on|off)$",
-			template: "turn {entity} $1",
-		},
-		{
-			pattern: "^(?:please )?(?:turn|switch) it back (on|off)$",
-			template: "turn {entity} $1",
-		},
-	],
 	phrases: {
 		done: "Done.",
 		gotIt: "Got it.",
@@ -198,9 +361,6 @@ const EN: LanguageCatalogType = {
 		thatIsDone: "That's done.",
 		cantDoThat: "I couldn't do that.",
 		cantAdjust: "I couldn't adjust that.",
-		turnedOn: "Done, I turned on {name}.",
-		turnedOff: "Done, I turned off {name}.",
-		adjusted: "Got it, I adjusted {name}.",
 		timerSet: "Timer set for {label}.",
 		confirmAction: "Do you want me to go ahead with that?",
 		cancelledAction: "Okay, I won't do that.",
@@ -213,10 +373,18 @@ const EN: LanguageCatalogType = {
 		fallbackNetwork: "I had a network problem. One moment, please.",
 		fallbackCapacity: "I'm helping another room right now. Give me a moment.",
 		fallbackGeneric: "Sorry, something went wrong. Please try again.",
+		proactiveReminder: "Reminder: {text}",
+		proactiveIdleNudge: "Still there? Let me know if you need anything.",
+		proactiveTimeReached: "It's {time}.",
 	},
 }
 
 const ES: LanguageCatalogType = {
+	displayName: "Spanish",
+	locale: "es",
+	latinScript: true,
+	spokenTime: esSpokenTime,
+	articles: ["la", "el", "las", "los", "mi", "mis", "una", "un"],
 	stopwords: [
 		"el",
 		"la",
@@ -271,15 +439,6 @@ const ES: LanguageCatalogType = {
 		"muy",
 		"mas",
 	],
-	deviceGenericWords: [
-		"luz",
-		"luces",
-		"lampara",
-		"lamparas",
-		"interruptor",
-		"foco",
-		"focos",
-	],
 	numberWords: {
 		un: 1,
 		una: 1,
@@ -315,6 +474,34 @@ const ES: LanguageCatalogType = {
 	},
 	numberJoiners: ["y"],
 	percentWords: ["por", "ciento", "porciento"],
+	questionStarters: [
+		"está",
+		"esta",
+		"están",
+		"estan",
+		"es",
+		"son",
+		"hay",
+		"qué",
+		"que",
+		"cuál",
+		"cual",
+		"cuáles",
+		"cuales",
+		"quién",
+		"quien",
+		"cuándo",
+		"cuando",
+		"dónde",
+		"donde",
+		"cómo",
+		"como",
+		"puedes",
+		"podrías",
+		"podrias",
+	],
+	requestModals: ["puedes", "podrías", "podría", "puede", "por favor"],
+	conjunctions: ["y", "e", "también", "tambien"],
 	timerKeywords: ["temporizador", "alarma", "cronometro"],
 	memoryCommandKeywords: [
 		"recuerda",
@@ -332,6 +519,8 @@ const ES: LanguageCatalogType = {
 	affirmations: [
 		"si",
 		"sí",
+		"ok",
+		"okay",
 		"claro",
 		"vale",
 		"dale",
@@ -355,6 +544,23 @@ const ES: LanguageCatalogType = {
 		"dejalo",
 		"mejor no",
 		"negativo",
+	],
+	interruptPhrases: [
+		"para",
+		"para ya",
+		"detente",
+		"basta",
+		"ya basta",
+		"suficiente",
+		"cállate",
+		"callate",
+		"silencio",
+		"espera",
+		"cancela",
+		"olvídalo",
+		"olvidalo",
+		"déjalo",
+		"dejalo",
 	],
 	fastPathBlockers: [
 		"no",
@@ -408,17 +614,6 @@ const ES: LanguageCatalogType = {
 		"supon",
 		"si",
 	],
-	anaphoraRewrites: [
-		{
-			pattern: "^(?:apágala|apágalo|apagala|apagalo)$",
-			template: "apaga {entity}",
-		},
-		{
-			pattern:
-				"^(?:enciéndela|enciéndelo|enciendela|enciendelo|préndela|préndelo|prendela|prendelo)$",
-			template: "enciende {entity}",
-		},
-	],
 	phrases: {
 		done: "Listo.",
 		gotIt: "Hecho.",
@@ -426,9 +621,6 @@ const ES: LanguageCatalogType = {
 		thatIsDone: "Ya está.",
 		cantDoThat: "No pude hacerlo.",
 		cantAdjust: "No pude ajustarlo.",
-		turnedOn: "Listo, encendí {name}.",
-		turnedOff: "Listo, apagué {name}.",
-		adjusted: "Hecho, ajusté {name}.",
 		timerSet: "Temporizador de {label}.",
 		confirmAction: "¿Quieres que lo haga?",
 		cancelledAction: "De acuerdo, no lo haré.",
@@ -441,17 +633,93 @@ const ES: LanguageCatalogType = {
 		fallbackNetwork: "Tuve un problema de red. Un momento, por favor.",
 		fallbackCapacity: "Estoy atendiendo otra habitación. Dame un momento.",
 		fallbackGeneric: "Perdón, algo salió mal. Inténtalo de nuevo.",
+		proactiveReminder: "Recordatorio: {text}",
+		proactiveIdleNudge: "¿Sigues ahí? Dime si necesitas algo.",
+		proactiveTimeReached: "Son las {time}.",
 	},
 }
 
-const CATALOGS: Record<string, LanguageCatalogType> = { en: EN, es: ES }
+const CATALOGS = new Map<string, LanguageCatalogType>([
+	["en", EN],
+	["es", ES],
+])
+
+const supportedLanguages = new Set(CATALOGS.keys())
+
+export const SUPPORTED_LANGUAGES: ReadonlySet<string> = supportedLanguages
 
 const resolvedCache = new Map<string, ResolvedLanguageSetsType>()
 
-const normalizeLanguage = (language?: string | null): string => {
-	const code = (language ?? "en").trim().toLowerCase().split(/[-_]/)[0]
-	return CATALOGS[code] ? code : "en"
+const extensions = new Map<
+	string,
+	Record<string, LanguageCatalogExtensionType>
+>()
+
+export const registerCatalogExtension = (
+	kind: string,
+	byLanguage: Record<string, LanguageCatalogExtensionType>,
+): void => {
+	extensions.set(kind, byLanguage)
+	resolvedCache.clear()
 }
+
+const extensionsFor = (code: string): LanguageCatalogExtensionType[] =>
+	[...extensions.values()].flatMap((byLanguage) => {
+		const base = byLanguage.en
+		const localized = code === "en" ? undefined : byLanguage[code]
+		return [base, localized].filter(
+			(ext): ext is LanguageCatalogExtensionType => ext !== undefined,
+		)
+	})
+
+const extensionFor = (
+	byLanguage: Record<string, LanguageCatalogExtensionType>,
+	code: string,
+): LanguageCatalogExtensionType | undefined => byLanguage[code]
+
+const extensionRewrites = (code: string): AnaphoraRewriteType[] =>
+	[...extensions.values()].flatMap(
+		(byLanguage) =>
+			extensionFor(byLanguage, code)?.anaphoraRewrites ??
+			extensionFor(byLanguage, "en")?.anaphoraRewrites ??
+			[],
+	)
+
+const languageCodeOf = (language: string): string =>
+	language.trim().toLowerCase().split(/[-_]/)[0]
+
+export const registerLanguageCatalog = (
+	language: string,
+	catalog: LanguageCatalogType,
+): void => {
+	const code = languageCodeOf(language)
+	CATALOGS.set(code, catalog)
+	supportedLanguages.add(code)
+	resolvedCache.delete(code)
+}
+
+const normalizeLanguage = (language?: string | null): string => {
+	const code = languageCodeOf(language ?? "en")
+	return CATALOGS.has(code) ? code : "en"
+}
+
+const escapeRegex = (s: string): string =>
+	s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+const mergedWithEn = (own: string[], en: string[]): string[] => [
+	...new Set([...en, ...own]),
+]
+
+const wordBoundaryRe = (words: string[]): RegExp =>
+	new RegExp(`\\b(${words.map(escapeRegex).join("|")})\\b`, "i")
+
+const articlePrefixReOf = (articles: string[]): RegExp =>
+	new RegExp(
+		`^(?:${[...articles]
+			.sort((a, b) => b.length - a.length)
+			.map(escapeRegex)
+			.join("|")}) `,
+	)
 
 export const languageSetsFor = (
 	language?: string | null,
@@ -459,37 +727,49 @@ export const languageSetsFor = (
 	const code = normalizeLanguage(language)
 	const cached = resolvedCache.get(code)
 	if (cached) return cached
-	const extra = code === "en" ? null : CATALOGS[code]
+	const catalog = CATALOGS.get(code) ?? EN
+	const contributed = extensionsFor(code)
 	const resolved: ResolvedLanguageSetsType = {
-		stopwords: new Set([...EN.stopwords, ...(extra?.stopwords ?? [])]),
-		deviceGenericWords: new Set([
-			...EN.deviceGenericWords,
-			...(extra?.deviceGenericWords ?? []),
-		]),
-		numberWords: { ...EN.numberWords, ...(extra?.numberWords ?? {}) },
-		numberJoiners: [
-			...new Set([...EN.numberJoiners, ...(extra?.numberJoiners ?? [])]),
-		],
-		percentWords: [
-			...new Set([...EN.percentWords, ...(extra?.percentWords ?? [])]),
-		],
-		timerKeywordsRe: new RegExp(
-			`\\b(${[...EN.timerKeywords, ...(extra?.timerKeywords ?? [])].join("|")})\\b`,
-			"i",
+		displayName: catalog.displayName,
+		locale: catalog.locale,
+		latinScript: catalog.latinScript,
+		spokenTime: catalog.spokenTime,
+		articlePrefixRe: articlePrefixReOf(catalog.articles),
+		stopwords: new Set(catalog.stopwords),
+		genericWords: new Set(contributed.flatMap((ext) => ext.genericWords ?? [])),
+		numberWords: { ...EN.numberWords, ...catalog.numberWords },
+		numberJoiners: mergedWithEn(catalog.numberJoiners, EN.numberJoiners),
+		percentWords: mergedWithEn(catalog.percentWords, EN.percentWords),
+		timerKeywordsRe: wordBoundaryRe(
+			mergedWithEn(catalog.timerKeywords, EN.timerKeywords),
 		),
-		memoryCommandRe: new RegExp(
-			`\\b(${[...EN.memoryCommandKeywords, ...(extra?.memoryCommandKeywords ?? [])].join("|")})\\b`,
-			"i",
+		memoryCommandRe: wordBoundaryRe(
+			mergedWithEn(catalog.memoryCommandKeywords, EN.memoryCommandKeywords),
 		),
-		unitWords: extra?.unitWords ?? EN.unitWords,
-		affirmations: new Set([...EN.affirmations, ...(extra?.affirmations ?? [])]),
-		negations: new Set([...EN.negations, ...(extra?.negations ?? [])]),
-		fastPathBlockers: extra?.fastPathBlockers ?? EN.fastPathBlockers,
-		routingBlockers: extra?.routingBlockers ?? EN.routingBlockers,
-		anaphoraRewrites: (extra?.anaphoraRewrites ?? EN.anaphoraRewrites).map(
-			(r) => ({ re: new RegExp(r.pattern, "i"), template: r.template }),
+		questionStarters: new Set(catalog.questionStarters),
+		requestModals: new Set(catalog.requestModals),
+		conjunctions: [...catalog.conjunctions],
+		unitWords: catalog.unitWords,
+		affirmations: new Set(catalog.affirmations),
+		negations: new Set(catalog.negations),
+		fastPathBlockers: catalog.fastPathBlockers,
+		routingBlockers: catalog.routingBlockers,
+		interruptPhrases: mergedWithEn(
+			catalog.interruptPhrases,
+			EN.interruptPhrases,
 		),
-		phrases: { ...EN.phrases, ...(extra?.phrases ?? {}) },
+		anaphoraRewrites: extensionRewrites(code).map((r) => ({
+			re: new RegExp(r.pattern, "i"),
+			template: r.template,
+		})),
+		phrases: {
+			...EN.phrases,
+			...catalog.phrases,
+			...contributed.reduce<Record<string, string>>(
+				(acc, ext) => ({ ...acc, ...(ext.phrases ?? {}) }),
+				{},
+			),
+		},
 	}
 	resolvedCache.set(code, resolved)
 	return resolved

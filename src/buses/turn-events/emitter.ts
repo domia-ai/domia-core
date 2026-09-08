@@ -1,4 +1,4 @@
-import { turnEventsLogger } from "@/utils"
+import { getTraceContext, turnEventsLogger } from "@/utils"
 import { TURN_EVENT_SEQ_LRU_MAX } from "./constants"
 import { publishTurnEventDiagnostics } from "./diagnostics"
 import type {
@@ -56,6 +56,7 @@ export const onTurnEvent = (
 export const emitTurnEvent = (input: DomiaTurnEventInputType): void => {
 	const event = {
 		...input,
+		traceId: input.traceId ?? getTraceContext()?.traceId,
 		ts: Date.now(),
 		seq: nextSeq(input.interactionId),
 	} as DomiaTurnEventType
@@ -68,7 +69,7 @@ export const emitTurnEvent = (input: DomiaTurnEventInputType): void => {
 			try {
 				const result = listener(event)
 				if (result instanceof Promise)
-					result.catch((err) =>
+					result.catch((err: unknown) =>
 						turnEventsLogger.warn("turn-event listener rejected", {
 							type: event.type,
 							err,

@@ -5,7 +5,7 @@ export const getMqttConfig = (
 	overrides: Partial<SelectMqttConfigType> = {},
 ): SelectMqttConfigType => {
 	return {
-		...baseMqttConfig(overrides?.domiaId),
+		...baseMqttConfig(overrides.domiaId),
 		...overrides,
 	}
 }

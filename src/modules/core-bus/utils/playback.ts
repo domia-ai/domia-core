@@ -1,8 +1,16 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { playAudioStream, runSox } from "@/modules/audio-playback"
-import { notePlaybackStarted } from "@/modules/audio-capture"
+import {
+	notePlaybackStarted,
+	notePlaybackReference,
+} from "@/modules/audio-capture"
 import { DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED } from "@/db"
-import { createWavStreamWriter, domiaBusLogger } from "@/utils"
+import {
+	createWavStreamWriter,
+	domiaBusLogger,
+	domiaError,
+	AUDIO_PLAYBACK_ERRORS,
+} from "@/utils"
 import { registerAudioForServing } from "./audio"
 import { getStreamingSink } from "./streaming-sink"
 import { markLadderStage } from "./stage-ladder"
@@ -72,7 +80,7 @@ const streamToSink = async (
 		16,
 		"tts",
 	)
-	let wroteAny = false
+	let wroteAny = false as boolean
 	try {
 		await sink.begin?.(format)
 		try {
@@ -141,7 +149,7 @@ export const playStreamedAudio = async (
 		16,
 		"tts",
 	)
-	let wroteAny = false
+	let wroteAny = false as boolean
 	try {
 		const captured = (async function* (): AsyncIterable<Buffer> {
 			for await (const chunk of audio) {
@@ -151,6 +159,12 @@ export const playStreamedAudio = async (
 				}
 				writer.write(chunk)
 				wroteAny = true
+				notePlaybackReference(
+					ctx.domia.id,
+					chunk,
+					format.sampleRate,
+					format.channels,
+				)
 				yield chunk
 			}
 		})()
@@ -173,21 +187,24 @@ export const playStreamedAudio = async (
 				})
 			},
 		})
-		if (result && result.success === false) {
-			throw new Error(`audio playback failed (engine ${result.engine})`)
+		if (!result.success) {
+			throw domiaError(AUDIO_PLAYBACK_ERRORS.PLAYBACK_FAILED, {
+				logger: domiaBusLogger,
+				meta: { engine: result.engine, interactionId: meta.interactionId },
+			})
 		}
-		let interrupted = result?.interrupted === true || aborted
+		let interrupted = result.interrupted === true || aborted
 		const audioStarted = firstChunkEmitted
 
 		if (!wroteAny) return { filePath: undefined, interrupted, audioStarted }
 		const filePath = await finalizeArchive(writer, meta.interactionId)
 
-		let playedMs = result?.playedMs ?? undefined
+		let playedMs = result.playedMs ?? undefined
 		const replayEnabled =
 			ctx.domia.audioPlaybackConfig?.truncationReplayEnabled ??
 			DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED
 		if (
-			result?.truncated === true &&
+			result.truncated === true &&
 			!interrupted &&
 			replayEnabled &&
 			filePath &&
@@ -204,7 +221,7 @@ export const playStreamedAudio = async (
 				trimStartMs,
 			})
 			const replay = await runSox(ctx.domia, filePath, trimStartMs).catch(
-				(err) => {
+				(err: unknown) => {
 					domiaBusLogger.warn("truncation replay failed (best-effort)", {
 						err,
 						interactionId: meta.interactionId,

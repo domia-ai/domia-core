@@ -14,8 +14,8 @@ import type {
 const STT_SAMPLE_RATE = 16000
 
 const requireSttConfig = (domia: DomiaType): SelectSttConfigType => {
-	const sttConfig = domia?.sttConfig
-	if (!sttConfig || !sttConfig.modelPath) {
+	const sttConfig = domia.sttConfig
+	if (!sttConfig?.modelPath) {
 		throw domiaError(STT_ERRORS.STT_ENGINE_NOT_FOUND, {
 			logger: sttEngineLogger,
 			meta: {
@@ -32,9 +32,9 @@ const engineConfigOf = (
 ): SttWorkerEngineConfigType => ({
 	engine: sttConfig.engine,
 	modelPath: path.resolve(sttConfig.modelPath),
-	modelName: sttConfig.modelName ?? null,
-	language: sttConfig.language ?? null,
-	quantization: sttConfig.quantization ?? null,
+	modelName: sttConfig.modelName,
+	language: sttConfig.language,
+	quantization: sttConfig.quantization,
 	numThreads: sttConfig.numThreads,
 	provider: sttConfig.provider,
 	decodePaddingMs: sttConfig.decodePaddingMs,
@@ -96,14 +96,14 @@ export const createSttSessionPooled = (
 			pcm,
 			sampleRate: STT_SAMPLE_RATE,
 		})
-		if (r?.partial !== undefined) lastPartial = r.partial
+		lastPartial = r.partial
 		return lastPartial
 	}
 
 	return {
 		pushChunk: (pcm: Buffer) => {
 			if (closed || pcm.length === 0) return
-			void enqueue(() => sendChunk(pcm)).catch((err) =>
+			void enqueue(() => sendChunk(pcm)).catch((err: unknown) =>
 				sttEngineLogger.warn("stt session chunk failed", { err }),
 			)
 		},
@@ -111,7 +111,7 @@ export const createSttSessionPooled = (
 		flushPartial: (padMs: number) => {
 			if (closed) return Promise.resolve(lastPartial)
 			const pad = Buffer.alloc(Math.round((STT_SAMPLE_RATE * padMs) / 1000) * 2)
-			return enqueue(() => sendChunk(pad)).catch((err) => {
+			return enqueue(() => sendChunk(pad)).catch((err: unknown) => {
 				sttEngineLogger.warn("stt session flush failed", { err })
 				return lastPartial
 			})
@@ -143,7 +143,7 @@ export const createSttSessionPooled = (
 				started = false
 				lastPartial = ""
 				if (pcm && pcm.length > 0) await sendChunk(pcm)
-			}).catch((err) =>
+			}).catch((err: unknown) =>
 				sttEngineLogger.warn("stt session reset failed", { err }),
 			)
 		},

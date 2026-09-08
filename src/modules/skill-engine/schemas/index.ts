@@ -1,12 +1,14 @@
 import { z } from "zod"
 
+import { ARG_NORMALIZE_OP_ENUM_VALUES } from "@/db"
+
 const finalizeRuleSchema = z
 	.object({
 		mode: z.enum(["agent_loop", "template", "async", "deadline"]),
 		ack: z.string().optional(),
 		error: z.string().optional(),
 		done: z.string().optional(),
-		ackAfterMs: z.number().finite().min(0).optional(),
+		ackAfterMs: z.number().min(0).optional(),
 	})
 	.strict()
 
@@ -27,6 +29,7 @@ const resilienceSchema = z
 		breakerThreshold: z.number().int().min(0).optional(),
 		breakerCooldownMs: z.number().int().min(0).optional(),
 		idempotentWithinTurn: z.boolean().optional(),
+		serveStaleTools: z.boolean().optional(),
 	})
 	.strict()
 
@@ -41,6 +44,11 @@ const toolHintSchema = z
 	})
 	.strict()
 
+const argNormalizeSchema = z.record(
+	z.string(),
+	z.record(z.string(), z.array(z.enum(ARG_NORMALIZE_OP_ENUM_VALUES))),
+)
+
 const executionSchema = z
 	.object({
 		coreTools: z.array(z.string()).optional(),
@@ -49,6 +57,7 @@ const executionSchema = z
 			.optional(),
 		toolHints: z.record(z.string(), toolHintSchema).optional(),
 		paramAllow: z.record(z.string(), z.array(z.string())).optional(),
+		argNormalize: argNormalizeSchema.optional(),
 		finalize: finalizeMapSchema.optional(),
 		genericWords: z.array(z.string()).optional(),
 		resilience: resilienceSchema.optional(),

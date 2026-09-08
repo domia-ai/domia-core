@@ -6,7 +6,7 @@ import type {
 } from "@/modules/llm-engine"
 import { sanitizeJsonSchema } from "@/modules/llm-engine"
 import type { DomiaType } from "@/modules/core"
-import { agentLogger, parseLlmJson } from "@/utils"
+import { agentLogger, parseLlmJson, domiaError, AGENT_ERRORS } from "@/utils"
 
 import type { AgentInferenceType, StructuredDecisionRunnerType } from "../types"
 
@@ -38,9 +38,9 @@ export const structuredDecisionSchema = (
 
 const toolCard = (tool: ToolDefinitionType): string => {
 	const props = (tool.parameters as { properties?: Record<string, unknown> })
-		?.properties
+		.properties
 	const required = new Set(
-		Array.isArray((tool.parameters as { required?: unknown })?.required)
+		Array.isArray((tool.parameters as { required?: unknown }).required)
 			? ((tool.parameters as { required: unknown[] }).required as string[]).map(
 					String,
 				)
@@ -90,7 +90,10 @@ export const createStructuredInference = (
 			signal,
 		)
 		if (raw == null)
-			throw new Error("structured decision unavailable for this engine")
+			throw domiaError(AGENT_ERRORS.DECISION_UNAVAILABLE, {
+				logger: agentLogger,
+				meta: { engine: domia.llmModelConfig?.engine },
+			})
 		if (!raw) return { kind: "reply", text: "" }
 		const { value, state } = parseLlmJson(raw)
 		if (state === "repaired")
@@ -103,7 +106,11 @@ export const createStructuredInference = (
 			value && typeof value === "object" && !Array.isArray(value)
 				? (value as { tool?: unknown; args?: unknown; say?: unknown })
 				: null
-		if (!obj) throw new Error("structured decision unparseable")
+		if (!obj)
+			throw domiaError(AGENT_ERRORS.DECISION_UNPARSEABLE, {
+				logger: agentLogger,
+				meta: { rawLength: raw.length },
+			})
 		const say = typeof obj.say === "string" ? obj.say.trim() : ""
 		const tool = typeof obj.tool === "string" ? obj.tool.trim() : NONE_TOOL
 		if (!tool || tool === NONE_TOOL) return { kind: "reply", text: say }

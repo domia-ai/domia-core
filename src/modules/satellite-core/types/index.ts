@@ -53,15 +53,6 @@ export type SatelliteSessionType = {
 	onClose: () => void
 }
 
-export type SatelliteAdapterHandleType = {
-	close: () => void
-}
-
-export type SatelliteProtocolAdapterType = {
-	name: string
-	start: (ctx: { fallback: DomiaType }) => SatelliteAdapterHandleType
-}
-
 export type ReconnectSchedulerType = {
 	isClosed: () => boolean
 	attempts: () => number
@@ -76,6 +67,7 @@ export type SatelliteSpeculationArgsType = {
 	sttSession: () => SttStreamSessionType | null
 	vadDebounceMs: number
 	bufferedPcm: () => Buffer
+	bargeIn?: boolean
 }
 
 export type SatelliteSpeculationHandoffType = {

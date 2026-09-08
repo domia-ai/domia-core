@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { SUPPORTED_LANGUAGES } from "@/utils/language-catalogs"
+
 const expectEventsSchema = z
 	.object({
 		present: z.array(z.string()).optional(),
@@ -92,7 +94,7 @@ export const evalCaseSchema = z
 			"security",
 			"routing",
 		]),
-		language: z.enum(["en", "es"]),
+		language: z.string().refine((code) => SUPPORTED_LANGUAGES.has(code)),
 		runs: z.number().int().positive().optional(),
 		passRatio: z.number().min(0).max(1).optional(),
 		mode: z.enum(["gate", "advisory"]).optional(),

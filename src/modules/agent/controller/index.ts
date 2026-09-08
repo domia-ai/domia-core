@@ -6,13 +6,14 @@ import {
 	DEFAULT_AGENT_ACK_AFTER_MS,
 	SKILL_TOOL_NAME_SEPARATOR,
 	AGENT_PROMPT_MODE_ENUM,
-	DEFAULT_FINALIZE_ACK,
-	DEFAULT_FINALIZE_ERROR,
 	DEFAULT_LLM_MODEL_CONTEXT_WINDOW,
 	DEFAULT_AGENT_REPEAT_WARN_AT,
 	DEFAULT_AGENT_REPEAT_BLOCK_AT,
 	DEFAULT_AGENT_MAX_TOOL_CALLS_PER_TURN,
 	DEFAULT_CONSTRAINED_REPAIR_ENABLED,
+	DEFAULT_AGENT_QUESTION_GUARD_ENABLED,
+	DEFAULT_AGENT_TARGET_GUARD_ENABLED,
+	DEFAULT_AGENT_READ_THEN_ANSWER_ENABLED,
 } from "@/db"
 import type {
 	SkillToolType,
@@ -26,6 +27,8 @@ import {
 	wrapUntrustedToolOutput,
 	coerceArgsToSchema,
 	parseLlmJson,
+	isDomiaError,
+	AGENT_ERRORS,
 } from "@/utils"
 import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import type { DomiaType } from "@/modules/core"
@@ -45,6 +48,7 @@ import {
 	getToolMeta,
 	getProviderResilience,
 	type SkillCallResultType,
+	describeInvocation,
 } from "@/modules/skill-engine"
 import {
 	parkConfirmation,
@@ -52,9 +56,12 @@ import {
 	summarizeConfirmAction,
 	createToolGuards,
 	callSignature,
+	looksLikeToolCallJson,
+	isInterrogative,
+	targetMentioned,
 } from "../utils"
-import { buildPromptContext } from "@/modules/prompt-context-builder"
-import { agentLogger } from "@/utils"
+import { buildPromptContext, renderNow } from "@/modules/prompt-context-builder"
+import { agentLogger, toError } from "@/utils"
 
 import {
 	SKILLS_CLAUSE,
@@ -170,7 +177,7 @@ const raceAbort = <T>(
 	p: Promise<T>,
 	signal?: AbortSignal,
 ): Promise<T | typeof ABORTED> => {
-	if (!signal) return p as Promise<T | typeof ABORTED>
+	if (!signal) return p
 	if (signal.aborted) return Promise.resolve(ABORTED)
 	return new Promise((resolve, reject) => {
 		const onAbort = (): void => resolve(ABORTED)
@@ -180,9 +187,9 @@ const raceAbort = <T>(
 				signal.removeEventListener("abort", onAbort)
 				resolve(v)
 			},
-			(e) => {
+			(e: unknown) => {
 				signal.removeEventListener("abort", onAbort)
-				reject(e)
+				reject(toError(e))
 			},
 		)
 	})
@@ -242,11 +249,15 @@ const buildAgentSystem = (domia: DomiaType, transcript: string): string => {
 		return `### TOOLS (highest priority)\n${SKILLS_CLAUSE}\n\n${persona}`
 	}
 	const cp = domia.characterProfile
-	const name = cp?.name?.trim() || "Domia"
+	const name = cp?.name.trim() || "Domia"
 	const lang = cp?.language || "en"
 	const replyRule = `When you are not calling a tool, answer in one short, natural sentence in the user's language (default ${lang}); never describe the tools or your reasoning.`
+	const nowLine =
+		domia.moduleSettings?.environmentTimeEnabled !== false
+			? `\n\n${renderNow(undefined, cp?.language)}`
+			: ""
 	if (mode === AGENT_PROMPT_MODE_ENUM.LEAN) {
-		return `${SKILLS_CLAUSE}\n\nYou are ${name}. ${replyRule}`
+		return `${SKILLS_CLAUSE}\n\nYou are ${name}. ${replyRule}${nowLine}`
 	}
 	const traits = [cp?.personality, cp?.communicationStyle]
 		.map((t) => t?.trim().toLowerCase())
@@ -255,7 +266,7 @@ const buildAgentSystem = (domia: DomiaType, transcript: string): string => {
 	const personaLine = traits
 		? `You are ${name} — ${traits}.`
 		: `You are ${name}.`
-	return `${SKILLS_CLAUSE}\n\n${personaLine} ${replyRule} Stay in character.`
+	return `${SKILLS_CLAUSE}\n\n${personaLine} ${replyRule} Stay in character.${nowLine}`
 }
 
 export const runAgentTurn = async (
@@ -313,7 +324,7 @@ export const runAgentTurn = async (
 	const tokenBudget = Math.max(512, contextWindow - numPredict - 256)
 	const allowedParams = new Map<string, Set<string> | null>(
 		advertisedTools.map((t) => {
-			const props = t.inputSchema?.properties as
+			const props = t.inputSchema.properties as
 				| Record<string, unknown>
 				| undefined
 			return [
@@ -324,7 +335,7 @@ export const runAgentTurn = async (
 	)
 	const requiredParams = new Map<string, string[]>(
 		advertisedTools.map((t) => {
-			const req = t.inputSchema?.required
+			const req = t.inputSchema.required
 			return [t.namespacedName, Array.isArray(req) ? req.map(String) : []]
 		}),
 	)
@@ -346,6 +357,28 @@ export const runAgentTurn = async (
 		guards.wasCapTripped() ? "call_cap" : "completed"
 	let forceNoTool = false
 	let taintedByOpenWorld = false
+	const questionGuard =
+		domia.llmModelConfig?.agentQuestionGuardEnabled ??
+		DEFAULT_AGENT_QUESTION_GUARD_ENABLED
+	const targetGuard =
+		domia.llmModelConfig?.agentTargetGuardEnabled ??
+		DEFAULT_AGENT_TARGET_GUARD_ENABLED
+	const languageSets = languageSetsFor(domia.characterProfile?.language ?? null)
+	const readThenAnswer =
+		domia.llmModelConfig?.agentReadThenAnswerEnabled ??
+		DEFAULT_AGENT_READ_THEN_ANSWER_ENABLED
+	const interrogative =
+		questionGuard &&
+		isInterrogative(
+			transcript,
+			languageSets.questionStarters,
+			languageSets.requestModals,
+		)
+	const isReadTool = (name: string): boolean =>
+		getToolMeta(domia.id, name)?.riskClass === "read"
+	const readToolDefs = toolDefs.filter((t) => isReadTool(t.name))
+	let readOnlyRound = false
+	let readOnlyRetried = false
 
 	const abortedReturn = (step: number): AgentResultType => ({
 		reply: "",
@@ -389,6 +422,8 @@ export const runAgentTurn = async (
 		}
 		let out: ToolCallOrReplyType
 		const noTool = forceNoTool || step === maxSteps - 1
+		const roundToolDefs = readOnlyRound ? readToolDefs : toolDefs
+		readOnlyRound = false
 		const streamFinalize =
 			opts?.voice && opts.streamFinalize && toolNamesUsed.length > 0 && !noTool
 				? opts.streamFinalize
@@ -398,7 +433,7 @@ export const runAgentTurn = async (
 			if (streamFinalize) {
 				const pendingFinalize = streamFinalize(
 					messages,
-					toolDefs,
+					roundToolDefs,
 					undefined,
 					effectiveSignal,
 				)
@@ -433,7 +468,7 @@ export const runAgentTurn = async (
 				const inferred = await raceAbort(
 					inference(
 						messages,
-						toolDefs,
+						roundToolDefs,
 						noTool ? "none" : undefined,
 						effectiveSignal,
 					),
@@ -443,7 +478,33 @@ export const runAgentTurn = async (
 				out = inferred
 			}
 		} catch (err) {
-			if (toolNamesUsed.length === 0) throw err
+			const nonRetriableDecision =
+				isDomiaError(err) &&
+				(err.code === AGENT_ERRORS.DECISION_UNPARSEABLE.code ||
+					err.code === AGENT_ERRORS.DECISION_UNAVAILABLE.code)
+			if (toolNamesUsed.length === 0) {
+				if (!nonRetriableDecision) throw err
+				agentLogger.warn(
+					"agent inference failed before any tool ran — replying honestly",
+					{ domiaId: domia.id, err },
+				)
+				const phrases = languageSetsFor(
+					domia.characterProfile?.language ?? null,
+				).phrases
+				return {
+					reply: phrases.cantDoThat,
+					toolNamesUsed,
+					serversUsed: [...serversUsed],
+					steps: step + 1,
+					skillPrompt: SKILLS_CLAUSE,
+					skillResponses,
+					decisionMs,
+					toolMs,
+					finalizeMs,
+					finalizeMode: "agent_loop",
+					stopReason: "inference_error",
+				}
+			}
 			agentLogger.warn(
 				"agent inference failed after a tool ran — not falling back",
 				{ domiaId: domia.id, toolNamesUsed, err },
@@ -468,8 +529,13 @@ export const runAgentTurn = async (
 
 		if (out.kind === "reply") {
 			finalizeMs += inferMs
+			const spokeToolCall = looksLikeToolCallJson(out.text)
+			if (spokeToolCall)
+				agentLogger.warn("agent reply was a tool-call JSON — suppressed", {
+					domiaId: domia.id,
+				})
 			return {
-				reply: out.text,
+				reply: spokeToolCall ? AGENT_FAILURE_REPLY : out.text,
 				toolNamesUsed,
 				serversUsed: [...serversUsed],
 				steps: step + 1,
@@ -563,7 +629,13 @@ export const runAgentTurn = async (
 							`Produce JSON arguments for the tool "${call.name}" to satisfy this request: "${transcript}". The model previously sent ${JSON.stringify(safeArgs)} which is missing: ${missing.join(", ")}. Respond with a single JSON object.`,
 							schema,
 						)
-						.catch(() => null)
+						.catch((err: unknown) => {
+							agentLogger.warn("constrained argument repair failed", {
+								err,
+								tool: call.name,
+							})
+							return null
+						})
 					if (raw) {
 						const { value } = parseLlmJson(raw)
 						if (value) {
@@ -627,24 +699,71 @@ export const runAgentTurn = async (
 			}
 			{
 				const callMeta = getToolMeta(domia.id, call.name)
+				if (targetGuard && callMeta && callMeta.riskClass !== "read") {
+					const described = describeInvocation(
+						domia.id,
+						call.name,
+						safeArgs,
+						domia.characterProfile?.language ?? null,
+					)
+					if (
+						!targetMentioned(
+							transcript,
+							described,
+							languageSets,
+							opts?.lastActedTarget,
+						)
+					) {
+						allTemplate = false
+						forceNoTool = true
+						callMessages[ci] =
+							`Blocked: "${described.target ?? call.name}" is not what the user asked about. Do not retry — tell the user it couldn't be done.`
+						agentLogger.warn("agent write target not in utterance — blocked", {
+							domiaId: domia.id,
+							name: call.name,
+							target: described.target,
+						})
+						continue
+					}
+				}
 				let needsConfirm = basePolicy === "confirm"
 				let resolution: {
 					ok: boolean
 					resolvedArgs: Record<string, unknown>
 				} | null = null
-				if (needsConfirm) {
+				if (
+					interrogative &&
+					!taintedByOpenWorld &&
+					callMeta &&
+					callMeta.riskClass !== "read" &&
+					toolNamesUsed.length === 0 &&
+					!readOnlyRetried &&
+					readToolDefs.length > 0
+				) {
+					readOnlyRetried = true
+					readOnlyRound = true
+					allTemplate = false
+					callMessages[ci] =
+						`That was a question, not a command. Do not change anything: check the current state with a read tool, then answer the user.`
+					agentLogger.warn("write chosen for a question — retrying read-only", {
+						domiaId: domia.id,
+						name: call.name,
+					})
+					continue
+				} else if (needsConfirm) {
 					resolution = await resolveSkillArgs(domia.id, call.name, safeArgs)
 				} else if (
-					taintedByOpenWorld &&
+					(taintedByOpenWorld || interrogative) &&
 					callMeta &&
 					callMeta.riskClass !== "read"
 				) {
 					resolution = await resolveSkillArgs(domia.id, call.name, safeArgs)
 					needsConfirm = true
-					agentLogger.warn(
-						"open-world taint — write escalated to confirmation",
-						{ domiaId: domia.id, name: call.name },
-					)
+					agentLogger.warn("write escalated to confirmation", {
+						domiaId: domia.id,
+						name: call.name,
+						reason: taintedByOpenWorld ? "open-world taint" : "question",
+					})
 				} else {
 					const resolved = await resolveSkillArgs(domia.id, call.name, safeArgs)
 					if (
@@ -693,7 +812,7 @@ export const runAgentTurn = async (
 			if (!resolution.ok) {
 				const phrases = languageSetsFor(language).phrases
 				return {
-					reply: phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR,
+					reply: phrases.cantDoThat,
 					toolNamesUsed,
 					serversUsed: [...serversUsed],
 					steps: step + 1,
@@ -707,8 +826,10 @@ export const runAgentTurn = async (
 				}
 			}
 			const summary = summarizeConfirmAction(
+				domia.id,
 				confirmCall.name,
 				resolution.resolvedArgs,
+				language,
 			)
 			parkConfirmation(
 				confirmationScope(domia.domiaKey, opts?.confirmationChannel),
@@ -721,9 +842,7 @@ export const runAgentTurn = async (
 				},
 				domia.llmModelConfig?.confirmationTtlMs ?? DEFAULT_CONFIRMATION_TTL_MS,
 			)
-			const confirmPhrase =
-				languageSetsFor(language).phrases.confirmAction ??
-				"Do you want me to go ahead with that?"
+			const confirmPhrase = languageSetsFor(language).phrases.confirmAction
 			const siblingNote =
 				droppedSiblings.length > 0
 					? ` I'll hold off on the rest until you confirm.`
@@ -792,9 +911,7 @@ export const runAgentTurn = async (
 							.then((result) => {
 								const ok = result.status === "ok" && !result.isError
 								const template = ok ? rule?.done : rule?.error
-								const fallback = ok
-									? phrases.thatIsDone
-									: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR)
+								const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
 								return {
 									tool: call.name,
 									ok,
@@ -814,7 +931,7 @@ export const runAgentTurn = async (
 								doneText:
 									rule?.error && !rule.error.includes("{")
 										? rule.error
-										: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR),
+										: phrases.cantDoThat,
 							})),
 					)
 				}
@@ -902,7 +1019,7 @@ export const runAgentTurn = async (
 							DEFAULT_AGENT_ACK_AFTER_MS,
 					),
 				)
-				let deadlineTimer: ReturnType<typeof setTimeout> | null = null
+				let deadlineTimer = null as ReturnType<typeof setTimeout> | null
 				const raced = await raceAbort(
 					Promise.race([
 						Promise.all(running).then((s) => ({
@@ -943,9 +1060,7 @@ export const runAgentTurn = async (
 							running[i].then(({ result }) => {
 								const ok = result.status === "ok" && !result.isError
 								const template = ok ? rule?.done : rule?.error
-								const fallback = ok
-									? phrases.thatIsDone
-									: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR)
+								const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
 								return {
 									tool: call.name,
 									ok,
@@ -1032,9 +1147,7 @@ export const runAgentTurn = async (
 							? (rule.done ?? rule.ack)
 							: rule.ack
 						: rule.error
-					const fallback = ok
-						? (phrases.done ?? DEFAULT_FINALIZE_ACK)
-						: (phrases.cantDoThat ?? DEFAULT_FINALIZE_ERROR)
+					const fallback = ok ? phrases.done : phrases.cantDoThat
 					const rendered = template
 						? (renderFinalizeText(template, safeArgs, result.resolvedArgs) ??
 							fallback)
@@ -1053,6 +1166,13 @@ export const runAgentTurn = async (
 				content: callMessages[ci] ?? "(no result)",
 			})
 		}
+		if (
+			readThenAnswer &&
+			interrogative &&
+			toRun.length > 0 &&
+			toRun.every((r) => isReadTool(r.call.name))
+		)
+			forceNoTool = true
 		if (allTemplate && templateParts.length > 0) {
 			return {
 				reply: templateParts.join(" "),

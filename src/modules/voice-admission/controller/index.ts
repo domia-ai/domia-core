@@ -31,13 +31,9 @@ export const admitVoiceReply = async (
 	domia: DomiaType,
 ): Promise<() => void> => {
 	const semaphore = semaphoreFor(domia.id)
-	semaphore.setLimit(
-		domia?.maxConcurrentVoiceReplies ?? DEFAULT_MAX_CONCURRENT_VOICE_REPLIES,
-	)
-	semaphore.setMaxWaiters(
-		domia?.maxQueuedVoiceReplies ?? DEFAULT_MAX_QUEUED_VOICE_REPLIES,
-	)
-	return semaphore.acquire({ timeoutMs: domia?.voiceQueueTimeoutMs })
+	semaphore.setLimit(domia.maxConcurrentVoiceReplies)
+	semaphore.setMaxWaiters(domia.maxQueuedVoiceReplies)
+	return semaphore.acquire({ timeoutMs: domia.voiceQueueTimeoutMs })
 }
 
 export const activeVoiceReplies = (domiaId?: string): number =>

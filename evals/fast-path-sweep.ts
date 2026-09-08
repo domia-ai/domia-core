@@ -8,7 +8,7 @@ import { connectProvider, disconnectProviders } from "@/modules/skill-engine"
 import { matchFastPath, invalidateFastPathIndex } from "@/modules/fast-path"
 import { baseLlmModelConfig } from "@/test-utils/mocks/llm-model-config"
 
-import { startMockHa, makeChecker } from "./lib"
+import { startMockHa, makeChecker, stringOrEmpty } from "./lib"
 
 const checker = makeChecker()
 const BENCH_DIR = join(process.cwd(), "evals", "bench-results")
@@ -62,9 +62,55 @@ const POSITIVES: {
 		args: { brightness: 100 },
 	},
 	{
+		text: "Set the kitchen light to twenty percent",
+		tool: "HassLightSet",
+		args: { brightness: 20 },
+	},
+	{
+		text: "dim the kitchen light to fifty percent",
+		tool: "HassLightSet",
+		args: { brightness: 50 },
+	},
+	{
 		text: "turn on luz de la cocina",
 		tool: "HassTurnOn",
 		args: { name: "Kitchen Light" },
+	},
+]
+
+const COMPOUNDS: { text: string; tools: string[]; names: string[] }[] = [
+	{
+		text: "turn off the kitchen light and the bedroom light",
+		tools: ["HassTurnOff", "HassTurnOff"],
+		names: ["Kitchen Light", "Bedroom Light"],
+	},
+	{
+		text: "turn on the kitchen light and turn off the bedroom light",
+		tools: ["HassTurnOn", "HassTurnOff"],
+		names: ["Kitchen Light", "Bedroom Light"],
+	},
+	{
+		text: "switch on the living room light and the kitchen light",
+		tools: ["HassTurnOn", "HassTurnOn"],
+		names: ["Living Room Light", "Kitchen Light"],
+	},
+]
+
+const COMPOUND_NEGATIVES: string[] = [
+	"turn on the kitchen light",
+	"what is the weather and the time",
+]
+
+const COMPOUNDS_ES: { text: string; tools: string[]; names: string[] }[] = [
+	{
+		text: "apaga la luz de la cocina y la luz del dormitorio",
+		tools: ["HassTurnOff", "HassTurnOff"],
+		names: ["Kitchen Light", "Bedroom Light"],
+	},
+	{
+		text: "enciende la luz de la sala y apaga la luz de la cocina",
+		tools: ["HassTurnOn", "HassTurnOff"],
+		names: ["Living Room Light", "Kitchen Light"],
 	},
 ]
 
@@ -270,60 +316,60 @@ const NEGATIVES_ES: { text: string; class: string }[] = [
 	{ text: "cómo estás hoy", class: "chat" },
 ]
 
-const haProvider = (url: string): SelectSkillProviderType =>
-	({
-		id: randomUUID(),
-		name: "home-assistant",
-		isActive: true,
-		domiaId: DOMIA_ID,
-		protocol: "mcp",
-		type: "http",
-		url,
-		description: null,
-		config: null,
-		descriptor: { version: 1, kind: "home-assistant" },
-		auth: null,
-		toolsCache: [
-			{
-				provider: "home-assistant",
-				rawName: "HassTurnOn",
-				namespacedName: "home-assistant__HassTurnOn",
-				inputSchema: {
-					type: "object",
-					properties: { name: { type: "string" } },
+const haProvider = (url: string): SelectSkillProviderType => ({
+	id: randomUUID(),
+	name: "home-assistant",
+	isActive: true,
+	domiaId: DOMIA_ID,
+	protocol: "mcp",
+	type: "http",
+	url,
+	description: null,
+	config: null,
+	descriptor: { version: 1, kind: "home-assistant" },
+	auth: null,
+	toolsCache: [
+		{
+			provider: "home-assistant",
+			rawName: "HassTurnOn",
+			namespacedName: "home-assistant__HassTurnOn",
+			inputSchema: {
+				type: "object",
+				properties: { name: { type: "string" } },
+			},
+		},
+		{
+			provider: "home-assistant",
+			rawName: "HassTurnOff",
+			namespacedName: "home-assistant__HassTurnOff",
+			inputSchema: {
+				type: "object",
+				properties: { name: { type: "string" } },
+			},
+		},
+		{
+			provider: "home-assistant",
+			rawName: "HassLightSet",
+			namespacedName: "home-assistant__HassLightSet",
+			inputSchema: {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+					brightness: { type: "number" },
 				},
 			},
-			{
-				provider: "home-assistant",
-				rawName: "HassTurnOff",
-				namespacedName: "home-assistant__HassTurnOff",
-				inputSchema: {
-					type: "object",
-					properties: { name: { type: "string" } },
-				},
-			},
-			{
-				provider: "home-assistant",
-				rawName: "HassLightSet",
-				namespacedName: "home-assistant__HassLightSet",
-				inputSchema: {
-					type: "object",
-					properties: {
-						name: { type: "string" },
-						brightness: { type: "number" },
-					},
-				},
-			},
-		],
-		toolWhitelist: null,
-		lastSyncAt: null,
-		maxResultChars: 4000,
-		timeout: 3000,
-		priority: 0,
-		trustTier: "trusted",
-		createdAt: "",
-		updatedAt: "",
-	}) as SelectSkillProviderType
+		},
+	],
+	toolWhitelist: null,
+	lastSyncAt: null,
+	maxResultChars: 4000,
+	timeout: 3000,
+	toolsRefreshMs: 300_000,
+	priority: 0,
+	trustTier: "trusted",
+	createdAt: "",
+	updatedAt: "",
+})
 
 const domiaAt = (minCoverage: number): DomiaType =>
 	({
@@ -372,17 +418,17 @@ const main = async (): Promise<void> => {
 		const fpClasses: string[] = []
 		for (const neg of NEGATIVES) {
 			const v = matchFastPath(domia, neg.text)
-			if (v.kind === "match") {
+			if (v.kind !== "miss") {
 				fp++
 				fpClasses.push(`${neg.class}: "${neg.text}"`)
 			}
 		}
 		for (const pos of POSITIVES) {
 			const v = matchFastPath(domia, pos.text)
-			if (v.kind !== "match") {
+			if (v.kind === "miss") {
 				if (v.reason === "ambiguous") ambiguous++
 				fn++
-			} else if (v.match.tool !== pos.tool) {
+			} else if (v.kind === "compound" || v.match.tool !== pos.tool) {
 				fn++
 			}
 		}
@@ -421,6 +467,30 @@ const main = async (): Promise<void> => {
 			checker.check(`args resolve for "${pos.text}"`, ok)
 		}
 	}
+	for (const compound of COMPOUNDS) {
+		const v = matchFastPath(domia, compound.text)
+		const tools = v.kind === "compound" ? v.matches.map((m) => m.tool) : []
+		const names =
+			v.kind === "compound"
+				? v.matches.map((m) => stringOrEmpty(m.resolvedArgs.name))
+				: []
+		checker.check(
+			`compound splits "${compound.text}"`,
+			v.kind === "compound" &&
+				tools.join(",") === compound.tools.join(",") &&
+				names.join(",") === compound.names.join(","),
+			`kind=${v.kind} tools=${tools.join(",")} names=${names.join(",")}`,
+		)
+	}
+	for (const single of COMPOUND_NEGATIVES) {
+		const v = matchFastPath(domia, single)
+		checker.check(
+			`no compound split for "${single}"`,
+			v.kind !== "compound",
+			`kind=${v.kind}`,
+		)
+	}
+
 	checker.check(
 		"every generated template class is exercised by the corpus",
 		templatesHit.size >= 4,
@@ -449,17 +519,17 @@ const main = async (): Promise<void> => {
 		const fpClasses: string[] = []
 		for (const neg of NEGATIVES_ES) {
 			const v = matchFastPath(domiaEs, neg.text)
-			if (v.kind === "match") {
+			if (v.kind !== "miss") {
 				fp++
 				fpClasses.push(`${neg.class}: "${neg.text}"`)
 			}
 		}
 		for (const pos of POSITIVES_ES) {
 			const v = matchFastPath(domiaEs, pos.text)
-			if (v.kind !== "match") {
+			if (v.kind === "miss") {
 				if (v.reason === "ambiguous") ambiguous++
 				fn++
-			} else if (v.match.tool !== pos.tool) {
+			} else if (v.kind === "compound" || v.match.tool !== pos.tool) {
 				fn++
 			}
 		}
@@ -495,6 +565,21 @@ const main = async (): Promise<void> => {
 				([k, val]) => v.match.resolvedArgs[k] === val,
 			)
 		checker.check(`es args resolve for "${pos.text}"`, ok)
+	}
+	for (const compound of COMPOUNDS_ES) {
+		const v = matchFastPath(domiaEs, compound.text)
+		const tools = v.kind === "compound" ? v.matches.map((m) => m.tool) : []
+		const names =
+			v.kind === "compound"
+				? v.matches.map((m) => stringOrEmpty(m.resolvedArgs.name))
+				: []
+		checker.check(
+			`es compound splits "${compound.text}"`,
+			v.kind === "compound" &&
+				tools.join(",") === compound.tools.join(",") &&
+				names.join(",") === compound.names.join(","),
+			`kind=${v.kind} tools=${tools.join(",")} names=${names.join(",")}`,
+		)
 	}
 
 	mkdirSync(BENCH_DIR, { recursive: true })

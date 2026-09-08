@@ -10,6 +10,7 @@ import { runSpeculativeTurn } from "@/modules/core-bus/controller/speculative-tu
 import {
 	resolveCoreBusFeatures,
 	skillsMayIntercept,
+	twoTierEndpointArmed,
 } from "@/modules/core-bus/utils"
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
 import type { SttStreamSessionType } from "@/modules/stt-engine"
@@ -42,24 +43,36 @@ export const startSatelliteSpeculation = async (
 		})
 		return null
 	}
-	if (!config?.satelliteSpeculationEnabled) return notArmed("disabled")
+	if (!config) return notArmed("disabled")
 	if (config.speculativeSilenceMs <= 0) return notArmed("no-silence-window")
-	if (skillsMayIntercept(identity) && config.speculateWithSkills !== true)
-		return notArmed("skills-intercept")
 	if (!args.sttSession()) return notArmed("no-stt-session")
 	const features = resolveCoreBusFeatures(
 		identity,
 		normalizeRuntimeCapabilities(identity.runtimeCapabilities ?? {}),
 	)
-	if (features.canRunLlm ? !features.canStreamLlm : false)
-		return notArmed("no-llm-stream")
-	if (!features.canRunTts) return notArmed("no-tts")
-	const admitted = await admitVoiceReply(identity).catch((err: unknown) => {
-		if (isSemaphoreBusyError(err)) return null
-		throw err
-	})
-	if (!admitted) return notArmed("voice-semaphore-busy")
-	const release = onceFn(admitted)
+	const decodeSpeculation =
+		config.satelliteSpeculationEnabled &&
+		!(skillsMayIntercept(identity) && !config.speculateWithSkills) &&
+		!(features.canRunLlm ? !features.canStreamLlm : false) &&
+		features.canRunTts
+	const eagerOnly =
+		!decodeSpeculation && twoTierEndpointArmed(identity, features)
+	if (!decodeSpeculation && !eagerOnly) {
+		if (!config.satelliteSpeculationEnabled) return notArmed("disabled")
+		if (skillsMayIntercept(identity) && !config.speculateWithSkills)
+			return notArmed("skills-intercept")
+		if (features.canRunLlm && !features.canStreamLlm)
+			return notArmed("no-llm-stream")
+		return notArmed("no-tts")
+	}
+	const admitted = decodeSpeculation
+		? await admitVoiceReply(identity).catch((err: unknown) => {
+				if (isSemaphoreBusyError(err)) return null
+				throw err
+			})
+		: null
+	if (decodeSpeculation && !admitted) return notArmed("voice-semaphore-busy")
+	const release = admitted ? onceFn(admitted) : undefined
 
 	const fastVad = createVadWindow(config, {
 		minSilenceS: config.speculativeSilenceMs / 1000,
@@ -92,6 +105,8 @@ export const startSatelliteSpeculation = async (
 		{
 			interactionId,
 			release,
+			decodeSpeculation,
+			bargeIn: args.bargeIn,
 			existingSttSession: () => {
 				const session = args.sttSession()
 				return session ? wrapSession(session) : null
@@ -111,10 +126,12 @@ export const startSatelliteSpeculation = async (
 			},
 		},
 	)
-	satelliteGatewayLogger.info("🔮 satellite speculation armed", {
-		domiaKey: identity.domiaKey,
-		interactionId,
-	})
+	satelliteGatewayLogger.info(
+		decodeSpeculation
+			? "🔮 satellite speculation armed"
+			: "🔥 satellite two-tier endpoint armed (eager prefill only)",
+		{ domiaKey: identity.domiaKey, interactionId },
+	)
 
 	return {
 		interactionId,
@@ -154,7 +171,7 @@ export const startSatelliteSpeculation = async (
 			settleFinal.reject(new Error(`satellite speculation aborted: ${reason}`))
 			settleFile.reject(new Error(`satellite speculation aborted: ${reason}`))
 		},
-		release,
+		release: release ?? (() => undefined),
 		done,
 	}
 }

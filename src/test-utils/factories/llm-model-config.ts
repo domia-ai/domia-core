@@ -5,7 +5,7 @@ export const getLlmModelConfig = (
 	overrides: Partial<SelectLlmModelConfigType> = {},
 ): SelectLlmModelConfigType => {
 	return {
-		...baseLlmModelConfig(overrides?.domiaId),
+		...baseLlmModelConfig(overrides.domiaId),
 		...overrides,
 	}
 }

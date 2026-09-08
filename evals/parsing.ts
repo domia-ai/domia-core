@@ -1,5 +1,10 @@
 import { parseLlmJson } from "@/utils/llm-json"
-import { downsamplePcm16, downmixToMonoPcm16 } from "@/utils"
+import {
+	downsamplePcm16,
+	downmixToMonoPcm16,
+	foldText,
+	tokensOf,
+} from "@/utils"
 
 type ParsingCaseType = {
 	name: string
@@ -96,6 +101,46 @@ const pcmChecks = (): { pass: number; total: number } => {
 	return { pass, total: checks.length }
 }
 
+const sameTokens = (actual: string[], expected: string[]): boolean =>
+	actual.length === expected.length && actual.every((t, i) => t === expected[i])
+
+const tokenChecks = (): { pass: number; total: number } => {
+	const checks: [string, boolean][] = [
+		[
+			"tokens: fold strips accents + case + edges",
+			foldText("  Émilie ") === "emilie",
+		],
+		[
+			"tokens: split on non-alphanumerics, drop 1-char tokens",
+			sameTokens(tokensOf("¿Enciende la LUZ del salón, ya?"), [
+				"enciende",
+				"la",
+				"luz",
+				"del",
+				"salon",
+				"ya",
+			]),
+		],
+		[
+			"tokens: minLength 3 + stopwords (fact-memory profile)",
+			sameTokens(
+				tokensOf("The café is open at 10", {
+					minLength: 3,
+					stopwords: new Set(["the"]),
+				}),
+				["cafe", "open"],
+			),
+		],
+		["tokens: empty input → no tokens", tokensOf("  ...  ").length === 0],
+	]
+	let pass = 0
+	for (const [name, ok] of checks) {
+		if (ok) pass++
+		console.log(`${ok ? "✅" : "❌"} ${name}`)
+	}
+	return { pass, total: checks.length }
+}
+
 const main = (): void => {
 	let pass = 0
 	for (const c of cases) {
@@ -107,10 +152,17 @@ const main = (): void => {
 		)
 	}
 	const pcm = pcmChecks()
+	const tokens = tokenChecks()
 	console.log(
-		`\n${pass}/${cases.length} parsing + ${pcm.pass}/${pcm.total} pcm cases passed`,
+		`\n${pass}/${cases.length} parsing + ${pcm.pass}/${pcm.total} pcm + ${tokens.pass}/${tokens.total} token cases passed`,
 	)
-	process.exit(pass === cases.length && pcm.pass === pcm.total ? 0 : 1)
+	process.exit(
+		pass === cases.length &&
+			pcm.pass === pcm.total &&
+			tokens.pass === tokens.total
+			? 0
+			: 1,
+	)
 }
 
 main()

@@ -13,4 +13,8 @@ export const embedBackendRegistry: Record<
 
 export const getEmbedBackend = (
 	id: EmbedBackendEnumType,
-): EmbedBackendType | null => embedBackendRegistry[id] ?? null
+): EmbedBackendType | null => lookupBackend(id) ?? null
+
+const lookupBackend = (
+	id: EmbedBackendEnumType,
+): EmbedBackendType | undefined => embedBackendRegistry[id]

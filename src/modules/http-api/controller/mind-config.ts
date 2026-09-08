@@ -12,38 +12,46 @@ import {
 	activateTemplate,
 } from "@/modules/mind"
 import { serializeConfig, configHealth } from "@/modules/config"
-import { applyConfig } from "@/modules/config-apply"
-import type { PostImportMindBodyType } from "../types"
-import { postImportMindBodySchema } from "../schemas"
+import { applyConfig, getApplyState } from "@/modules/config-apply"
+import type {
+	GetConfigResponseType,
+	PostConfigResponseType,
+	PostImportMindBodyType,
+	PostKnowledgeBodyType,
+} from "../types"
+import { postImportMindBodySchema, postKnowledgeBodySchema } from "../schemas"
+import { badRequest } from "../utils/http-errors"
 import { httpServerLogger } from "@/utils"
 import type { FastifyReply } from "fastify"
 
-export const handleGetMind = async (domia: DomiaType) => {
+export const handleGetMind = (domia: DomiaType) => {
 	return { mind: serializeMind(domia) }
 }
 
-export const handleGetConfig = async (domia: DomiaType) => {
-	return { config: serializeConfig(domia) }
+export const handleGetConfig = (domia: DomiaType): GetConfigResponseType => {
+	return {
+		config: serializeConfig(domia),
+		apply: getApplyState(domia.domiaKey),
+	}
 }
 
 export const handlePostConfig = async (
 	domia: DomiaType,
 	body: unknown,
 	reply: FastifyReply,
-) => {
+): Promise<PostConfigResponseType | FastifyReply> => {
 	try {
-		return await applyConfig(domia, body)
+		const { config, apply } = await applyConfig(domia, body)
+		return { config, apply, state: getApplyState(domia.domiaKey) }
 	} catch (err) {
 		httpServerLogger.error("Import config failed", { domiaId: domia.id, err })
 		if (err instanceof ZodError)
-			return reply
-				.code(400)
-				.send({ error: "Invalid config bundle", issues: err.issues })
+			return badRequest(reply, err, "Invalid config bundle")
 		return reply.code(500).send({ error: "Config import failed" })
 	}
 }
 
-export const handleGetConfigHealth = async (domia: DomiaType) => {
+export const handleGetConfigHealth = (domia: DomiaType) => {
 	return { health: configHealth(domia) }
 }
 
@@ -56,16 +64,12 @@ export const handlePostKnowledge = async (
 	body: unknown,
 	reply: FastifyReply,
 ) => {
-	const b = body as {
-		id?: string
-		title?: string
-		content?: string
-		keywords?: string[]
-		priority?: number
-		isActive?: boolean
-	} | null
-	if (!b?.title?.trim() || !b?.content?.trim())
-		return reply.code(400).send({ error: "title and content are required" })
+	const parsed = postKnowledgeBodySchema(domia.knowledgeMaxChars).safeParse(
+		body,
+	)
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid knowledge body")
+	const b: PostKnowledgeBodyType = parsed.data
 	await upsertKnowledgeEntry(domia, {
 		id: b.id,
 		title: b.title,
@@ -96,7 +100,7 @@ export const handleImportMind = async (
 	}
 }
 
-export const handleGetTemplates = async () => {
+export const handleGetTemplates = () => {
 	return { templates: listTemplates() }
 }
 

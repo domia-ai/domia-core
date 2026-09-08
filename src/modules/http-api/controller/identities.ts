@@ -1,7 +1,6 @@
 import { generateUuid } from "@/utils"
 import { env } from "@/config"
 import {
-	type DomiaType,
 	getActiveDomias,
 	getDomia,
 	retireDomia,
@@ -15,7 +14,6 @@ import {
 import { publishIdentityState } from "@/modules/heartbeat-manager"
 import { discoverEsphome } from "@/modules/satellite-discovery"
 import {
-	DEFAULT_SATELLITE_PORT,
 	DEFAULT_SATELLITE_PROTOCOL,
 	DEFAULT_SATELLITE_PORT_BY_PROTOCOL,
 } from "@/db"
@@ -27,6 +25,7 @@ import {
 } from "@/setups/hosted-identities"
 import { reloadSatelliteClientsForDomia } from "@/setups/satellite-clients"
 import { postIdentityBodySchema, postSatelliteBodySchema } from "../schemas"
+import { badRequest } from "../utils/http-errors"
 import type { FastifyReply } from "fastify"
 
 const slugifyDomiaKey = (name: string): string =>
@@ -40,9 +39,7 @@ const roleOf = (isHosted: boolean, isPrincipal: boolean): string =>
 	isPrincipal ? "principal" : isHosted ? "hosted" : "peer"
 
 export const handleGetIdentities = async () => {
-	const domias = (await getActiveDomias()).filter(
-		(domia): domia is DomiaType => !!domia,
-	)
+	const domias = await getActiveDomias()
 	return {
 		identities: domias.map((domia) => {
 			const isPrincipal = domia.domiaKey === env.DOMIA_KEY
@@ -62,9 +59,8 @@ export const handlePostIdentity = async (
 	reply: FastifyReply,
 ) => {
 	const parsed = postIdentityBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid identity body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid identity body")
 	const { name, domiaKey } = parsed.data
 	const baseKey = domiaKey ?? slugifyDomiaKey(name)
 	let key = baseKey
@@ -154,9 +150,8 @@ export const handlePostSatellite = async (
 		})
 	}
 	const parsed = postSatelliteBodySchema.safeParse(body)
-	if (!parsed.success) {
-		return reply.code(400).send({ error: "Invalid satellite body" })
-	}
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid satellite body")
 	const {
 		satelliteId,
 		name,
@@ -182,10 +177,7 @@ export const handlePostSatellite = async (
 		satelliteId,
 		name: name ?? null,
 		host,
-		port:
-			port ??
-			DEFAULT_SATELLITE_PORT_BY_PROTOCOL[resolvedProtocol] ??
-			DEFAULT_SATELLITE_PORT,
+		port: port ?? DEFAULT_SATELLITE_PORT_BY_PROTOCOL[resolvedProtocol],
 		encryptionKey: encryptionKey ?? null,
 		protocol: resolvedProtocol,
 		livekitApiKey: livekitApiKey ?? null,

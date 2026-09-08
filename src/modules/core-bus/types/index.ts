@@ -3,8 +3,10 @@ import type {
 	DomiaEventBusPayloadMapType,
 	DOMIA_EVENT_BUS_ENUM,
 	TurnEventInputSourceType,
+	EagerPrefillHandleType,
+	EagerPrefillRelationType,
 } from "@/buses"
-import { INTERACTION_STATUS_ENUM_VALUES } from "@/db"
+import { INTERACTION_STATUS_ENUM_VALUES, type ToolTraceEntryType } from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
 import type {
@@ -56,6 +58,11 @@ export type CoreBusContextType = {
 
 export type AudioReadyPayloadType =
 	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.AUDIO_READY]
+
+export type FastPathOutcomeType = {
+	text: string
+	trace: Extract<ToolTraceEntryType, { kind: "result" }>
+}
 
 export type SttDonePayloadType =
 	DomiaEventBusPayloadMapType[DOMIA_EVENT_BUS_ENUM.STT_DONE]
@@ -183,6 +190,26 @@ export type StreamMetaType = {
 	ledger?: PlaybackLedgerType
 }
 
+export type SentencePushModeType = {
+	primed?: boolean
+}
+
+export type SentencePipelineType = {
+	sentencesOf: (
+		tokens: AsyncIterable<string>,
+		startEmitted?: boolean,
+	) => AsyncIterable<string>
+	audio: AsyncIterable<Buffer>
+	waitForSpace: () => Promise<void>
+	push: (
+		sentence: string,
+		audio: AsyncIterable<Buffer>,
+		mode?: SentencePushModeType,
+	) => void
+	close: () => void
+	isClosed: () => boolean
+}
+
 export type TurnSessionContextType = {
 	session: SttFlowSessionType
 	scope: TurnScopeType | null
@@ -205,9 +232,33 @@ export type IntercomLinkType = {
 	sink: StreamingSinkType
 }
 
+export type SpeakPolitenessType = "steal" | "polite"
+
+export type SpeakOptionsType = {
+	politeness?: SpeakPolitenessType
+}
+
+export type SpeakDeliveryReasonType = "busy" | "no-follow-up-capability"
+
 export type SpeakResultType = {
 	delivered: boolean
 	target: "satellite" | "local" | "none"
+	reason?: SpeakDeliveryReasonType
+	audioId?: string
+	audioPath?: string
+}
+
+export type ConverseTargetType =
+	| "satellite-converse"
+	| "satellite-announce"
+	| "local"
+	| "none"
+
+export type SpeakAndListenResultType = {
+	delivered: boolean
+	target: ConverseTargetType
+	listening: boolean
+	reason?: SpeakDeliveryReasonType
 	audioId?: string
 	audioPath?: string
 }
@@ -381,6 +432,7 @@ export type SatelliteControlType = {
 	setVolume?: (volume: number) => void
 	setFollowUp?: (enabled: boolean) => void
 	sendTimerEvent?: (event: SatelliteTimerEventType) => void
+	startConversation?: (url: string) => void
 }
 
 export type PresenceEntryType = {
@@ -389,8 +441,6 @@ export type PresenceEntryType = {
 	lastActiveAt: number | null
 	satellites: SatellitePresenceType[]
 }
-
-export type PresenceListenerType = (status: PresenceStatusType) => void
 
 export type RequestVoiceReplyResult = {
 	interactionId: string
@@ -406,8 +456,6 @@ export type RequestTextReplyResult = {
 
 export type InteractionStatusType =
 	(typeof INTERACTION_STATUS_ENUM_VALUES)[number]
-
-export type InteractionInputModeType = "audio" | "transcript" | "text"
 
 export type InteractionAudioDeliveryType =
 	| "local-playback"
@@ -599,8 +647,10 @@ export type SpeculativeTurnPublishType = {
 
 export type SpeculativeTurnArgsType = {
 	interactionId: string
-	release: () => void
+	release?: () => void
+	decodeSpeculation?: boolean
 	replaySinceTs?: number
+	bargeIn?: boolean
 	existingSttSession?: () => SttStreamSessionType | null
 	publish?: SpeculativeTurnPublishType
 	captureFactory?: (
@@ -624,6 +674,12 @@ export type MemoryBundleType = {
 	previously: string[]
 	userModel: string | null
 	userMoodTrend: string[]
+}
+
+export type RankedPromptContextType = {
+	prompt: string
+	knownFacts: string[]
+	knowledgeBase: string[]
 }
 
 export type SttFlowSessionType = {
@@ -662,6 +718,84 @@ export type SentenceEmotionTagsType = {
 	applyTags: string[]
 	carryTags: string[]
 }
+
+export type TwoTierEndpointConfigType = {
+	enabled: boolean
+	eagerMinPartialChars: number
+	prefillIdleGuardMs: number
+	resumeGraceMs: number
+	maxEagerPrefills: number
+}
+
+export type TwoTierWindowType = {
+	debounceMs: () => number
+	eagerSilenceMs: number
+}
+
+export type TwoTierStateType = "listening" | "eager" | "resume" | "final"
+
+export type TwoTierSkipReasonType =
+	| "disabled"
+	| "finalized"
+	| "short-partial"
+	| "idle-guard"
+	| "max-prefills"
+	| "resume-grace"
+	| "slot-busy"
+	| "same-partial"
+
+export type TwoTierEagerDecisionType =
+	| { action: "prefill"; generation: number; partial: string }
+	| { action: "skip"; reason: TwoTierSkipReasonType }
+
+export type TwoTierResumeDecisionType =
+	| { action: "cancel"; generation: number }
+	| { action: "none" }
+
+export type TwoTierFinalDecisionType =
+	| {
+			action: "reuse"
+			generation: number
+			partial: string
+			relation: Exclude<EagerPrefillRelationType, "diverges">
+	  }
+	| { action: "reprefill"; generation: number; partial: string }
+	| { action: "decode" }
+
+export type TwoTierEagerEnvType = {
+	slotBusy: boolean
+	now?: number
+}
+
+export type TwoTierStatsType = {
+	prefills: number
+	cancelled: number
+	reused: number
+	reprefilled: number
+}
+
+export type TwoTierTrackerType = {
+	state: () => TwoTierStateType
+	onEager: (
+		partial: string,
+		env: TwoTierEagerEnvType,
+	) => TwoTierEagerDecisionType
+	onSettled: (generation: number) => void
+	onFailed: (generation: number) => void
+	onResume: (now?: number) => TwoTierResumeDecisionType
+	onFinal: (final: string) => TwoTierFinalDecisionType
+	stats: () => TwoTierStatsType
+}
+
+export type EagerPrefillRuntimeType = {
+	onEager: (partial: string) => void
+	onResume: () => void
+	handle: (final: string) => EagerPrefillHandleType | undefined
+	discard: (reason: string) => void
+	accepting: () => boolean
+}
+
+export type TwoTierCounterKindType = keyof TwoTierStatsType
 
 export type SpeculationStatsType = {
 	handedOff: number

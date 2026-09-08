@@ -33,7 +33,7 @@ const main = async (): Promise<void> => {
 	const firstId = randomUUID()
 	const secondId = randomUUID()
 
-	await upsertDomiaFromNetwork(peerPayload(firstId))
+	upsertDomiaFromNetwork(peerPayload(firstId))
 	await upsertSatellite(firstId, {
 		id: randomUUID(),
 		satelliteId: SATELLITE_ID,
@@ -66,15 +66,15 @@ const main = async (): Promise<void> => {
 	})
 	const afterRebind = readSatellite()
 
-	await upsertDomiaFromNetwork(peerPayload(secondId))
+	upsertDomiaFromNetwork(peerPayload(secondId))
 	const afterReRegistration = readSatellite()
 
 	const checks: [string, boolean, string][] = [
 		[
 			"host-change re-bind keeps flags",
 			afterRebind?.followUpEnabled === true &&
-				afterRebind?.captureHeadTrimMs === 300 &&
-				afterRebind?.host === "192.168.0.9",
+				afterRebind.captureHeadTrimMs === 300 &&
+				afterRebind.host === "192.168.0.9",
 			`followUp=${afterRebind?.followUpEnabled} trim=${afterRebind?.captureHeadTrimMs} host=${afterRebind?.host}`,
 		],
 		[
@@ -85,12 +85,12 @@ const main = async (): Promise<void> => {
 		[
 			"peer re-registration re-parents to the new peer id",
 			afterReRegistration?.domiaId === secondId,
-			`domiaId=${afterReRegistration?.domiaId?.slice(0, 8)} expected=${secondId.slice(0, 8)}`,
+			`domiaId=${afterReRegistration?.domiaId.slice(0, 8)} expected=${secondId.slice(0, 8)}`,
 		],
 		[
 			"peer re-registration keeps flags",
 			afterReRegistration?.followUpEnabled === true &&
-				afterReRegistration?.captureHeadTrimMs === 300,
+				afterReRegistration.captureHeadTrimMs === 300,
 			`followUp=${afterReRegistration?.followUpEnabled} trim=${afterReRegistration?.captureHeadTrimMs}`,
 		],
 	]

@@ -37,6 +37,18 @@ export type RunTtsOptionsType = {
 	voice?: TtsVoiceInputType
 }
 
+export type PhraseCacheEntryType = {
+	chunks: Buffer[]
+	bytes: number
+}
+
+export type PhraseCacheStatsType = {
+	entries: number
+	bytes: number
+	hits: number
+	misses: number
+}
+
 export type TtsEngineAdapterType = {
 	id: TtsEngineEnumType
 	capabilities: TtsCapabilitiesType
@@ -121,6 +133,23 @@ export type KittenWorkerJobType = {
 	speed: number
 }
 
+export type SupertonicWorkerEngineConfigType = {
+	modelPath: string
+	numThreads: number
+	provider: string
+	maxNumSentences: number
+	numSteps: number
+}
+
+export type SupertonicWorkerJobType = {
+	engine: "SUPERTONIC"
+	engineConfig: SupertonicWorkerEngineConfigType
+	text: string
+	sid: number
+	speed: number
+	lang: string
+}
+
 export type MatchaWorkerJobType = {
 	engine: "MATCHA"
 	engineConfig: TtsWorkerEngineConfigType & {
@@ -138,6 +167,7 @@ export type TtsWorkerJobType =
 	| VitsWorkerJobType
 	| KittenWorkerJobType
 	| MatchaWorkerJobType
+	| SupertonicWorkerJobType
 
 export type TtsWorkerResultType = {
 	pcm: Buffer

@@ -1,7 +1,7 @@
 import { setupEnvironment } from "@/setups"
 import { devCliLogger, getErrorMessage, CORE_ERRORS } from "@/utils"
 
-export const environmentCommand = async () => {
+export const environmentCommand = () => {
 	try {
 		devCliLogger.info("🔍 Checking environment for Domia...")
 		setupEnvironment()

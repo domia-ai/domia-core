@@ -13,11 +13,7 @@ import type {
 	SelectSkillProviderType,
 	SelectCapabilityDelegationType,
 } from "@/db"
-import type { z } from "zod"
 import type { EmotionType } from "@/modules/emotion-engine"
-import type { configBundleSchema } from "../schemas"
-
-export type ConfigBundleType = z.infer<typeof configBundleSchema>
 
 export type ConfigHealthEntryType = {
 	stage: string
@@ -45,6 +41,12 @@ export type ConfigDomiaSectionType = Pick<
 	| "voiceQueueTimeoutMs"
 	| "ownConfigTtlMs"
 	| "warmupOnBoot"
+	| "modelInstallAllowedHosts"
+	| "heartbeatSignatureRequired"
+	| "meshSecretGraceMs"
+	| "knowledgeMaxChars"
+	| "benchTurns"
+	| "benchThresholds"
 >
 
 export type SectionMetaKeyType =

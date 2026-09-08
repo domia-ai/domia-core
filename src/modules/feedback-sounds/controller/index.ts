@@ -28,7 +28,7 @@ const resolveSound = (
 		thinking: config.thinkingSoundPath,
 		endpoint: config.endpointSoundPath,
 	}[kind]
-	return path?.trim() ? path : null
+	return path.trim() ? path : null
 }
 
 export const playFeedbackSound = (
@@ -37,12 +37,30 @@ export const playFeedbackSound = (
 ): void => {
 	const path = resolveSound(domia, kind)
 	if (!path) return
-	void playAudio(domia, path).catch((err) =>
+	void playAudio(domia, path).catch((err: unknown) =>
 		domiaBusLogger.warn(`🔔 feedback sound (${kind}) failed`, {
 			domiaId: domia.id,
 			err,
 		}),
 	)
+}
+
+export const playFeedbackSoundAndWait = async (
+	domia: DomiaType,
+	kind: FeedbackSoundKindType,
+): Promise<boolean> => {
+	const path = resolveSound(domia, kind)
+	if (!path) return false
+	try {
+		await playAudio(domia, path)
+		return true
+	} catch (err) {
+		domiaBusLogger.warn(`🔔 feedback sound (${kind}) failed`, {
+			domiaId: domia.id,
+			err,
+		})
+		return false
+	}
 }
 
 const acknowledged = new Set<string>()

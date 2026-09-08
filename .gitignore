@@ -41,3 +41,12 @@ evals/candidates/
 # live-session voice captures must never be committed (privacy) — fixtures in git are synthetic only
 evals/fixtures/stt/real-home-*/
 evals/fixtures/stt/h18-echo-*/
+
+# Claude Code agent worktrees (local only)
+/.claude/
+/config/llm-server.env
+
+# TLS dev material, MQTT ACL file and packaged tarballs are per-deployment
+/data/certs/
+/config/mqtt/acl.txt
+/dist/

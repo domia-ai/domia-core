@@ -1,11 +1,12 @@
 import {
 	SKILL_TRUST_TIER_ENUM,
+	HINT_SOURCE_ENUM,
 	type ToolAnnotationsType,
 	type ToolHintOverrideType,
 	type ToolPolicyType,
 	type ToolRiskClassType,
 } from "@/db"
-import type { EffectiveHintsType } from "../types"
+import type { EffectiveHintsType, HintSourceType } from "../types"
 
 const RISK_ORDER: Record<ToolRiskClassType, number> = {
 	read: 0,
@@ -13,15 +14,22 @@ const RISK_ORDER: Record<ToolRiskClassType, number> = {
 	write_destructive: 2,
 }
 
+const annotationsHonored = (trustTier: string): boolean =>
+	trustTier === SKILL_TRUST_TIER_ENUM.TRUSTED
+
 const resolveHint = (
 	server: boolean | undefined,
 	override: boolean | undefined,
-	trusted: boolean,
+	honorAll: boolean,
 	riskIncreasingValue: boolean,
-): boolean | undefined => {
-	if (override !== undefined) return override
-	if (trusted) return server
-	return server === riskIncreasingValue ? server : undefined
+): { value: boolean | undefined; source: HintSourceType } => {
+	if (override !== undefined)
+		return { value: override, source: HINT_SOURCE_ENUM.DESCRIPTOR }
+	if (server === undefined)
+		return { value: undefined, source: HINT_SOURCE_ENUM.DEFAULT }
+	if (honorAll || server === riskIncreasingValue)
+		return { value: server, source: HINT_SOURCE_ENUM.ANNOTATION }
+	return { value: undefined, source: HINT_SOURCE_ENUM.DEFAULT }
 }
 
 export const effectiveHints = (
@@ -29,32 +37,42 @@ export const effectiveHints = (
 	override: ToolHintOverrideType | undefined,
 	trustTier: string,
 ): EffectiveHintsType => {
-	const trusted = trustTier === SKILL_TRUST_TIER_ENUM.TRUSTED
+	const honorAll = annotationsHonored(trustTier)
+	const readOnly = resolveHint(
+		annotations?.readOnlyHint,
+		override?.readOnlyHint,
+		honorAll,
+		false,
+	)
+	const destructive = resolveHint(
+		annotations?.destructiveHint,
+		override?.destructiveHint,
+		honorAll,
+		true,
+	)
+	const idempotent = resolveHint(
+		annotations?.idempotentHint,
+		override?.idempotentHint,
+		honorAll,
+		false,
+	)
+	const openWorld = resolveHint(
+		annotations?.openWorldHint,
+		override?.openWorldHint,
+		honorAll,
+		true,
+	)
 	return {
-		readOnly: resolveHint(
-			annotations?.readOnlyHint,
-			override?.readOnlyHint,
-			trusted,
-			false,
-		),
-		destructive: resolveHint(
-			annotations?.destructiveHint,
-			override?.destructiveHint,
-			trusted,
-			true,
-		),
-		idempotent: resolveHint(
-			annotations?.idempotentHint,
-			override?.idempotentHint,
-			trusted,
-			false,
-		),
-		openWorld: resolveHint(
-			annotations?.openWorldHint,
-			override?.openWorldHint,
-			trusted,
-			true,
-		),
+		readOnly: readOnly.value,
+		destructive: destructive.value,
+		idempotent: idempotent.value,
+		openWorld: openWorld.value,
+		sources: {
+			readOnly: readOnly.source,
+			destructive: destructive.source,
+			idempotent: idempotent.source,
+			openWorld: openWorld.source,
+		},
 	}
 }
 

@@ -5,7 +5,15 @@ import {
 	type Channel,
 } from "nice-grpc"
 
-import { grpcClientLogger, meshBearerHeader } from "@/utils"
+import {
+	grpcClientLogger,
+	getTraceContext,
+	meshBearerHeader,
+	grpcChannelCredentials,
+	isTlsEnabled,
+	domiaError,
+	GRPC_ERRORS,
+} from "@/utils"
 import { env } from "@/config"
 import { isHostedIdentity } from "@/modules/core"
 import {
@@ -98,8 +106,8 @@ const meshClientFactory = createClientFactory().use(
 	},
 )
 
-const createClientForAddr = (addr: string): DomiaNodeClient => {
-	const channel = createChannel(addr, undefined, {
+const createClientForAddr = (addr: string, tls: boolean): DomiaNodeClient => {
+	const channel = createChannel(addr, grpcChannelCredentials(tls), {
 		"grpc.max_receive_message_length": GRPC_MAX_MESSAGE_BYTES,
 		"grpc.max_send_message_length": GRPC_MAX_MESSAGE_BYTES,
 	})
@@ -108,6 +116,9 @@ const createClientForAddr = (addr: string): DomiaNodeClient => {
 	clients.set(addr, client)
 	return client
 }
+
+const targetUsesTls = (target: DeliverEventTarget): boolean =>
+	isHostedIdentity(target.domiaKey) ? isTlsEnabled() : target.grpcTls
 
 const isUnavailableError = (err: unknown): boolean => {
 	if (!err || typeof err !== "object") return false
@@ -126,13 +137,14 @@ const abortableLocalStream = <T>(
 	if (!signal) return source
 	return (async function* (): AsyncIterable<T> {
 		const iterator = source[Symbol.asyncIterator]()
+		const aborted = (): boolean => signal.aborted
 		const onAbort = () => void iterator.return?.()
 		signal.addEventListener("abort", onAbort)
 		try {
-			if (signal.aborted) return
+			if (aborted()) return
 			while (true) {
 				const next = await iterator.next()
-				if (next.done || signal.aborted) break
+				if (next.done || aborted()) break
 				yield next.value
 			}
 		} finally {
@@ -190,13 +202,17 @@ const resolveTargetAddr = (target: DeliverEventTarget): string | null => {
 	return `${target.localIp}:${target.grpcPort}`
 }
 
+const channelKey = (target: DeliverEventTarget, addr: string): string =>
+	`${targetUsesTls(target) ? "grpcs" : "grpc"}://${addr}`
+
 const getClient = (target: DeliverEventTarget): DomiaNodeClient | null => {
 	if (localClient && isHostedIdentity(target.domiaKey)) {
 		grpcClientLogger.debug(`🔁 in-process dispatch → ${target.domiaKey}`)
 		return localClient
 	}
-	const addr = resolveTargetAddr(target)
-	if (!addr) return null
+	const resolved = resolveTargetAddr(target)
+	if (!resolved) return null
+	const addr = channelKey(target, resolved)
 	const previous = lastAddrByKey.get(target.domiaKey)
 	if (previous && previous !== addr) closeChannel(previous)
 	lastAddrByKey.set(target.domiaKey, addr)
@@ -212,7 +228,7 @@ const getClient = (target: DeliverEventTarget): DomiaNodeClient | null => {
 	}
 	const cached = clients.get(addr)
 	if (cached) return cached
-	return createClientForAddr(addr)
+	return createClientForAddr(resolved, targetUsesTls(target))
 }
 
 const buildEnvelope = <K extends keyof DeliverEventPayloadMap>(
@@ -226,7 +242,7 @@ const buildEnvelope = <K extends keyof DeliverEventPayloadMap>(
 				senderDomiaKey,
 				payload: {
 					$case: "audioReady",
-					audioReady: payload as DeliverEventPayloadMap["audioReady"],
+					audioReady: payload,
 				},
 			}
 		case "sttDone":
@@ -250,7 +266,7 @@ const buildEnvelope = <K extends keyof DeliverEventPayloadMap>(
 				senderDomiaKey,
 				payload: {
 					$case: "ttsDone",
-					ttsDone: payload as DeliverEventPayloadMap["ttsDone"],
+					ttsDone: payload,
 				},
 			}
 		case "interactionFailed":
@@ -291,7 +307,10 @@ export const deliverEvent = async <K extends keyof DeliverEventPayloadMap>(
 		}
 	}
 
-	const envelope = buildEnvelope(senderDomiaKey, kind, payload)
+	const envelope = buildEnvelope(senderDomiaKey, kind, {
+		...payload,
+		traceId: payload.traceId ?? getTraceContext()?.traceId,
+	})
 	let attempted = 0
 
 	for (const target of targets) {
@@ -401,6 +420,7 @@ export const streamSttToTarget = async (
 						originDomiaKey: meta.originDomiaKey,
 						interactionId: meta.interactionId,
 						responseType: meta.responseType,
+						traceId: getTraceContext()?.traceId,
 						targetDomiaKey: target.domiaKey,
 					},
 				}
@@ -532,6 +552,7 @@ export const streamLlmFromTarget = async (
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
 					responseType: request.responseType,
+					traceId: getTraceContext()?.traceId,
 					personaContextJson: request.persona
 						? JSON.stringify(request.persona)
 						: undefined,
@@ -574,6 +595,7 @@ export const streamTtsFromTarget = async (
 					reply: request.reply,
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
+					traceId: getTraceContext()?.traceId,
 					ttsVoiceJson: request.ttsVoice
 						? JSON.stringify(request.ttsVoice)
 						: undefined,
@@ -593,7 +615,7 @@ export const streamTtsFromTarget = async (
 	const sourceStream = opened.stream
 	const audio = (async function* (): AsyncIterable<Buffer> {
 		for await (const chunk of sourceStream) {
-			if (chunk.pcm && chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
+			if (chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
 		}
 	})()
 	return {
@@ -621,6 +643,7 @@ export const streamReplyAudioFromTarget = async (
 					originDomiaKey: request.originDomiaKey,
 					interactionId: request.interactionId,
 					responseType: request.responseType,
+					traceId: getTraceContext()?.traceId,
 					personaContextJson: request.persona
 						? JSON.stringify(request.persona)
 						: undefined,
@@ -654,7 +677,7 @@ export const streamReplyAudioFromTarget = async (
 			for await (const msg of sourceStream) {
 				if (msg.payload?.$case === "audio") {
 					const pcm = msg.payload.audio.pcm
-					if (pcm && pcm.length > 0) yield Buffer.from(pcm)
+					if (pcm.length > 0) yield Buffer.from(pcm)
 				} else if (msg.payload?.$case === "finalReply") {
 					resolveFinalReply(msg.payload.finalReply)
 				}
@@ -690,6 +713,7 @@ export const streamVoiceReplyFromTarget = async (
 						originDomiaKey: request.originDomiaKey,
 						interactionId: request.interactionId,
 						responseType: request.responseType,
+						traceId: getTraceContext()?.traceId,
 						personaContextJson: request.persona
 							? JSON.stringify(request.persona)
 							: undefined,
@@ -727,11 +751,9 @@ export const streamVoiceReplyFromTarget = async (
 			for await (const msg of sourceStream) {
 				if (msg.payload?.$case === "audio") {
 					const chunk = msg.payload.audio
-					if (audioMeta.sampleRate === undefined)
-						audioMeta.sampleRate = chunk.sampleRate
-					if (audioMeta.channels === undefined)
-						audioMeta.channels = chunk.channels
-					if (chunk.pcm && chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
+					audioMeta.sampleRate ??= chunk.sampleRate
+					audioMeta.channels ??= chunk.channels
+					if (chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
 				} else if (msg.payload?.$case === "transcript") {
 					resolveTranscript(msg.payload.transcript)
 				} else if (msg.payload?.$case === "finalReply") {
@@ -777,6 +799,7 @@ export const reportReflectionToTarget = async (
 				senderDomiaKey,
 				originDomiaKey: payload.originDomiaKey,
 				interactionId: payload.interactionId,
+				traceId: getTraceContext()?.traceId,
 				emotionDeltaJson: payload.emotionDeltaJson,
 				cause: payload.cause,
 				factsJson: payload.factsJson,
@@ -816,6 +839,7 @@ export const reportStageExecutionToTarget = async (
 				senderDomiaKey,
 				originDomiaKey: payload.originDomiaKey,
 				interactionId: payload.interactionId,
+				traceId: getTraceContext()?.traceId,
 				stages: payload.stages,
 			},
 			{ signal: ac.signal },
@@ -844,7 +868,11 @@ export const delegateInferenceWithTools = async (
 	},
 ): Promise<ToolCallOrReplyType> => {
 	const client = getClient(target)
-	if (!client) throw new Error(`no grpc client for ${target.domiaKey}`)
+	if (!client)
+		throw domiaError(GRPC_ERRORS.TARGET_UNREACHABLE, {
+			logger: grpcClientLogger,
+			meta: { domiaKey: target.domiaKey },
+		})
 	const addr = addrOf(target)
 	const ac = new AbortController()
 	const timer = setTimeout(() => ac.abort(), tunables.unaryDeadlineMs)
@@ -857,6 +885,7 @@ export const delegateInferenceWithTools = async (
 				originDomiaKey: payload.originDomiaKey,
 				interactionId: payload.interactionId,
 				sessionId: payload.sessionId,
+				traceId: getTraceContext()?.traceId,
 				targetDomiaKey: target.domiaKey,
 			},
 			{ signal: ac.signal },

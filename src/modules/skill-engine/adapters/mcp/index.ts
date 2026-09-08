@@ -21,10 +21,11 @@ import {
 	DEFAULT_SKILL_MAX_TOTAL_TIMEOUT_MS,
 } from "@/db"
 import type { SelectSkillProviderType } from "@/db"
-import { skillEngineLogger } from "@/utils"
+import { skillEngineLogger, domiaError, SKILL_ERRORS } from "@/utils"
 
 import type {
 	RawSkillToolType,
+	RawSkillToolListType,
 	SkillAdapterType,
 	SkillCallResultType,
 	SkillCallToolOptionsType,
@@ -34,13 +35,21 @@ import type {
 
 const TOOL_NAME_RE = /^[A-Za-z0-9_.-]{1,128}$/
 
+const serverTtlMs = (listed: { ttlMs?: unknown }): number | null =>
+	typeof listed.ttlMs === "number" && Number.isFinite(listed.ttlMs)
+		? Math.max(0, Math.floor(listed.ttlMs))
+		: null
+
+const minTtl = (a: number | null, b: number | null): number | null =>
+	a === null ? b : b === null ? a : Math.min(a, b)
+const REQUEST_TIMEOUT_CODE: number = ErrorCode.RequestTimeout
+
 const buildTransport = (cfg: SelectSkillProviderType) => {
 	const headers: Record<string, string> = {}
 	if (cfg.auth?.kind === "bearer" && cfg.auth.token)
 		headers.Authorization = `Bearer ${cfg.auth.token}`
 	else if (
 		cfg.auth?.kind === "headers" &&
-		cfg.auth.headers &&
 		typeof cfg.auth.headers === "object" &&
 		!Array.isArray(cfg.auth.headers)
 	)
@@ -48,9 +57,16 @@ const buildTransport = (cfg: SelectSkillProviderType) => {
 			if (typeof v === "string") headers[k] = v
 	if (cfg.type === MCP_TRANSPORT_ENUM.STDIO) {
 		if (cfg.trustTier !== "trusted")
-			throw new Error("stdio transport requires a trusted provider")
+			throw domiaError(SKILL_ERRORS.INVALID_PROVIDER_CONFIG, {
+				logger: skillEngineLogger,
+				meta: { provider: cfg.name, reason: "stdio requires trusted tier" },
+			})
 		const command = cfg.config?.command?.trim()
-		if (!command) throw new Error("stdio transport requires config.command")
+		if (!command)
+			throw domiaError(SKILL_ERRORS.INVALID_PROVIDER_CONFIG, {
+				logger: skillEngineLogger,
+				meta: { provider: cfg.name, reason: "stdio requires config.command" },
+			})
 		return new StdioClientTransport({
 			command,
 			args: cfg.config?.commandArgs ?? [],
@@ -123,11 +139,12 @@ const connect = async (
 		)
 	}
 
-	const listTools = async (): Promise<RawSkillToolType[]> => {
+	const listTools = async (): Promise<RawSkillToolListType> => {
 		const out: RawSkillToolType[] = []
 		const seenCursors = new Set<string>()
 		let cursor: string | undefined
 		let truncated = false
+		let ttlMs: number | null = null
 		const deadline = Date.now() + DEFAULT_SKILL_MAX_TOTAL_TIMEOUT_MS
 		for (let page = 0; page < DEFAULT_SKILL_MAX_LIST_PAGES; page++) {
 			const listed = await (
@@ -142,6 +159,7 @@ const connect = async (
 					}>
 				}
 			).listTools(cursor !== undefined ? { cursor } : undefined)
+			ttlMs = minTtl(ttlMs, serverTtlMs(listed as { ttlMs?: unknown }))
 			for (const t of listed.tools) {
 				if (!TOOL_NAME_RE.test(t.name)) {
 					skillEngineLogger.warn("mcp tool name rejected — invalid charset", {
@@ -161,7 +179,7 @@ const connect = async (
 				})
 			}
 			const next = (listed as { nextCursor?: string }).nextCursor
-			if (next === undefined || next === null) return out
+			if (next === undefined) return { tools: out, ttlMs }
 			if (
 				seenCursors.has(next) ||
 				Date.now() > deadline ||
@@ -179,7 +197,7 @@ const connect = async (
 				provider: cfg.name,
 				tools: out.length,
 			})
-		return out
+		return { tools: out, ttlMs }
 	}
 
 	const callTool = async (
@@ -210,13 +228,7 @@ const connect = async (
 				undefined,
 				requestOptions,
 			)
-			const { text, speakableText } = splitContent(
-				(res.content ?? []) as {
-					type?: string
-					text?: unknown
-					annotations?: unknown
-				}[],
-			)
+			const { text, speakableText } = splitContent(res.content ?? [])
 			const isError = Boolean(res.isError)
 			return {
 				text,
@@ -234,7 +246,7 @@ const connect = async (
 		} catch (error) {
 			if (signal?.aborted)
 				return { text: "Cancelled.", status: "cancelled", isError: true }
-			if (error instanceof McpError && error.code === ErrorCode.RequestTimeout)
+			if (error instanceof McpError && error.code === REQUEST_TIMEOUT_CODE)
 				return {
 					text: `Tool "${rawName}" timed out.`,
 					status: "timeout",

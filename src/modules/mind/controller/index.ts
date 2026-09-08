@@ -5,7 +5,7 @@ import {
 	EMOTION_PRESETS,
 	getEmotionVectorFromEmotionState,
 } from "@/modules/emotion-engine"
-import { mindLogger } from "@/utils"
+import { mindLogger, domiaError, MIND_ERRORS } from "@/utils"
 import dbAdapter from "../db-adapter"
 import { mindSnapshotSchema } from "../schemas"
 import { MIND_TEMPLATES } from "../constants"
@@ -13,7 +13,11 @@ import type { MindSnapshotType, TemplateSummaryType } from "../types"
 
 const characterFromDomia = (domia: DomiaType) => {
 	const c = domia.characterProfile
-	if (!c) throw new Error(`domia ${domia.id} has no active character profile`)
+	if (!c)
+		throw domiaError(MIND_ERRORS.NO_CHARACTER_PROFILE, {
+			logger: mindLogger,
+			meta: { domiaId: domia.id },
+		})
 	return {
 		name: c.name,
 		personality: c.personality,
@@ -41,9 +45,6 @@ const modulesFromDomia = (domia: DomiaType) => {
 	return {
 		emotionEngine: m?.emotionEngine ?? true,
 		memoryEngine: m?.memoryEngine ?? false,
-		collectiveMind: m?.collectiveMind ?? false,
-		remoteAccessEngine: m?.remoteAccessEngine ?? false,
-		narrativeEngine: m?.narrativeEngine ?? false,
 		identityEngine: m?.identityEngine ?? false,
 	}
 }
@@ -80,7 +81,7 @@ const applyMindToLiveDomia = (
 	if (domia.emotionState) {
 		Object.assign(domia.emotionState, mind.emotionBaseline)
 	}
-	if (domia?.domiaKey === env.DOMIA_KEY) invalidateOwnDomia()
+	if (domia.domiaKey === env.DOMIA_KEY) invalidateOwnDomia()
 }
 
 const materializeMind = (domia: DomiaType, mind: MindSnapshotType): void => {
@@ -107,7 +108,11 @@ export const activateTemplate = (
 	templateId: string,
 ): MindSnapshotType => {
 	const template = MIND_TEMPLATES.find((t) => t.id === templateId)
-	if (!template) throw new Error(`template ${templateId} not found`)
+	if (!template)
+		throw domiaError(MIND_ERRORS.TEMPLATE_NOT_FOUND, {
+			logger: mindLogger,
+			meta: { templateId },
+		})
 	const mind = mindSnapshotSchema.parse(template.mind)
 	materializeMind(domia, mind)
 	mindLogger.info("🎭 template activated", {

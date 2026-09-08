@@ -11,4 +11,4 @@ export const vadEngineRegistry: Record<
 
 export const getVadEngine = (
 	id: VadEngineEnumType,
-): VadEngineAdapterType | null => vadEngineRegistry[id] ?? null
+): VadEngineAdapterType | null => vadEngineRegistry[id]

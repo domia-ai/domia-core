@@ -386,12 +386,8 @@ const run = async (): Promise<void> => {
 		})
 		await voicePromise
 		await sleep(2000)
-		check(
-			"cancel acknowledged",
-			cancel.aborted === true,
-			JSON.stringify(cancel),
-		)
-		if (cancel.aborted === true) {
+		check("cancel acknowledged", cancel.aborted, JSON.stringify(cancel))
+		if (cancel.aborted) {
 			const row = queryOne<{ id: string }>(
 				"SELECT id FROM interaction_trace WHERE status = 'aborted' AND created_at >= ? ORDER BY created_at DESC LIMIT 1",
 				[t0],
@@ -497,7 +493,7 @@ const run = async (): Promise<void> => {
 	if (failCount() > 0) process.exit(1)
 }
 
-void run().catch((err) => {
+void run().catch((err: unknown) => {
 	console.error("harness error", err)
 	process.exit(1)
 })

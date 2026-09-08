@@ -40,51 +40,51 @@ export const getDomia = ({
 	const baseDomia = getBaseDomia(domiaOverrides)
 	const runtimeCapabilities = getRuntimeCapabilities({
 		...runtimeCapabilitiesOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const emotionState = getEmotionState({
 		...emotionStateOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const moduleSettings = getModuleSettings({
 		...moduleSettingsOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const characterProfile = getCharacterProfile({
 		...characterProfileOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const wakeWordConfig = getWakeWordConfig({
 		...wakeWordConfigOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const sttConfig = getSttConfig({
 		...sttConfigOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const llmModelConfig = getLlmModelConfig({
 		...llmModelConfigOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const ttsConfig = getTtsConfig({
 		...ttsConfigOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const audioPlaybackConfig = getAudioPlaybackConfig({
 		...audioPlaybackConfigOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const skillProvider = getSkillProvider({
 		...skillProviderOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const localMqttConfig = getMqttConfig({
 		...mqttConfigOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 	const capabilityDelegation = getCapabilityDelegation({
 		...capabilityDelegationOverrides,
-		domiaId: baseDomia?.id,
+		domiaId: baseDomia.id,
 	})
 
 	return {

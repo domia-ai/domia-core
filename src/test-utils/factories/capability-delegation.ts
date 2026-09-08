@@ -5,7 +5,7 @@ export const getCapabilityDelegation = (
 	overrides: Partial<SelectCapabilityDelegationType> = {},
 ): SelectCapabilityDelegationType => {
 	return {
-		...baseCapabilityDelegation(overrides?.domiaId),
+		...baseCapabilityDelegation(overrides.domiaId),
 		...overrides,
 	}
 }

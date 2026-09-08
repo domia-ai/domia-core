@@ -1,0 +1,57 @@
+{
+	"version": 1,
+	"ttsEngine": "SUPERTONIC",
+	"ttsVoice": "0",
+	"sampleRateHz": 44100,
+	"language": "es",
+	"golden": [
+		{
+			"id": "es01",
+			"text": "¿Qué hora es ahora mismo?",
+			"file": "evals/fixtures/es/es01.wav"
+		},
+		{
+			"id": "es02",
+			"text": "Cuéntame un chiste corto sobre computadoras.",
+			"file": "evals/fixtures/es/es02.wav"
+		},
+		{
+			"id": "es03",
+			"text": "¿Cómo estás hoy?",
+			"file": "evals/fixtures/es/es03.wav"
+		},
+		{
+			"id": "es04",
+			"text": "Enciende la luz de la oficina.",
+			"file": "evals/fixtures/es/es04.wav"
+		},
+		{
+			"id": "es05",
+			"text": "¿Está encendida la luz de la oficina?",
+			"file": "evals/fixtures/es/es05.wav"
+		},
+		{
+			"id": "es06",
+			"text": "Pon la luz de la oficina al cincuenta por ciento.",
+			"file": "evals/fixtures/es/es06.wav"
+		},
+		{
+			"id": "es07",
+			"text": "Apaga la luz de la oficina.",
+			"file": "evals/fixtures/es/es07.wav"
+		},
+		{
+			"id": "es08",
+			"text": "Recuérdame que mañana tengo dentista.",
+			"file": "evals/fixtures/es/es08.wav"
+		}
+	],
+	"hesitant": [
+		{
+			"id": "esh01",
+			"parts": ["Enciende la", "luz de la oficina por favor."],
+			"text": "Enciende la luz de la oficina por favor."
+		}
+	],
+	"roundTrip": ["Buenos días, ¿cómo dormiste?"]
+}

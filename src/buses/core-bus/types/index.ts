@@ -10,6 +10,17 @@ export type DomiaBusEnvelopeType = {
 	liveVoice?: boolean
 }
 
+export type EagerPrefillRelationType = "equal" | "extends" | "diverges"
+
+export type EagerPrefillHandleType = {
+	partial: string
+	relation: EagerPrefillRelationType
+	settled: Promise<void>
+	cancel: (reason: string) => void
+	knownFacts?: string[]
+	knowledgeBase?: string[]
+}
+
 export type DomiaEventBusPayloadMapType = {
 	[DOMIA_EVENT_BUS_ENUM.WAKE_DETECTED]: { reply: string }
 	[DOMIA_EVENT_BUS_ENUM.AUDIO_READY]: {
@@ -35,6 +46,7 @@ export type DomiaEventBusPayloadMapType = {
 		prestartedRelease?: () => void
 		prestartedFirstUnitText?: string
 		prestartedFirstUnitPcm?: Promise<Buffer | null>
+		eagerPrefill?: EagerPrefillHandleType
 		speechEndAt?: number
 		endpointDecisionAt?: number
 		endpointDelayMs?: number

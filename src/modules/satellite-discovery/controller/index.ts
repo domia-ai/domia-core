@@ -1,15 +1,14 @@
-import { spawn } from "node:child_process"
 import { platform } from "node:os"
 
 import { Bonjour, type Service } from "bonjour-service"
 
 import { DEFAULT_ESPHOME_DISCOVERY_MS } from "@/db"
-import { satelliteDiscoveryLogger as logger } from "@/utils"
+import { satelliteDiscoveryLogger as logger, runProcess } from "@/utils"
 
-import type { DiscoveredSatelliteType } from "../types"
+import type { DiscoveredSatelliteType, DiscoveredServiceType } from "../types"
 
 const ESPHOME_SERVICE_TYPE = "esphomelib"
-const ESPHOME_SERVICE = `_${ESPHOME_SERVICE_TYPE}._tcp`
+const serviceOf = (serviceType: string): string => `_${serviceType}._tcp`
 
 const stripDot = (value: string): string => value.replace(/\.$/, "")
 
@@ -20,23 +19,11 @@ const pickHost = (service: Service): string => {
 	return ipv4 ?? service.host
 }
 
-const runFor = (cmd: string, cmdArgs: string[], ms: number): Promise<string> =>
-	new Promise((resolve) => {
-		const child = spawn(cmd, cmdArgs)
-		let out = ""
-		child.stdout.on("data", (chunk) => {
-			out += chunk.toString()
-		})
-		child.on("error", () => resolve(out))
-		const timer = setTimeout(() => {
-			child.kill()
-			resolve(out)
-		}, ms)
-		child.on("close", () => {
-			clearTimeout(timer)
-			resolve(out)
-		})
-	})
+const runFor = async (
+	cmd: string,
+	cmdArgs: string[],
+	ms: number,
+): Promise<string> => (await runProcess(cmd, cmdArgs, { timeoutMs: ms })).stdout
 
 const parseBrowseNames = (browseOut: string): string[] => [
 	...new Set(
@@ -49,48 +36,71 @@ const parseBrowseNames = (browseOut: string): string[] => [
 	),
 ]
 
+const parseTxt = (out: string): Partial<Record<string, string>> => {
+	const txt: Partial<Record<string, string>> = {}
+	const line = out
+		.split("\n")
+		.map((l) => l.trim())
+		.find((l) => /^\w+=/.test(l))
+	if (!line) return txt
+	for (const match of line.matchAll(/(\w+)=((?:\\.|[^\s\\])*)/g))
+		txt[match[1]] = match[2].replace(/\\(.)/g, "$1")
+	return txt
+}
+
 const resolveViaDnsSd = async (
 	name: string,
+	serviceType: string,
 	ms: number,
-): Promise<DiscoveredSatelliteType | null> => {
-	const out = await runFor("dns-sd", ["-L", name, ESPHOME_SERVICE], ms)
-	const match = out.match(/can be reached at\s+([^\s:]+):(\d+)/)
+): Promise<DiscoveredServiceType | null> => {
+	const out = await runFor("dns-sd", ["-L", name, serviceOf(serviceType)], ms)
+	const match = /can be reached at\s+([^\s:]+):(\d+)/.exec(out)
 	if (!match) return null
 	const port = Number(match[2])
 	if (!Number.isFinite(port) || port <= 0) return null
-	return { satelliteId: name, name, host: stripDot(match[1]), port }
+	return { name, host: stripDot(match[1]), port, txt: parseTxt(out) }
 }
 
 const discoverViaDnsSd = async (
+	serviceType: string,
 	timeoutMs: number,
-): Promise<DiscoveredSatelliteType[]> => {
+): Promise<DiscoveredServiceType[]> => {
 	const browseMs = Math.max(1500, Math.floor(timeoutMs * 0.5))
 	const resolveMs = Math.max(1500, timeoutMs - browseMs)
 	const names = parseBrowseNames(
-		await runFor("dns-sd", ["-B", ESPHOME_SERVICE], browseMs),
+		await runFor("dns-sd", ["-B", serviceOf(serviceType)], browseMs),
 	)
 	const resolved = await Promise.all(
-		names.map((name) => resolveViaDnsSd(name, resolveMs)),
+		names.map((name) => resolveViaDnsSd(name, serviceType, resolveMs)),
 	)
-	return resolved.filter((s): s is DiscoveredSatelliteType => s !== null)
+	return resolved.filter((s): s is DiscoveredServiceType => s !== null)
+}
+
+const txtOf = (service: Service): Partial<Record<string, string>> => {
+	const raw = service.txt as Record<string, unknown> | undefined
+	const txt: Partial<Record<string, string>> = {}
+	for (const [k, v] of Object.entries(raw ?? {}))
+		if (typeof v === "string") txt[k] = v
+	return txt
 }
 
 const discoverViaBonjour = (
+	serviceType: string,
 	timeoutMs: number,
-): Promise<DiscoveredSatelliteType[]> =>
+): Promise<DiscoveredServiceType[]> =>
 	new Promise((resolve) => {
-		const found = new Map<string, DiscoveredSatelliteType>()
+		const found = new Map<string, DiscoveredServiceType>()
 		const bonjour = new Bonjour()
 		const browser = bonjour.find(
-			{ type: ESPHOME_SERVICE_TYPE, protocol: "tcp" },
+			{ type: serviceType, protocol: "tcp" },
 			(service) => {
 				const host = pickHost(service)
 				if (!host || !service.port || service.port <= 0) return
 				found.set(service.name, {
-					satelliteId: service.name,
-					name: String(service.txt?.friendly_name ?? service.name),
+					name: service.name,
 					host,
 					port: service.port,
+					txt: txtOf(service),
 				})
 			},
 		)
@@ -114,12 +124,25 @@ const discoverViaBonjour = (
 		const timer = setTimeout(finish, timeoutMs)
 	})
 
-export const discoverEsphome = async (
-	timeoutMs: number = DEFAULT_ESPHOME_DISCOVERY_MS,
-): Promise<DiscoveredSatelliteType[]> => {
+export const browseService = async (
+	serviceType: string,
+	timeoutMs: number,
+): Promise<DiscoveredServiceType[]> => {
 	if (platform() === "darwin") {
-		const viaDnsSd = await discoverViaDnsSd(timeoutMs).catch(() => [])
+		const viaDnsSd = await discoverViaDnsSd(serviceType, timeoutMs).catch(
+			() => [],
+		)
 		if (viaDnsSd.length > 0) return viaDnsSd
 	}
-	return discoverViaBonjour(timeoutMs)
+	return discoverViaBonjour(serviceType, timeoutMs)
 }
+
+export const discoverEsphome = async (
+	timeoutMs: number = DEFAULT_ESPHOME_DISCOVERY_MS,
+): Promise<DiscoveredSatelliteType[]> =>
+	(await browseService(ESPHOME_SERVICE_TYPE, timeoutMs)).map((service) => ({
+		satelliteId: service.name,
+		name: service.txt.friendly_name ?? service.name,
+		host: service.host,
+		port: service.port,
+	}))

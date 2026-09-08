@@ -3,29 +3,39 @@ import { join } from "path"
 import { writeFile } from "fs/promises"
 import { env } from "@/config"
 import { fetchArrayBuffer } from "@/utils/http-client"
-import { domiaBusLogger } from "@/utils"
+import { domiaBusLogger, httpScheme } from "@/utils"
 import { getLocalIp } from "@/modules/network-sync"
 import type { DomiaType } from "@/modules/core"
 import type { ServeEntryType, DownloadAudioOptionsType } from "../types"
 
-const TTL_MS = 5 * 60 * 1000 // 5 minutes
+const TTL_MS = 5 * 60 * 1000
 
 const serveRegistry = new Map<string, ServeEntryType>()
+
+let tlsAudioUrlWarned = false
 
 export const buildAudioUrl = (
 	domia: DomiaType,
 	interactionId: string,
 ): string | null => {
-	const host = getLocalIp() ?? domia?.localIp
+	const host = getLocalIp() ?? domia.localIp
 	if (!host) {
 		domiaBusLogger.warn("cannot build audio URL: local IP unknown", {
-			domiaKey: domia?.domiaKey,
+			domiaKey: domia.domiaKey,
 			interactionId,
 		})
 		return null
 	}
-	const port = env?.HTTP_SERVER_PORT ?? "3000"
-	return `http://${host}:${port}/audio/${interactionId}`
+	const port = env.HTTP_SERVER_PORT
+	const scheme = httpScheme()
+	if (scheme === "https" && !tlsAudioUrlWarned) {
+		tlsAudioUrlWarned = true
+		domiaBusLogger.warn(
+			"⚠️ TLS is on: /audio URLs are https — satellites that cannot validate this node's CA (ESPHome/Voice PE media players) will fail URL playback",
+			{ domiaKey: domia.domiaKey },
+		)
+	}
+	return `${scheme}://${host}:${port}/audio/${interactionId}`
 }
 
 const sweepExpired = (): void => {

@@ -5,7 +5,7 @@ export const getRuntimeCapabilities = (
 	overrides: Partial<SelectRuntimeCapabilitiesType> = {},
 ): SelectRuntimeCapabilitiesType => {
 	return {
-		...baseRuntimeCapabilities(overrides?.domiaId),
+		...baseRuntimeCapabilities(overrides.domiaId),
 		...overrides,
 	}
 }

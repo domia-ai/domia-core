@@ -1,7 +1,7 @@
 import path from "path"
 import { utimesSync } from "fs"
 import { env } from "@/config"
-import { appLogger } from "@/utils"
+import { appLogger, httpScheme } from "@/utils"
 import type { BootStatusType } from "../types"
 
 let bootStatus: BootStatusType = {
@@ -48,9 +48,12 @@ export const requestServiceRestart = async (): Promise<void> => {
 		return
 	}
 	try {
-		await fetch(`http://127.0.0.1:${env.HTTP_SERVER_PORT}/admin/restart`, {
-			method: "POST",
-		})
+		await fetch(
+			`${httpScheme()}://127.0.0.1:${env.HTTP_SERVER_PORT}/admin/restart`,
+			{
+				method: "POST",
+			},
+		)
 	} catch {
 		appLogger.warn(
 			"Domia service not reachable on loopback — config applies on next boot",

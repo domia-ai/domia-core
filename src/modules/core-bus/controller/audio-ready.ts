@@ -4,6 +4,9 @@ import {
 	setTraceContext,
 	toError,
 	wavFileToPcmChunks,
+	domiaError,
+	STT_ERRORS,
+	GRPC_ERRORS,
 } from "@/utils"
 import {
 	downloadAudioToTemp,
@@ -102,16 +105,16 @@ const tryFusedVoiceReply = async (
 	}
 
 	const audioIter = streamed.audio[Symbol.asyncIterator]()
-	let ttfaMs: number | null = null
+	let ttfaMs = null as number | null
 	let perceivedTtfaMs: number | null = null
-	let audioEmitted = false
+	let audioEmitted = false as boolean
 
 	let firstRes: IteratorResult<Buffer>
 	try {
 		firstRes = await audioIter.next()
 	} catch (err) {
 		domiaBusLogger.warn(
-			`fused voice reply produced no audio (${(err as Error)?.message ?? "unknown"}) — falling back`,
+			`fused voice reply produced no audio (${err instanceof Error ? err.message : String(err)}) — falling back`,
 			{ domiaId: domia.id, interactionId },
 		)
 		return false
@@ -125,7 +128,7 @@ const tryFusedVoiceReply = async (
 	}
 
 	const sampleRate = streamed.audioMeta?.sampleRate ?? DEFAULT_SAMPLE_RATE
-	const channels = (streamed.audioMeta?.channels === 2 ? 2 : 1) as 1 | 2
+	const channels = streamed.audioMeta?.channels === 2 ? 2 : 1
 
 	const timedAudio = (async function* (): AsyncIterable<Buffer> {
 		try {
@@ -158,7 +161,7 @@ const tryFusedVoiceReply = async (
 	} catch (err) {
 		if (!audioEmitted) {
 			domiaBusLogger.warn(
-				`fused voice reply failed before any audio (${(err as Error)?.message ?? "unknown"}) — falling back`,
+				`fused voice reply failed before any audio (${err instanceof Error ? err.message : String(err)}) — falling back`,
 				{ domiaId: domia.id, interactionId },
 			)
 			return false
@@ -205,7 +208,7 @@ const tryFusedVoiceReply = async (
 		perceivedTtfaMs,
 		...ladderCols(interactionId),
 		totalMs: Date.now() - startTime,
-	}).catch((err) =>
+	}).catch((err: unknown) =>
 		domiaBusLogger.error("fused voice reply: persistence failed", {
 			domiaId: domia.id,
 			interactionId,
@@ -283,7 +286,7 @@ export const handleAudioReady = async (
 		void updateInteraction({
 			id: interactionId,
 			inputAudioPath: filePath,
-		}).catch((err) =>
+		}).catch((err: unknown) =>
 			domiaBusLogger.warn("detached updateInteraction failed", { err }),
 		)
 	markPipelineStart(interactionId)
@@ -301,10 +304,13 @@ export const handleAudioReady = async (
 				pathForStt = await downloadAudioToTemp(audioUrl, interactionId)
 			}
 			if (!pathForStt) {
-				throw new Error("AUDIO_READY: missing filePath and audioUrl")
+				throw domiaError(STT_ERRORS.AUDIO_INPUT_MISSING, {
+					logger: domiaBusLogger,
+					meta: { site: "AUDIO_READY local", interactionId },
+				})
 			}
 			const sttStart = Date.now()
-			let sttExecMs: number | null = null
+			let sttExecMs = null as number | null
 			let sttQueueMs: number | null = null
 			const transcript = await runSTT(domia, pathForStt, (t) => {
 				sttExecMs = t.execMs
@@ -317,7 +323,7 @@ export const handleAudioReady = async (
 				sttQueueMs,
 				sttModelUsed: domia.sttConfig?.modelName ?? null,
 				totalMs: pipelineElapsed(interactionId),
-			}).catch((err) =>
+			}).catch((err: unknown) =>
 				domiaBusLogger.warn("detached updateInteraction failed", { err }),
 			)
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {
@@ -353,9 +359,10 @@ export const handleAudioReady = async (
 			localPath = await downloadAudioToTemp(audioUrl, interactionId)
 		}
 		if (!localPath) {
-			throw new Error(
-				"AUDIO_READY: cannot delegate without filePath or audioUrl",
-			)
+			throw domiaError(STT_ERRORS.AUDIO_INPUT_MISSING, {
+				logger: domiaBusLogger,
+				meta: { site: "AUDIO_READY delegate", interactionId },
+			})
 		}
 		const audioPath: string = localPath
 
@@ -419,14 +426,20 @@ export const handleAudioReady = async (
 			() => wavFileToPcmChunks(audioPath),
 		)
 		if (!streamed.delivered || streamed.transcript === undefined) {
-			throw new Error(
-				`AUDIO_READY delegation failed: ${streamed.error ?? "unknown"} (tried ${streamed.attemptedTargets})`,
-			)
+			throw domiaError(GRPC_ERRORS.DELEGATION_FAILED, {
+				logger: domiaBusLogger,
+				meta: {
+					stage: "stt",
+					interactionId,
+					error: streamed.error,
+					attemptedTargets: streamed.attemptedTargets,
+				},
+			})
 		}
 		void updateInteraction({
 			id: interactionId,
 			sttExecutorKey: streamed.target?.domiaKey,
-		}).catch((err) =>
+		}).catch((err: unknown) =>
 			domiaBusLogger.warn("detached updateInteraction failed", { err }),
 		)
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.STT_DONE, {

@@ -18,6 +18,11 @@ import {
 	queryOne,
 	sleep,
 } from "./lib"
+import {
+	BENCH_DOMIA_KEY,
+	ensureBenchIdentity,
+	teardownBenchIdentity,
+} from "./lib/bench-identity"
 import type {
 	EvalCaseType,
 	EvalTurnType,
@@ -159,7 +164,7 @@ const recalledFactsOf = (rec: EvalTurnRecordType | null): string => {
 	const lines = prompt.split("\n").slice(start + 1)
 	const body: string[] = []
 	for (const l of lines) {
-		if (/^### /.test(l)) break
+		if (l.startsWith("### ")) break
 		if (l.trim().startsWith("-")) body.push(l.trim())
 	}
 	return body.length ? body.join(" ") : "(none)"
@@ -293,7 +298,7 @@ const loadConversationCases = (): EvalCaseType[] => {
 	)
 	const cases: EvalCaseType[] = []
 	for (const f of files) {
-		const raw = JSON.parse(readFileSync(join(CASES_DIR, f), "utf8"))
+		const raw: unknown = JSON.parse(readFileSync(join(CASES_DIR, f), "utf8"))
 		const parsed = evalCaseFileSchema.safeParse(raw)
 		if (!parsed.success) {
 			console.error(`❌ invalid case file ${f}:`)
@@ -313,9 +318,6 @@ const main = async (): Promise<void> => {
 		console.error("node not healthy")
 		process.exit(1)
 	}
-	const snap = configSnapshot()
-	console.log(`\n=== conversation eval · ${env.EVAL_URL} ===`)
-	console.log(`flags: ${snap.flags}\n`)
 
 	let cases = loadConversationCases()
 	const caseFilter = env.EVAL_CASE_FILTER
@@ -325,35 +327,49 @@ const main = async (): Promise<void> => {
 		process.exit(1)
 	}
 
+	await ensureBenchIdentity()
+	env.EVAL_DOMIA_KEY = BENCH_DOMIA_KEY
+	const snap = configSnapshot()
+	console.log(
+		`\n=== conversation eval · ${env.EVAL_URL} · ${BENCH_DOMIA_KEY} ===`,
+	)
+	console.log(`flags: ${snap.flags}\n`)
+
 	mkdirSync(RESULTS_DIR, { recursive: true })
 	const transcripts: string[] = []
 	let passedCount = 0
-	for (const c of cases) {
-		const runs = c.runs ?? 1
-		const passRatio = c.passRatio ?? 1
-		let runsPassed = 0
-		let lastFail: ConversationTranscriptType | null = null
-		let lastPass: ConversationTranscriptType | null = null
-		for (let i = 0; i < runs; i++) {
-			const { passed, transcript } = await runConversation(c)
-			if (passed) {
-				runsPassed++
-				lastPass = transcript
-			} else {
-				lastFail = transcript
+	try {
+		for (const c of cases) {
+			const runs = c.runs ?? 1
+			const passRatio = c.passRatio ?? 1
+			let runsPassed = 0
+			let lastFail: ConversationTranscriptType | null = null
+			let lastPass: ConversationTranscriptType | null = null
+			for (let i = 0; i < runs; i++) {
+				const { passed, transcript } = await runConversation(c)
+				if (passed) {
+					runsPassed++
+					lastPass = transcript
+				} else {
+					lastFail = transcript
+				}
 			}
+			const casePassed = runsPassed / runs >= passRatio
+			if (casePassed) passedCount++
+			console.log(
+				`${casePassed ? "✅" : "❌"} ${c.name} (${runsPassed}/${runs})`,
+			)
+			const show = lastFail ?? lastPass
+			if (!casePassed && show)
+				for (const turn of show.turns)
+					for (const a of turn.assertions)
+						if (!a.ok) console.log(`     ❌ ${a.name} — ${a.detail ?? ""}`)
+			transcripts.push(
+				renderTranscript(show ?? { name: c.name, turns: [] }, casePassed),
+			)
 		}
-		const casePassed = runsPassed / runs >= passRatio
-		if (casePassed) passedCount++
-		console.log(`${casePassed ? "✅" : "❌"} ${c.name} (${runsPassed}/${runs})`)
-		const show = lastFail ?? lastPass
-		if (!casePassed && show)
-			for (const turn of show.turns)
-				for (const a of turn.assertions)
-					if (!a.ok) console.log(`     ❌ ${a.name} — ${a.detail ?? ""}`)
-		transcripts.push(
-			renderTranscript(show ?? { name: c.name, turns: [] }, casePassed),
-		)
+	} finally {
+		await teardownBenchIdentity().catch(() => undefined)
 	}
 
 	const out = join(RESULTS_DIR, `conversation-${LABEL}.md`)

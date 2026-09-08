@@ -38,6 +38,7 @@ export const configBundleSchema = z
 				updatedAt: true,
 				localIp: true,
 				grpcPort: true,
+				grpcTls: true,
 				isActive: true,
 				isHosted: true,
 				configRevision: true,

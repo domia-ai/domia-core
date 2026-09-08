@@ -17,10 +17,7 @@
 		"memoryEngine": true,
 		"factCapture": true,
 		"factRecall": true,
-		"collectiveMind": false,
-		"narrativeEngine": false,
 		"identityEngine": true,
-		"remoteAccessEngine": false,
 		"skillsEngine": false
 	},
 	"stt": {
@@ -75,7 +72,8 @@
 	},
 	"llm": {
 		"name": "Fast 3B",
-		"engine": "OLLAMA",
+		"engine": "OPENAI_COMPATIBLE",
+		"baseUrl": "http://127.0.0.1:11435/v1",
 		"modelName": "llama3.2:3b",
 		"temperature": 0.7,
 		"contextWindow": 4096,

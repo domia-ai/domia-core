@@ -44,6 +44,7 @@ export const createToolGuards = (cfg: ToolGuardConfigType) => {
 			return {
 				action: "block",
 				syntheticResult: `You already have this information from an earlier call: ${cached}. Answer the user now.`,
+				forceNoTool: true,
 			}
 		reserved++
 		return { action: "allow" }

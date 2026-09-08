@@ -30,9 +30,13 @@ import {
 	beginTurn,
 	createPlaybackLedger,
 	registerTurnLedger,
+	isDomiaBusy,
+	setPresenceStatus,
+	clearDomiaPresence,
 } from "@/modules/core-bus/utils"
 import { sentenceVoiceForTags } from "@/modules/tts-engine"
-import { createToolGuards } from "@/modules/agent"
+import { createToolGuards, isInterrogative } from "@/modules/agent"
+import { languageSetsFor } from "@/utils/language-catalogs"
 import { startSatelliteSpeculation } from "@/modules/satellite-core/controller/speculation"
 import {
 	subscribeToDomiaBus,
@@ -46,6 +50,7 @@ import {
 	acknowledgeEndpoint,
 	wasEndpointAcknowledged,
 } from "@/modules/feedback-sounds"
+import { matchStopPhrase } from "@/modules/audio-capture"
 import type { SttDonePayloadType } from "@/modules/core-bus"
 import type { SttStreamSessionType } from "@/modules/stt-engine"
 import type { CoreBusFeaturesType } from "@/modules/core-bus"
@@ -514,6 +519,7 @@ const makeFakeStreamSession = (script: {
 	final: () => string
 }) => {
 	let flushPartialCalls = 0
+	let paddedFlushCalls = 0
 	let finishCalls = 0
 	let partialCalls = 0
 	const session: SttStreamSessionType = {
@@ -522,8 +528,9 @@ const makeFakeStreamSession = (script: {
 			partialCalls += 1
 			return script.partial()
 		},
-		flushPartial: () => {
+		flushPartial: (padMs) => {
 			flushPartialCalls += 1
+			if (padMs > 0) paddedFlushCalls += 1
 			return Promise.resolve(script.partial())
 		},
 		finish: () => {
@@ -536,8 +543,10 @@ const makeFakeStreamSession = (script: {
 	return {
 		session,
 		flushPartialCalls: () => flushPartialCalls,
+		paddedFlushCalls: () => paddedFlushCalls,
 		finishCalls: () => finishCalls,
 		partialCalls: () => partialCalls,
+		snapshotCalls: () => partialCalls + flushPartialCalls - paddedFlushCalls,
 	}
 }
 
@@ -636,14 +645,15 @@ const runSatelliteSpeculationChecks = async (): Promise<void> => {
 	const fired = await feedSilenceUntilSpeculated(
 		(pcm) => {
 			spec.feed(pcm, () => speech)
-			if (fake.partialCalls() > 0 || published.length > 0) speculatedSeen = true
+			if (fake.snapshotCalls() > 0 || published.length > 0)
+				speculatedSeen = true
 		},
-		() => speculatedSeen || fake.partialCalls() > 0,
+		() => speculatedSeen || fake.snapshotCalls() > 0,
 	)
 	checker.check(
 		"fast-VAD silence fires onSpeculate (partial snapshot, no pad flush)",
-		fired && fake.partialCalls() >= 1 && fake.flushPartialCalls() === 0,
-		`partialCalls=${fake.partialCalls()} flushPartialCalls=${fake.flushPartialCalls()}`,
+		fired && fake.snapshotCalls() >= 1 && fake.paddedFlushCalls() === 0,
+		`snapshots=${fake.snapshotCalls()} paddedFlushes=${fake.paddedFlushCalls()}`,
 	)
 	await sleep(SETTLE_MS)
 	checker.check("no publish before handoff", published.length === 0)
@@ -662,20 +672,20 @@ const runSatelliteSpeculationChecks = async (): Promise<void> => {
 	const payload = published[0]
 	checker.check(
 		"published transcript comes from session.finish()",
-		payload?.transcript === "turn off the lamp" && fake.finishCalls() === 1,
-		`transcript="${payload?.transcript}" finishCalls=${fake.finishCalls()}`,
+		payload.transcript === "turn off the lamp" && fake.finishCalls() === 1,
+		`transcript="${payload.transcript}" finishCalls=${fake.finishCalls()}`,
 	)
 	checker.check(
 		"satellite publish shape: liveVoice false + responseType VOICE",
-		payload?.liveVoice === false &&
-			payload?.responseType === RESPONSE_TYPE_ENUM.VOICE,
-		`liveVoice=${String(payload?.liveVoice)} responseType=${String(payload?.responseType)}`,
+		payload.liveVoice === false &&
+			payload.responseType === RESPONSE_TYPE_ENUM.VOICE,
+		`liveVoice=${String(payload.liveVoice)} responseType=${String(payload.responseType)}`,
 	)
 	checker.check(
 		"speech-end anchoring travels in the payload",
-		typeof payload?.speechEndAt === "number",
+		typeof payload.speechEndAt === "number",
 	)
-	payload?.prestartedRelease?.()
+	payload.prestartedRelease?.()
 	unsubscribeFromDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.STT_DONE, capture)
 
 	const fake2 = makeFakeStreamSession({
@@ -700,21 +710,21 @@ const runSatelliteSpeculationChecks = async (): Promise<void> => {
 		await sleep(SETTLE_MS)
 		await feedSilenceUntilSpeculated(
 			(pcm) => spec2.feed(pcm, () => speech),
-			() => fake2.partialCalls() > 0,
+			() => fake2.snapshotCalls() > 0,
 		)
-		const afterG1 = fake2.partialCalls()
+		const afterG1 = fake2.snapshotCalls()
 		for (let i = 0; i < 6; i++) {
 			spec2.feed(fabricateSegmentPcm("speech", 100), () => speech)
 			await sleep(100)
 		}
 		await feedSilenceUntilSpeculated(
 			(pcm) => spec2.feed(pcm, () => speech),
-			() => fake2.partialCalls() > afterG1,
+			() => fake2.snapshotCalls() > afterG1,
 		)
 		checker.check(
 			"speech resume → onResume → second speculation generation",
-			fake2.partialCalls() > afterG1,
-			`partialCalls=${fake2.partialCalls()} afterG1=${afterG1}`,
+			fake2.snapshotCalls() > afterG1,
+			`snapshots=${fake2.snapshotCalls()} afterG1=${afterG1}`,
 		)
 		spec2.abort("turn-logic cancel")
 		await spec2.done
@@ -784,6 +794,7 @@ const runStageLadderChecks = async (): Promise<void> => {
 
 	const tokenId = `turn-logic-ladder-tokens-${randomUUID()}`
 	const source = (async function* (): AsyncIterable<string> {
+		await sleep(0)
 		yield "hello"
 		yield "world"
 	})()
@@ -829,7 +840,7 @@ const runEndpointAckChecks = async (): Promise<void> => {
 		first &&
 			events.length === 1 &&
 			firstEvent?.interactionId === id &&
-			firstEvent?.sinceSpeechEndMs === 420,
+			firstEvent.sinceSpeechEndMs === 420,
 		JSON.stringify(events),
 	)
 	const second = acknowledgeEndpoint(domia, id, { playSound: false })
@@ -858,7 +869,7 @@ const runProsodyTagChecks = (): void => {
 	const extracted = extractEmotionTags(tagged)
 	checker.check(
 		"extractEmotionTags strips every tag from spoken text",
-		!/\[/.test(extracted.clean) &&
+		!extracted.clean.includes("[") &&
 			extracted.tags.join(",") === "joy,surprise" &&
 			extracted.clean.startsWith("Good morning!"),
 		JSON.stringify(extracted),
@@ -1090,6 +1101,77 @@ const runPauseAbortLedgerChecks = async (): Promise<void> => {
 	scope.end()
 }
 
+const runStopWordFinalChecks = (): void => {
+	console.log("\nstop-word matcher on final transcript (barge-in abort)")
+	checker.check(
+		"EN stop word in final transcript is matched",
+		matchStopPhrase("stop", "en", 6) === "stop" &&
+			matchStopPhrase("never mind", "en", 6) === "never mind",
+	)
+	checker.check(
+		"ES stop word in final transcript is matched",
+		matchStopPhrase("para", "es", 6) === "para" &&
+			matchStopPhrase("cállate", "es", 6) !== null,
+	)
+	checker.check(
+		"non-stop final transcript does not match",
+		matchStopPhrase("turn off the office lights", "en", 6) === null,
+	)
+}
+
+const runBusyPresenceChecks = (): void => {
+	console.log("\nisDomiaBusy counts satellite presence listening (H4)")
+	const id = `turn-logic-busy-${randomUUID()}`
+	const key = `TURN_LOGIC_BUSY_${randomUUID()}`
+	checker.check("idle presence → not busy", !isDomiaBusy(id, key))
+	setPresenceStatus(key, "listening")
+	checker.check(
+		"satellite listening → busy (guards proactive speech)",
+		isDomiaBusy(id, key),
+	)
+	checker.check(
+		"listening not counted without domiaKey (id-only call)",
+		!isDomiaBusy(id),
+	)
+	setPresenceStatus(key, "idle")
+	checker.check("presence back to idle → not busy", !isDomiaBusy(id, key))
+	clearDomiaPresence(key)
+}
+
+const runInterrogativeChecks = (): void => {
+	console.log("\ninterrogative guard (request modals are not questions)")
+	const en = languageSetsFor("en")
+	const es = languageSetsFor("es")
+	const enQ = (t: string): boolean =>
+		isInterrogative(t, en.questionStarters, en.requestModals)
+	const esQ = (t: string): boolean =>
+		isInterrogative(t, es.questionStarters, es.requestModals)
+	checker.check(
+		"EN polite modal command is not interrogative",
+		!enQ("Can you turn off the office lights?"),
+	)
+	checker.check(
+		"EN please-prefixed command is not interrogative",
+		!enQ("Please turn off the office lights"),
+	)
+	checker.check(
+		"EN genuine question stays interrogative",
+		enQ("Is the office light on?") && enQ("What time is it?"),
+	)
+	checker.check(
+		"ES polite modal command is not interrogative",
+		!esQ("¿Puedes apagar la luz de la oficina?"),
+	)
+	checker.check(
+		"ES por-favor command is not interrogative",
+		!esQ("Por favor apaga la luz de la oficina"),
+	)
+	checker.check(
+		"ES genuine question stays interrogative",
+		esQ("¿Está encendida la luz?") && esQ("¿Qué hora es?"),
+	)
+}
+
 const runToolGuardChecks = (): void => {
 	console.log("\ntool guards (createToolGuards)")
 	const guards = createToolGuards({
@@ -1149,6 +1231,9 @@ const runToolGuardChecks = (): void => {
 
 const main = async (): Promise<void> => {
 	runFabricatorChecks()
+	runInterrogativeChecks()
+	runStopWordFinalChecks()
+	runBusyPresenceChecks()
 	runToolGuardChecks()
 	runProsodyTagChecks()
 	await runPauseAbortLedgerChecks()

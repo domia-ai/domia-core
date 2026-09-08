@@ -13,6 +13,7 @@ import {
 	DEFAULT_LLM_CONCURRENCY,
 	DEFAULT_TOOL_CALL_TEMPERATURE,
 	DEFAULT_TOOL_CALL_NUM_PREDICT,
+	DEFAULT_TOOL_REQUEST_MAX_RETRIES,
 } from "@/db"
 import type {
 	ChatMessageType,
@@ -24,6 +25,7 @@ import type {
 	ToolDefinitionType,
 	LlmUsageType,
 	LlmUsageSinkType,
+	LlmPrefillResultType,
 } from "../../types"
 import type {
 	OpenAiResolvedConfigType,
@@ -105,7 +107,7 @@ const acquireSlot = async (
 	label = "unlabeled",
 ): Promise<{ release: () => void; slotId: number | null }> => {
 	llmSemaphore.setLimit(
-		domia?.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
+		domia.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
 	)
 	const releaseSemaphore = await llmSemaphore.acquire()
 	let lease: { slotId: number; release: () => void } | null = null
@@ -143,7 +145,7 @@ const CONNECTION_ERROR_RE =
 
 const maybeInvalidateSlots = (domia: DomiaType, error: unknown): void => {
 	const err = error as Error & { cause?: Error }
-	const text = `${err?.constructor?.name ?? ""} ${err?.name ?? ""} ${err?.message ?? ""} ${err?.cause?.message ?? ""}`
+	const text = `${err.constructor.name} ${err.name} ${err.message} ${err.cause?.message ?? ""}`
 	if (CONNECTION_ERROR_RE.test(text)) invalidateSlots(domia)
 }
 
@@ -160,7 +162,7 @@ const requireModel = (domia: DomiaType): string => {
 
 const resolveConfig = (domia: DomiaType): OpenAiResolvedConfigType => {
 	const config = domia.llmModelConfig
-	const baseURL = config?.baseUrl?.trim()
+	const baseURL = config?.baseUrl.trim()
 	if (!baseURL) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
@@ -206,6 +208,16 @@ const samplerBody = (domia: DomiaType): Record<string, unknown> => {
 	}
 }
 
+const toolRequestOptions = (
+	domia: DomiaType,
+	signal?: AbortSignal,
+): { signal?: AbortSignal; maxRetries: number } => ({
+	signal,
+	maxRetries:
+		domia.llmModelConfig?.toolRequestMaxRetries ??
+		DEFAULT_TOOL_REQUEST_MAX_RETRIES,
+})
+
 const toolSampler = (domia: DomiaType) => ({
 	temperature:
 		domia.llmModelConfig?.toolTemperature ?? DEFAULT_TOOL_CALL_TEMPERATURE,
@@ -249,7 +261,7 @@ const toOpenAiMessages = (
 					type: "function" as const,
 					function: {
 						name: c.name,
-						arguments: JSON.stringify(c.arguments ?? {}),
+						arguments: JSON.stringify(c.arguments),
 					},
 				}
 			})
@@ -490,6 +502,60 @@ const warmupOpenAiCompatible = async (domia: DomiaType): Promise<void> => {
 	}
 }
 
+const PREFILL_NUM_PREDICT = 1
+
+const prefillOpenAiCompatible = async (
+	domia: DomiaType,
+	promptContext: string,
+	signal?: AbortSignal,
+): Promise<LlmPrefillResultType> => {
+	const modelName = requireModel(domia)
+	const cfg = resolveConfig(domia)
+	const client = getClient(cfg)
+	const empty: LlmPrefillResultType = {
+		promptTokens: null,
+		freshTokens: null,
+		cachedTokens: null,
+		prefillMs: null,
+	}
+	if (signal?.aborted) return empty
+	const lease = await acquireSlot(domia, "interactive", "prefill")
+	try {
+		if (signal?.aborted) return empty
+		const startedAt = Date.now()
+		const response = await client.chat.completions.create(
+			{
+				model: modelName,
+				messages: userMessages(promptContext),
+				temperature: cfg.temperature,
+				max_tokens: PREFILL_NUM_PREDICT,
+				...samplerBody(domia),
+				...slotBody(lease.slotId),
+			},
+			{ signal, maxRetries: 0 },
+		)
+		const timings = timingsOf(response)
+		return {
+			promptTokens: response.usage?.prompt_tokens ?? null,
+			freshTokens: timings?.prompt_n ?? null,
+			cachedTokens: timings?.cache_n ?? null,
+			prefillMs:
+				timings?.prompt_ms != null
+					? Math.round(timings.prompt_ms)
+					: Date.now() - startedAt,
+		}
+	} catch (error) {
+		if (signal?.aborted) return empty
+		maybeInvalidateSlots(domia, error)
+		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
+			logger: llmEngineLogger,
+			meta: { error, reason: "prefill" },
+		})
+	} finally {
+		lease.release()
+	}
+}
+
 const runOpenAiCompatibleConstrainedJson = async (
 	domia: DomiaType,
 	prompt: string,
@@ -589,12 +655,13 @@ const runOpenAiCompatibleWithTools = async (
 			{
 				model: modelName,
 				messages: toOpenAiMessages(messages),
-				tools: toOpenAiTools(tools),
-				tool_choice: toolChoice === "none" ? "none" : "auto",
+				...(toolChoice === "none"
+					? {}
+					: { tools: toOpenAiTools(tools), tool_choice: "auto" }),
 				...toolSampler(domia),
 				...slotBody(lease.slotId),
 			},
-			{ signal },
+			toolRequestOptions(domia, signal),
 		)
 		onUsage?.(
 			openAiUsage(
@@ -606,12 +673,12 @@ const runOpenAiCompatibleWithTools = async (
 			),
 		)
 		const message = response.choices[0]?.message
-		const toolCalls = message?.tool_calls
+		const toolCalls = message.tool_calls
 		if (toolCalls?.length) {
 			const calls: ToolCallType[] = toolCalls
 				.filter((c) => c.type === "function")
 				.map((c) => ({
-					name: c.function.name?.trim() || "__blank__",
+					name: c.function.name.trim() || "__blank__",
 					...(() => {
 						const n = normalizeArgs(c.function.arguments)
 						return { arguments: n.args, argsInvalid: n.invalid || undefined }
@@ -619,7 +686,7 @@ const runOpenAiCompatibleWithTools = async (
 				}))
 			return { kind: "tool_calls", calls }
 		}
-		return { kind: "reply", text: message?.content?.trim() || "" }
+		return { kind: "reply", text: message.content?.trim() || "" }
 	} catch (error) {
 		if (signal?.aborted) return { kind: "reply", text: "" }
 		maybeInvalidateSlots(domia, error)
@@ -651,8 +718,9 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 			{
 				model: modelName,
 				messages: toOpenAiMessages(messages),
-				tools: toOpenAiTools(toolChoice === "none" ? [] : tools),
-				...(toolChoice === "none" ? {} : { tool_choice: "auto" }),
+				...(toolChoice === "none"
+					? {}
+					: { tools: toOpenAiTools(tools), tool_choice: "auto" }),
 				...toolSampler(domia),
 				stream: true,
 				...(domia.llmModelConfig?.streamUsage !== false
@@ -660,7 +728,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 					: {}),
 				...slotBody(lease.slotId),
 			},
-			{ signal },
+			toolRequestOptions(domia, signal),
 		)
 		const iter = stream[Symbol.asyncIterator]()
 		let first = await iter.next()
@@ -680,7 +748,7 @@ const runOpenAiCompatibleReplyStreamOrTools = async (
 				deltas: OpenAI.Chat.ChatCompletionChunk.Choice.Delta.ToolCall[],
 			) => {
 				for (const tc of deltas) {
-					const idx = tc.index ?? 0
+					const idx = tc.index
 					const cur = acc.get(idx) ?? { name: "", args: "" }
 					if (tc.function?.name) cur.name = tc.function.name
 					if (tc.function?.arguments) cur.args += tc.function.arguments
@@ -788,4 +856,5 @@ export const openAiCompatibleEngine: LlmEngineAdapterType = {
 	runChatConstrainedJson: runOpenAiCompatibleChatConstrainedJson,
 	runIntent: runOpenAiCompatibleIntent,
 	warmup: warmupOpenAiCompatible,
+	prefill: prefillOpenAiCompatible,
 }

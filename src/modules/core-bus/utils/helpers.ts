@@ -10,6 +10,8 @@ import {
 	isDomiaError,
 	toError,
 	withTimeout,
+	wrapPcmToWav,
+	writeWavToTemp,
 } from "@/utils"
 import {
 	completeInteraction,
@@ -23,7 +25,7 @@ import { INTERACTION_STATUS_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
 import { claimTurnCompleted } from "./turn-completion-guard"
 import { ladderCols } from "./stage-ladder"
 import { playAudio } from "@/modules/audio-playback"
-import { runTTS } from "@/modules/tts-engine"
+import { cachedTtsPcmChunks, getTtsEngine } from "@/modules/tts-engine"
 import { deliverEvent } from "@/modules/grpc-client"
 import { getDomiaByDomiaKey } from "@/modules/core"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
@@ -38,6 +40,26 @@ import type {
 } from "../types"
 
 const FALLBACK_TTS_TIMEOUT_MS = 8000
+
+const renderFallbackWav = async (
+	ctx: CoreBusContextType,
+	message: string,
+): Promise<string | null> => {
+	const engine = ctx.domia.ttsConfig?.engine
+	const adapter = engine ? getTtsEngine(engine) : null
+	if (!adapter) return null
+	const chunks: Buffer[] = []
+	for await (const chunk of cachedTtsPcmChunks(ctx.domia, adapter, message))
+		chunks.push(chunk)
+	if (chunks.length === 0) return null
+	const wav = wrapPcmToWav(
+		Buffer.concat(chunks),
+		adapter.capabilities.sampleRate,
+		adapter.capabilities.channels,
+		16,
+	)
+	return writeWavToTemp(wav, "", "fallback")
+}
 
 const playFallbackAudio = async (
 	ctx: CoreBusContextType,
@@ -56,20 +78,20 @@ const playFallbackAudio = async (
 		ctx.domia.characterProfile?.language,
 	)
 	try {
-		const tts = await withTimeout(
-			runTTS(ctx.domia, message),
+		const filePath = await withTimeout(
+			renderFallbackWav(ctx, message),
 			FALLBACK_TTS_TIMEOUT_MS,
 			"fallback TTS",
 		)
-		if (!tts?.filePath) {
-			domiaBusLogger.warn("⚠️ Fallback TTS produced no file", {
+		if (!filePath) {
+			domiaBusLogger.warn("⚠️ Fallback TTS produced no audio", {
 				domiaId: ctx.domia.id,
 				step,
 			})
 			return false
 		}
-		const result = await playAudio(ctx.domia, tts.filePath)
-		return result?.success === true && result?.interrupted !== true
+		const result = await playAudio(ctx.domia, filePath)
+		return result.success && result.interrupted !== true
 	} catch (err) {
 		domiaBusLogger.warn("⚠️ Fallback audio failed", {
 			err,
@@ -101,6 +123,7 @@ const forwardFailureToOrigin = async (
 				domiaId: originDomia.id,
 				localIp: originDomia.localIp,
 				grpcPort: originDomia.grpcPort,
+				grpcTls: originDomia.grpcTls,
 				source: "explicit",
 				streamingCapabilities: resolveDomiaStreamingCapabilities(originDomia),
 			},
@@ -140,12 +163,13 @@ export const notifyInteractionFailed = (
 		payload,
 	)
 	if (originDomiaKey && originDomiaKey !== domia.domiaKey) {
-		void forwardFailureToOrigin(ctx, originDomiaKey, payload).catch((e) =>
-			domiaBusLogger.warn("⚠️ interaction failure forward to origin failed", {
-				originDomiaKey,
-				interactionId,
-				err: e,
-			}),
+		void forwardFailureToOrigin(ctx, originDomiaKey, payload).catch(
+			(e: unknown) =>
+				domiaBusLogger.warn("⚠️ interaction failure forward to origin failed", {
+					originDomiaKey,
+					interactionId,
+					err: e,
+				}),
 		)
 	}
 	if (responseType === RESPONSE_TYPE_ENUM.TEXT) return

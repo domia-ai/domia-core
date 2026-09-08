@@ -15,6 +15,31 @@ export const CORE_ERRORS = {
 		code: "CORE/MISSING_CAPABILITIES",
 		message: "No runtine capabilities founded for the own domia.",
 	},
+	IDENTITY_NOT_HOSTED: {
+		code: "CORE/IDENTITY_NOT_HOSTED",
+		message: "The identity is not hosted by this node.",
+	},
+	IDENTITY_NOT_RESOLVABLE: {
+		code: "CORE/IDENTITY_NOT_RESOLVABLE",
+		message: "The identity could not be resolved from the database.",
+	},
+	TLS_MATERIAL_UNREADABLE: {
+		code: "CORE/TLS_MATERIAL_UNREADABLE",
+		message:
+			"A TLS certificate, key or CA file from the environment could not be read.",
+	},
+	OTEL_INIT_FAILED: {
+		code: "CORE/OTEL_INIT_FAILED",
+		message: "The OpenTelemetry exporter could not be initialised.",
+	},
+	INTERACTION_CREATE_FAILED: {
+		code: "CORE/INTERACTION_CREATE_FAILED",
+		message: "The interaction could not be created.",
+	},
+	HOST_NODE_MISSING: {
+		code: "CORE/HOST_NODE_MISSING",
+		message: "The host_node singleton row is missing after ensure.",
+	},
 } as const
 
 export const AUDIO_ERRORS = {
@@ -26,16 +51,32 @@ export const AUDIO_ERRORS = {
 		code: "AUDIO/WAKE_WORD_CONFIG_NOT_FOUND",
 		message: "No wake word config found in the database.",
 	},
+	WAKE_WORD_MODEL_PATH_MISSING: {
+		code: "AUDIO/WAKE_WORD_MODEL_PATH_MISSING",
+		message: "The wake word engine requires wakeWordConfig.customModelPath.",
+	},
+	WAKE_WORD_MODEL_FILES_MISSING: {
+		code: "AUDIO/WAKE_WORD_MODEL_FILES_MISSING",
+		message: "Wake word model files are missing or incomplete.",
+	},
+	AUDIO_FILE_NOT_FOUND: {
+		code: "AUDIO/FILE_NOT_FOUND",
+		message: "The audio file does not exist.",
+	},
+	DENOISE_MODEL_MISSING: {
+		code: "AUDIO/DENOISE_MODEL_MISSING",
+		message: "The speech-enhancement model file is missing.",
+	},
 } as const
 
-export const EMOTION_ERRORS = {
-	EMOTION_STATE_NOT_FOUND: {
-		code: "EMOTION/STATE_NOT_FOUND",
-		message: "No emotion state found for the given Domia.",
+export const AEC_ERRORS = {
+	PACTL_FAILED: {
+		code: "AEC/PACTL_FAILED",
+		message: "The PulseAudio/PipeWire control command failed.",
 	},
-	INVALID_EMOTION_VECTOR: {
-		code: "EMOTION/INVALID_VECTOR",
-		message: "Provided emotion vector is invalid.",
+	MODULE_INDEX_UNPARSEABLE: {
+		code: "AEC/MODULE_INDEX_UNPARSEABLE",
+		message: "module-echo-cancel loaded but no module index was returned.",
 	},
 } as const
 
@@ -51,6 +92,14 @@ export const TTS_ERRORS = {
 	TTS_FAILURE: {
 		code: "TTS/FAILURE",
 		message: "Text-to-speech synthesis failed.",
+	},
+	EMPTY_TEXT: {
+		code: "TTS/EMPTY_TEXT",
+		message: "Nothing to speak after sanitizing the text.",
+	},
+	EMPTY_AUDIO: {
+		code: "TTS/EMPTY_AUDIO",
+		message: "Text-to-speech produced no audio.",
 	},
 } as const
 
@@ -71,12 +120,28 @@ export const LLM_ERRORS = {
 		code: "LLM/ENGINE_FAILED",
 		message: "Failed to generate the LLM response.",
 	},
+	ABORTED: {
+		code: "LLM/ABORTED",
+		message: "The LLM request was aborted before inference started.",
+	},
+	SLOT_WAIT_TIMEOUT: {
+		code: "LLM/SLOT_WAIT_TIMEOUT",
+		message: "Timed out waiting for a free LLM server slot.",
+	},
 } as const
 
 export const AUDIO_PLAYBACK_ERRORS = {
 	AUDIO_PLAYBACK_ENGINE_NOT_FOUND: {
 		code: "AUDIO/ENGINE_NOT_FOUND",
 		message: "Unsupported or missing audio engine.",
+	},
+	AUDIO_SOURCE_MISSING: {
+		code: "AUDIO_PLAYBACK/SOURCE_MISSING",
+		message: "Playback needs a filePath or an audioUrl.",
+	},
+	PLAYBACK_FAILED: {
+		code: "AUDIO_PLAYBACK/FAILED",
+		message: "The audio playback engine reported a failure.",
 	},
 } as const
 
@@ -93,138 +158,151 @@ export const STT_ERRORS = {
 		code: "STT/TRANSCRIPTION_FAILED",
 		message: "Failed to transcribe audio into text.",
 	},
+	SESSION_ENGINE_NOT_STREAMING: {
+		code: "STT/SESSION_ENGINE_NOT_STREAMING",
+		message: "STT sessions require a streaming (online) engine.",
+	},
+	NO_ACTIVE_SESSION: {
+		code: "STT/NO_ACTIVE_SESSION",
+		message: "No STT session is active in this worker.",
+	},
+} as const
+
+export const MODEL_MANAGER_ERRORS = {
+	INSTALL_HOST_NOT_ALLOWED: {
+		code: "MODEL_MANAGER/INSTALL_HOST_NOT_ALLOWED",
+		message: "The model install URL is not http(s) or its host is not allowed.",
+	},
+	UNSAFE_ARCHIVE_ENTRY: {
+		code: "MODEL_MANAGER/UNSAFE_ARCHIVE_ENTRY",
+		message:
+			"The model archive contains an entry that escapes the models dir or is not a plain file or directory.",
+	},
+	TOO_MANY_REDIRECTS: {
+		code: "MODEL_MANAGER/TOO_MANY_REDIRECTS",
+		message: "The model download redirected more times than allowed.",
+	},
+	DOWNLOAD_FAILED: {
+		code: "MODEL_MANAGER/DOWNLOAD_FAILED",
+		message: "The model download did not return a usable response body.",
+	},
+	DOWNLOAD_TOO_LARGE: {
+		code: "MODEL_MANAGER/DOWNLOAD_TOO_LARGE",
+		message: "The model download exceeds the maximum install size.",
+	},
+	DOWNLOAD_VERIFICATION_FAILED: {
+		code: "MODEL_MANAGER/DOWNLOAD_VERIFICATION_FAILED",
+		message: "The downloaded model does not match its expected size or digest.",
+	},
+	ARCHIVE_CONTENT_MISSING: {
+		code: "MODEL_MANAGER/ARCHIVE_CONTENT_MISSING",
+		message: "The model archive does not contain the expected directory.",
+	},
+	TOO_MANY_INSTALL_JOBS: {
+		code: "MODEL_MANAGER/TOO_MANY_INSTALL_JOBS",
+		message: "Too many model installs are already running on this node.",
+	},
 } as const
 
 export const VALIDATION_ERRORS = {
-	INVALID_CONFIG: {
-		code: "VALIDATION/INVALID_CONFIG",
-		message: "The configuration passed is invalid.",
-	},
 	MISSING_REQUIRED_FIELD: {
 		code: "VALIDATION/MISSING_REQUIRED_FIELD",
 		message: "A required field is missing from the input.",
 	},
-} as const
-
-export const DB_ERRORS = {
-	TRANSACTION_FAILED: {
-		code: "DB/TRANSACTION_FAILED",
-		message: "Database transaction could not be completed.",
+	INVALID_FILE_PATH: {
+		code: "VALIDATION/INVALID_FILE_PATH",
+		message: "The file path is outside the directories this node may read.",
+	},
+	UNSUPPORTED_CONFIG_VERSION: {
+		code: "VALIDATION/UNSUPPORTED_CONFIG_VERSION",
+		message: "The config bundle version is newer than this node supports.",
 	},
 } as const
 
-export const SKILL_ERRORS = {
-	PROVIDER_UNAVAILABLE: {
-		code: "SKILL/PROVIDER_UNAVAILABLE",
-		message: "The skill provider is not connected or unavailable.",
-	},
-	TOOL_CALL_FAILED: {
-		code: "SKILL/TOOL_CALL_FAILED",
-		message: "The tool call failed to execute.",
-	},
-	TOOL_TIMEOUT: {
-		code: "SKILL/TOOL_TIMEOUT",
-		message: "The tool call timed out before completing.",
-	},
-	TOOL_UNAUTHORIZED: {
-		code: "SKILL/TOOL_UNAUTHORIZED",
-		message: "The tool call was blocked by provider policy.",
-	},
-	MCP_CONNECT_FAILED: {
-		code: "SKILL/MCP_CONNECT_FAILED",
-		message: "Failed to connect to the MCP skill provider.",
-	},
-} as const
-
-export const AGENT_ERRORS = {
-	TOOL_LOOP_EXCEEDED: {
-		code: "AGENT/TOOL_LOOP_EXCEEDED",
-		message: "The agent exceeded the maximum tool-call iterations.",
-	},
-	DECISION_FAILED: {
-		code: "AGENT/DECISION_FAILED",
-		message: "The agent failed to reach a tool-or-reply decision.",
-	},
-	FINALIZE_FAILED: {
-		code: "AGENT/FINALIZE_FAILED",
-		message: "The agent failed to finalize the turn response.",
+export const BENCH_ERRORS = {
+	CORPUS_NOT_FOUND: {
+		code: "BENCH/CORPUS_NOT_FOUND",
+		message: "The golden voice corpus is not available on this node.",
 	},
 } as const
 
 export const GRPC_ERRORS = {
 	TARGET_UNREACHABLE: {
 		code: "GRPC/TARGET_UNREACHABLE",
-		message: "The delegation target Domia is unreachable.",
+		message: "No gRPC client could be opened for the delegation target.",
 	},
 	DELEGATION_FAILED: {
 		code: "GRPC/DELEGATION_FAILED",
-		message: "The delegated turn failed on the responder.",
+		message: "The delegated stage failed on every attempted target.",
 	},
-	STREAM_INTERRUPTED: {
-		code: "GRPC/STREAM_INTERRUPTED",
-		message: "The delegation stream was interrupted before completion.",
-	},
-	DELIVERY_FAILED: {
-		code: "GRPC/DELIVERY_FAILED",
-		message: "Failed to deliver the delegated result back to the origin.",
+	CAPABILITY_DISABLED: {
+		code: "GRPC/CAPABILITY_DISABLED",
+		message: "The requested capability is disabled on this Domia.",
 	},
 } as const
 
 export const SATELLITE_ERRORS = {
-	NOT_CONNECTED: {
-		code: "SATELLITE/NOT_CONNECTED",
-		message: "The satellite is not connected.",
-	},
-	PROTOCOL_ERROR: {
-		code: "SATELLITE/PROTOCOL_ERROR",
-		message: "The satellite protocol exchange failed.",
-	},
-	AUDIO_SINK_FAILED: {
-		code: "SATELLITE/AUDIO_SINK_FAILED",
-		message: "Failed to deliver audio to the satellite sink.",
+	LIVEKIT_NO_LOCAL_PARTICIPANT: {
+		code: "SATELLITE/LIVEKIT_NO_LOCAL_PARTICIPANT",
+		message: "The LiveKit room has no local participant to publish on.",
 	},
 } as const
 
-export const EMBEDDINGS_ERRORS = {
-	MODEL_NOT_LOADED: {
-		code: "EMBEDDINGS/MODEL_NOT_LOADED",
-		message: "The embeddings model is not loaded.",
+export const SKILL_ERRORS = {
+	PROVIDER_NOT_READY: {
+		code: "SKILL/PROVIDER_NOT_READY",
+		message: "The skill provider has not finished loading its context.",
 	},
-	EMBED_FAILED: {
-		code: "EMBEDDINGS/EMBED_FAILED",
-		message: "Failed to compute embeddings for the given input.",
+	INVALID_PROVIDER_CONFIG: {
+		code: "SKILL/INVALID_PROVIDER_CONFIG",
+		message: "The skill provider configuration is invalid for its transport.",
 	},
 } as const
 
-export const CONFIG_APPLY_ERRORS = {
-	RELOAD_FAILED: {
-		code: "CONFIG_APPLY/RELOAD_FAILED",
-		message: "Failed to reload the affected subsystem after a config change.",
+export const AGENT_ERRORS = {
+	DECISION_UNAVAILABLE: {
+		code: "AGENT/DECISION_UNAVAILABLE",
+		message: "Structured decisions are not available for this LLM engine.",
 	},
-	SUBSYSTEM_BUSY: {
-		code: "CONFIG_APPLY/SUBSYSTEM_BUSY",
-		message: "The subsystem is busy and cannot apply the config change now.",
+	DECISION_UNPARSEABLE: {
+		code: "AGENT/DECISION_UNPARSEABLE",
+		message: "The structured decision returned by the model is unparseable.",
 	},
-	UNKNOWN_SUBSYSTEM: {
-		code: "CONFIG_APPLY/UNKNOWN_SUBSYSTEM",
-		message: "No reloader is registered for the target subsystem.",
+} as const
+
+export const MIND_ERRORS = {
+	NO_CHARACTER_PROFILE: {
+		code: "MIND/NO_CHARACTER_PROFILE",
+		message: "The Domia has no active character profile.",
+	},
+	TEMPLATE_NOT_FOUND: {
+		code: "MIND/TEMPLATE_NOT_FOUND",
+		message: "The requested mind template does not exist.",
+	},
+} as const
+
+export const HTTP_ERRORS = {
+	REQUEST_FAILED: {
+		code: "HTTP/REQUEST_FAILED",
+		message: "The HTTP request returned a non-success status.",
 	},
 } as const
 
 export const ERROR_CODES = {
+	aec: AEC_ERRORS,
 	core: CORE_ERRORS,
 	audio: AUDIO_ERRORS,
-	"emotion-engine": EMOTION_ERRORS,
 	"tts-engine": TTS_ERRORS,
 	"llm-engine": LLM_ERRORS,
 	"stt-engine": STT_ERRORS,
 	"audio-playback": AUDIO_PLAYBACK_ERRORS,
+	"model-manager": MODEL_MANAGER_ERRORS,
 	validation: VALIDATION_ERRORS,
-	db: DB_ERRORS,
-	"skill-engine": SKILL_ERRORS,
-	agent: AGENT_ERRORS,
-	"grpc-client": GRPC_ERRORS,
+	grpc: GRPC_ERRORS,
 	satellite: SATELLITE_ERRORS,
-	embeddings: EMBEDDINGS_ERRORS,
-	"config-apply": CONFIG_APPLY_ERRORS,
+	skill: SKILL_ERRORS,
+	agent: AGENT_ERRORS,
+	mind: MIND_ERRORS,
+	http: HTTP_ERRORS,
+	bench: BENCH_ERRORS,
 } as const

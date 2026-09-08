@@ -8,11 +8,16 @@ import {
 	listTemplates,
 	activateTemplate,
 } from "@/modules/mind"
-import { devCliLogger } from "@/utils"
+import { devCliLogger, domiaError, CORE_ERRORS } from "@/utils"
+
+import { unwrapBundle } from "../json-bundle"
 
 const loadDomia = async () => {
 	const domia = await getDomia(env.DOMIA_KEY)
-	if (!domia) throw new Error(`No domia found for key ${env.DOMIA_KEY}`)
+	if (!domia)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_RESOLVABLE, {
+			meta: { domiaKey: env.DOMIA_KEY },
+		})
 	return domia
 }
 
@@ -39,8 +44,7 @@ export const mindExportCommand = async (out: string) => {
 export const mindImportCommand = async (file: string) => {
 	try {
 		const domia = await loadDomia()
-		const parsed = JSON.parse(readFileSync(file, "utf-8"))
-		importMind(domia, parsed.mind ?? parsed)
+		importMind(domia, unwrapBundle(readFileSync(file, "utf-8"), "mind"))
 		devCliLogger.info(`📥 Imported mind from ${file}`)
 		devCliLogger.info(
 			"ℹ️  Restart the running service (or use the HTTP API) for a live process to pick it up.",
@@ -50,7 +54,7 @@ export const mindImportCommand = async (file: string) => {
 	}
 }
 
-export const mindTemplatesCommand = async () => {
+export const mindTemplatesCommand = () => {
 	devCliLogger.info("🌱 Built-in templates (start one with `mind use <id>`)")
 	for (const t of listTemplates()) {
 		devCliLogger.info(`  ${t.id}  ${t.name} — ${t.description}`)

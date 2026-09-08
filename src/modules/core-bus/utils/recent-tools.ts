@@ -8,6 +8,7 @@ import {
 	type ToolTraceEntryType,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
+import { describeInvocation } from "@/modules/skill-engine"
 
 const MAX_LINE_CHARS = 120
 
@@ -25,17 +26,19 @@ const agoLabel = (createdAt: string): string => {
 }
 
 const renderEntry = (
+	domia: DomiaType,
 	entry: ToolTraceEntryType,
 	createdAt: string,
 ): string | null => {
 	if (entry.kind !== "result" && entry.kind !== "async_outcome") return null
 	if (entry.status !== "ok") return null
 	const args = entry.resolvedArgs ?? ("args" in entry ? entry.args : undefined)
-	const target =
-		args && typeof args === "object"
-			? ((args as Record<string, unknown>).name ??
-				(args as Record<string, unknown>).area)
-			: undefined
+	const target = describeInvocation(
+		domia.id,
+		entry.tool,
+		args ?? {},
+		domia.characterProfile?.language,
+	).target
 	const shortName = entry.tool.includes("__")
 		? entry.tool.slice(entry.tool.indexOf("__") + 2)
 		: entry.tool
@@ -77,16 +80,21 @@ export const lastActedEntity = async (
 		.limit(3)
 	for (const row of rows) {
 		if (traceAgeMs(row.createdAt) > maxAgeMs) break
-		const entries = (row.skillResponse ?? []) as ToolTraceEntryType[]
+		const entries = row.skillResponse ?? []
 		for (const entry of [...entries].reverse()) {
 			if (entry.kind !== "result" && entry.kind !== "async_outcome") continue
 			if (entry.status !== "ok") continue
-			const name = entry.resolvedArgs?.name
-			if (typeof name === "string" && name.trim()) {
+			const target = describeInvocation(
+				domia.id,
+				entry.tool,
+				entry.resolvedArgs ?? {},
+				domia.characterProfile?.language,
+			).target
+			if (target) {
 				const actedAt = Date.now() - traceAgeMs(row.createdAt)
 				if (liveClarified && liveClarified.at > actedAt)
 					return liveClarified.name
-				return name
+				return target
 			}
 		}
 	}
@@ -116,9 +124,9 @@ export const recentToolsLine = async (
 		.limit(turns)
 	const parts: string[] = []
 	for (const row of rows) {
-		const entries = (row.skillResponse ?? []) as ToolTraceEntryType[]
+		const entries = row.skillResponse ?? []
 		for (const entry of entries) {
-			const rendered = renderEntry(entry, row.createdAt)
+			const rendered = renderEntry(domia, entry, row.createdAt)
 			if (rendered) parts.push(rendered)
 		}
 	}

@@ -15,11 +15,11 @@ const isLocalHost = (raw: string): boolean => {
 		host === "localhost" ||
 		host === "::1" ||
 		host.endsWith(".local") ||
-		/^127\./.test(host) ||
-		/^10\./.test(host) ||
-		/^192\.168\./.test(host) ||
+		host.startsWith("127.") ||
+		host.startsWith("10.") ||
+		host.startsWith("192.168.") ||
 		/^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-		/^169\.254\./.test(host) ||
+		host.startsWith("169.254.") ||
 		/^fe80:/i.test(host) ||
 		/^f[cd][0-9a-f]{2}:/i.test(host)
 	)

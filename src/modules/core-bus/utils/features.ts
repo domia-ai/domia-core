@@ -17,8 +17,7 @@ const resolveStt = (domia: DomiaType): ResolvedSttEngineType => {
 	return {
 		adapter,
 		canStream:
-			adapter.capabilities.streaming === true &&
-			typeof adapter.runStream === "function",
+			adapter.capabilities.streaming && typeof adapter.runStream === "function",
 	}
 }
 
@@ -29,7 +28,7 @@ const resolveTts = (domia: DomiaType): ResolvedTtsEngineType => {
 	return {
 		adapter,
 		canStream:
-			adapter.capabilities.streaming === true &&
+			adapter.capabilities.streaming &&
 			typeof adapter.runStream === "function" &&
 			domia.ttsConfig?.streamingEnabled === true,
 	}
@@ -42,8 +41,7 @@ const resolveLlm = (domia: DomiaType): ResolvedLlmEngineType => {
 	return {
 		adapter,
 		canStream:
-			adapter.capabilities.streaming === true &&
-			typeof adapter.runStream === "function",
+			adapter.capabilities.streaming && typeof adapter.runStream === "function",
 	}
 }
 
@@ -60,9 +58,9 @@ export const resolveCoreBusFeatures = (
 	const canRunTts = capabilities.tts && tts !== null
 	const canPlayback = capabilities.playback
 
-	const canStreamStt = canRunStt && stt?.canStream === true
-	const canStreamLlm = canRunLlm && llm?.canStream === true
-	const canStreamTts = canRunTts && tts?.canStream === true
+	const canStreamStt = canRunStt && stt.canStream
+	const canStreamLlm = canRunLlm && llm.canStream
+	const canStreamTts = canRunTts && tts.canStream
 
 	const canSentencePipeline = canStreamLlm && canRunTts && canPlayback
 

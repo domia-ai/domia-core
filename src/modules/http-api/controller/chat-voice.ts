@@ -5,6 +5,8 @@ import {
 	writeWavToTemp,
 	httpServerLogger,
 	setTraceContext,
+	domiaError,
+	VALIDATION_ERRORS,
 } from "@/utils"
 import { type DomiaType } from "@/modules/core"
 import { RECORDINGS_DIR } from "@/modules/audio-capture/constants"
@@ -128,11 +130,18 @@ export const handlePostVoice = async (
 		await writeFile(archivedInputPath, Buffer.from(audioBase64, "base64"))
 	}
 	if (filePath && !isAllowedVoiceFilePath(filePath)) {
-		throw new Error(
-			"filePath must live under the node's recordings or tmp directory",
-		)
+		throw domiaError(VALIDATION_ERRORS.INVALID_FILE_PATH, {
+			logger: httpServerLogger,
+			meta: { filePath },
+		})
 	}
-	const audioPath = archivedInputPath ?? (filePath as string)
+	const audioPath = archivedInputPath ?? filePath
+	if (!audioPath) {
+		throw domiaError(VALIDATION_ERRORS.MISSING_REQUIRED_FIELD, {
+			logger: httpServerLogger,
+			meta: { field: "filePath|audioBase64" },
+		})
+	}
 	try {
 		const stages: Partial<Record<RequestVoiceReplyStage, number>> = {}
 		const result = await requestVoiceReply(domia, audioPath, {

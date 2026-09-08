@@ -8,6 +8,7 @@ export type FastPathSlotValueType = {
 	phrase: string
 	folded: string
 	args: Record<string, unknown>
+	target: string | null
 }
 
 export type CompiledSlotType =
@@ -48,8 +49,14 @@ export type FastPathMatchType = {
 	template: string
 }
 
+export type FastPathCandidateVerdictType =
+	| { kind: "match"; match: FastPathMatchType }
+	| { kind: "ambiguous" }
+	| { kind: "none" }
+
 export type FastPathVerdictType =
 	| { kind: "match"; match: FastPathMatchType; fastPathMs: number }
+	| { kind: "compound"; matches: FastPathMatchType[]; fastPathMs: number }
 	| {
 			kind: "miss"
 			reason:
@@ -65,6 +72,18 @@ export type FastPathVerdictType =
 
 export type FastPathParseResultType = {
 	consumed: boolean
+	literalChars: number
+	slotChars: number
+	captures: Map<string, FastPathSlotValueType | number>
+}
+
+export type NumberSetsType = {
+	words: Record<string, number>
+	joiners: string[]
+}
+
+export type FastPathMatchStateType = {
+	pos: number
 	literalChars: number
 	slotChars: number
 	captures: Map<string, FastPathSlotValueType | number>

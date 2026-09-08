@@ -1,11 +1,14 @@
 import { queryOne } from "./db"
+import { env } from "./env"
 import type { EvalRequirementType } from "../types"
 
 export const MOCK_HA_PROVIDER_ID = "eval-mock-ha"
 
 const moduleFlag = (column: "skills_engine" | "fact_capture"): boolean =>
-	queryOne<{ v: number }>(`SELECT ${column} AS v FROM module_settings LIMIT 1`)
-		?.v === 1
+	queryOne<{ v: number }>(
+		`SELECT ms.${column} AS v FROM module_settings ms JOIN domia d ON d.id = ms.domia_id WHERE d.domia_key = ? LIMIT 1`,
+		[env.EVAL_DOMIA_KEY],
+	)?.v === 1
 
 const hasHaProvider = (): boolean =>
 	(queryOne<{ n: number }>(

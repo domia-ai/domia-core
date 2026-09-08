@@ -33,13 +33,9 @@ const isNumberEntity = (
 	e: Entity & { id: string },
 ): e is NumberEntityInfoType => e.type === "number"
 
-const loadEsphome = new Function("s", "return import(s)") as (
-	s: string,
-) => Promise<EsphomeModuleType>
-
 let esphomeModule: EsphomeModuleType | null = null
 const getEsphome = async (): Promise<EsphomeModuleType> =>
-	(esphomeModule ??= await loadEsphome("esphome-client"))
+	(esphomeModule ??= await import("esphome-client"))
 
 export const connectEsphomeSatellite = (
 	binding: EsphomeBindingType,
@@ -78,7 +74,7 @@ export const connectEsphomeSatellite = (
 			if (getPresence(presenceKey)?.status === "speaking")
 				setPresenceStatus(presenceKey, "idle", true)
 		}, resetMs)
-		speakingResetTimer.unref?.()
+		speakingResetTimer.unref()
 	}
 	const markDeviceSpeaking = (durationMs: number | null): void => {
 		logger.info("📢 device announce started", {
@@ -207,7 +203,10 @@ export const connectEsphomeSatellite = (
 			const filePath = servedId ? getAudioFilePath(servedId) : undefined
 			if (!filePath) return
 			void getWavDurationMs(filePath)
-				.catch(() => null)
+				.catch((err: unknown) => {
+					logger.warn("wav duration probe failed", { err, filePath })
+					return null
+				})
 				.then((durationMs) => rc.updatePlaybackDuration(generation, durationMs))
 		}
 
@@ -267,7 +266,10 @@ export const connectEsphomeSatellite = (
 				const filePath = getAudioFilePath(interactionId)
 				if (!filePath) return
 				void getWavDurationMs(filePath)
-					.catch(() => null)
+					.catch((err: unknown) => {
+						logger.warn("wav duration probe failed", { err, filePath })
+						return null
+					})
 					.then((durationMs) =>
 						rc.updatePlaybackDuration(generation, durationMs),
 					)
@@ -329,6 +331,10 @@ export const connectEsphomeSatellite = (
 					const generation = rc.enqueuePlayback(url, "announce", false, null)
 					patchDurationFromUrl(generation, url)
 				},
+				startConversation: (url) => {
+					const generation = rc.enqueuePlayback(url, "announce", true, null)
+					patchDurationFromUrl(generation, url)
+				},
 				setNumber: (entityId, value) => {
 					desiredNumbers[entityId] = value
 					esp.sendNumberCommand(entityId, value)
@@ -382,7 +388,7 @@ export const connectEsphomeSatellite = (
 				}
 				esp.disconnect()
 			}, 5000)
-			configVerifyTimer.unref?.()
+			configVerifyTimer.unref()
 			void session.onHello({ domiaKey, satelliteId: binding.satelliteId })
 		})
 
@@ -489,7 +495,7 @@ export const connectEsphomeSatellite = (
 		})
 
 		esp.on("voiceAssistantAudio", (audio: { data: Buffer; end: boolean }) => {
-			if (audio.data?.length && Date.now() >= captureGateUntil)
+			if (audio.data.length && Date.now() >= captureGateUntil)
 				session.onAudio(audio.data)
 			if (audio.end) void session.onSpeechEnd()
 		})
@@ -523,7 +529,7 @@ export const connectEsphomeSatellite = (
 	}
 
 	const safeOpen = (): void => {
-		open().catch((err) => {
+		open().catch((err: unknown) => {
 			const message = err instanceof Error ? err.message : String(err)
 			logger.warn("esphome open failed — retrying", {
 				host: binding.host,

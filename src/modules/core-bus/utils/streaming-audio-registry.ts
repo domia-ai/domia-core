@@ -33,7 +33,7 @@ export const closeAudioStream = (interactionId: string): void => {
 	const stream = streams.get(interactionId)
 	if (!stream) return
 	stream.queue.close()
-	setTimeout(() => streams.delete(interactionId), 30_000).unref?.()
+	setTimeout(() => streams.delete(interactionId), 30_000).unref()
 }
 
 export const getAudioStream = (

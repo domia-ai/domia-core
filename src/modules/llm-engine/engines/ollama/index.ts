@@ -1,7 +1,12 @@
 import { Ollama, type Message, type Tool } from "ollama"
 
 import { DomiaType } from "@/modules/core"
-import { llmEngineLogger, createAsyncSemaphore, parseLlmJson } from "@/utils"
+import {
+	llmEngineLogger,
+	createAsyncSemaphore,
+	parseLlmJson,
+	emptyAsyncIterable,
+} from "@/utils"
 import { LLM_ERRORS, domiaError } from "@/utils"
 import {
 	LLM_ENGINE_ENUM,
@@ -49,7 +54,7 @@ const clients = new Map<string, Ollama>()
 export const clearOllamaClients = (): void => clients.clear()
 
 const getClient = (domia: DomiaType): Ollama => {
-	const host = domia.llmModelConfig?.baseUrl?.trim() || DEFAULT_OLLAMA_HOST
+	const host = domia.llmModelConfig?.baseUrl.trim() || DEFAULT_OLLAMA_HOST
 	const existing = clients.get(host)
 	if (existing) return existing
 	const client = new Ollama({ host })
@@ -68,7 +73,7 @@ const llmSemaphore = createAsyncSemaphore(1)
 
 const acquireSlot = (domia: DomiaType): Promise<() => void> => {
 	llmSemaphore.setLimit(
-		domia?.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
+		domia.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
 	)
 	return llmSemaphore.acquire()
 }
@@ -125,7 +130,7 @@ export const runOllama = async (
 			options: resolveOptions(domia),
 		})
 		onUsage?.(ollamaUsage(response, domia.llmModelConfig?.contextWindow))
-		return response.response?.trim() || ""
+		return response.response.trim() || ""
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
@@ -195,10 +200,10 @@ const runOllamaConstrainedJson = async (
 			prompt,
 			stream: false,
 			keep_alive: resolveKeepAlive(domia),
-			format: schema as unknown as string,
+			format: schema,
 			options: { ...resolveOptions(domia), temperature: 0, num_predict: 256 },
 		})
-		return response.response?.trim() || ""
+		return response.response.trim() || ""
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
@@ -227,7 +232,7 @@ const runOllamaChatConstrainedJson = async (
 			messages: toOllamaMessages(messages),
 			stream: true,
 			keep_alive: resolveKeepAlive(domia),
-			format: schema as unknown as string,
+			format: schema,
 			options: resolveToolCallOptions(domia),
 		})
 		onAbort = () => stream.abort()
@@ -235,7 +240,7 @@ const runOllamaChatConstrainedJson = async (
 		let content = ""
 		let last: OllamaStatsType | null = null
 		for await (const chunk of stream) {
-			if (chunk.message?.content) content += chunk.message.content
+			if (chunk.message.content) content += chunk.message.content
 			if (chunk.done) last = chunk
 		}
 		if (last) onUsage?.(ollamaUsage(last, domia.llmModelConfig?.contextWindow))
@@ -276,7 +281,7 @@ const runOllamaJson = async (
 				stream.abort()
 				return ""
 			}
-			out += chunk.response ?? ""
+			out += chunk.response
 		}
 		return out.trim()
 	} catch (error) {
@@ -301,17 +306,14 @@ const toOllamaMessages = (messages: ChatMessageType[]): Message[] =>
 	})
 
 const toOllamaTools = (tools: ToolDefinitionType[]): Tool[] =>
-	tools.map(
-		(t) =>
-			({
-				type: "function",
-				function: {
-					name: t.name,
-					description: t.description ?? "",
-					parameters: t.parameters,
-				},
-			}) as unknown as Tool,
-	)
+	tools.map((t) => ({
+		type: "function",
+		function: {
+			name: t.name,
+			description: t.description ?? "",
+			parameters: t.parameters,
+		},
+	}))
 
 const normalizeArgs = (
 	raw: unknown,
@@ -346,7 +348,11 @@ const runOllamaWithTools = async (
 	const effectiveTools = toolChoice === "none" ? [] : tools
 	let onAbort: (() => void) | null = null
 	try {
-		if (signal?.aborted) throw new Error("aborted before inference")
+		if (signal?.aborted)
+			throw domiaError(LLM_ERRORS.ABORTED, {
+				logger: llmEngineLogger,
+				meta: { domiaId: domia.id, model: modelName },
+			})
 		const stream = await client.chat({
 			model: modelName,
 			messages: toOllamaMessages(messages),
@@ -361,17 +367,17 @@ const runOllamaWithTools = async (
 		let content = ""
 		let last: OllamaStatsType | null = null
 		for await (const chunk of stream) {
-			const chunkCalls = chunk.message?.tool_calls
+			const chunkCalls = chunk.message.tool_calls
 			if (chunkCalls?.length)
 				for (const c of chunkCalls)
 					calls.push({
-						name: c.function.name?.trim() || "__blank__",
+						name: c.function.name.trim() || "__blank__",
 						...(() => {
 							const n = normalizeArgs(c.function.arguments)
 							return { arguments: n.args, argsInvalid: n.invalid || undefined }
 						})(),
 					})
-			if (chunk.message?.content) content += chunk.message.content
+			if (chunk.message.content) content += chunk.message.content
 			if (chunk.done) last = chunk
 		}
 		if (last) onUsage?.(ollamaUsage(last, domia.llmModelConfig?.contextWindow))
@@ -411,9 +417,7 @@ const runOllamaReplyStreamOrTools = async (
 			releaseOnce()
 			return {
 				kind: "reply",
-				tokens: (async function* () {
-					yield* []
-				})(),
+				tokens: emptyAsyncIterable<string>(),
 				close: () => undefined,
 			}
 		}
@@ -441,14 +445,14 @@ const runOllamaReplyStreamOrTools = async (
 		let first = await iter.next()
 		while (
 			!first.done &&
-			!first.value.message?.tool_calls?.length &&
-			!first.value.message?.content
+			!first.value.message.tool_calls?.length &&
+			!first.value.message.content
 		)
 			first = await iter.next()
 
-		if (!first.done && first.value.message?.tool_calls?.length) {
+		if (!first.done && first.value.message.tool_calls?.length) {
 			const calls: ToolCallType[] = first.value.message.tool_calls.map((c) => ({
-				name: c.function.name?.trim() || "__blank__",
+				name: c.function.name.trim() || "__blank__",
 				...(() => {
 					const n = normalizeArgs(c.function.arguments)
 					return { arguments: n.args, argsInvalid: n.invalid || undefined }
@@ -466,14 +470,14 @@ const runOllamaReplyStreamOrTools = async (
 			return { kind: "tool_calls", calls }
 		}
 
-		const firstContent = first.done ? "" : (first.value.message?.content ?? "")
+		const firstContent = first.done ? "" : first.value.message.content
 		const tokens = (async function* (): AsyncIterable<string> {
 			try {
 				if (firstContent) yield firstContent
 				while (true) {
 					const next = await iter.next()
 					if (next.done) break
-					if (next.value.message?.content) yield next.value.message.content
+					if (next.value.message.content) yield next.value.message.content
 					if (next.value.done && onUsage)
 						onUsage(
 							ollamaUsage(next.value, domia.llmModelConfig?.contextWindow),
@@ -524,7 +528,7 @@ const runOllamaIntent = async (
 			format: "json",
 			options: { temperature: 0, num_predict: INTENT_NUM_PREDICT },
 		})
-		return response.response?.trim() || ""
+		return response.response.trim() || ""
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,

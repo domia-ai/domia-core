@@ -1,11 +1,9 @@
-import type { SkillCallStatusType } from "../types"
+import type { SkillCallStatusType, BreakerStateType } from "../types"
 
 const TRANSIENT: ReadonlySet<SkillCallStatusType> = new Set(["timeout"])
 
 export const isTransientStatus = (status: SkillCallStatusType): boolean =>
 	TRANSIENT.has(status)
-
-type BreakerStateType = { failures: number; openUntil: number }
 
 const breakers = new Map<string, BreakerStateType>()
 
@@ -38,7 +36,10 @@ export const backoffDelay = (attempt: number, backoffMs: number): number =>
 
 export const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 	new Promise((resolve) => {
-		if (ms <= 0 || signal?.aborted) return resolve()
+		if (ms <= 0 || signal?.aborted) {
+			resolve()
+			return
+		}
 		const t = setTimeout(resolve, ms)
 		signal?.addEventListener(
 			"abort",

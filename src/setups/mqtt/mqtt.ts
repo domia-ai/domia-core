@@ -1,6 +1,12 @@
 import mqtt from "mqtt"
 
-import { mqttLogger, localMqttLogger } from "@/utils"
+import {
+	mqttLogger,
+	localMqttLogger,
+	ensureTraceId,
+	runWithTraceContext,
+	signMeshControlPayload,
+} from "@/utils"
 import { env } from "@/config"
 import { MQTT_TYPE_ENUM } from "@/db"
 import { type DomiaType, getNodeId } from "@/modules/core"
@@ -23,7 +29,7 @@ export const setupMqtt = ({
 }: SetupMqttArgsType): mqtt.MqttClient | null => {
 	const type = config?.type
 	const logger = config ? localMqttLogger : mqttLogger
-	const domiaKey = domia?.domiaKey
+	const domiaKey = domia.domiaKey
 
 	logger.info("🚀 Starting MQTT setup process")
 
@@ -38,15 +44,17 @@ export const setupMqtt = ({
 	const hasScheme = /^\w+:\/\//.test(config.host)
 	const options: mqtt.IClientOptions = {
 		clientId: domiaKey,
-		username: config?.username || "",
-		password: config?.password || "",
-		protocol: config?.protocol,
+		username: config.username || "",
+		password: config.password || "",
+		protocol: config.protocol,
 		...(hasScheme ? {} : { host: config.host, hostname: config.host }),
-		port: config?.port || 1883,
+		port: config.port || 1883,
 		will: nodeId
 			? {
 					topic: `${ROOT}/${nodeId}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.OFFLINE}`,
-					payload: Buffer.from(JSON.stringify({ nodeId })),
+					payload: Buffer.from(
+						JSON.stringify(signMeshControlPayload({ nodeId })),
+					),
 					qos: 0,
 					retain: false,
 				}
@@ -62,9 +70,9 @@ export const setupMqtt = ({
 
 	client.on("error", (err) => {
 		logger.error(`❌ ${type} MQTT connection error`, {
-			name: err?.name,
-			error: err?.message,
-			stack: err?.stack,
+			name: err.name,
+			error: err.message,
+			stack: err.stack,
 			clientId: domiaKey,
 			host: config.host,
 		})
@@ -100,7 +108,13 @@ export const setupMqtt = ({
 			if (current.disconnected) return
 			current.publish(
 				`${ROOT}/${nodeId}/${type}/${MQTT_EVENT_ENUM.SPEAKING}`,
-				JSON.stringify({ nodeId, domiaKey: speakingDomiaKey, speaking }),
+				JSON.stringify(
+					signMeshControlPayload({
+						nodeId,
+						domiaKey: speakingDomiaKey,
+						speaking,
+					}),
+				),
 			)
 		})
 	}
@@ -108,19 +122,28 @@ export const setupMqtt = ({
 	logger.success("✅ MQTT setup completed successfully")
 
 	client.on("message", (topic, message) => {
-		handleMqttMessage({
-			domia,
-			topic,
-			message,
-			logger,
-		})
+		runWithTraceContext(
+			{ originDomiaKey: domiaKey, traceId: ensureTraceId() },
+			() =>
+				handleMqttMessage({
+					domia,
+					topic,
+					message,
+					logger,
+				}),
+		)
 	})
 
 	return client
 }
 
 export const reloadMqtt = async (domia: DomiaType): Promise<void> => {
-	const nodeId = await getNodeId().catch(() => null)
+	const nodeId = await getNodeId().catch((err: unknown) => {
+		mqttLogger.warn("nodeId lookup failed — reloading MQTT without nodeId", {
+			err,
+		})
+		return null
+	})
 	const next = setupMqtt({ domia, config: domia.localMqttConfig, nodeId })
 	if (!next) {
 		getLocalMqttClient()?.end()

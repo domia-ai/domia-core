@@ -1,6 +1,13 @@
 import { z } from "zod"
 
-import { SATELLITE_PROTOCOL_ENUM_VALUES } from "@/db"
+import {
+	SATELLITE_PROTOCOL_ENUM_VALUES,
+	PROACTIVE_VERB_ENUM_VALUES,
+	PROACTIVE_IMPORTANCE_ENUM_VALUES,
+	PROACTIVE_TARGET_KIND_ENUM_VALUES,
+	PROACTIVE_SCHEDULE_STATUS_ENUM_VALUES,
+} from "@/db/constants"
+import { BENCH_TURNS_MAX } from "@/modules/bench/constants"
 
 export const postIdentityBodySchema = z.object({
 	name: z.string().trim().min(1).max(80),
@@ -25,7 +32,7 @@ export const postSatelliteWakeWordsBodySchema = z.object({
 
 export const postSatelliteNumberBodySchema = z.object({
 	entityId: z.string().trim().min(1).max(200),
-	value: z.number().finite(),
+	value: z.number(),
 })
 
 export const postSatelliteFollowUpBodySchema = z.object({
@@ -34,6 +41,54 @@ export const postSatelliteFollowUpBodySchema = z.object({
 
 export const postSatelliteVolumeBodySchema = z.object({
 	volume: z.number().min(0).max(1),
+})
+
+const clockSchema = z.string().regex(/^\d{1,2}:\d{2}$/, "expected HH:MM")
+
+export const postScheduleBodySchema = z
+	.object({
+		name: z.string().trim().min(1).max(120),
+		text: z.string().trim().min(1).max(600).nullish(),
+		templateKey: z.string().trim().min(1).max(80).nullish(),
+		templateParams: z.record(z.string(), z.string()).nullish(),
+		verb: z.enum(PROACTIVE_VERB_ENUM_VALUES).optional(),
+		importance: z.enum(PROACTIVE_IMPORTANCE_ENUM_VALUES).optional(),
+		targetKind: z.enum(PROACTIVE_TARGET_KIND_ENUM_VALUES).optional(),
+		targetSatelliteId: z.string().trim().min(1).max(200).nullish(),
+		actionTool: z.string().trim().min(1).max(200).nullish(),
+		actionArgs: z.record(z.string(), z.unknown()).nullish(),
+		personId: z.string().trim().min(1).max(200).nullish(),
+		dueAt: z.iso.datetime({ offset: true }).optional(),
+		inMs: z.number().int().nonnegative().max(31_536_000_000).optional(),
+		repeatEveryMs: z.number().int().positive().max(31_536_000_000).nullish(),
+		repeatDailyAt: clockSchema.nullish(),
+	})
+	.refine((b) => b.dueAt !== undefined || b.inMs !== undefined, {
+		message: "Body must include 'dueAt' (ISO) or 'inMs'.",
+	})
+	.refine((b) => b.targetKind !== "satellite" || !!b.targetSatelliteId, {
+		message: "targetKind 'satellite' requires 'targetSatelliteId'.",
+	})
+	.refine((b) => !(b.repeatEveryMs && b.repeatDailyAt), {
+		message: "Use either 'repeatEveryMs' or 'repeatDailyAt', not both.",
+	})
+
+export const getScheduleQuerySchema = z.object({
+	domiaKey: z.string().optional(),
+	status: z
+		.string()
+		.refine(
+			(s) =>
+				s
+					.split(",")
+					.every((v) =>
+						(
+							PROACTIVE_SCHEDULE_STATUS_ENUM_VALUES as readonly string[]
+						).includes(v.trim()),
+					),
+			"unknown status",
+		)
+		.optional(),
 })
 
 export const postSatelliteTimerBodySchema = z.object({
@@ -83,6 +138,16 @@ export const postIntercomBodySchema = z.object({
 	stop: z.boolean().optional().default(false),
 })
 
+export const postKnowledgeBodySchema = (maxChars: number) =>
+	z.object({
+		id: z.string().trim().min(1).max(200).optional(),
+		title: z.string().trim().min(1).max(200),
+		content: z.string().trim().min(1).max(maxChars),
+		keywords: z.array(z.string().trim().min(1).max(120)).max(64).nullish(),
+		priority: z.number().int().min(-1000).max(1000).optional(),
+		isActive: z.boolean().optional(),
+	})
+
 export const postImportMindBodySchema = z.object({
 	mind: z.unknown(),
 })
@@ -98,4 +163,18 @@ export const getSyncQuerySchema = z.object({
 
 export const getAudioQuerySchema = z.object({
 	kind: z.enum(["input", "tts", "announce"]).default("tts"),
+})
+
+export const postBenchRunBodySchema = z.object({
+	turns: z.number().int().min(1).max(BENCH_TURNS_MAX).optional(),
+})
+
+export const MESH_ROTATE_ACTIONS = [
+	"status",
+	"restart-grace",
+	"end-grace",
+] as const
+
+export const postMeshRotateBodySchema = z.object({
+	action: z.enum(MESH_ROTATE_ACTIONS).default("status"),
 })

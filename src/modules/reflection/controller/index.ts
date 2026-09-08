@@ -29,29 +29,21 @@ import {
 	getActiveFactRefs,
 	type RawFactType,
 } from "@/modules/memory"
-import {
-	reflectionLogger,
-	createAsyncSemaphore,
-	isSemaphoreBusyError,
-	parseLlmJson,
-	sleep,
-	withTimeout,
-} from "@/utils"
+import { reflectionLogger, parseLlmJson, sleep, withTimeout } from "@/utils"
 import { activeVoiceReplies } from "@/modules/voice-admission"
 import {
 	DEFAULT_REFLECTION_ONLY_WHEN_IDLE,
 	DEFAULT_REFLECTION_CONCURRENCY,
 	DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
 	DEFAULT_REFLECTION_YIELD_TO_VOICE,
+	DEFAULT_REFLECTION_TIMEOUT_MS,
+	DEFAULT_REFLECTION_IDLE_POLL_MS,
+	DEFAULT_REFLECTION_IDLE_GRACE_MS,
+	DEFAULT_REFLECTION_MAX_IDLE_WAIT_MS,
+	DEFAULT_REFLECTION_SLOT_TIMEOUT_MS,
+	DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 } from "@/db"
-import {
-	REFLECTION_TIMEOUT_MS,
-	REFLECTION_IDLE_POLL_MS,
-	REFLECTION_IDLE_GRACE_MS,
-	REFLECTION_MAX_IDLE_WAIT_MS,
-	REFLECTION_SLOT_TIMEOUT_MS,
-	REFLECTION_YIELD_MAX_ATTEMPTS,
-} from "../constants"
+import { createReflectionGate } from "../utils"
 import type {
 	ReflectionFlagsType,
 	ReflectionResultType,
@@ -166,136 +158,44 @@ const filterReflectionFacts = (
 	return kept.filter((f) => f.op !== "delete" || deleteGrounded(f))
 }
 
-const reflectionSemaphores = new Map<
-	string,
-	ReturnType<typeof createAsyncSemaphore>
->()
-const pendingByIdentity = new Map<string, number>()
-
-const semaphoreFor = (
-	identityId: string,
-): ReturnType<typeof createAsyncSemaphore> => {
-	const existing = reflectionSemaphores.get(identityId)
-	if (existing) return existing
-	const fresh = createAsyncSemaphore(
-		DEFAULT_REFLECTION_CONCURRENCY,
-		DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
-	)
-	reflectionSemaphores.set(identityId, fresh)
-	return fresh
-}
+const gate = createReflectionGate({
+	activeVoiceReplies,
+	sleep,
+	now: Date.now,
+	logger: reflectionLogger,
+})
 
 const gateSettings = (domia: DomiaType): ReflectionGateSettingsType => ({
 	onlyWhenIdle:
-		domia?.moduleSettings?.reflectionOnlyWhenIdle ??
+		domia.moduleSettings?.reflectionOnlyWhenIdle ??
 		DEFAULT_REFLECTION_ONLY_WHEN_IDLE,
 	concurrency:
-		domia?.moduleSettings?.reflectionConcurrency ??
+		domia.moduleSettings?.reflectionConcurrency ??
 		DEFAULT_REFLECTION_CONCURRENCY,
 	queueMaxDepth:
-		domia?.moduleSettings?.reflectionQueueMaxDepth ??
+		domia.moduleSettings?.reflectionQueueMaxDepth ??
 		DEFAULT_REFLECTION_QUEUE_MAX_DEPTH,
 	yieldToVoice:
-		domia?.moduleSettings?.reflectionYieldToVoice ??
+		domia.moduleSettings?.reflectionYieldToVoice ??
 		DEFAULT_REFLECTION_YIELD_TO_VOICE,
+	timeoutMs:
+		domia.moduleSettings?.reflectionTimeoutMs ?? DEFAULT_REFLECTION_TIMEOUT_MS,
+	idlePollMs:
+		domia.moduleSettings?.reflectionIdlePollMs ??
+		DEFAULT_REFLECTION_IDLE_POLL_MS,
+	idleGraceMs:
+		domia.moduleSettings?.reflectionIdleGraceMs ??
+		DEFAULT_REFLECTION_IDLE_GRACE_MS,
+	maxIdleWaitMs:
+		domia.moduleSettings?.reflectionMaxIdleWaitMs ??
+		DEFAULT_REFLECTION_MAX_IDLE_WAIT_MS,
+	slotTimeoutMs:
+		domia.moduleSettings?.reflectionSlotTimeoutMs ??
+		DEFAULT_REFLECTION_SLOT_TIMEOUT_MS,
+	yieldMaxAttempts:
+		domia.moduleSettings?.reflectionYieldMaxAttempts ??
+		DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 })
-
-const waitForIdle = async (onlyWhenIdle: boolean): Promise<boolean> => {
-	if (!onlyWhenIdle) return true
-	if (activeVoiceReplies() > 0) {
-		reflectionLogger.info(
-			"⏳ reflection yielding LLM to live rooms — waiting for hub idle",
-			{ activeVoiceReplies: activeVoiceReplies() },
-		)
-	}
-	const deadline = Date.now() + REFLECTION_MAX_IDLE_WAIT_MS
-	for (;;) {
-		while (activeVoiceReplies() > 0) {
-			if (Date.now() >= deadline) return false
-			await sleep(REFLECTION_IDLE_POLL_MS)
-		}
-		// mid-conversation the next turn lands seconds after a reply — only reflect after a real pause
-		const graceEnd = Date.now() + REFLECTION_IDLE_GRACE_MS
-		let interrupted = false
-		while (Date.now() < graceEnd) {
-			if (activeVoiceReplies() > 0) {
-				interrupted = true
-				break
-			}
-			if (Date.now() >= deadline) return false
-			await sleep(REFLECTION_IDLE_POLL_MS)
-		}
-		if (!interrupted) return true
-	}
-}
-
-const IDLE_REVALIDATE_MAX_ATTEMPTS = 3
-
-const runGated = async <T>(
-	identityId: string,
-	settings: ReflectionGateSettingsType,
-	fn: () => Promise<T>,
-	skipValue: T,
-): Promise<T> => {
-	const semaphore = semaphoreFor(identityId)
-	semaphore.setLimit(settings.concurrency)
-	semaphore.setMaxWaiters(settings.queueMaxDepth)
-	const pending = pendingByIdentity.get(identityId) ?? 0
-	if (pending >= settings.concurrency + settings.queueMaxDepth) {
-		reflectionLogger.info("reflection backlog full — skipping (best-effort)", {
-			identityId,
-			pending,
-		})
-		return skipValue
-	}
-	pendingByIdentity.set(identityId, pending + 1)
-	try {
-		return await runGatedInner(semaphore, settings, fn, skipValue)
-	} finally {
-		const now = pendingByIdentity.get(identityId) ?? 1
-		if (now <= 1) pendingByIdentity.delete(identityId)
-		else pendingByIdentity.set(identityId, now - 1)
-	}
-}
-
-const runGatedInner = async <T>(
-	semaphore: ReturnType<typeof createAsyncSemaphore>,
-	settings: ReflectionGateSettingsType,
-	fn: () => Promise<T>,
-	skipValue: T,
-): Promise<T> => {
-	for (let attempt = 1; attempt <= IDLE_REVALIDATE_MAX_ATTEMPTS; attempt++) {
-		const idle = await waitForIdle(settings.onlyWhenIdle)
-		if (!idle) {
-			reflectionLogger.info(
-				"reflection deferred while hub busy — skipping (best-effort)",
-			)
-			return skipValue
-		}
-		let release!: () => void
-		try {
-			release = await semaphore.acquire({
-				timeoutMs: REFLECTION_SLOT_TIMEOUT_MS,
-			})
-		} catch (err) {
-			if (isSemaphoreBusyError(err)) {
-				reflectionLogger.info("reflection gate full — skipping (best-effort)")
-				return skipValue
-			}
-			throw err
-		}
-		try {
-			if (settings.onlyWhenIdle && activeVoiceReplies() > 0) continue
-			return await fn()
-		} finally {
-			release()
-		}
-	}
-	reflectionLogger.info(
-		"reflection deferred after repeated busy revalidations — skipping (best-effort)",
-	)
-	return skipValue
-}
 
 export const runReflection = async (
 	responder: DomiaType,
@@ -306,21 +206,21 @@ export const runReflection = async (
 	flags: ReflectionFlagsType,
 	knownFacts: { subject: string; relation: string; value: string }[] = [],
 ): Promise<ReflectionResultType> => {
-	if (!userText?.trim() || !replyText?.trim())
+	if (!userText.trim() || !replyText.trim())
 		return { emotion: null, userEmotion: null, facts: [] }
 
-	const key = responder?.id ?? ""
+	const key = responder.id
 	const explicitMemory =
 		flags.facts &&
-		isExplicitMemoryCommand(userText, responder?.characterProfile?.language)
-	const reflectionModel = responder?.llmModelConfig?.reflectionModelName?.trim()
+		isExplicitMemoryCommand(userText, responder.characterProfile?.language)
+	const reflectionModel = responder.llmModelConfig?.reflectionModelName?.trim()
 	if (explicitMemory && reflectionModel)
 		reflectionLogger.info(
 			"🧠 explicit memory command — reflecting with main model",
 			{ responderId: key },
 		)
 	const reflector =
-		reflectionModel && responder?.llmModelConfig && !explicitMemory
+		reflectionModel && responder.llmModelConfig && !explicitMemory
 			? {
 					...responder,
 					llmModelConfig: {
@@ -345,9 +245,10 @@ export const runReflection = async (
 			explicitMemory,
 			knownFacts,
 		)
-		for (let attempt = 1; attempt <= REFLECTION_YIELD_MAX_ATTEMPTS; attempt++) {
+		for (let attempt = 1; attempt <= settings.yieldMaxAttempts; attempt++) {
 			let yielded = false
-			const result = await runGated(
+			const wasYielded = (): boolean => yielded
+			const result = await gate.runGated(
 				key,
 				settings,
 				async () => {
@@ -356,7 +257,7 @@ export const runReflection = async (
 							"⚠️ reflectionOnlyWhenIdle invariant breach — voice active at reflection start",
 							{ responderId: responder.id },
 						)
-					const deadline = Date.now() + REFLECTION_TIMEOUT_MS
+					const deadline = Date.now() + settings.timeoutMs
 					const shouldAbort = (): boolean => {
 						if (Date.now() > deadline) return true
 						if (!settings.yieldToVoice) return false
@@ -366,10 +267,10 @@ export const runReflection = async (
 					}
 					const raw = await withTimeout(
 						runLLMJson(reflector, prompt, shouldAbort),
-						REFLECTION_TIMEOUT_MS,
+						settings.timeoutMs,
 						"reflection",
 					)
-					if (yielded) return empty
+					if (wasYielded()) return empty
 					const parsed = parseLlmJson(raw)
 					const obj = parsed.value ?? {}
 					if (parsed.state === "repaired") {
@@ -378,7 +279,7 @@ export const runReflection = async (
 							(!Array.isArray(obj.facts) || obj.facts.length === 0)
 						reflectionLogger.warn("llm-json repaired", {
 							site: "reflection",
-							model: reflector?.llmModelConfig?.modelName,
+							model: reflector.llmModelConfig?.modelName,
 							rawLength: raw.length,
 							factsTruncated,
 							salvaged: {
@@ -400,7 +301,7 @@ export const runReflection = async (
 					if (explicitMemory && facts.length === 0)
 						reflectionLogger.warn("explicit memory command yielded no facts", {
 							parsed: parseFacts(obj.facts).length,
-							rawFacts: JSON.stringify(obj.facts)?.slice(0, 400),
+							rawFacts: JSON.stringify(obj.facts ?? null).slice(0, 400),
 						})
 					const declarationMissed =
 						flags.facts &&
@@ -426,10 +327,10 @@ export const runReflection = async (
 						)
 						const retryRaw = await withTimeout(
 							runLLMJson(responder, retryPrompt, shouldAbort),
-							REFLECTION_TIMEOUT_MS,
+							settings.timeoutMs,
 							"reflection-retry",
 						)
-						if (!yielded) {
+						if (!wasYielded()) {
 							const retryObj = parseLlmJson(retryRaw).value ?? {}
 							facts = filterReflectionFacts(
 								parseFacts(retryObj.facts),
@@ -442,12 +343,12 @@ export const runReflection = async (
 				},
 				empty,
 			)
-			if (!yielded) return result
+			if (!wasYielded()) return result
 			reflectionLogger.info(
-				`⏳ reflection yielded LLM to live voice — requeued (${attempt}/${REFLECTION_YIELD_MAX_ATTEMPTS})`,
+				`⏳ reflection yielded LLM to live voice — requeued (${attempt}/${settings.yieldMaxAttempts})`,
 				{ responderId: key },
 			)
-			await sleep(REFLECTION_IDLE_POLL_MS * 4)
+			await sleep(settings.idlePollMs * 4)
 		}
 		reflectionLogger.warn(
 			"reflection skipped after repeated yields to live voice (best-effort)",
@@ -456,8 +357,8 @@ export const runReflection = async (
 		return empty
 	} catch (err) {
 		reflectionLogger.warn("Reflection failed (skipping)", {
-			responderId: responder?.id,
-			err: err instanceof Error ? `${err.message}` : String(err),
+			responderId: responder.id,
+			err: err instanceof Error ? err.message : String(err),
 			stack:
 				err instanceof Error ? err.stack?.split("\n")[1]?.trim() : undefined,
 		})
@@ -466,15 +367,8 @@ export const runReflection = async (
 }
 
 export const flagsForDomia = (domia: DomiaType): ReflectionFlagsType => ({
-	emotion: domia?.moduleSettings?.emotionCapture !== false,
-	facts: domia?.moduleSettings?.factCapture !== false,
-})
-
-export const flagsForPersona = (
-	persona: PersonaContextType,
-): ReflectionFlagsType => ({
-	emotion: persona?.moduleSettings?.emotionCapture !== false,
-	facts: persona?.moduleSettings?.factCapture !== false,
+	emotion: domia.moduleSettings?.emotionCapture !== false,
+	facts: domia.moduleSettings?.factCapture !== false,
 })
 
 export const routeReflectionResult = async (
@@ -518,6 +412,7 @@ export const routeReflectionResult = async (
 			domiaId: origin.id,
 			localIp: origin.localIp,
 			grpcPort: origin.grpcPort,
+			grpcTls: origin.grpcTls,
 			source: "explicit",
 			streamingCapabilities: resolveDomiaStreamingCapabilities(origin),
 		},

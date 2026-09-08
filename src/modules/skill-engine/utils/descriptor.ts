@@ -3,7 +3,9 @@ import {
 	type DomiaSkillDescriptorType,
 	type SkillDescriptorLocaleType,
 	type ToolFinalizeMapType,
+	type ArgNormalizeMapType,
 	DEFAULT_SKILL_RETRY_MAX_ATTEMPTS,
+	DEFAULT_SKILL_SERVE_STALE_TOOLS,
 	DEFAULT_SKILL_RETRY_BACKOFF_MS,
 	DEFAULT_SKILL_BREAKER_THRESHOLD,
 	DEFAULT_SKILL_BREAKER_COOLDOWN_MS,
@@ -40,6 +42,18 @@ const mergeFinalize = (
 ): ToolFinalizeMapType => {
 	const out: ToolFinalizeMapType = {}
 	for (const map of maps) if (map) Object.assign(out, map)
+	return out
+}
+
+const mergeArgNormalize = (
+	...maps: (ArgNormalizeMapType | undefined)[]
+): ArgNormalizeMapType => {
+	const out: ArgNormalizeMapType = {}
+	for (const map of maps) {
+		if (!map) continue
+		for (const [tool, args] of Object.entries(map))
+			out[tool] = Object.assign({}, out[tool], args)
+	}
 	return out
 }
 
@@ -96,6 +110,7 @@ export const resolveDescriptor = (
 		toolPolicy: { ...fExec?.toolPolicy, ...dExec?.toolPolicy },
 		toolHints: { ...fExec?.toolHints, ...dExec?.toolHints },
 		paramAllow: { ...fExec?.paramAllow, ...dExec?.paramAllow },
+		argNormalize: mergeArgNormalize(fExec?.argNormalize, dExec?.argNormalize),
 		finalize: mergeFinalize(fExec?.finalize, dExec?.finalize, locale?.finalize),
 		genericWords: concatUnique(
 			fExec?.genericWords,
@@ -123,6 +138,10 @@ export const resolveDescriptor = (
 				dExec?.resilience?.idempotentWithinTurn ??
 				fExec?.resilience?.idempotentWithinTurn ??
 				DEFAULT_SKILL_IDEMPOTENT_WITHIN_TURN,
+			serveStaleTools:
+				dExec?.resilience?.serveStaleTools ??
+				fExec?.resilience?.serveStaleTools ??
+				DEFAULT_SKILL_SERVE_STALE_TOOLS,
 		},
 	}
 	cache.set(cacheKey, resolved)

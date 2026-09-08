@@ -14,6 +14,12 @@ const ollamaName = z
 
 const httpUrl = z.url().refine((u) => /^https?:\/\//.test(u), "must be http(s)")
 
+const sha256Hex = z
+	.string()
+	.regex(/^[A-Fa-f0-9]{64}$/, "must be a sha256 hex digest")
+
+const sizeBytes = z.number().int().positive()
+
 export const modelInstallSpecSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("sherpa-archive"),
@@ -22,6 +28,8 @@ export const modelInstallSpecSchema = z.discriminatedUnion("kind", [
 		url: httpUrl,
 		target: safeName,
 		sourceDir: safeName.optional(),
+		sha256: sha256Hex.optional(),
+		sizeBytes: sizeBytes.optional(),
 	}),
 	z.object({
 		kind: z.literal("file"),
@@ -29,6 +37,8 @@ export const modelInstallSpecSchema = z.discriminatedUnion("kind", [
 		stage: z.string().max(40).optional(),
 		url: httpUrl,
 		target: safeName,
+		sha256: sha256Hex.optional(),
+		sizeBytes: sizeBytes.optional(),
 	}),
 	z.object({
 		kind: z.literal("ollama"),

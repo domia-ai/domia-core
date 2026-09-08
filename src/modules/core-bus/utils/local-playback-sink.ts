@@ -1,4 +1,5 @@
 import { domiaBusLogger } from "@/utils"
+import { notePlaybackReference } from "@/modules/audio-capture"
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
 import { type DomiaType, safeOwnDomia } from "@/modules/core"
 import {
@@ -18,7 +19,7 @@ const MAX_QUEUED_CHUNKS = 200
 const makeLocalPlaybackSink = (domia: DomiaType): StreamingSinkType => {
 	const buffered: Buffer[] = []
 	let notify: (() => void) | null = null
-	let closed = false
+	let closed = false as boolean
 	let dropped = 0
 
 	const chunks = (async function* (): AsyncIterable<Buffer> {
@@ -36,10 +37,12 @@ const makeLocalPlaybackSink = (domia: DomiaType): StreamingSinkType => {
 	})()
 
 	let playback: Promise<unknown> | null = null
+	let sinkRate = 24000
+	let sinkChannels = 1
 
 	return {
 		capabilities: {
-			pause: (domia.audioPlaybackConfig?.pauseEnabled ?? false) === true,
+			pause: domia.audioPlaybackConfig?.pauseEnabled ?? false,
 			position: "estimated",
 			urlPlayback: false,
 			captions: false,
@@ -47,11 +50,13 @@ const makeLocalPlaybackSink = (domia: DomiaType): StreamingSinkType => {
 		pause: () => pauseActivePlayback(domia.id),
 		resume: () => resumeActivePlayback(domia.id),
 		begin: (format) => {
+			sinkRate = format.sampleRate
+			sinkChannels = format.channels
 			playback = playAudioStream(domia, chunks, {
 				sampleRate: format.sampleRate,
 				channels: format.channels,
 				bitsPerSample: 16,
-			}).catch((err) => {
+			}).catch((err: unknown) => {
 				domiaBusLogger.warn("local intercom playback failed", {
 					err: err instanceof Error ? err.message : String(err),
 					domiaKey: domia.domiaKey,
@@ -60,6 +65,7 @@ const makeLocalPlaybackSink = (domia: DomiaType): StreamingSinkType => {
 		},
 		write: (chunk) => {
 			if (closed) return
+			notePlaybackReference(domia.id, chunk, sinkRate, sinkChannels)
 			buffered.push(chunk)
 			if (buffered.length > MAX_QUEUED_CHUNKS) {
 				buffered.shift()

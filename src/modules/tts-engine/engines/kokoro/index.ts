@@ -96,7 +96,7 @@ const resolveSid = (voiceName: string | null | undefined): number => {
 
 const requireTtsConfig = (domia: DomiaType): SelectTtsConfigType => {
 	const ttsConfig = domia.ttsConfig
-	if (!ttsConfig || !ttsConfig.modelPath) {
+	if (!ttsConfig?.modelPath) {
 		throw domiaError(TTS_ERRORS.VOICE_NOT_FOUND, {
 			logger: ttsEngineLogger,
 			meta: {
@@ -153,7 +153,7 @@ export const runKokoro = async (
 			const result = await pool.submit<TtsWorkerResultType>(
 				jobOf(ttsConfig, sentence, voice, sid),
 			)
-			if (result.pcm && result.pcm.length > 0) {
+			if (result.pcm.length > 0) {
 				parts.push(applyEdgeFade(result.pcm, result.sampleRate))
 				sampleRate = result.sampleRate
 			}
@@ -198,7 +198,7 @@ const runKokoroStream = async function* (
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, voice, sid),
 		)
-		if (result.pcm && result.pcm.length > 0)
+		if (result.pcm.length > 0)
 			yield applyEdgeFade(result.pcm, kokoroEngine.capabilities.sampleRate)
 	}
 }

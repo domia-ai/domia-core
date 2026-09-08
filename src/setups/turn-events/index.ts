@@ -73,7 +73,7 @@ export const setupTurnEventPersistence = (): void => {
 	}
 
 	const persist = (id: string, events: DomiaTurnEventType[]): void => {
-		void persistTurnEventBatch(id, events).catch((err) =>
+		void persistTurnEventBatch(id, events).catch((err: unknown) =>
 			turnEventsLogger.warn("turn-event persist failed", {
 				interactionId: id,
 				err,

@@ -6,6 +6,7 @@ import {
 	postChat,
 	postModules,
 	postConfig,
+	getConfig,
 	resetConversation,
 	pollRecord,
 	assertTurn,
@@ -100,7 +101,7 @@ const waitForMockSync = async (): Promise<boolean> => {
 			"SELECT tools_cache AS v FROM skill_provider WHERE id = ?",
 			[MOCK_HA_PROVIDER_ID],
 		)
-		if (row?.v && row.v.includes("HassTurnOn")) return true
+		if (row?.v?.includes("HassTurnOn")) return true
 		await sleep(500)
 	}
 	return false
@@ -293,11 +294,16 @@ const main = async (): Promise<void> => {
 				report(await runCase(c, mock))
 			const fastCases = mockCases.filter((c) => c.suite === "fast")
 			if (fastCases.length > 0) {
+				const preConfig = await getConfig()
+				const preFastPath = Boolean(
+					(preConfig.llm as Record<string, unknown> | undefined)
+						?.fastPathEnabled,
+				)
 				await postConfig({ llm: { fastPathEnabled: true } })
 				try {
 					for (const c of fastCases) report(await runCase(c, mock))
 				} finally {
-					await postConfig({ llm: { fastPathEnabled: false } })
+					await postConfig({ llm: { fastPathEnabled: preFastPath } })
 				}
 			}
 		} finally {

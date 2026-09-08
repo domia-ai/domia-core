@@ -1,12 +1,11 @@
 import { execFileSync } from "child_process"
 import { readFileSync, writeFileSync, mkdirSync } from "fs"
 import { join } from "path"
-import { postConfig, postChat, waitForHealth, sleep } from "./lib"
+import { postConfig, postChat, getConfig, waitForHealth, sleep } from "./lib"
 import type { EvalCaseResultType } from "./types"
 
 const MODELS = ["llama3.2:3b", "granite4:micro"]
 const MODES = ["native", "structured"]
-const INCUMBENT = "llama3.2:3b"
 const RESULTS_DIR = join(process.cwd(), "evals", "results")
 const BENCH_DIR = join(process.cwd(), "evals", "bench-results")
 
@@ -83,6 +82,8 @@ const main = async (): Promise<void> => {
 		console.error("node not reachable")
 		process.exit(2)
 	}
+	const preConfig = await getConfig()
+	const preLlm = (preConfig.llm ?? {}) as Record<string, unknown>
 	const scores: ScoreType[] = []
 	try {
 		for (const model of MODELS) {
@@ -102,9 +103,9 @@ const main = async (): Promise<void> => {
 		await waitForHealth(30000)
 		await postConfig({
 			llm: {
-				modelName: INCUMBENT,
-				toolModelName: null,
-				agentDecisionMode: "native",
+				modelName: preLlm.modelName,
+				toolModelName: preLlm.toolModelName ?? null,
+				agentDecisionMode: preLlm.agentDecisionMode,
 			},
 		}).catch(() => undefined)
 	}

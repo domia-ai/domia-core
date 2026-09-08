@@ -51,8 +51,8 @@ const confirmationChecks = async (): Promise<void> => {
 	})
 	const first = claimConfirmation(scope, "approved")
 	const second = claimConfirmation(scope, "approved")
-	checker.check("first claim wins", first === true)
-	checker.check("second claim on the same row loses", second === false)
+	checker.check("first claim wins", first)
+	checker.check("second claim on the same row loses", !second)
 	const row = await dbClient
 		.select()
 		.from(pendingConfirmationRow)
@@ -201,7 +201,7 @@ const singleFlightChecks = async (): Promise<void> => {
 			await new Promise((r) => setTimeout(r, 30))
 			yield chunkB
 		},
-		run: async () => null,
+		run: () => Promise.resolve(null),
 	} as unknown as TtsEngineAdapterType
 	const ttsDomia = {
 		id: randomUUID(),

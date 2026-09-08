@@ -44,9 +44,6 @@
 		"reflectionOnlyWhenIdle": true,
 		"reflectionConcurrency": 2,
 		"reflectionQueueMaxDepth": 12,
-		"collectiveMind": true,
-		"remoteAccessEngine": true,
-		"narrativeEngine": true,
 		"identityEngine": true,
 		"skillsEngine": false
 	},
@@ -107,7 +104,8 @@
 		"workerRecycleAfterJobs": 0
 	},
 	"llm": {
-		"engine": "OLLAMA",
+		"engine": "OPENAI_COMPATIBLE",
+		"baseUrl": "http://127.0.0.1:11435/v1",
 		"modelName": "llama3.2:3b",
 		"temperature": 0.7,
 		"contextWindow": 4096,

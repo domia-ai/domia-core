@@ -41,6 +41,13 @@ export type LlmUsageType = {
 
 export type LlmUsageSinkType = (usage: LlmUsageType) => void
 
+export type LlmPrefillResultType = {
+	promptTokens: number | null
+	freshTokens: number | null
+	cachedTokens: number | null
+	prefillMs: number | null
+}
+
 export type ToolChoiceType = "auto" | "none"
 
 export type ToolCallOrReplyType =
@@ -66,6 +73,11 @@ export type LlmEngineAdapterType = {
 		onUsage?: LlmUsageSinkType,
 	) => AsyncIterable<string>
 	warmup?: (domia: DomiaType) => Promise<void>
+	prefill?: (
+		domia: DomiaType,
+		promptContext: string,
+		signal?: AbortSignal,
+	) => Promise<LlmPrefillResultType>
 	runJson?: (
 		domia: DomiaType,
 		promptContext: string,

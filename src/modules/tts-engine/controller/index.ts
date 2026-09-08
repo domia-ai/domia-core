@@ -11,10 +11,10 @@ export const runTTS = async (
 	text: string,
 	options?: RunTtsOptionsType,
 ) => {
-	const ttsModelConfig = domia?.ttsConfig
+	const ttsModelConfig = domia.ttsConfig
 	const engine = ttsModelConfig?.engine
 
-	if (!engine || !TTS_ENGINE_ENUM_VALUES?.includes(engine)) {
+	if (!engine || !TTS_ENGINE_ENUM_VALUES.includes(engine)) {
 		throw domiaError(TTS_ERRORS.TTS_ENGINE_NOT_FOUND, {
 			logger: ttsEngineLogger,
 			meta: {
@@ -27,7 +27,10 @@ export const runTTS = async (
 
 	const speech = sanitizeForSpeech(text)
 	if (!speech) {
-		throw new Error("runTTS: empty text after sanitize — nothing to speak")
+		throw domiaError(TTS_ERRORS.EMPTY_TEXT, {
+			logger: ttsEngineLogger,
+			meta: { domiaId: domia.id, engine },
+		})
 	}
 	return await handler(domia, speech, options)
 }

@@ -1,4 +1,3 @@
-import { DEFAULT_SKILL_REFRESH_MS } from "@/db"
 import { skillEngineLogger } from "@/utils"
 import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
 import {
@@ -8,6 +7,8 @@ import {
 	markDispatchedToolRunsLost,
 	setSkillsRefreshHook,
 	clearSkillsRefreshHook,
+	nextToolsRefreshMs,
+	type SkillsRefreshOptionsType,
 	setElicitationPresenter,
 	clearElicitationPresenter,
 } from "@/modules/skill-engine"
@@ -32,7 +33,7 @@ const ensureConfirmationsRehydrated = (): Promise<void> => {
 		.then(() => {
 			confirmationsRehydrated = true
 		})
-		.catch((err) => {
+		.catch((err: unknown) => {
 			skillEngineLogger.warn(
 				`confirmation rehydration failed — retrying in ${REHYDRATE_RETRY_MS}ms`,
 				{ err },
@@ -76,16 +77,27 @@ export const setupSkills = async (
 	invalidateOwnDomia(domia.domiaKey)
 	skillEngineLogger.info("🧩 Skill tools available", { count: tools.length })
 
-	const refresh = (): void => {
+	let refreshTimer: ReturnType<typeof setTimeout> | null = null
+	let stopped = false
+	const scheduleNext = (): void => {
+		if (stopped) return
+		if (refreshTimer) clearTimeout(refreshTimer)
+		refreshTimer = setTimeout(
+			() => refresh({ force: false }),
+			nextToolsRefreshMs(domia),
+		)
+		if (typeof refreshTimer.unref === "function") refreshTimer.unref()
+	}
+	const refresh = (opts: SkillsRefreshOptionsType): void => {
 		void connectAll(domia)
-			.then(() => listTools(domia))
+			.then(() => listTools(domia, opts))
 			.then(() => invalidateOwnDomia(domia.domiaKey))
-			.catch((err) =>
+			.catch((err: unknown) =>
 				skillEngineLogger.warn("skill refresh/reconnect failed", { err }),
 			)
+			.finally(scheduleNext)
 	}
-	const interval = setInterval(refresh, DEFAULT_SKILL_REFRESH_MS)
-	if (typeof interval.unref === "function") interval.unref()
+	scheduleNext()
 	setSkillsRefreshHook(domia.id, refresh)
 	setElicitationPresenter(domia.id, (message, requestedSchema) =>
 		presentElicit(domia, message, requestedSchema),
@@ -94,7 +106,8 @@ export const setupSkills = async (
 	const providerIds = servers.map((s) => s.id)
 	const handle: McpSetupHandleType = {
 		stop: async () => {
-			clearInterval(interval)
+			stopped = true
+			if (refreshTimer) clearTimeout(refreshTimer)
 			clearSkillsRefreshHook(domia.id)
 			clearElicitationPresenter(domia.id)
 			await disconnectProviders(providerIds)

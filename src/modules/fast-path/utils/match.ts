@@ -2,16 +2,10 @@ import { fold } from "./normalize"
 import type {
 	FastPathAstNodeType,
 	CompiledSlotType,
-	FastPathSlotValueType,
 	FastPathParseResultType,
+	FastPathMatchStateType,
+	NumberSetsType,
 } from "../types"
-
-type StateType = {
-	pos: number
-	literalChars: number
-	slotChars: number
-	captures: Map<string, FastPathSlotValueType | number>
-}
 
 const skipSpaces = (text: string, pos: number): number => {
 	while (pos < text.length && text[pos] === " ") pos++
@@ -22,9 +16,9 @@ const matchNodes = (
 	text: string,
 	nodes: FastPathAstNodeType[],
 	nodeIdx: number,
-	state: StateType,
+	state: FastPathMatchStateType,
 	slots: Map<string, CompiledSlotType>,
-	results: StateType[],
+	results: FastPathMatchStateType[],
 ): void => {
 	if (results.length > 0) return
 	if (nodeIdx >= nodes.length) {
@@ -133,7 +127,7 @@ const matchNodes = (
 	}
 }
 
-let activeNumbers: { words: Record<string, number>; joiners: string[] } = {
+let activeNumbers: NumberSetsType = {
 	words: {},
 	joiners: [],
 }
@@ -144,23 +138,23 @@ const wordNumberAt = (
 ): { value: number; chars: number } | null => {
 	const tail = text.slice(pos)
 	const tokens = tail.split(" ")
-	const w = activeNumbers.words
+	const lookup = (token: string | undefined): number | undefined =>
+		token ? activeNumbers.words[token] : undefined
 	const t1 = tokens[0]
-	if (!t1 || w[t1] === undefined) return null
-	const tens = w[t1]
+	const tens = lookup(t1)
+	if (!t1 || tens === undefined) return null
 	const joinerIdx =
 		tokens[1] && activeNumbers.joiners.includes(tokens[1]) ? 2 : 1
-	const unitTok = tokens[joinerIdx]
+	const unit = lookup(tokens[joinerIdx])
 	if (
 		tens >= 20 &&
 		tens % 10 === 0 &&
-		unitTok &&
-		w[unitTok] !== undefined &&
-		w[unitTok] >= 1 &&
-		w[unitTok] <= 9
+		unit !== undefined &&
+		unit >= 1 &&
+		unit <= 9
 	) {
 		const chars = tokens.slice(0, joinerIdx + 1).join(" ").length
-		return { value: tens + w[unitTok], chars }
+		return { value: tens + unit, chars }
 	}
 	return { value: tens, chars: t1.length }
 }
@@ -169,11 +163,11 @@ export const matchTemplate = (
 	utterance: string,
 	ast: FastPathAstNodeType[],
 	slots: Map<string, CompiledSlotType>,
-	numbers?: { words: Record<string, number>; joiners: string[] },
+	numbers?: NumberSetsType,
 ): FastPathParseResultType | null => {
 	if (numbers) activeNumbers = numbers
 	const text = fold(utterance)
-	const results: StateType[] = []
+	const results: FastPathMatchStateType[] = []
 	matchNodes(
 		text,
 		ast,
