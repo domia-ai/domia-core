@@ -15,6 +15,17 @@ export type PlaybackControlsType = {
 	positionMs: () => number | null
 }
 
+export type ExternalMediaStateType = {
+	playing: boolean
+	notedAt: number
+}
+
+export type ExternalMediaControlsType = {
+	origin: "transport"
+	setVolume: (level: number) => Promise<boolean>
+	getVolume: () => number | null
+}
+
 export type SoxStreamOptionsType = {
 	sampleRate: number
 	channels: 1 | 2

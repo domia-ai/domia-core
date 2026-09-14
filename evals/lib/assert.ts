@@ -1,3 +1,5 @@
+import { toolBaseName } from "@/modules/skill-engine"
+
 import { stringOrEmpty } from "./coerce"
 import type {
 	EvalTurnRecordType,
@@ -5,6 +7,10 @@ import type {
 	EvalAssertionType,
 	CheckerType,
 } from "../types"
+
+export const READ_TOOL_RE =
+	/GetLiveContext|GetDateTime|get_items|GetState|List|music_now_playing|get_active_queue|list_players|library_search/i
+export const CONFIRM_RE = /do you want me|want me to|go ahead/i
 
 export const makeChecker = (): CheckerType => {
 	let pass = 0
@@ -44,6 +50,9 @@ const resultEntries = (
 		(e) => e.kind === "result" || e.kind === "async_outcome",
 	)
 
+export const executedTools = (rec: EvalTurnRecordType): string[] =>
+	resultEntries(rec).map((e) => toolBaseName(e.tool ?? ""))
+
 const summaryEntry = (
 	rec: EvalTurnRecordType,
 ): { finalizeMode?: string; stopReason?: string } | undefined =>
@@ -53,11 +62,6 @@ const summaryEntry = (
 			typeof e === "object" &&
 			(e as { kind?: string }).kind === "summary",
 	)
-
-const rawName = (t: string): string => {
-	const i = t.indexOf("__")
-	return i >= 0 ? t.slice(i + 2) : t
-}
 
 const deepSubset = (
 	subset: Record<string, unknown>,
@@ -132,17 +136,59 @@ export const assertTurn = (
 	if (wantedTools)
 		add(
 			`tool=${wantedTools.join("|")}`,
-			toolNames.some((t) => wantedTools.includes(rawName(t))),
+			toolNames.some((t) => wantedTools.includes(toolBaseName(t))),
 			`got=${toolNames.join(",")}`,
 		)
 	if (expect.notTools) {
 		const banned = expect.notTools
 		add(
 			`notTools`,
-			!toolNames.some((t) => banned.includes(rawName(t))),
+			!toolNames.some((t) => banned.includes(toolBaseName(t))),
 			`got=${toolNames.join(",")}`,
 		)
 	}
+
+	const executed = executedTools(rec)
+	if (expect.tools) {
+		const wanted = expect.tools
+		add(
+			`tools=${wanted.join(",")}`,
+			executed.join(",") === wanted.join(","),
+			`got=${executed.join(",") || "none"}`,
+		)
+	}
+	if (expect.noTools)
+		add("noTools", executed.length === 0, `got=${executed.join(",")}`)
+	if (expect.noWrites)
+		add(
+			"noWrites",
+			executed.every((t) => READ_TOOL_RE.test(t)),
+			`got=${executed.join(",")}`,
+		)
+	if (expect.compound != null)
+		add(
+			`compound=${expect.compound}`,
+			(rec.intentDecision ?? "").startsWith(
+				`fast-path:compound(${expect.compound})`,
+			),
+			`intent=${rec.intentDecision}`,
+		)
+	if (expect.replyNotQuestion)
+		add("replyNotQuestion", !CONFIRM_RE.test(reply), reply)
+	const replyMatches = expect.replyMatches
+	if (replyMatches)
+		add(
+			`replyMatches~/${replyMatches}/`,
+			new RegExp(replyMatches, "i").test(reply),
+			reply,
+		)
+	const replyNotMatches = expect.replyNotMatches
+	if (replyNotMatches)
+		add(
+			`replyNotMatches~/${replyNotMatches}/`,
+			!new RegExp(replyNotMatches, "i").test(reply),
+			reply,
+		)
 
 	const anyArgMatches = expect.anyArgMatches
 	if (anyArgMatches) {
@@ -158,7 +204,7 @@ export const assertTurn = (
 
 	if (expect.argsSubset || expect.argMatchers) {
 		const target = tools.find(
-			(t) => !wantedTools || wantedTools.includes(rawName(t.tool ?? "")),
+			(t) => !wantedTools || wantedTools.includes(toolBaseName(t.tool ?? "")),
 		)
 		const resolved = target?.resolvedArgs ?? target?.args ?? {}
 		if (expect.argsSubset)
@@ -250,7 +296,7 @@ export const assertTurn = (
 	if (expect.traceToolStatus)
 		for (const [tool, status] of Object.entries(expect.traceToolStatus)) {
 			const entries = resultEntries(rec).filter(
-				(e) => rawName(e.tool ?? "") === tool,
+				(e) => toolBaseName(e.tool ?? "") === tool,
 			)
 			add(
 				`traceStatus[${tool}]=${status}`,
@@ -261,7 +307,7 @@ export const assertTurn = (
 
 	if (expect.exactlyOnce) {
 		const hits = resultEntries(rec).filter(
-			(t) => rawName(t.tool ?? "") === expect.exactlyOnce,
+			(t) => toolBaseName(t.tool ?? "") === expect.exactlyOnce,
 		)
 		add(
 			`exactlyOnce:${expect.exactlyOnce}`,
@@ -367,7 +413,8 @@ export const assertTurn = (
 				add(
 					`toolResultStatus[${tool}]=${status}`,
 					results.some(
-						(r) => rawName(r.toolName ?? "") === tool && r.status === status,
+						(r) =>
+							toolBaseName(r.toolName ?? "") === tool && r.status === status,
 					),
 					`results=${results.map((r) => `${r.toolName}:${r.status}`).join(",")}`,
 				)

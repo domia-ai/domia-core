@@ -47,11 +47,16 @@ import {
 	handlePostConfig,
 	handleGetConfigHealth,
 	handleGetConfigSchema,
+	handleGetNodeConfig,
+	handlePostNodeConfig,
 	handlePostBenchRun,
 	handleGetProactivitySchedule,
 	handlePostProactivitySchedule,
 	handleDeleteProactivitySchedule,
 	handleGetProactivityStatus,
+	handleGetVoiceFeel,
+	handlePostVoiceFeelApply,
+	handlePostVoiceFeelRevert,
 	handleGetLatencyStats,
 	handleGetInteraction,
 	handleRestart,
@@ -76,6 +81,7 @@ import {
 	handleResetConversation,
 	handleSetSatelliteNumber,
 	handleSetSatelliteFollowUp,
+	handleSetSatelliteSettings,
 	handleSetSatelliteVolume,
 	handleStartSatelliteTimer,
 	handleCancelSatelliteTimer,
@@ -92,6 +98,7 @@ import {
 	type PostSpeakRouteType,
 	type PostImportMindRouteType,
 	type TemplateIdRouteType,
+	type VoiceFeelIdRouteType,
 } from "@/modules/http-api"
 
 const HTTP_SERVER_HOST = env.HTTP_SERVER_HOST
@@ -252,6 +259,12 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.get("/config/schema", () => handleGetConfigSchema())
 
+	fastify.get("/node/config", async () => handleGetNodeConfig())
+
+	fastify.post("/node/config", async (request, reply) =>
+		handlePostNodeConfig(request.body, reply),
+	)
+
 	fastify.get("/config/health", async (request) =>
 		handleGetConfigHealth(await liveDomia(domia, queryDomiaKey(request.query))),
 	)
@@ -360,12 +373,6 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 			handleDeleteIdentity(request.params.domiaKey, reply),
 	)
 
-	fastify.get("/satellites/discover", async () => handleDiscoverSatellites())
-
-	fastify.get("/satellites", async (request, reply) =>
-		handleGetSatellites(queryDomiaKey(request.query), reply),
-	)
-
 	fastify.post("/bench/run", async (request, reply) =>
 		handlePostBenchRun(queryDomiaKey(request.query), request.body, reply),
 	)
@@ -374,6 +381,20 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.get("/skills", async (request, reply) =>
 		handleGetSkills(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.delete("/identity-data", async (request, reply) =>
+		handleDeleteIdentityData(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.post("/admin/reset-conversation", async (request, reply) =>
+		handleResetConversation(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.get("/satellites/discover", async () => handleDiscoverSatellites())
+
+	fastify.get("/satellites", async (request, reply) =>
+		handleGetSatellites(queryDomiaKey(request.query), reply),
 	)
 
 	fastify.post("/satellites", async (request, reply) =>
@@ -398,14 +419,6 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 				request.params.satelliteId,
 				reply,
 			),
-	)
-
-	fastify.delete("/identity-data", async (request, reply) =>
-		handleDeleteIdentityData(queryDomiaKey(request.query), reply),
-	)
-
-	fastify.post("/admin/reset-conversation", async (request, reply) =>
-		handleResetConversation(queryDomiaKey(request.query), reply),
 	)
 
 	fastify.patch<{ Params: { satelliteId: string } }>(
@@ -434,6 +447,17 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		"/satellites/:satelliteId/follow-up",
 		async (request, reply) =>
 			handleSetSatelliteFollowUp(
+				queryDomiaKey(request.query),
+				request.params.satelliteId,
+				request.body,
+				reply,
+			),
+	)
+
+	fastify.patch<{ Params: { satelliteId: string } }>(
+		"/satellites/:satelliteId/settings",
+		async (request, reply) =>
+			handleSetSatelliteSettings(
 				queryDomiaKey(request.query),
 				request.params.satelliteId,
 				request.body,
@@ -520,6 +544,33 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 			handleDeleteProactivitySchedule(
 				queryDomiaKey(request.query),
 				request.params.id,
+				reply,
+			),
+	)
+
+	fastify.get("/voice-feel", async (request, reply) =>
+		handleGetVoiceFeel(
+			await liveDomia(domia, queryDomiaKey(request.query)),
+			reply,
+		),
+	)
+
+	fastify.post<VoiceFeelIdRouteType>(
+		"/voice-feel/apply/:id",
+		async (request, reply) =>
+			handlePostVoiceFeelApply(
+				await liveDomia(domia, queryDomiaKey(request.query)),
+				request.params,
+				reply,
+			),
+	)
+
+	fastify.post<VoiceFeelIdRouteType>(
+		"/voice-feel/revert/:id",
+		async (request, reply) =>
+			handlePostVoiceFeelRevert(
+				await liveDomia(domia, queryDomiaKey(request.query)),
+				request.params,
 				reply,
 			),
 	)

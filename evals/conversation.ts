@@ -11,11 +11,11 @@ import {
 	judgeReply,
 	evalCaseFileSchema,
 	configSnapshot,
-	execWrite,
-	postConfigRefresh,
+	factMatches,
+	factRows,
+	isolateConversation,
 	resetConversation,
-	queryAll,
-	queryOne,
+	seedCaseFacts,
 	sleep,
 } from "./lib"
 import {
@@ -35,55 +35,6 @@ const RESULTS_DIR = join(process.cwd(), "evals", "results")
 const LABEL =
 	env.LABEL ??
 	`conv-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}`
-
-const CONVERSATION_TABLES = [
-	"turn_event",
-	"interaction_trace",
-	"interaction_session_trace",
-	"memory_fact",
-	"memory_episode",
-	"user_model",
-	"announcement",
-]
-
-const isolateConversation = async (): Promise<void> => {
-	const domiaId = queryOne<{ id: string }>(
-		"SELECT id FROM domia WHERE domia_key = ?",
-		[env.EVAL_DOMIA_KEY],
-	)?.id
-	if (!domiaId) return
-	const clear = (): void => {
-		for (const table of CONVERSATION_TABLES)
-			execWrite(`DELETE FROM ${table} WHERE domia_id = ?`, [domiaId])
-	}
-	clear()
-	await resetConversation()
-	for (let i = 0; i < 6; i++) {
-		await sleep(1000)
-		clear()
-		if (factRows().length === 0) break
-	}
-	await postConfigRefresh()
-}
-
-const factRows = (): { subject: string; relation: string; value: string }[] =>
-	queryAll<{ subject: string; relation: string; value: string }>(
-		`SELECT subject, relation, value FROM memory_fact
-		 WHERE domia_id = (SELECT id FROM domia WHERE domia_key = ?)
-		   AND superseded_at IS NULL AND confidence >= 0.35`,
-		[env.EVAL_DOMIA_KEY],
-	)
-
-const factMatches = (
-	rows: { subject: string; value: string }[],
-	ref: { subject?: string; value: string },
-): boolean =>
-	rows.some(
-		(r) =>
-			r.value.toLowerCase().includes(ref.value.toLowerCase()) &&
-			(!ref.subject ||
-				r.subject.toLowerCase().includes(ref.subject.toLowerCase())),
-	)
 
 // reflection is idle-only with an idle grace — facts land well after the turn on a busy hub
 const FACT_CAPTURE_TIMEOUT_MS = 120000
@@ -181,33 +132,6 @@ type ConversationTranscriptType = {
 	}[]
 }
 
-const seedCaseFacts = async (c: EvalCaseType): Promise<void> => {
-	if (!c.seedFacts?.length) return
-	const domiaId = queryOne<{ id: string }>(
-		"SELECT id FROM domia WHERE domia_key = ?",
-		[env.EVAL_DOMIA_KEY],
-	)?.id
-	if (!domiaId) return
-	const now = new Date().toISOString()
-	for (const [i, fact] of c.seedFacts.entries()) {
-		execWrite(
-			`INSERT INTO memory_fact (id, domia_id, subject, relation, value, value_key, confidence, kind, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, 0.9, 'user_fact', ?, ?)`,
-			[
-				`seed-${c.name.replace(/\W+/g, "-").slice(0, 40)}-${i}`,
-				domiaId,
-				fact.subject,
-				fact.relation,
-				fact.value,
-				fact.value.toLowerCase(),
-				now,
-				now,
-			],
-		)
-	}
-	await postConfigRefresh()
-}
-
 const runConversation = async (
 	c: EvalCaseType,
 ): Promise<{ passed: boolean; transcript: ConversationTranscriptType }> => {
@@ -293,9 +217,7 @@ const renderTranscript = (
 }
 
 const loadConversationCases = (): EvalCaseType[] => {
-	const files = readdirSync(CASES_DIR).filter(
-		(f) => f.startsWith("conversation") && f.endsWith(".json"),
-	)
+	const files = readdirSync(CASES_DIR).filter((f) => f.endsWith(".json"))
 	const cases: EvalCaseType[] = []
 	for (const f of files) {
 		const raw: unknown = JSON.parse(readFileSync(join(CASES_DIR, f), "utf8"))
@@ -310,7 +232,7 @@ const loadConversationCases = (): EvalCaseType[] => {
 		}
 		cases.push(...parsed.data)
 	}
-	return cases
+	return cases.filter((c) => c.suite === "conversation")
 }
 
 const main = async (): Promise<void> => {
@@ -323,7 +245,7 @@ const main = async (): Promise<void> => {
 	const caseFilter = env.EVAL_CASE_FILTER
 	if (caseFilter) cases = cases.filter((c) => c.name.includes(caseFilter))
 	if (cases.length === 0) {
-		console.error("no conversation-*.json cases found")
+		console.error('no cases with suite "conversation" found')
 		process.exit(1)
 	}
 

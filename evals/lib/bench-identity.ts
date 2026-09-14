@@ -13,7 +13,10 @@ const post = async (
 ): Promise<{ status: number; json: Record<string, unknown> }> => {
 	const res = await fetch(`${env.EVAL_URL}${pathname}`, {
 		method,
-		headers: { "content-type": "application/json", ...meshHeaders() },
+		headers: {
+			...(body === undefined ? {} : { "content-type": "application/json" }),
+			...meshHeaders(),
+		},
 		body: body === undefined ? undefined : JSON.stringify(body),
 	})
 	const json = (await res.json().catch(() => ({}))) as Record<string, unknown>

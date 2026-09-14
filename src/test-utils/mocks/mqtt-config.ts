@@ -1,7 +1,11 @@
 import { faker } from "@faker-js/faker"
 
 import { generateUuid, now } from "@/utils"
-import { type SelectMqttConfigType } from "@/db"
+import {
+	type SelectMqttConfigType,
+	DEFAULT_MQTT_PORT,
+	DEFAULT_MQTT_QOS,
+} from "@/db"
 
 export const baseMqttConfig = (domiaId?: string): SelectMqttConfigType => ({
 	id: generateUuid(),
@@ -13,8 +17,8 @@ export const baseMqttConfig = (domiaId?: string): SelectMqttConfigType => ({
 	username: "domia",
 	password: "domia",
 	protocol: "mqtt",
-	port: 1883,
-	qos: 1,
+	port: DEFAULT_MQTT_PORT,
+	qos: DEFAULT_MQTT_QOS,
 	topicRoot: "domia",
 	createdAt: now(),
 	updatedAt: now(),

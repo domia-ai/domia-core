@@ -82,5 +82,161 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "what is my favorite color (personal memory)",
+		"suite": "chat",
+		"language": "en",
+		"isolate": "facts",
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "has favorite color",
+				"value": "blue"
+			}
+		],
+		"turns": [
+			{
+				"text": "what is my favorite color?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"promptSection": {
+						"section": "WHAT YOU KNOW",
+						"includes": ["blue"]
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "what is my name (personal memory)",
+		"suite": "chat",
+		"language": "en",
+		"isolate": "facts",
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "is named",
+				"value": "Kevin"
+			}
+		],
+		"turns": [
+			{
+				"text": "what is my name?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"promptSection": {
+						"section": "WHAT YOU KNOW",
+						"includes": ["Kevin"]
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "do you remember about me (personal memory)",
+		"suite": "chat",
+		"language": "en",
+		"isolate": "facts",
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "likes",
+				"value": "hiking"
+			}
+		],
+		"turns": [
+			{
+				"text": "do you remember what I told you about me?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"promptSection": {
+						"section": "WHAT YOU KNOW",
+						"includes": ["hiking"]
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "cual es mi color favorito (memoria personal es)",
+		"suite": "chat",
+		"language": "es",
+		"isolate": "facts",
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "has favorite color",
+				"value": "azul"
+			}
+		],
+		"turns": [
+			{
+				"text": "¿cuál es mi color favorito?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"promptSection": {
+						"section": "WHAT YOU KNOW",
+						"includes": ["azul"]
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "cual es mi nombre (memoria personal es)",
+		"suite": "chat",
+		"language": "es",
+		"isolate": "facts",
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "is named",
+				"value": "Elena"
+			}
+		],
+		"turns": [
+			{
+				"text": "¿cuál es mi nombre?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"promptSection": {
+						"section": "WHAT YOU KNOW",
+						"includes": ["Elena"]
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "que sabes de mi (memoria personal es)",
+		"suite": "chat",
+		"language": "es",
+		"isolate": "facts",
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "likes",
+				"value": "el senderismo"
+			}
+		],
+		"turns": [
+			{
+				"text": "¿qué sabes de mí?",
+				"expect": {
+					"routed": "chat",
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"promptSection": {
+						"section": "WHAT YOU KNOW",
+						"includes": ["senderismo"]
+					}
+				}
+			}
+		]
 	}
 ]

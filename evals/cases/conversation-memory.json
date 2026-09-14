@@ -108,5 +108,36 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "a past-tense preference is not claimed as current",
+		"suite": "conversation",
+		"language": "en",
+		"isolate": "conversation",
+		"runs": 2,
+		"passRatio": 0.5,
+		"turns": [
+			{
+				"text": "I used to like coffee, now I only drink tea.",
+				"expect": { "routed": "chat", "factInDb": { "value": "tea" } }
+			},
+			{
+				"text": "Tell me something interesting.",
+				"expect": { "routed": "chat" }
+			},
+			{
+				"text": "What do I drink?",
+				"expect": {
+					"routed": "chat",
+					"replyIncludes": ["tea"],
+					"replyExcludes": [
+						"you like coffee",
+						"you love coffee",
+						"your favorite"
+					],
+					"recallsFact": { "value": "tea" }
+				}
+			}
+		]
 	}
 ]

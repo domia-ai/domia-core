@@ -7,6 +7,11 @@ export const toolBaseName = (rawName: string): string => {
 		: rawName
 }
 
+export const toolProviderSlug = (namespacedName: string): string | null => {
+	const idx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+	return idx > 0 ? namespacedName.slice(0, idx) : null
+}
+
 export const findToolByBaseName = <T extends { rawName: string }>(
 	tools: readonly T[],
 	baseName: string,

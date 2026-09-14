@@ -15,12 +15,16 @@ const EV = {
 	sttEnd: 10,
 }
 
-const harness = (hooks: { onCancelled?: () => void } = {}) => {
+const harness = (
+	hooks: { onCancelled?: () => void; externalMedia?: boolean } = {},
+) => {
 	const sent: EsphomeSentEventType[] = []
 	const announces: string[] = []
 	let stops = 0
 	let closed = 0
 	let cancelled = 0
+	let ended = 0
+	let externalMedia = hooks.externalMedia ?? false
 	const rc = createEsphomeRunController({
 		satelliteId: "test-sat",
 		sendEvent: (type, data) => sent.push({ type, data }),
@@ -30,6 +34,7 @@ const harness = (hooks: { onCancelled?: () => void } = {}) => {
 			stops++
 			return true
 		},
+		externalMediaPlaying: () => externalMedia,
 		events: EV,
 		budgets: {
 			listeningMaxMs: 80,
@@ -47,7 +52,9 @@ const harness = (hooks: { onCancelled?: () => void } = {}) => {
 			closed++
 		},
 		onPlaybackStart: () => undefined,
-		onPlaybackEnd: () => undefined,
+		onPlaybackEnd: () => {
+			ended++
+		},
 	})
 	return {
 		rc,
@@ -56,6 +63,10 @@ const harness = (hooks: { onCancelled?: () => void } = {}) => {
 		stops: () => stops,
 		closed: () => closed,
 		cancelled: () => cancelled,
+		ended: () => ended,
+		setExternalMedia: (playing: boolean) => {
+			externalMedia = playing
+		},
 	}
 }
 
@@ -352,6 +363,100 @@ const main = async () => {
 			40,
 		)
 		expect("announcement without token still allowed", announce !== null)
+		h.rc.dispose()
+	}
+	{
+		const h = harness()
+		const playing = h.rc.onMediaState(2)
+		expect(
+			"state 2 before dispatch marks external playing, not ours",
+			playing.external === "playing" && playing.ours === null,
+		)
+		const idle = h.rc.onMediaState(1)
+		expect(
+			"idle state with nothing in flight marks external idle",
+			idle.external === "idle" && idle.ours === null,
+		)
+		const announcing = h.rc.onMediaState(4)
+		expect(
+			"announcing with nothing in flight is ignored",
+			announcing.external === null && announcing.ours === null,
+		)
+		h.rc.dispose()
+	}
+	{
+		const h = harness({ externalMedia: true })
+		h.rc.onRequest(true)
+		h.rc.onTranscript("what is playing")
+		h.rc.enqueuePlayback(
+			"http://x/over.wav",
+			"reply",
+			false,
+			null,
+			h.rc.currentGeneration(),
+		)
+		const started = h.rc.onMediaState(4)
+		expect(
+			"announce over external media reads as ours",
+			started.ours === "started" && started.external === null,
+		)
+		const back = h.rc.onMediaState(2)
+		expect(
+			"2 → 4 → 2 over media retires the item on media-state, not the fallback",
+			back.ours === "ended" && back.external === "playing",
+		)
+		await sleep(80)
+		expect("item over media retired on media-state", h.ended() === 1)
+		h.rc.dispose()
+	}
+	{
+		const h = harness()
+		h.rc.enqueuePlayback("http://x/lone.wav", "announce", false, null)
+		const started = h.rc.onMediaState(2)
+		expect(
+			"lone announce still accepts 2 as ours",
+			started.ours === "started" && started.external === null,
+		)
+		const done = h.rc.onMediaState(1)
+		expect("lone announce retires when media goes idle", done.ours === "ended")
+		await sleep(80)
+		expect("lone announce playback ended", h.ended() === 1)
+		h.rc.dispose()
+	}
+	{
+		const overMedia = harness({ externalMedia: true })
+		overMedia.rc.enqueuePlayback("http://x/dur.wav", "announce", false, 40)
+		const lone = harness()
+		lone.rc.enqueuePlayback("http://x/dur.wav", "announce", false, 40)
+		await sleep(140)
+		expect(
+			"item over media without ANNOUNCING finishes on duration+drainMargin",
+			overMedia.ended() === 1,
+		)
+		expect(
+			"item without external media keeps the +5s anomaly bound",
+			lone.ended() === 0,
+		)
+		overMedia.rc.dispose()
+		lone.rc.dispose()
+	}
+	{
+		const h = harness({ externalMedia: true })
+		h.rc.onRequest(true)
+		h.rc.onTranscript("hey")
+		h.rc.enqueuePlayback(
+			"http://x/r.wav",
+			"reply",
+			false,
+			400,
+			h.rc.currentGeneration(),
+		)
+		h.rc.onMediaState(4)
+		h.rc.onRequest(true)
+		expect(
+			"wake during a reply stops playback via stopMedia (announcement flag asserted in esphome-adapter)",
+			h.stops() === 1,
+		)
 		h.rc.dispose()
 	}
 	let failed = 0

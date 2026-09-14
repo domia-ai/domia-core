@@ -14,13 +14,15 @@ import {
 import type { DomiaType } from "@/modules/core"
 import { getConnectionsFor } from "@/modules/skill-engine"
 
-import { fold, tokensOf } from "../utils/normalize"
+import { fold, tokensOf, stripAdditiveCues } from "../utils/normalize"
 import { compileIndex, dynamicHashOf } from "../utils/compile"
 import { matchTemplate } from "../utils/match"
 import type {
+	BareEntityMatchType,
 	CompiledFastPathIndexType,
 	FastPathMatchType,
 	FastPathVerdictType,
+	FastPathUntimedVerdictType,
 	FastPathCandidateVerdictType,
 	FastPathSlotValueType,
 	NumberSetsType,
@@ -224,7 +226,6 @@ const ensureIndex = (domia: DomiaType): CompiledFastPathIndexType | null => {
 				rebuilding.delete(key)
 			}
 		})
-		return null
 	}
 	return cached
 }
@@ -267,7 +268,7 @@ const argsOfCapture = (
 export const matchBareEntity = (
 	domia: DomiaType,
 	transcript: string,
-): { name: string; phrase: string } | null => {
+): BareEntityMatchType | null => {
 	const enabled =
 		domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED
 	if (!enabled) return null
@@ -284,7 +285,12 @@ export const matchBareEntity = (
 			if (slot.kind !== "values") continue
 			for (const value of slot.values) {
 				if (fold(value.phrase) !== folded) continue
-				if (value.target) return { name: value.target, phrase: value.phrase }
+				if (value.target)
+					return {
+						name: value.target,
+						phrase: value.phrase,
+						providerSlug: intent.providerSlug,
+					}
 			}
 		}
 	return null
@@ -295,15 +301,10 @@ export const matchFastPath = (
 	transcript: string,
 ): FastPathVerdictType => {
 	const started = Date.now()
-	const done = (
-		v:
-			| { kind: "match"; match: FastPathMatchType }
-			| { kind: "compound"; matches: FastPathMatchType[] }
-			| {
-					kind: "miss"
-					reason: Extract<FastPathVerdictType, { kind: "miss" }>["reason"]
-			  },
-	): FastPathVerdictType => ({ ...v, fastPathMs: Date.now() - started })
+	const done = (v: FastPathUntimedVerdictType): FastPathVerdictType => ({
+		...v,
+		fastPathMs: Date.now() - started,
+	})
 	if (!(domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED))
 		return done({ kind: "miss", reason: "disabled" })
 	const maxChars =
@@ -316,36 +317,39 @@ export const matchFastPath = (
 	if (hasBlockedToken(domia, folded))
 		return done({ kind: "miss", reason: "blocked_token" })
 	const index = ensureIndex(domia)
-	if (!index)
-		return done({
-			kind: "miss",
-			reason: rebuilding.size > 0 ? "rebuilding" : "no_index",
-		})
+	if (!index) return done({ kind: "miss", reason: "no_index" })
 	const sets = languageSetsFor(domia.characterProfile?.language)
 	const numbers = { words: sets.numberWords, joiners: sets.numberJoiners }
 	const minCoverage =
 		domia.llmModelConfig?.fastPathMinCoverage ?? DEFAULT_FAST_PATH_MIN_COVERAGE
-	const single = bestMatchFor(index, transcript, numbers, minCoverage)
-	if (single.kind === "match")
-		return done({ kind: "match", match: single.match })
-	if (single.kind === "ambiguous")
-		return done({ kind: "miss", reason: "ambiguous" })
 	const compoundEnabled =
 		domia.llmModelConfig?.fastPathCompoundEnabled ??
 		DEFAULT_FAST_PATH_COMPOUND_ENABLED
-	if (compoundEnabled) {
-		const maxTargets =
-			domia.llmModelConfig?.fastPathCompoundMaxTargets ??
-			DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS
+	const maxTargets =
+		domia.llmModelConfig?.fastPathCompoundMaxTargets ??
+		DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS
+	const attempt = (text: string): FastPathUntimedVerdictType | null => {
+		const single = bestMatchFor(index, text, numbers, minCoverage)
+		if (single.kind === "match") return { kind: "match", match: single.match }
+		if (single.kind === "ambiguous")
+			return { kind: "miss", reason: "ambiguous" }
+		if (!compoundEnabled) return null
 		const matches = matchCompound(
 			index,
-			transcript,
+			text,
 			sets,
 			numbers,
 			minCoverage,
 			maxTargets,
 		)
-		if (matches) return done({ kind: "compound", matches })
+		return matches ? { kind: "compound", matches } : null
+	}
+	const asSpoken = attempt(transcript)
+	if (asSpoken) return done(asSpoken)
+	const withoutCues = stripAdditiveCues(folded, sets.additiveCues)
+	if (withoutCues !== folded) {
+		const additive = attempt(withoutCues)
+		if (additive) return done(additive)
 	}
 	return done({ kind: "miss", reason: "no_match" })
 }

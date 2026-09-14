@@ -364,5 +364,93 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "route: state question, no device named → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "So is anything still on?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
+	},
+	{
+		"name": "route: state question, lights off → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Are the lights off?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
+	},
+	{
+		"name": "route: state question, what's on → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "What's on right now?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
+	},
+	{
+		"name": "route: retry request → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "That didn't work — try it again please.",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
+	},
+	{
+		"name": "route: state question, multi-word device → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Are the kitchen light and the bedroom light on?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
+	},
+	{
+		"name": "route: state question, still off → skill",
+		"suite": "routing",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Is the bedroom light still off?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
 	}
 ]

@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 
-import { dbClient, domia as domiaTable, memoryFact } from "@/db"
+import { dbClient, domia as domiaTable, memoryFact, factEvidence } from "@/db"
 import { embed } from "@/modules/embeddings"
 import {
 	FACT_DEDUP_DEFAULT_THRESHOLD,
@@ -77,6 +77,15 @@ const main = async (): Promise<void> => {
 }
 
 const TEST_DOMIA_ID = "fact-dedup-cardinality-tmp"
+const EVIDENCE_INTERACTION_ID = "fact-dedup-evidence-tmp"
+
+const evidenceCountFor = async (factIds: string[]): Promise<number> => {
+	if (factIds.length === 0) return 0
+	const rows = await dbClient.query.factEvidence.findMany({
+		where: inArray(factEvidence.factId, factIds),
+	})
+	return rows.length
+}
 
 const activeValuesFor = async (relation: string): Promise<string[]> => {
 	const rows = await dbClient.query.memoryFact.findMany({
@@ -147,6 +156,38 @@ const runCardinalitySuite = async (): Promise<void> => {
 		checker.check(
 			`superseded value reactivates on re-assertion (active=[${active.map((r) => r.value).join(", ")}], rows=${rows.length})`,
 			active.length === 1 && active[0].value === "Kevin" && rows.length === 2,
+		)
+		const closed = rows.filter((r) => r.supersededAt !== null)
+		checker.check(
+			`a superseded single-valued fact carries validUntil (closed=${closed.length})`,
+			closed.length === 1 && closed[0].validUntil !== null,
+		)
+		checker.check(
+			"the reactivated fact is valid again with validUntil cleared",
+			active[0].validUntil === null,
+		)
+		checker.check(
+			"a stored fact is stated and unattributed until HH1 fills personId",
+			rows.every((r) => r.sourceKind === "stated" && r.personId === null),
+		)
+		await dbClient
+			.delete(memoryFact)
+			.where(eq(memoryFact.domiaId, TEST_DOMIA_ID))
+		await upsertFacts(testDomia, [fact("Kevin")], EVIDENCE_INTERACTION_ID)
+		const stored = await dbClient.query.memoryFact.findMany({
+			where: eq(memoryFact.domiaId, TEST_DOMIA_ID),
+		})
+		const evidenceBefore = await evidenceCountFor(stored.map((r) => r.id))
+		checker.check(
+			`a stored fact carries its evidence row (got ${evidenceBefore})`,
+			evidenceBefore > 0,
+		)
+		await dbClient
+			.delete(memoryFact)
+			.where(eq(memoryFact.domiaId, TEST_DOMIA_ID))
+		checker.check(
+			"deleting a fact cascades its evidence rows away",
+			(await evidenceCountFor(stored.map((r) => r.id))) === 0,
 		)
 	} finally {
 		await dbClient

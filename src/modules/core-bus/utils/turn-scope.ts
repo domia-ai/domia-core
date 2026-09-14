@@ -56,6 +56,11 @@ const openTurn = (domiaId: string, interactionId: string): TurnScopeType => {
 		abort: (reason) => {
 			if (controller.signal.aborted) return
 			abortReason = reason
+			recordImplicitFeedback(
+				interactionId,
+				reason.includes("bargein") ? IMPLICIT_FEEDBACK_ENUM.BARGE_IN : null,
+				reason,
+			)
 			rememberAbort(interactionId)
 			controller.abort()
 			pausedTurns.delete(domiaId)
@@ -113,9 +118,6 @@ export const getActiveTurn = (domiaId: string): TurnScopeType | null =>
 export const abortActiveTurn = (domiaId: string, reason: string): boolean => {
 	const scope = turns.get(domiaId)
 	if (!scope) return false
-	if (reason.includes("bargein")) {
-		recordImplicitFeedback(scope.interactionId, IMPLICIT_FEEDBACK_ENUM.BARGE_IN)
-	}
 	scope.abort(reason)
 	return true
 }

@@ -4,7 +4,10 @@ import {
 	notePlaybackStarted,
 	notePlaybackReference,
 } from "@/modules/audio-capture"
-import { DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED } from "@/db"
+import {
+	DEFAULT_PLAYBACK_TRUNCATION_REPLAY_ENABLED,
+	DEFAULT_ECHO_REFERENCE_SECONDS,
+} from "@/db"
 import {
 	createWavStreamWriter,
 	domiaBusLogger,
@@ -164,6 +167,8 @@ export const playStreamedAudio = async (
 					chunk,
 					format.sampleRate,
 					format.channels,
+					ctx.domia.wakeWordConfig?.echoReferenceSeconds ??
+						DEFAULT_ECHO_REFERENCE_SECONDS,
 				)
 				yield chunk
 			}

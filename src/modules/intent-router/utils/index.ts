@@ -1,9 +1,21 @@
 import { type DomiaType } from "@/modules/core"
 import { embed, embedSpaceKey } from "@/modules/embeddings"
+import { getConnectionsFor } from "@/modules/skill-engine"
 import { getMatcherEngine } from "@/modules/matcher"
 import { intentRouterLogger, languageSetsFor } from "@/utils"
-import type { SkillToolType } from "@/db"
-import type { IntentToolHintType } from "../types"
+import {
+	type SkillToolType,
+	DEFAULT_INTENT_CACHE_ENABLED,
+	DEFAULT_INTENT_CACHE_SIZE,
+	DEFAULT_INTENT_CACHE_MIN_SIMILARITY,
+} from "@/db"
+import type {
+	IntentToolHintType,
+	IntentDecisionType,
+	IntentCacheEntryType,
+	IntentCacheStatsType,
+	IntentRoutingHintsType,
+} from "../types"
 
 const embedCache = new Map<string, number[][]>()
 
@@ -74,6 +86,18 @@ export const keywordHit = (
 	return null
 }
 
+export const hasReadTool = (
+	domiaId: string,
+	tools: IntentToolHintType[],
+): boolean => {
+	const offered = new Set(tools.map((t) => t.name))
+	return getConnectionsFor(domiaId).some((conn) =>
+		[...conn.toolMeta.values()].some(
+			(meta) => meta.riskClass === "read" && offered.has(meta.rawName),
+		),
+	)
+}
+
 export const lexicalToolScore = async (
 	domia: DomiaType,
 	transcript: string,
@@ -99,6 +123,21 @@ const KEYPHRASE_MIN_LEN = 4
 const escapeRegExp = (s: string): string =>
 	s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
+export const splitClauses = (
+	transcript: string,
+	language: string | null | undefined,
+): string[] => {
+	const { conjunctions } = languageSetsFor(language)
+	const re = new RegExp(
+		`[,;]|\\b(?:${conjunctions.map(escapeRegExp).join("|")})\\b`,
+		"i",
+	)
+	return transcript
+		.split(re)
+		.map((c) => c.trim())
+		.filter((c) => c.length > 0)
+}
+
 export const keyphraseHit = (
 	transcript: string,
 	tools: IntentToolHintType[],
@@ -116,4 +155,171 @@ export const keyphraseHit = (
 			return tool.name
 	}
 	return null
+}
+
+const intentCache = new Map<string, IntentCacheEntryType>()
+let intentCacheExactHits = 0
+let intentCacheSemanticHits = 0
+let intentCacheMisses = 0
+
+const UNCACHEABLE_REASONS = new Set<string>(["classify-failed", "no-local-llm"])
+
+const fnv1a = (value: string): string => {
+	let hash = 0x811c9dc5
+	for (let i = 0; i < value.length; i++) {
+		hash ^= value.charCodeAt(i)
+		hash = Math.imul(hash, 0x01000193) >>> 0
+	}
+	return hash.toString(16)
+}
+
+export const intentToolSetHash = (tools: IntentToolHintType[]): string =>
+	fnv1a(
+		tools
+			.map((t) => `${t.name}\u0000${t.description ?? ""}`)
+			.sort()
+			.join("\u0001"),
+	)
+
+const routingConfigHash = (
+	domia: DomiaType,
+	hints: IntentRoutingHintsType | undefined,
+): string => {
+	const llm = domia.llmModelConfig
+	return fnv1a(
+		[
+			domia.characterProfile?.language ?? "",
+			llm?.intentLexicalMinScore ?? "",
+			(hints?.keywords ?? []).join("\u0001"),
+			(hints?.exampleUtterances ?? []).join("\u0001"),
+			llm?.skillsRouting ?? "",
+			llm?.intentEmbedThreshold ?? "",
+			llm?.descriptorRoutingEnabled ?? "",
+			llm?.intentModelName ?? "",
+			llm?.intentLlmOnSingleSlot ?? "",
+			llm?.intentCacheMinSimilarity ?? "",
+		].join("|"),
+	)
+}
+
+export const normalizeIntentTranscript = (transcript: string): string =>
+	transcript
+		.toLowerCase()
+		.normalize("NFD")
+		.replace(/\p{M}/gu, "")
+		.replace(/[^\p{L}\p{N}\s]/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim()
+
+export const intentCacheScope = (
+	domia: DomiaType,
+	tools: IntentToolHintType[],
+	hints?: IntentRoutingHintsType,
+): string =>
+	`${domia.domiaKey}|${routingConfigHash(domia, hints)}|${embedSpaceKey(domia)}|${intentToolSetHash(tools)}`
+
+export const isIntentCacheEnabled = (domia: DomiaType): boolean =>
+	domia.llmModelConfig?.intentCacheEnabled ?? DEFAULT_INTENT_CACHE_ENABLED
+
+const intentCacheCapacity = (domia: DomiaType): number =>
+	Math.max(
+		1,
+		domia.llmModelConfig?.intentCacheSize ?? DEFAULT_INTENT_CACHE_SIZE,
+	)
+
+const intentCacheMinSimilarity = (domia: DomiaType): number =>
+	domia.llmModelConfig?.intentCacheMinSimilarity ??
+	DEFAULT_INTENT_CACHE_MIN_SIMILARITY
+
+const touch = (key: string, entry: IntentCacheEntryType): void => {
+	intentCache.delete(key)
+	intentCache.set(key, entry)
+}
+
+const decisionOf = (
+	entry: IntentCacheEntryType,
+	similarity: number,
+): IntentDecisionType => ({
+	needsSkill: entry.needsSkill,
+	reason: `cache:${similarity.toFixed(2)}`,
+})
+
+export const lookupIntentCacheExact = (
+	scope: string,
+	transcript: string,
+): IntentDecisionType | null => {
+	const key = `${scope}|${normalizeIntentTranscript(transcript)}`
+	const entry = intentCache.get(key)
+	if (!entry) return null
+	touch(key, entry)
+	intentCacheExactHits++
+	return decisionOf(entry, 1)
+}
+
+export const lookupIntentCacheSemantic = (
+	domia: DomiaType,
+	scope: string,
+	vector: number[],
+): IntentDecisionType | null => {
+	const threshold = intentCacheMinSimilarity(domia)
+	let bestKey: string | null = null
+	let bestEntry: IntentCacheEntryType | null = null
+	let best = threshold
+	for (const [key, entry] of intentCache) {
+		if (entry.scope !== scope || !entry.vector) continue
+		const similarity = cosine(vector, entry.vector)
+		if (similarity < best) continue
+		best = similarity
+		bestKey = key
+		bestEntry = entry
+	}
+	if (!bestKey || !bestEntry) return null
+	touch(bestKey, bestEntry)
+	intentCacheSemanticHits++
+	intentRouterLogger.info(
+		`intent cache semantic hit sim=${best.toFixed(3)} thr=${threshold}`,
+		{ domiaId: domia.id },
+	)
+	return decisionOf(bestEntry, best)
+}
+
+export const rememberIntentDecision = (
+	domia: DomiaType,
+	scope: string,
+	transcript: string,
+	vector: number[] | null,
+	decision: IntentDecisionType,
+): void => {
+	if (
+		UNCACHEABLE_REASONS.has(decision.reason) ||
+		decision.reason.startsWith("cache:")
+	)
+		return
+	const key = `${scope}|${normalizeIntentTranscript(transcript)}`
+	intentCache.delete(key)
+	intentCache.set(key, { scope, vector, needsSkill: decision.needsSkill })
+	const capacity = intentCacheCapacity(domia)
+	while (intentCache.size > capacity) {
+		const oldest = intentCache.keys().next().value
+		if (oldest === undefined) break
+		intentCache.delete(oldest)
+	}
+}
+
+export const noteIntentCacheMiss = (): void => {
+	intentCacheMisses++
+}
+
+export const intentCacheStats = (): IntentCacheStatsType => ({
+	entries: intentCache.size,
+	exactHits: intentCacheExactHits,
+	semanticHits: intentCacheSemanticHits,
+	misses: intentCacheMisses,
+})
+
+export const resetIntentCache = (): void => {
+	intentCache.clear()
+	intentCacheExactHits = 0
+	intentCacheSemanticHits = 0
+	intentCacheMisses = 0
 }

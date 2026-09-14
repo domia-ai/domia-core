@@ -1,4 +1,5 @@
 export * from "./capture"
+export * from "./capture-abort"
 export * from "./dynamic-endpointing"
 export * from "./echo-gate"
 export * from "./endpoint-hint"

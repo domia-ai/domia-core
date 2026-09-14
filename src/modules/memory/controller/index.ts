@@ -6,11 +6,18 @@ import {
 	languageSetsFor,
 	sanitizeFactLine,
 	tokensOf,
+	foldText,
+	containsCue,
+	parseDbTimestamp,
+	sqliteTimestamp,
 } from "@/utils"
 
 import {
 	dbClient,
 	FACT_KIND_ENUM,
+	FACT_SOURCE_KIND_ENUM,
+	DEFAULT_MEMORY_FACT_MAX_AGE_DAYS,
+	DEFAULT_MEMORY_RECALL_INCLUDE_EXPIRED,
 	type FactKindEnumType,
 	type SelectMemoryFactType,
 } from "@/db"
@@ -18,6 +25,7 @@ import dbAdapter from "../db-adapter"
 import { factSchema } from "../schemas"
 import {
 	MEMORY_FACT_CANDIDATE_LIMIT,
+	MEMORY_FACT_EXPIRED_CANDIDATE_LIMIT,
 	MEMORY_FACT_EXTRACT_MAX,
 	DEFAULT_FACT_CONFIDENCE,
 	MIN_RECALL_CONF_USER,
@@ -32,9 +40,10 @@ import {
 	SINGLE_VALUED_RELATIONS,
 	RELATION_ALLOWLIST_RE,
 } from "../constants"
-import type { RawFactType } from "../types"
+import type { FactRecallRowType, FactValidityType, RawFactType } from "../types"
 
-const PREFERENCE_RE = /prefer|like|love|enjoy|favou?rite|hate|dislike|want/i
+const PREFERENCE_RE =
+	/prefer|like|love|enjoy|favou?rite|hate|dislike|want|drinks?|eats?|plays?|listens?|watch(es)?|reads?|wears?|collects?|supports?/i
 const USER_FACT_RE =
 	/name|allergic|allerg|is a|works|work as|lives|live in|born|birthday|married|family|kid|child|pet|job|from/i
 
@@ -94,14 +103,94 @@ const rankFactsLexical = (
 		.map((s) => s.fact)
 }
 
+const FACT_WHEN_NOW = "now"
+const FACT_WHEN_PAST = "past"
+const FACT_WHEN_FUTURE = "future"
+
+export const resolveFactValidity = (
+	when?: string,
+	nowAt: number = Date.now(),
+): FactValidityType => {
+	const at = sqliteTimestamp(nowAt)
+	const token = (when ?? "").trim().toLowerCase()
+	if (token === FACT_WHEN_PAST) return { validFrom: at, validUntil: at }
+	if (!token || token === FACT_WHEN_NOW || token === FACT_WHEN_FUTURE)
+		return { validFrom: at, validUntil: null }
+	const stated = Date.parse(token)
+	return Number.isNaN(stated)
+		? { validFrom: at, validUntil: null }
+		: { validFrom: sqliteTimestamp(stated), validUntil: null }
+}
+
+const isFactExpired = (
+	row: Pick<FactRecallRowType, "validUntil" | "supersededAt">,
+	nowAt: number = Date.now(),
+): boolean => {
+	if (row.supersededAt) return true
+	const endsAt = parseDbTimestamp(row.validUntil)
+	return !Number.isNaN(endsAt) && endsAt <= nowAt
+}
+
+export const isPastTenseQuery = (
+	text: string,
+	language?: string | null,
+): boolean => {
+	const folded = foldText(text)
+	return languageSetsFor(language).pastTenseCues.some((cue) =>
+		containsCue(folded, cue),
+	)
+}
+
+export const renderFactRecallLines = (
+	rows: FactRecallRowType[],
+	language?: string | null,
+	nowAt: number = Date.now(),
+): string[] => {
+	const formerly = languageSetsFor(language).phrases.formerly
+	const current: string[] = []
+	const expired: string[] = []
+	for (const row of rows) {
+		const line = sanitizeFactLine(
+			`${row.subject} ${row.relation} ${row.value}`,
+		).text
+		if (isFactExpired(row, nowAt)) expired.push(`${formerly} ${line}`)
+		else current.push(line)
+	}
+	return [...current.reverse(), ...expired.reverse()]
+}
+
+const selectTemporalFacts = (
+	facts: string[],
+	includeExpired: boolean,
+	language?: string | null,
+): string[] => {
+	if (includeExpired) return facts
+	const formerly = languageSetsFor(language).phrases.formerly
+	return facts.filter((fact) => !fact.startsWith(formerly))
+}
+
+export const staleInferredFactCutoff = (domia: DomiaType): string | null => {
+	const maxAgeDays =
+		domia.moduleSettings?.memoryFactMaxAgeDays ??
+		DEFAULT_MEMORY_FACT_MAX_AGE_DAYS
+	if (maxAgeDays === null || maxAgeDays <= 0) return null
+	return sqliteTimestamp(Date.now() - maxAgeDays * 86_400_000)
+}
+
 export const rankFactsByRelevance = async (
 	domia: DomiaType,
-	facts: string[],
+	candidates: string[],
 	queryText: string,
 	limit: number,
 ): Promise<string[]> => {
+	const language = domia.characterProfile?.language
+	const includeExpired =
+		(domia.moduleSettings?.memoryRecallIncludeExpired ??
+			DEFAULT_MEMORY_RECALL_INCLUDE_EXPIRED) ||
+		isPastTenseQuery(queryText, language)
+	const facts = selectTemporalFacts(candidates, includeExpired, language)
 	if (facts.length === 0) return facts
-	const stopwords = languageSetsFor(domia.characterProfile?.language).stopwords
+	const stopwords = languageSetsFor(language).stopwords
 	if (facts.length <= limit)
 		return rankFactsLexical(facts, queryText, limit, stopwords)
 	const vectors = await embed(domia, [queryText, ...facts])
@@ -247,10 +336,12 @@ export const isExplicitMemoryCommand = (
 ): boolean => languageSetsFor(language).memoryCommandRe.test(text)
 
 export const buildFactExtractionLines = (): string[] => [
-	`Also extract durable facts the person EXPLICITLY stated about themselves. Format as objects {subject, relation, value, confidence}: "subject" is ALWAYS exactly "the user" (never "the user said X", never their name as the subject); "relation" is short lowercase (e.g. "is named", "is allergic to", "likes", "dislikes"); "value" is the plain detail with NO brackets or quotes (e.g. Kevin, green tea); "confidence" is 0..1.`,
+	`Also extract durable facts the person EXPLICITLY stated about themselves. Format as objects {subject, relation, value, confidence, when}: "subject" is ALWAYS exactly "the user" — the person speaking — never "the user said X", never their name, and never a third party they mention (fold that person into the relation instead); "relation" is short lowercase (e.g. "is named", "is allergic to", "likes", "dislikes"); "value" is the plain detail with NO brackets or quotes (e.g. Kevin, green tea); "confidence" is 0..1; "when" is "now" (true today — the default), "past" (was true, is NOT true now: "I used to…", "I no longer…"), "future" (a plan) or a date like 2026-12-01.`,
 	`Only DURABLE identity qualifies: name, tastes, relationships, possessions, allergies, home, work. NEVER capture in-the-moment actions, requests or commands. "Turn on the kitchen lights" → NOT a fact (a command). "Remind me at nine" → NOT a fact (a request). "My name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"} IS a fact.`,
-	`DO capture clear first-person declarations: "my name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"}; "I love green tea" / "green tea is my favorite" → {subject:"the user", relation:"likes", value:"green tea"}; "I can't stand coffee" → {subject:"the user", relation:"dislikes", value:"coffee"}; "I'm allergic to peanuts" → {subject:"the user", relation:"is allergic to", value:"peanuts"}; facts about THEIR people and pets too — "my sister's name is Elena" → {subject:"the user", relation:"has a sister named", value:"Elena"}; "my dog is called Luka" → {subject:"the user", relation:"has a dog named", value:"Luka"}. Preferences, name, allergies, relationships, and plans they state ARE facts — capture them.`,
-	`When the person RETRACTS or REVERSES something ("I quit coffee", "I no longer like tea", "I switched from X to Y", "actually I can't stand it anymore"), emit a retraction with "op":"delete" for the OLD fact ({subject:"the user", relation:"likes", value:"coffee", op:"delete"}) — and for a switch also add the NEW fact. Default op is "add"; only set "delete" for an explicit retraction.`,
+	`DO capture clear first-person declarations: "my name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"}; "I love green tea" → {subject:"the user", relation:"likes", value:"green tea"}; "I can't stand coffee" → {subject:"the user", relation:"dislikes", value:"coffee"}; "I'm allergic to peanuts" → {subject:"the user", relation:"is allergic to", value:"peanuts"}; facts about THEIR people and pets too, still with subject "the user" — "my sister's name is Elena" → {subject:"the user", relation:"has a sister named", value:"Elena"}; "my dog is called Luka" → {subject:"the user", relation:"has a dog named", value:"Luka"}. Preferences, name, allergies, relationships, and plans they state ARE facts — capture them.`,
+	`KEEP THE ATTRIBUTE they named — never collapse it into a bare "likes": "my favorite color is blue" → {subject:"the user", relation:"has favorite color", value:"blue"} (NOT likes | blue); "my favourite song is Clair de Lune" → {subject:"the user", relation:"has favorite song", value:"Clair de Lune"}. The "value" is only the detail, never the attribute word.`,
+	`The value MUST come from the PERSON's own words in this exchange. If it appears only in YOUR reply — you told a joke about a penguin, you suggested a restaurant — it is NOT a fact: emit nothing for it.`,
+	`When the person RETRACTS or REVERSES something ("I quit coffee", "I no longer like tea", "I switched from X to Y", "actually I can't stand it anymore"), emit a retraction with "op":"delete" for the OLD fact ({subject:"the user", relation:"likes", value:"coffee", op:"delete"}) — and for a switch also add the NEW fact. Default op is "add"; only set "delete" for an explicit retraction. A past-tense statement that is NOT a retraction ("I used to live in Bogotá", "I lived in Berlin for years") stays an "add" with "when":"past" — never a delete. KEEP THE POLARITY THEY USED: "used to like X" is still {relation:"likes", value:"X", when:"past"} — NEVER "dislikes". "I used to like coffee, now I only drink tea" → [{subject:"the user", relation:"drinks", value:"tea", when:"now"}, {subject:"the user", relation:"likes", value:"coffee", when:"past"}].`,
 	`NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia; (d) the EXAMPLES in these instructions — Kevin, green tea, coffee and peanuts are illustrations, never facts, unless THIS conversation explicitly stated them. If they only asked a question or made small talk, return [].`,
 ]
 
@@ -297,7 +388,7 @@ const EPHEMERAL_FACT_RE =
 export const isEphemeralFact = (relation: string, value: string): boolean =>
 	EPHEMERAL_FACT_RE.test(`${relation} ${value}`)
 
-const rejectFact = (
+export const rejectFact = (
 	subject: string,
 	relation: string,
 	value: string,
@@ -456,12 +547,13 @@ export const upsertFacts = async (
 			corroborated += 1
 			continue
 		}
+		const validity = resolveFactValidity(fact.when)
 		if (keyed?.supersededAt) {
 			const entering = enteringConfidence(kind, fact.confidence)
 			dbClient.transaction((tx) => {
 				if (SINGLE_VALUED_RELATIONS.has(relation))
 					dbAdapter.supersedeActiveFacts(domia.id, subject, relation, tx).run()
-				dbAdapter.reactivateFact(keyed.id, entering, tx).run()
+				dbAdapter.reactivateFact(keyed.id, entering, validity, tx).run()
 			})
 			if (sourceInteractionId)
 				await dbAdapter.addFactEvidence({
@@ -502,7 +594,11 @@ export const upsertFacts = async (
 			valueKey,
 			confidence: enteringConfidence(kind, fact.confidence),
 			kind,
+			sourceKind: FACT_SOURCE_KIND_ENUM.STATED,
+			personId: null,
 			sourceInteractionId: sourceInteractionId ?? null,
+			validFrom: validity.validFrom,
+			validUntil: validity.validUntil,
 		}
 		if (SINGLE_VALUED_RELATIONS.has(relation)) {
 			dbClient.transaction((tx) => {
@@ -591,24 +687,29 @@ export const getActiveFactRefs = async (
 	}
 }
 
-export const getFactStrings = async (domia: DomiaType): Promise<string[]> => {
+// order must stay oldest-first/expired-last so the prompt prefix stays KV-cache stable
+const recallFactStrings = async (
+	domia: DomiaType,
+	expiredLimit: number,
+): Promise<string[]> => {
 	try {
-		const rows = await dbAdapter.getRecentFacts(
+		const rows = await dbAdapter.getRecallFacts(
 			domia.id,
 			MEMORY_FACT_CANDIDATE_LIMIT,
+			expiredLimit,
+			staleInferredFactCutoff(domia),
 		)
-		return (
-			rows
-				.filter((row) => row.confidence >= confFloor(row.kind))
-				.map(
-					(row) =>
-						sanitizeFactLine(`${row.subject} ${row.relation} ${row.value}`)
-							.text,
-				)
-				// oldest-first so a new fact appends instead of reshuffling — keeps the prompt prefix cache-stable
-				.reverse()
+		return renderFactRecallLines(
+			rows.filter((row) => row.confidence >= confFloor(row.kind)),
+			domia.characterProfile?.language,
 		)
 	} catch {
 		return []
 	}
 }
+
+export const getFactStrings = (domia: DomiaType): Promise<string[]> =>
+	recallFactStrings(domia, MEMORY_FACT_EXPIRED_CANDIDATE_LIMIT)
+
+export const getActiveFactStrings = (domia: DomiaType): Promise<string[]> =>
+	recallFactStrings(domia, 0)

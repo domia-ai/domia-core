@@ -48,3 +48,13 @@ export type OwnDomiaEntryType = {
 	value: DomiaType
 	expiresAt: number
 }
+
+export type SatelliteSettingsPatchType = {
+	followUpNoSpeechMs?: number
+	followUpRequestMaxMs?: number
+	playbackDrainMarginMs?: number
+	runListeningMaxMs?: number
+	captureHeadTrimMs?: number
+	wyomingStreamingTts?: boolean
+	mediaPlayerName?: string | null
+}

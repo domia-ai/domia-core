@@ -74,6 +74,13 @@ export default defineConfig(
 		rules: { "@typescript-eslint/no-extraneous-class": "off" },
 	},
 	{
+		files: [
+			"src/modules/skill-engine/adapters/mcp-v1-sse/**/*.ts",
+			"evals/mcp-client.ts",
+		],
+		rules: { "@typescript-eslint/no-deprecated": "off" },
+	},
+	{
 		files: ["**/*.mjs", "**/*.js", "drizzle.config.ts"],
 		extends: [tseslint.configs.disableTypeChecked],
 	},

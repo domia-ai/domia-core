@@ -97,7 +97,7 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 				status: fileInstalled(ww.denoiseModelPath) ? "ok" : "missing",
 				detail: fileInstalled(ww.denoiseModelPath)
 					? undefined
-					: "npm run setup:models:gtcrn",
+					: `npm run setup:models:${ww.denoiseEngine.toLowerCase()}`,
 			})
 		if (ww.aecEnabled) {
 			const aec = getAecStatus()

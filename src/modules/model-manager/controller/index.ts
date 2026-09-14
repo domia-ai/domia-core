@@ -12,7 +12,7 @@ import {
 	statSync,
 } from "fs"
 import { pipeline } from "stream/promises"
-import { join } from "path"
+import { dirname, join } from "path"
 import { Ollama } from "ollama"
 import {
 	domiaError,
@@ -20,6 +20,7 @@ import {
 	modelManagerLogger,
 	MODEL_MANAGER_ERRORS,
 } from "@/utils"
+import { getNodeConfig } from "@/modules/node-config"
 import { modelInstallSpecSchema } from "../schemas"
 import {
 	archiveSuffix,
@@ -27,18 +28,13 @@ import {
 	findUnsafeArchiveEntryType,
 	isAllowedInstallUrl,
 	parseArchiveListing,
+	resolveModelTargetPath,
 } from "../utils"
 import {
 	ARCHIVE_LISTING_MAX_BUFFER_BYTES,
 	CATALOG_PATH,
 	MODELS_DIR,
-	MODEL_DOWNLOAD_TIMEOUT_MS,
-	MODEL_INSTALL_MAX_BYTES,
-	MODEL_INSTALL_MAX_CONCURRENT_JOBS,
-	MODEL_INSTALL_MAX_REDIRECTS,
-	MODEL_JOB_RETENTION_MS,
 	MODEL_STAGING_PREFIX,
-	MODEL_STAGING_RETENTION_MS,
 } from "../constants"
 import type {
 	InstalledModelType,
@@ -82,31 +78,46 @@ const listOllama = async (
 	}
 }
 
+const fileSize = (path: string): number | null => {
+	try {
+		return statSync(path).size
+	} catch {
+		return null
+	}
+}
+
+const listDir = (dir: string, prefix: string): InstalledModelType[] => {
+	if (!existsSync(dir)) return []
+	return readdirSync(dir, { withFileTypes: true })
+		.filter((entry) => !entry.name.startsWith("."))
+		.map((entry) => ({
+			name: `${prefix}${entry.name}`,
+			kind: entry.isDirectory() ? ("dir" as const) : ("file" as const),
+			sizeBytes: entry.isDirectory() ? null : fileSize(join(dir, entry.name)),
+		}))
+}
+
+export const catalogSubdirs = (
+	catalog: readonly ModelInstallSpecType[],
+): string[] => [
+	...new Set(
+		catalog.flatMap((spec) =>
+			spec.kind !== "ollama" && spec.subdir ? [spec.subdir] : [],
+		),
+	),
+]
+
 export const listModels = async (
 	ollamaHost: string,
 ): Promise<ModelsReportType> => {
-	const installed: InstalledModelType[] = []
-	if (existsSync(MODELS_DIR)) {
-		for (const entry of readdirSync(MODELS_DIR, { withFileTypes: true })) {
-			if (entry.name.startsWith(".")) continue
-			const isDir = entry.isDirectory()
-			let sizeBytes: number | null = null
-			if (!isDir) {
-				try {
-					sizeBytes = statSync(join(MODELS_DIR, entry.name)).size
-				} catch {
-					sizeBytes = null
-				}
-			}
-			installed.push({
-				name: entry.name,
-				kind: isDir ? "dir" : "file",
-				sizeBytes,
-			})
-		}
+	const catalog = readCatalog()
+	const installed = listDir(MODELS_DIR, "")
+	for (const subdir of catalogSubdirs(catalog)) {
+		const dir = resolveModelTargetPath(MODELS_DIR, subdir)
+		if (dir) installed.push(...listDir(dir, `${subdir}/`))
 	}
 	installed.push(...(await listOllama(ollamaHost)))
-	return { modelsDir: MODELS_DIR, installed, catalog: readCatalog() }
+	return { modelsDir: MODELS_DIR, installed, catalog }
 }
 
 const discard = (path: string): void => {
@@ -119,7 +130,7 @@ const discard = (path: string): void => {
 
 const sweepStaleStaging = (): void => {
 	if (!existsSync(MODELS_DIR)) return
-	const cutoff = Date.now() - MODEL_STAGING_RETENTION_MS
+	const cutoff = Date.now() - 2 * getNodeConfig().modelDownloadTimeoutMs
 	for (const entry of readdirSync(MODELS_DIR, { withFileTypes: true })) {
 		if (!entry.name.startsWith(MODEL_STAGING_PREFIX)) continue
 		const path = join(MODELS_DIR, entry.name)
@@ -160,7 +171,8 @@ const openDownload = async (
 	signal: AbortSignal,
 ): Promise<Response> => {
 	let current = url
-	for (let hop = 0; hop <= MODEL_INSTALL_MAX_REDIRECTS; hop++) {
+	const maxRedirects = getNodeConfig().modelInstallMaxRedirects
+	for (let hop = 0; hop <= maxRedirects; hop++) {
 		assertAllowedUrl(current, allowedHosts)
 		const res = await fetch(current, { redirect: "manual", signal })
 		const location = res.headers.get("location")
@@ -179,7 +191,7 @@ const openDownload = async (
 		return res
 	}
 	throw domiaError(MODEL_MANAGER_ERRORS.TOO_MANY_REDIRECTS, {
-		meta: { url, maxRedirects: MODEL_INSTALL_MAX_REDIRECTS },
+		meta: { url, maxRedirects },
 		logger: modelManagerLogger,
 	})
 }
@@ -191,10 +203,11 @@ const downloadTo = async (
 	integrity: ModelDownloadIntegrityType,
 ): Promise<void> => {
 	const controller = new AbortController()
-	const timer = setTimeout(() => controller.abort(), MODEL_DOWNLOAD_TIMEOUT_MS)
+	const { modelDownloadTimeoutMs, modelInstallMaxBytes } = getNodeConfig()
+	const timer = setTimeout(() => controller.abort(), modelDownloadTimeoutMs)
 	const limit = Math.min(
-		integrity.sizeBytes ?? MODEL_INSTALL_MAX_BYTES,
-		MODEL_INSTALL_MAX_BYTES,
+		integrity.sizeBytes ?? modelInstallMaxBytes,
+		modelInstallMaxBytes,
 	)
 	try {
 		const res = await openDownload(url, allowedHosts, controller.signal)
@@ -254,7 +267,7 @@ const downloadTo = async (
 
 const assertSafeArchive = async (archive: string): Promise<void> => {
 	const options = {
-		timeout: MODEL_DOWNLOAD_TIMEOUT_MS,
+		timeout: getNodeConfig().modelDownloadTimeoutMs,
 		maxBuffer: ARCHIVE_LISTING_MAX_BUFFER_BYTES,
 	}
 	const names = await execFileAsync("tar", ["-tf", archive], options)
@@ -275,11 +288,23 @@ const assertSafeArchive = async (archive: string): Promise<void> => {
 		})
 }
 
+const installTarget = (
+	spec: Extract<ModelInstallSpecType, { kind: "sherpa-archive" | "file" }>,
+): string => {
+	const resolved = resolveModelTargetPath(MODELS_DIR, spec.target, spec.subdir)
+	if (resolved === null)
+		throw domiaError(MODEL_MANAGER_ERRORS.UNSAFE_TARGET_PATH, {
+			meta: { modelsDir: MODELS_DIR, subdir: spec.subdir, target: spec.target },
+			logger: modelManagerLogger,
+		})
+	return resolved
+}
+
 const runSherpaArchive = async (
 	spec: Extract<ModelInstallSpecType, { kind: "sherpa-archive" }>,
 	allowedHosts: readonly string[],
 ): Promise<void> => {
-	const target = join(MODELS_DIR, spec.target)
+	const target = installTarget(spec)
 	if (existsSync(target)) return
 	const sourceName = spec.sourceDir ?? spec.target
 	await withStagingDir(async (dir) => {
@@ -289,7 +314,7 @@ const runSherpaArchive = async (
 		const extracted = join(dir, "extracted")
 		mkdirSync(extracted, { recursive: true })
 		await execFileAsync("tar", ["-xf", archive, "-C", extracted], {
-			timeout: MODEL_DOWNLOAD_TIMEOUT_MS,
+			timeout: getNodeConfig().modelDownloadTimeoutMs,
 		})
 		const produced = join(extracted, sourceName)
 		if (!existsSync(produced))
@@ -298,6 +323,7 @@ const runSherpaArchive = async (
 				logger: modelManagerLogger,
 			})
 		if (existsSync(target)) return
+		mkdirSync(dirname(target), { recursive: true })
 		renameSync(produced, target)
 	})
 }
@@ -306,12 +332,13 @@ const runFile = async (
 	spec: Extract<ModelInstallSpecType, { kind: "file" }>,
 	allowedHosts: readonly string[],
 ): Promise<void> => {
-	const target = join(MODELS_DIR, spec.target)
+	const target = installTarget(spec)
 	if (existsSync(target)) return
 	await withStagingDir(async (dir) => {
 		const staged = join(dir, "download")
 		await downloadTo(spec.url, staged, allowedHosts, spec)
 		if (existsSync(target)) return
+		mkdirSync(dirname(target), { recursive: true })
 		renameSync(staged, target)
 	})
 }
@@ -349,7 +376,7 @@ const runInstall = async (
 }
 
 const pruneFinishedJobs = (): void => {
-	const cutoff = Date.now() - MODEL_JOB_RETENTION_MS
+	const cutoff = Date.now() - getNodeConfig().modelJobRetentionMs
 	for (const [id, job] of jobs)
 		if (job.finishedAt !== null && job.finishedAt <= cutoff) jobs.delete(id)
 }
@@ -366,12 +393,16 @@ export const startInstall = (
 	allowedHosts: readonly string[],
 ): ModelJobType => {
 	const spec = modelInstallSpecSchema.parse(input)
-	if (spec.kind !== "ollama") assertAllowedUrl(spec.url, allowedHosts)
+	if (spec.kind !== "ollama") {
+		assertAllowedUrl(spec.url, allowedHosts)
+		installTarget(spec)
+	}
 	pruneFinishedJobs()
 	const running = runningJobCount()
-	if (running >= MODEL_INSTALL_MAX_CONCURRENT_JOBS)
+	const maxConcurrent = getNodeConfig().modelInstallMaxConcurrentJobs
+	if (running >= maxConcurrent)
 		throw domiaError(MODEL_MANAGER_ERRORS.TOO_MANY_INSTALL_JOBS, {
-			meta: { running, maxConcurrent: MODEL_INSTALL_MAX_CONCURRENT_JOBS },
+			meta: { running, maxConcurrent },
 			logger: modelManagerLogger,
 		})
 	const job: ModelJobType = {

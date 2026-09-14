@@ -41,6 +41,7 @@ export type SttWorkerEngineConfigType = {
 	numThreads: number
 	provider: string
 	decodePaddingMs: number
+	flushPaddingMs: number
 	enableEndpoint: boolean
 	rule1MinTrailingSilence: number
 	rule2MinTrailingSilence: number
@@ -63,7 +64,7 @@ export type SttWorkerResultType = {
 export type SttSessionJobType =
 	| { kind: "session-start"; engineConfig: SttWorkerEngineConfigType }
 	| { kind: "session-chunk"; pcm: Buffer; sampleRate: number }
-	| { kind: "session-end"; sampleRate: number; decodePaddingMs: number }
+	| { kind: "session-end"; sampleRate: number; flushPaddingMs: number }
 	| { kind: "session-abort" }
 
 export type SttSessionResultType =

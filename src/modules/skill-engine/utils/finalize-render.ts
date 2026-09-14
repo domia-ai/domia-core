@@ -2,6 +2,7 @@ const PLACEHOLDER_PATTERN = /\{(\w+)\}/g
 
 const stringArg = (value: unknown): string | null => {
 	if (typeof value === "string" && value.trim()) return value.trim()
+	if (typeof value === "number" && Number.isFinite(value)) return String(value)
 	if (Array.isArray(value) && value.length > 0) {
 		const joined = value
 			.filter((v): v is string => typeof v === "string" && v.trim() !== "")
@@ -20,13 +21,17 @@ const nameFrom = (
 	stringArg(resolvedArgs?.name) ??
 	stringArg(resolvedArgs?.area)
 
+export const SPEAKABLE_PLACEHOLDER = "{speakable}"
+
 export const renderFinalizeText = (
 	template: string,
 	rawArgs: Record<string, unknown>,
 	resolvedArgs?: Record<string, unknown>,
+	speakableText?: string,
 ): string | null => {
 	if (!template.includes("{")) return template
 	const valueFor = (key: string): string | null => {
+		if (key === "speakable") return stringArg(speakableText)
 		if (key === "name") return nameFrom(rawArgs, resolvedArgs)
 		return stringArg(rawArgs[key]) ?? stringArg(resolvedArgs?.[key])
 	}

@@ -3,6 +3,7 @@ import type { SelectWakeWordConfigType, WakeWordEngineEnumType } from "@/db"
 
 export type CaptureCallbacksType = {
 	onWake?: (keyword: string) => void | Promise<void>
+	onWakeRejected?: (keyword: string) => void | Promise<void>
 	onRecordingStart?: () => void | Promise<void>
 	onRecordingEnd?: (filePath: string) => void | Promise<void>
 	onError?: (error: Error) => void | Promise<void>

@@ -1,0 +1,28 @@
+{
+	"name": "lab",
+	"entities": {
+		"lightA": {
+			"name": "Office Lights",
+			"entityId": "light.office_office_main_lights",
+			"area": "Office",
+			"token": "office",
+			"spoken": "office lights",
+			"spokenSingular": "office light",
+			"nameEs": "luz de la oficina"
+		},
+		"lightB": {
+			"name": "Exterior Sconces",
+			"entityId": "light.exterior_exterior_sconces",
+			"area": "Exterior",
+			"token": "sconces",
+			"spoken": "exterior sconces"
+		},
+		"unavailableDevice": {
+			"name": "BeyondTV",
+			"entityId": "media_player.beyondtv",
+			"area": "Living Room",
+			"token": "tv",
+			"spoken": "TV"
+		}
+	}
+}

@@ -68,7 +68,7 @@ const runKitten = async (
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = sidOf(voice.voiceName)
 	try {
-		const pool = getTtsPool(ttsConfig)
+		const pool = options?.pool ?? getTtsPool(ttsConfig)
 		const parts: Buffer[] = []
 		let sampleRate = kittenEngine.capabilities.sampleRate
 		for (const sentence of splitTextIntoSentences(text)) {
@@ -111,7 +111,7 @@ const runKittenStream = async function* (
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = sidOf(voice.voiceName)
-	const pool = getTtsPool(ttsConfig)
+	const pool = options?.pool ?? getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, sid, voice.speed),

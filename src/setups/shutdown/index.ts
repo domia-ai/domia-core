@@ -1,6 +1,6 @@
 import { appLogger } from "@/utils"
-import { reloadTtsPool } from "@/modules/tts-engine"
-import { reloadSttPool } from "@/modules/stt-engine"
+import { shutdownTtsPools } from "@/modules/tts-engine"
+import { shutdownSttPool } from "@/modules/stt-engine"
 import { closeDb } from "@/db"
 import { shutdownAec } from "@/modules/aec"
 import type { ShutdownTaskType } from "./types"
@@ -42,8 +42,8 @@ const runShutdown = async (signal: string): Promise<void> => {
 }
 
 export const setupShutdown = (): void => {
-	registerShutdownTask("tts-pool", reloadTtsPool)
-	registerShutdownTask("stt-pool", reloadSttPool)
+	registerShutdownTask("tts-pool", shutdownTtsPools)
+	registerShutdownTask("stt-pool", shutdownSttPool)
 	registerShutdownTask("aec", shutdownAec)
 	registerShutdownTask("db", closeDb)
 	process.once("SIGTERM", () => void runShutdown("SIGTERM"))

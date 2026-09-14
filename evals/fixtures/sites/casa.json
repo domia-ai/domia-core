@@ -1,0 +1,47 @@
+{
+	"name": "casa",
+	"entities": {
+		"lightA": {
+			"name": "Kitchen Island Pendants",
+			"entityId": "light.kitchen_island_pendants",
+			"area": "Kitchen",
+			"token": "pendant",
+			"spoken": "kitchen island pendants",
+			"spokenSingular": "kitchen island pendant"
+		},
+		"lightB": {
+			"name": "Main Lights",
+			"entityId": "light.front_foyer_main_lights",
+			"area": "Front Foyer",
+			"token": "main",
+			"spoken": "main lights"
+		},
+		"unavailableDevice": {
+			"name": "TV de la habitación",
+			"entityId": "media_player.tv_de_la_habitacion",
+			"area": "Master Bedroom",
+			"token": "tv",
+			"spoken": "bedroom TV"
+		}
+	},
+	"speakers": {
+		"speakerA": {
+			"name": "Office",
+			"playerId": "upa88f3f75",
+			"spoken": "office",
+			"nameEs": "oficina"
+		},
+		"speakerB": {
+			"name": "TBD — fill in the Music Assistant player name for the living room Voice PE",
+			"playerId": "TBD — the Music Assistant player_id",
+			"spoken": "TBD — how you say the living room speaker out loud"
+		},
+		"satellite": {
+			"name": "Office",
+			"playerId": "upa88f3f75",
+			"spoken": "office",
+			"nameEs": "oficina",
+			"satelliteId": "voice-pe-2"
+		}
+	}
+}

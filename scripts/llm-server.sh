@@ -4,10 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OVERRIDE_FILE="${LLM_SERVER_OVERRIDES:-$ROOT/config/llm-server.env}"
 
-# Precedence (highest first): config/llm-server.env  >  the caller's environment  >  built-in defaults.
-# The override file is sourced with `set -a`, so any LLM_* it assigns REPLACES a value the caller
-# exported before invoking this script. To let the environment win, leave the knob out of the file
-# (or point LLM_SERVER_OVERRIDES at a different file / a nonexistent path).
 if [ -f "$OVERRIDE_FILE" ]; then
 	set -a
 	# shellcheck disable=SC1090
@@ -22,10 +18,21 @@ LLM_CTX="${LLM_CTX:-4096}"
 LLM_CHAT_TEMPLATE="${LLM_CHAT_TEMPLATE:-}"
 LLM_EXTRA_FLAGS="${LLM_EXTRA_FLAGS:-}"
 LLM_NO_WARMUP="${LLM_NO_WARMUP:-0}"
-LLM_CACHE_RAM_MB="${LLM_CACHE_RAM_MB:-}"
+LLM_CACHE_RAM_MB="${LLM_CACHE_RAM_MB:-256}"
+LLM_SPEC_TYPE="${LLM_SPEC_TYPE:-}"
+
+from_root() {
+	case "$1" in
+		"" | /*) printf '%s' "$1" ;;
+		*) printf '%s/%s' "$ROOT" "$1" ;;
+	esac
+}
+LLM_GGUF="$(from_root "$LLM_GGUF")"
+LLM_CHAT_TEMPLATE="$(from_root "$LLM_CHAT_TEMPLATE")"
 
 args=(-m "$LLM_GGUF" --host "$LLM_HOST" --port "$LLM_PORT" -ngl 99 -c "$LLM_CTX")
 [ -n "$LLM_CACHE_RAM_MB" ] && args+=(--cache-ram "$LLM_CACHE_RAM_MB")
+[ -n "$LLM_SPEC_TYPE" ] && args+=(--spec-type "$LLM_SPEC_TYPE")
 if [ -n "$LLM_CHAT_TEMPLATE" ]; then
 	[ -f "$LLM_CHAT_TEMPLATE" ] || { echo "❌ LLM_CHAT_TEMPLATE not found: $LLM_CHAT_TEMPLATE" >&2; exit 1; }
 	args+=(--chat-template-file "$LLM_CHAT_TEMPLATE")

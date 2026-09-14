@@ -81,7 +81,7 @@
 		"embedModelPath": "data/models/paraphrase-multilingual-minilm-l12-v2",
 		"matcherSemanticThreshold": 0.42,
 		"skillsRouting": "embedding-gate",
-		"intentEmbedThreshold": 0.42,
+		"intentEmbedThreshold": 0.66,
 		"baseUrl": "http://127.0.0.1:11435/v1"
 	},
 	"wakeWord": {

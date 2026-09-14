@@ -34,6 +34,9 @@
 		"dev-cli": "dotenvx run -f ${DOMIA_ENV:-.env} -- ts-node -r tsconfig-paths/register src/cli/dev/index.ts",
 		"proto:gen": "protoc --plugin=node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/generated/proto --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false,esModuleInterop=true,oneof=unions --proto_path=proto proto/*.proto",
 		"setup:models": "bash scripts/download-models.sh all",
+		"setup:models:gtcrn": "bash scripts/download-models.sh gtcrn",
+		"setup:models:dpdfnet": "bash scripts/download-models.sh dpdfnet",
+		"setup:models:nemotron": "bash scripts/download-models.sh nemotron-streaming",
 		"evals": "dotenvx run -q -f ${DOMIA_ENV:-.env} -- npx tsx evals/index.ts",
 		"typecheck:evals": "tsc --noEmit -p tsconfig.evals.json",
 		"check": "npm run build && npm run lint && npm run typecheck:evals"
@@ -69,7 +72,11 @@
 		"@bufbuild/protobuf": "^2.12.0",
 		"@grpc/grpc-js": "^1.14.4",
 		"@huggingface/transformers": "^4.2.0",
+		"@modelcontextprotocol/client": "^2.0.0",
+		"@modelcontextprotocol/core": "^2.0.0",
+		"@modelcontextprotocol/node": "^2.0.0",
 		"@modelcontextprotocol/sdk": "^1.30.0",
+		"@modelcontextprotocol/server": "^2.0.0",
 		"@opentelemetry/api": "^1.9.1",
 		"@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
 		"@opentelemetry/resources": "^2.11.0",
@@ -92,7 +99,7 @@
 		"ollama": "^0.6.3",
 		"onnxruntime-node": "^1.27.0",
 		"openai": "^6.43.0",
-		"sherpa-onnx-node": "1.13.5",
+		"sherpa-onnx-node": "1.13.8",
 		"ws": "^8.21.0",
 		"zod": "^4.4.3"
 	},
@@ -101,11 +108,11 @@
 	},
 	"overrides": {
 		"onnxruntime-node": "$onnxruntime-node",
-		"sherpa-onnx-darwin-arm64": "1.13.5",
-		"sherpa-onnx-darwin-x64": "1.13.5",
-		"sherpa-onnx-linux-arm64": "1.13.5",
-		"sherpa-onnx-linux-x64": "1.13.5",
-		"sherpa-onnx-win-x64": "1.13.5",
-		"sherpa-onnx-win-ia32": "1.13.5"
+		"sherpa-onnx-darwin-arm64": "1.13.8",
+		"sherpa-onnx-darwin-x64": "1.13.8",
+		"sherpa-onnx-linux-arm64": "1.13.8",
+		"sherpa-onnx-linux-x64": "1.13.8",
+		"sherpa-onnx-win-x64": "1.13.8",
+		"sherpa-onnx-win-ia32": "1.13.8"
 	}
 }

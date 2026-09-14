@@ -6,3 +6,11 @@ export const AGENT_FAILURE_REPLY =
 
 export const AGENT_ACTED_FAILURE_REPLY =
 	"Done — though I had trouble putting together a reply. Let me know if it didn't go through."
+
+export const AGENT_COMPACT_FACT_LIMIT = 8
+
+export const TARGETLESS_WRITE_NUDGE =
+	"Blocked: that action needs a target and the user never named one. Do not call it again — ask the user which device or room they mean."
+
+export const READ_BEFORE_ANSWER_NUDGE =
+	"That was a question about the current state. Do not guess: check it with a read tool, then answer the user."

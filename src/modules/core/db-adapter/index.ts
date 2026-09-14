@@ -10,6 +10,7 @@ import {
 	type InsertDomiaType,
 	type InsertSatelliteConfigType,
 } from "@/db"
+import type { SatelliteSettingsPatchType } from "../types"
 
 const dbAdapter = {
 	getDomiaByDomiaKey: (
@@ -265,15 +266,15 @@ const dbAdapter = {
 			.onConflictDoUpdate({
 				target: [satelliteConfig.domiaId, satelliteConfig.satelliteId],
 				set: {
-					name: data.name,
 					host: data.host,
+					name: data.name,
 					port: data.port,
 					encryptionKey: data.encryptionKey,
 					protocol: data.protocol,
 					livekitApiKey: data.livekitApiKey,
 					livekitApiSecret: data.livekitApiSecret,
 					livekitRoom: data.livekitRoom,
-					...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+					isActive: data.isActive,
 					updatedAt: new Date().toISOString(),
 				},
 			})
@@ -359,6 +360,22 @@ const dbAdapter = {
 		client
 			.update(satelliteConfig)
 			.set({ desiredVolume, updatedAt: new Date().toISOString() })
+			.where(
+				and(
+					eq(satelliteConfig.domiaId, domiaId),
+					eq(satelliteConfig.satelliteId, satelliteId),
+				),
+			)
+			.returning(),
+	setSatelliteSettings: (
+		domiaId: string,
+		satelliteId: string,
+		settings: SatelliteSettingsPatchType,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client
+			.update(satelliteConfig)
+			.set({ ...settings, updatedAt: new Date().toISOString() })
 			.where(
 				and(
 					eq(satelliteConfig.domiaId, domiaId),

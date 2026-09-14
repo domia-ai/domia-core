@@ -1,6 +1,12 @@
 import type { FastifyReply } from "fastify"
 import type { ZodError } from "zod"
 
+export const notFound = (reply: FastifyReply, message: string): FastifyReply =>
+	reply.code(404).send({ error: message })
+
+export const conflict = (reply: FastifyReply, message: string): FastifyReply =>
+	reply.code(409).send({ error: message })
+
 export const badRequest = (
 	reply: FastifyReply,
 	error: ZodError,

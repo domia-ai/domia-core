@@ -1,0 +1,222 @@
+{
+	"version": 1,
+	"marks": { "complete": "+", "short": "~", "long": "#" },
+	"items": [
+		{
+			"id": "en-complete-lights-off",
+			"text": "turn off the kitchen lights",
+			"language": "en",
+			"expect": "complete"
+		},
+		{
+			"id": "en-complete-time",
+			"text": "what time is it",
+			"language": "en",
+			"expect": "complete"
+		},
+		{
+			"id": "en-complete-weather",
+			"text": "what's the weather like today",
+			"language": "en",
+			"expect": "complete"
+		},
+		{
+			"id": "en-complete-music",
+			"text": "play some jazz in the living room",
+			"language": "en",
+			"expect": "complete"
+		},
+		{
+			"id": "en-complete-favorite-color",
+			"text": "my favorite color is blue",
+			"language": "en",
+			"expect": "complete"
+		},
+		{
+			"id": "en-complete-timer",
+			"text": "set a timer for ten minutes",
+			"language": "en",
+			"expect": "complete"
+		},
+		{
+			"id": "es-complete-lights-off",
+			"text": "apaga la luz del salón",
+			"language": "es",
+			"expect": "complete"
+		},
+		{
+			"id": "es-complete-time",
+			"text": "qué hora es",
+			"language": "es",
+			"expect": "complete"
+		},
+		{
+			"id": "es-complete-music",
+			"text": "pon música tranquila en la cocina",
+			"language": "es",
+			"expect": "complete"
+		},
+		{
+			"id": "es-complete-favorite-color",
+			"text": "mi color favorito es el azul",
+			"language": "es",
+			"expect": "complete"
+		},
+		{
+			"id": "es-complete-countdown",
+			"text": "cuánto falta para las nueve",
+			"language": "es",
+			"expect": "complete"
+		},
+		{
+			"id": "es-complete-reminder",
+			"text": "recuérdame comprar pan mañana",
+			"language": "es",
+			"expect": "complete"
+		},
+		{
+			"id": "en-short-turn-on-the",
+			"text": "turn on the",
+			"language": "en",
+			"expect": "short"
+		},
+		{
+			"id": "en-short-remind-me-to-call",
+			"text": "remind me to call",
+			"language": "en",
+			"expect": "short"
+		},
+		{
+			"id": "en-short-phone-number",
+			"text": "the number is five five five",
+			"language": "en",
+			"expect": "short"
+		},
+		{
+			"id": "en-short-lights-in-the",
+			"text": "can you put the lights in the",
+			"language": "en",
+			"expect": "short"
+		},
+		{
+			"id": "en-short-timer-for",
+			"text": "i need you to set a timer for",
+			"language": "en",
+			"expect": "short"
+		},
+		{
+			"id": "en-short-message-to-my",
+			"text": "send a message to my",
+			"language": "en",
+			"expect": "short"
+		},
+		{
+			"id": "es-short-y-tambien-la-luz-de",
+			"text": "y también la luz de",
+			"language": "es",
+			"expect": "short"
+		},
+		{
+			"id": "es-short-lampara-del",
+			"text": "enciende la lámpara del",
+			"language": "es",
+			"expect": "short"
+		},
+		{
+			"id": "es-short-numero",
+			"text": "el número es seis cinco cinco",
+			"language": "es",
+			"expect": "short"
+		},
+		{
+			"id": "es-short-llamar-a",
+			"text": "recuérdame llamar a",
+			"language": "es",
+			"expect": "short"
+		},
+		{
+			"id": "es-short-musica-de",
+			"text": "quiero que pongas música de",
+			"language": "es",
+			"expect": "short"
+		},
+		{
+			"id": "es-short-la-tele-y-la",
+			"text": "apaga la tele y la",
+			"language": "es",
+			"expect": "short"
+		},
+		{
+			"id": "en-long-let-me-think",
+			"text": "let me think",
+			"language": "en",
+			"expect": "long"
+		},
+		{
+			"id": "en-long-hold-on",
+			"text": "hold on a second",
+			"language": "en",
+			"expect": "long"
+		},
+		{
+			"id": "en-long-give-me-a-moment",
+			"text": "give me a moment",
+			"language": "en",
+			"expect": "long"
+		},
+		{
+			"id": "en-long-wait-let-me-check",
+			"text": "wait let me check something",
+			"language": "en",
+			"expect": "long"
+		},
+		{
+			"id": "en-long-hmm-think-about-that",
+			"text": "hmm let me think about that for a second",
+			"language": "en",
+			"expect": "long"
+		},
+		{
+			"id": "en-long-one-moment-please",
+			"text": "one moment please",
+			"language": "en",
+			"expect": "long"
+		},
+		{
+			"id": "es-long-espera-dejame-ver",
+			"text": "espera déjame ver",
+			"language": "es",
+			"expect": "long"
+		},
+		{
+			"id": "es-long-dame-un-momento",
+			"text": "dame un momento",
+			"language": "es",
+			"expect": "long"
+		},
+		{
+			"id": "es-long-dejame-pensarlo",
+			"text": "déjame pensarlo",
+			"language": "es",
+			"expect": "long"
+		},
+		{
+			"id": "es-long-un-segundo",
+			"text": "un segundo por favor",
+			"language": "es",
+			"expect": "long"
+		},
+		{
+			"id": "es-long-espera-que-lo-miro",
+			"text": "espera que lo miro",
+			"language": "es",
+			"expect": "long"
+		},
+		{
+			"id": "es-long-a-ver-dejame-recordar",
+			"text": "a ver déjame recordar",
+			"language": "es",
+			"expect": "long"
+		}
+	]
+}

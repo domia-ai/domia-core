@@ -12,7 +12,9 @@ import type {
 	VadInstance,
 	SpeechDenoiserConfig,
 	OnlineSpeechDenoiserInstance,
+	LinearResamplerInstance,
 	RuntimeAddon,
+	RuntimeVersionsType,
 } from "./types"
 
 let loaded: RuntimeAddon | null = null
@@ -53,6 +55,20 @@ export const createOnlineSpeechDenoiser = (
 	new (runtimeAddon().OnlineSpeechDenoiser)(
 		config,
 	) as OnlineSpeechDenoiserInstance
+
+export const createLinearResampler = (
+	inputSampleRate: number,
+	outputSampleRate: number,
+): LinearResamplerInstance =>
+	new (runtimeAddon().LinearResampler)(
+		inputSampleRate,
+		outputSampleRate,
+	) as LinearResamplerInstance
+
+export const runtimeVersions = (): RuntimeVersionsType => ({
+	sherpa: runtimeAddon().version,
+	onnxruntime: runtimeAddon().onnxruntimeVersion,
+})
 
 export const readWave = (filePath: string): Waveform =>
 	runtimeAddon().readWave(filePath)

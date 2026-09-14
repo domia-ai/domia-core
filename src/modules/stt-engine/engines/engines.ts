@@ -5,6 +5,7 @@ import { moonshineEngine } from "./moonshine"
 import { zipformerEngine } from "./zipformer"
 import { parakeetEngine } from "./parakeet"
 import { streamingTransducerEngine } from "./streaming-transducer"
+import { nemotronStreamingEngine } from "./nemotron-streaming"
 import { openAiCompatibleSttEngine } from "./openai-compatible"
 import { nemoSpeechEngine } from "./nemo-speech"
 import type { SttEngineAdapterType } from "../types"
@@ -18,6 +19,7 @@ export const sttEngineRegistry: Record<
 	[STT_ENGINE_ENUM.ZIPFORMER]: zipformerEngine,
 	[STT_ENGINE_ENUM.PARAKEET]: parakeetEngine,
 	[STT_ENGINE_ENUM.STREAMING_TRANSDUCER]: streamingTransducerEngine,
+	[STT_ENGINE_ENUM.NEMOTRON_STREAMING]: nemotronStreamingEngine,
 	[STT_ENGINE_ENUM.OPENAI_COMPATIBLE]: openAiCompatibleSttEngine,
 	[STT_ENGINE_ENUM.NEMO_SPEECH]: nemoSpeechEngine,
 }
@@ -32,6 +34,7 @@ export const sttEngines = {
 	[STT_ENGINE_ENUM.ZIPFORMER]: zipformerEngine.run,
 	[STT_ENGINE_ENUM.PARAKEET]: parakeetEngine.run,
 	[STT_ENGINE_ENUM.STREAMING_TRANSDUCER]: streamingTransducerEngine.run,
+	[STT_ENGINE_ENUM.NEMOTRON_STREAMING]: nemotronStreamingEngine.run,
 	[STT_ENGINE_ENUM.OPENAI_COMPATIBLE]: openAiCompatibleSttEngine.run,
 	[STT_ENGINE_ENUM.NEMO_SPEECH]: nemoSpeechEngine.run,
 }

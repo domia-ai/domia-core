@@ -48,7 +48,7 @@ export const setupMqtt = ({
 		password: config.password || "",
 		protocol: config.protocol,
 		...(hasScheme ? {} : { host: config.host, hostname: config.host }),
-		port: config.port || 1883,
+		port: config.port,
 		will: nodeId
 			? {
 					topic: `${ROOT}/${nodeId}/${MQTT_TYPE_ENUM.LOCAL}/${MQTT_EVENT_ENUM.OFFLINE}`,

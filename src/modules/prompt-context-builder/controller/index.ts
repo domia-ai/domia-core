@@ -10,6 +10,8 @@ import {
 	DEFAULT_PERSONA_NAME,
 	DEFAULT_PERSONA_TRAITS,
 	RECENT_TURN_REPLY_CLIP_CHARS,
+	KNOWN_FACTS_SECTION_TITLE,
+	KNOWLEDGE_BASE_SECTION_TITLE,
 } from "../constants"
 import type {
 	BuildPromptContextOptionsType,
@@ -112,7 +114,9 @@ export const buildDelegationPersona = (
 		memory.userModel,
 	)
 
-const resolvePersonaName = (persona: PersonaContextType): string => {
+export const resolvePersonaName = (persona: {
+	characterProfile: { name?: string | null } | null
+}): string => {
 	const raw = persona.characterProfile?.name?.trim()
 	if (!raw || raw.toLowerCase() === "default") return DEFAULT_PERSONA_NAME
 	return raw
@@ -299,6 +303,28 @@ const clipReply = (text: string): string => {
 	return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40))}…`
 }
 
+export const renderKnowledgeBaseSection = (entries: string[]): string =>
+	`${entries
+		.map((k) => `- ${k}`)
+		.join(
+			"\n",
+		)}\nThis is current and authoritative — answer questions about your place and role directly from it, no tools or internet needed.`
+
+export const renderKnownFactsSection = (
+	facts: string[],
+	language?: string | null,
+): string => {
+	const formerly = languageSetsFor(language).phrases.formerly
+	const expiredClause = facts.some((f) => f.startsWith(formerly))
+		? ` A fact marked ${formerly} was true before and is NOT true now — never state it as current; bring it up only if they ask about the past.`
+		: ""
+	return `${facts
+		.map((f) => `- ${f}`)
+		.join(
+			"\n",
+		)}\nAnswer questions about this person directly from these facts — their name, their likes, what they've told you. They are about the person you're talking to — don't assume they apply to anyone else they mention.${expiredClause}`
+}
+
 const renderRecentTurns = (turns: RecentTurnType[]): string => {
 	if (!turns.length) return ""
 	const lines = turns.flatMap((turn) => {
@@ -390,24 +416,16 @@ export const buildPromptFromPersona = (
 	const knowledgeBase = persona.knowledgeBase ?? options?.knowledgeBase
 	if (knowledgeBase?.length) {
 		sections.push([
-			"WHAT YOU KNOW ABOUT HERE",
-			`${knowledgeBase
-				.map((k) => `- ${k}`)
-				.join(
-					"\n",
-				)}\nThis is current and authoritative — answer questions about your place and role directly from it, no tools or internet needed.`,
+			KNOWLEDGE_BASE_SECTION_TITLE,
+			renderKnowledgeBaseSection(knowledgeBase),
 		])
 	}
 
 	const knownFacts = persona.knownFacts ?? options?.knownFacts
 	if (moduleSettings?.factRecall !== false && knownFacts?.length) {
 		sections.push([
-			"WHAT YOU KNOW",
-			`${knownFacts
-				.map((f) => `- ${f}`)
-				.join(
-					"\n",
-				)}\nAnswer questions about this person directly from these facts — their name, their likes, what they've told you. They are about the person you're talking to — don't assume they apply to anyone else they mention.`,
+			KNOWN_FACTS_SECTION_TITLE,
+			renderKnownFactsSection(knownFacts, persona.characterProfile?.language),
 		])
 	}
 

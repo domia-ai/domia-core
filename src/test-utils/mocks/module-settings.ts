@@ -2,6 +2,8 @@ import { faker } from "@faker-js/faker"
 
 import { generateUuid, now } from "@/utils"
 import {
+	DEFAULT_MEMORY_FACT_MAX_AGE_DAYS,
+	DEFAULT_MEMORY_RECALL_INCLUDE_EXPIRED,
 	DEFAULT_REFLECTION_TIMEOUT_MS,
 	DEFAULT_REFLECTION_IDLE_POLL_MS,
 	DEFAULT_REFLECTION_IDLE_GRACE_MS,
@@ -16,10 +18,18 @@ import {
 	DEFAULT_PROACTIVE_MAX_PER_DAY,
 	DEFAULT_PROACTIVE_CHIME_ENABLED,
 	DEFAULT_PROACTIVE_DEFER_MAX_MS,
+	DEFAULT_PROACTIVE_CRITICAL_DEFER_MAX_MS,
 	DEFAULT_PROACTIVE_TICK_MS,
 	DEFAULT_PROACTIVE_LEASE_MS,
 	DEFAULT_PROACTIVE_MAX_ATTEMPTS,
 	DEFAULT_PROACTIVE_RETRY_BACKOFF_MS,
+	DEFAULT_VOICE_FEEL_AUTOTUNE_ENABLED,
+	DEFAULT_VOICE_FEEL_WINDOW_TURNS,
+	DEFAULT_VOICE_FEEL_MIN_TURNS,
+	DEFAULT_VOICE_FEEL_TICK_MS,
+	DEFAULT_VOICE_FEEL_DAILY_BUDGET,
+	DEFAULT_VOICE_FEEL_COOLDOWN_MS,
+	DEFAULT_VOICE_FEEL_RULES,
 } from "@/db/constants"
 import { type SelectModuleSettingsType } from "@/db"
 
@@ -35,6 +45,8 @@ export const baseModuleSettings = (
 	memoryEngine: faker.datatype.boolean(),
 	factCapture: true,
 	factRecall: faker.datatype.boolean(),
+	memoryRecallIncludeExpired: DEFAULT_MEMORY_RECALL_INCLUDE_EXPIRED,
+	memoryFactMaxAgeDays: DEFAULT_MEMORY_FACT_MAX_AGE_DAYS,
 	environmentTimeEnabled: true,
 	reflectionOnlyWhenIdle: true,
 	reflectionConcurrency: 1,
@@ -60,10 +72,18 @@ export const baseModuleSettings = (
 	proactiveMaxPerDay: DEFAULT_PROACTIVE_MAX_PER_DAY,
 	proactiveChimeEnabled: DEFAULT_PROACTIVE_CHIME_ENABLED,
 	proactiveDeferMaxMs: DEFAULT_PROACTIVE_DEFER_MAX_MS,
+	proactiveCriticalDeferMaxMs: DEFAULT_PROACTIVE_CRITICAL_DEFER_MAX_MS,
 	proactiveTickMs: DEFAULT_PROACTIVE_TICK_MS,
 	proactiveLeaseMs: DEFAULT_PROACTIVE_LEASE_MS,
 	proactiveMaxAttempts: DEFAULT_PROACTIVE_MAX_ATTEMPTS,
 	proactiveRetryBackoffMs: DEFAULT_PROACTIVE_RETRY_BACKOFF_MS,
+	voiceFeelAutotuneEnabled: DEFAULT_VOICE_FEEL_AUTOTUNE_ENABLED,
+	voiceFeelWindowTurns: DEFAULT_VOICE_FEEL_WINDOW_TURNS,
+	voiceFeelMinTurns: DEFAULT_VOICE_FEEL_MIN_TURNS,
+	voiceFeelTickMs: DEFAULT_VOICE_FEEL_TICK_MS,
+	voiceFeelDailyBudget: DEFAULT_VOICE_FEEL_DAILY_BUDGET,
+	voiceFeelCooldownMs: DEFAULT_VOICE_FEEL_COOLDOWN_MS,
+	voiceFeelRules: DEFAULT_VOICE_FEEL_RULES,
 	createdAt: now(),
 	updatedAt: now(),
 })

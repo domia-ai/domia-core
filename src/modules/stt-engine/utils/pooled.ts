@@ -3,7 +3,10 @@ import path from "path"
 import { type DomiaType } from "@/modules/core"
 import { STT_ERRORS, sttEngineLogger, domiaError } from "@/utils"
 import { type SelectSttConfigType } from "@/db"
-import type { PoolJobTimingCbType } from "@/modules/inference-pool"
+import type {
+	PoolJobTimingCbType,
+	InferencePoolType,
+} from "@/modules/inference-pool"
 import { getSttPool } from "./pool"
 import type {
 	SttWorkerEngineConfigType,
@@ -38,6 +41,7 @@ const engineConfigOf = (
 	numThreads: sttConfig.numThreads,
 	provider: sttConfig.provider,
 	decodePaddingMs: sttConfig.decodePaddingMs,
+	flushPaddingMs: sttConfig.flushPaddingMs,
 	enableEndpoint: sttConfig.enableEndpoint,
 	rule1MinTrailingSilence: sttConfig.rule1MinTrailingSilence,
 	rule2MinTrailingSilence: sttConfig.rule2MinTrailingSilence,
@@ -125,7 +129,7 @@ export const createSttSessionPooled = (
 					const r = await session.exchange<{ text: string }>({
 						kind: "session-end",
 						sampleRate: STT_SAMPLE_RATE,
-						decodePaddingMs: sttConfig.decodePaddingMs,
+						flushPaddingMs: sttConfig.flushPaddingMs,
 					})
 					return r.text
 				})
@@ -161,10 +165,11 @@ export const runSttPcmPooled = async (
 	domia: DomiaType,
 	pcm: Buffer,
 	onTiming?: PoolJobTimingCbType,
+	poolOverride?: InferencePoolType,
 ): Promise<string> => {
 	if (pcm.length === 0) return ""
 	const sttConfig = requireSttConfig(domia)
-	const pool = getSttPool(sttConfig)
+	const pool = poolOverride ?? getSttPool(sttConfig)
 	const result = await pool.submit<SttWorkerResultType>(
 		{
 			kind: "pcm",

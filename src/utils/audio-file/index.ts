@@ -5,7 +5,7 @@ import { writeFile, readFile, open, unlink } from "fs/promises"
 
 import { DEFAULT_PCM_SAMPLE_RATE } from "@/db/constants"
 import { generateUuid } from "@/utils/db"
-import type { WavStreamWriterType } from "./types"
+import type { WavPcmType, WavStreamWriterType } from "./types"
 
 const WAV_HEADER_BYTES = 44
 const DEFAULT_EDGE_FADE_MS = 6
@@ -207,33 +207,51 @@ export const createWavStreamWriter = (
 	}
 }
 
-const findDataOffset = (buf: Buffer): number => {
-	if (buf.length < 12 || buf.toString("ascii", 0, 4) !== "RIFF") return 0
+export const readWavPcm = (buf: Buffer): WavPcmType | null => {
+	if (
+		buf.length < 12 ||
+		buf.toString("ascii", 0, 4) !== "RIFF" ||
+		buf.toString("ascii", 8, 12) !== "WAVE"
+	)
+		return null
+	let format: Omit<WavPcmType, "pcm"> | null = null
 	let offset = 12
 	while (offset + 8 <= buf.length) {
 		const id = buf.toString("ascii", offset, offset + 4)
 		const size = buf.readUInt32LE(offset + 4)
-		if (id === "data") return offset + 8
-		offset += 8 + size + (size % 2)
+		const body = offset + 8
+		if (id === "fmt " && body + 16 <= buf.length)
+			format = {
+				channels: buf.readUInt16LE(body + 2),
+				sampleRate: buf.readUInt32LE(body + 4),
+				bitsPerSample: buf.readUInt16LE(body + 14),
+			}
+		if (id === "data") {
+			if (!format) return null
+			const open =
+				size === 0 || size >= STREAMING_DATA_SIZE || body + size > buf.length
+			return {
+				...format,
+				pcm: buf.subarray(body, open ? buf.length : body + size),
+			}
+		}
+		offset = body + size + (size % 2)
 	}
-	return WAV_HEADER_BYTES
+	return null
 }
 
 export const getWavDurationMs = async (
 	filePath: string,
 ): Promise<number | null> => {
 	try {
-		const buf = await readFile(filePath)
-		if (buf.length < WAV_HEADER_BYTES || buf.toString("ascii", 0, 4) !== "RIFF")
+		const wav = readWavPcm(await readFile(filePath))
+		if (!wav) return null
+		const bytesPerSample = (wav.channels * wav.bitsPerSample) / 8
+		if (bytesPerSample <= 0 || wav.sampleRate <= 0 || wav.pcm.length === 0)
 			return null
-		const channels = buf.readUInt16LE(22)
-		const sampleRate = buf.readUInt32LE(24)
-		const bitsPerSample = buf.readUInt16LE(34)
-		const bytesPerSample = (channels * bitsPerSample) / 8
-		if (bytesPerSample <= 0 || sampleRate <= 0) return null
-		const dataBytes = buf.length - findDataOffset(buf)
-		if (dataBytes <= 0) return null
-		return Math.round((dataBytes / (sampleRate * bytesPerSample)) * 1000)
+		return Math.round(
+			(wav.pcm.length / (wav.sampleRate * bytesPerSample)) * 1000,
+		)
 	} catch {
 		return null
 	}
@@ -254,7 +272,7 @@ export const wavFileToPcmChunks = async function* (
 	chunkBytes = 3200,
 ): AsyncIterable<Buffer> {
 	const buf = await readFile(filePath)
-	const pcm = buf.subarray(findDataOffset(buf))
+	const pcm = readWavPcm(buf)?.pcm ?? buf
 	for (let i = 0; i < pcm.length; i += chunkBytes) {
 		yield pcm.subarray(i, i + chunkBytes)
 	}

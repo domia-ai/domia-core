@@ -3,8 +3,13 @@ import { join } from "path"
 import { writeFile } from "fs/promises"
 import { env } from "@/config"
 import { fetchArrayBuffer } from "@/utils/http-client"
-import { domiaBusLogger, httpScheme } from "@/utils"
+import {
+	domiaBusLogger,
+	httpScheme,
+	type AudioDeliveryFormatType,
+} from "@/utils"
 import { getLocalIp } from "@/modules/network-sync"
+import { getNodeConfig } from "@/modules/node-config"
 import type { DomiaType } from "@/modules/core"
 import type { ServeEntryType, DownloadAudioOptionsType } from "../types"
 
@@ -18,6 +23,9 @@ export const buildAudioUrl = (
 	domia: DomiaType,
 	interactionId: string,
 ): string | null => {
+	const publicBase = getNodeConfig().publicAudioBaseUrl
+	if (publicBase)
+		return `${publicBase.replace(/\/+$/, "")}/audio/${interactionId}`
 	const host = getLocalIp() ?? domia.localIp
 	if (!host) {
 		domiaBusLogger.warn("cannot build audio URL: local IP unknown", {
@@ -76,4 +84,16 @@ export const downloadAudioToTemp = async (
 	const buffer = await fetchArrayBuffer(audioUrl, options)
 	await writeFile(tempPath, Buffer.from(buffer))
 	return tempPath
+}
+
+export const withAudioFormat = (
+	url: string,
+	format: AudioDeliveryFormatType,
+): string => {
+	const parsed = new URL(url)
+	if (!/\/audio\/[^/]+$/.test(parsed.pathname)) return url
+	parsed.searchParams.set("rate", String(format.sampleRate))
+	parsed.searchParams.set("channels", String(format.channels))
+	parsed.searchParams.set("format", format.encoding)
+	return parsed.toString()
 }

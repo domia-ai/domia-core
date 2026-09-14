@@ -1,12 +1,16 @@
 import { hashCanonical } from "@/utils"
-import type { ToolGuardConfigType, ToolGuardVerdictType } from "../types"
+import type {
+	ToolGuardConfigType,
+	ToolGuardVerdictType,
+	ToolGuardsType,
+} from "../types"
 
 export const callSignature = (
 	name: string,
 	args: Record<string, unknown>,
 ): string => `${name}:${hashCanonical(args)}`
 
-export const createToolGuards = (cfg: ToolGuardConfigType) => {
+export const createToolGuards = (cfg: ToolGuardConfigType): ToolGuardsType => {
 	const failures = new Map<string, { count: number; lastError: string }>()
 	const okResults = new Map<string, string>()
 	let reserved = 0

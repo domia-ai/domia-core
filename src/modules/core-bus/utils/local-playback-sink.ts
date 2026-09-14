@@ -1,5 +1,6 @@
 import { domiaBusLogger } from "@/utils"
 import { notePlaybackReference } from "@/modules/audio-capture"
+import { DEFAULT_ECHO_REFERENCE_SECONDS } from "@/db"
 import { normalizeRuntimeCapabilities } from "@/setups/environment"
 import { type DomiaType, safeOwnDomia } from "@/modules/core"
 import {
@@ -65,7 +66,14 @@ const makeLocalPlaybackSink = (domia: DomiaType): StreamingSinkType => {
 		},
 		write: (chunk) => {
 			if (closed) return
-			notePlaybackReference(domia.id, chunk, sinkRate, sinkChannels)
+			notePlaybackReference(
+				domia.id,
+				chunk,
+				sinkRate,
+				sinkChannels,
+				domia.wakeWordConfig?.echoReferenceSeconds ??
+					DEFAULT_ECHO_REFERENCE_SECONDS,
+			)
 			buffered.push(chunk)
 			if (buffered.length > MAX_QUEUED_CHUNKS) {
 				buffered.shift()

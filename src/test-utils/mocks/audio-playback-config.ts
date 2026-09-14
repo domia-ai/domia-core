@@ -20,6 +20,8 @@ import {
 	DEFAULT_ENDPOINT_SOUND_PATH,
 	DEFAULT_PLAYBACK_PAUSE_ENABLED,
 	DEFAULT_WORD_LEVEL_HEARD_ENABLED,
+	DEFAULT_HEARD_SILENCE_TRIM_ENABLED,
+	DEFAULT_HEARD_SILENCE_RMS,
 } from "@/db"
 import { generateUuid, now } from "@/utils"
 
@@ -36,6 +38,8 @@ export const baseAudioPlaybackConfig = (domiaId?: string) => ({
 	truncationReplayThresholdMs: DEFAULT_PLAYBACK_TRUNCATION_REPLAY_THRESHOLD_MS,
 	pauseEnabled: DEFAULT_PLAYBACK_PAUSE_ENABLED,
 	wordLevelHeardEnabled: DEFAULT_WORD_LEVEL_HEARD_ENABLED,
+	heardSilenceTrimEnabled: DEFAULT_HEARD_SILENCE_TRIM_ENABLED,
+	heardSilenceRms: DEFAULT_HEARD_SILENCE_RMS,
 	outputDevice: null,
 	feedbackSoundsEnabled: DEFAULT_FEEDBACK_SOUNDS_ENABLED,
 	ackSoundEnabled: DEFAULT_ACK_SOUND_ENABLED,

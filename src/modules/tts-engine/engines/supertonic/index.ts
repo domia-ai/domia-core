@@ -61,6 +61,7 @@ const jobOf = (
 		provider: ttsConfig.provider,
 		maxNumSentences: ttsConfig.maxNumSentences,
 		numSteps: ttsConfig.engineConfig?.numSteps ?? DEFAULT_SUPERTONIC_NUM_STEPS,
+		quantization: ttsConfig.quantization,
 	},
 	text,
 	sid: sidOf(voiceName),
@@ -75,7 +76,7 @@ const synthesizeSentences = async function* (
 ): AsyncIterable<Buffer> {
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
-	const pool = getTtsPool(ttsConfig)
+	const pool = options?.pool ?? getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, voice.voiceName, voice.speed),

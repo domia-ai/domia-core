@@ -43,6 +43,20 @@ export const postSatelliteVolumeBodySchema = z.object({
 	volume: z.number().min(0).max(1),
 })
 
+export const patchSatelliteSettingsBodySchema = z
+	.object({
+		followUpNoSpeechMs: z.number().int().min(0).optional(),
+		followUpRequestMaxMs: z.number().int().min(0).optional(),
+		playbackDrainMarginMs: z.number().int().min(0).optional(),
+		runListeningMaxMs: z.number().int().min(0).optional(),
+		captureHeadTrimMs: z.number().int().min(0).optional(),
+		wyomingStreamingTts: z.boolean().optional(),
+		mediaPlayerName: z.string().trim().min(1).max(200).nullable().optional(),
+	})
+	.refine((body) => Object.keys(body).length > 0, {
+		message: "at least one setting is required",
+	})
+
 const clockSchema = z.string().regex(/^\d{1,2}:\d{2}$/, "expected HH:MM")
 
 export const postScheduleBodySchema = z
@@ -102,6 +116,7 @@ export const postChatBodySchema = z.object({
 		.min(1, "Body must include a non-empty 'text' string.")
 		.trim(),
 	speak: z.boolean().optional().default(false),
+	satelliteId: z.string().trim().min(1).max(200).optional(),
 })
 
 export const postVoiceBodySchema = z
@@ -163,6 +178,9 @@ export const getSyncQuerySchema = z.object({
 
 export const getAudioQuerySchema = z.object({
 	kind: z.enum(["input", "tts", "announce"]).default("tts"),
+	rate: z.coerce.number().int().min(8000).max(192000).optional(),
+	channels: z.coerce.number().int().min(1).max(2).optional(),
+	format: z.enum(["wav", "flac"]).optional(),
 })
 
 export const postBenchRunBodySchema = z.object({
@@ -177,4 +195,8 @@ export const MESH_ROTATE_ACTIONS = [
 
 export const postMeshRotateBodySchema = z.object({
 	action: z.enum(MESH_ROTATE_ACTIONS).default("status"),
+})
+
+export const voiceFeelIdParamsSchema = z.object({
+	id: z.string().trim().min(1).max(200),
 })

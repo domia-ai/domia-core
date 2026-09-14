@@ -65,7 +65,7 @@ const runVits = async (
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = sidOf(voice.voiceName)
 	try {
-		const pool = getTtsPool(ttsConfig)
+		const pool = options?.pool ?? getTtsPool(ttsConfig)
 		const parts: Buffer[] = []
 		let sampleRate = vitsEngine.capabilities.sampleRate
 		for (const sentence of splitTextIntoSentences(text)) {
@@ -108,7 +108,7 @@ const runVitsStream = async function* (
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = sidOf(voice.voiceName)
-	const pool = getTtsPool(ttsConfig)
+	const pool = options?.pool ?? getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, sid, voice.speed),

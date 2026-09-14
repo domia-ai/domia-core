@@ -15,6 +15,7 @@ import {
 	getActiveTurn,
 	recentToolsLine,
 	lastActedEntity,
+	lastToolCall,
 } from "../../utils"
 import { updateInteraction, pipelineElapsed } from "@/modules/session-manager"
 import {
@@ -138,9 +139,10 @@ export const tryAgentTurn = async (
 	const { domia } = ctx
 	const envelope = getInteractionRuntime(session.interactionId)?.envelope
 	const confirmationChannel = envelope?.satelliteId ?? envelope?.source
-	const [toolsLine, actedTarget] = await Promise.all([
+	const [toolsLine, actedTarget, retryCall] = await Promise.all([
 		recentToolsLine(domia).catch(() => null),
 		lastActedEntity(domia).catch(() => null),
+		lastToolCall(domia).catch(() => null),
 	])
 	let result: AgentResultType
 	try {
@@ -160,7 +162,10 @@ export const tryAgentTurn = async (
 					signal,
 					confirmationChannel,
 					recentToolsLine: toolsLine ?? undefined,
-					lastActedTarget: actedTarget ?? undefined,
+					lastActedTarget: actedTarget?.entity,
+					retryCall: retryCall ?? undefined,
+					knownFacts: session.knownFacts,
+					knowledgeBase: session.knowledgeBase,
 					constrainedRepair,
 					onSlowTool:
 						session.isVoice && session.liveVoice

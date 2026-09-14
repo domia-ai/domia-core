@@ -51,12 +51,19 @@ export const MODULES_SKILLS_FIELDS = ["skillsEngine"] as const
 
 export const MODULES_PROACTIVITY_FIELDS = ["proactivityEngine"] as const
 
+export const MODULES_VOICE_FEEL_FIELDS = [
+	"voiceFeelAutotuneEnabled",
+	"voiceFeelTickMs",
+] as const
+
 export const MODULES_LIVE_FIELDS = [
 	"emotionEngine",
 	"emotionCapture",
 	"memoryEngine",
 	"factCapture",
 	"factRecall",
+	"memoryRecallIncludeExpired",
+	"memoryFactMaxAgeDays",
 	"environmentTimeEnabled",
 	"reflectionOnlyWhenIdle",
 	"reflectionConcurrency",
@@ -80,10 +87,16 @@ export const MODULES_LIVE_FIELDS = [
 	"proactiveMaxPerDay",
 	"proactiveChimeEnabled",
 	"proactiveDeferMaxMs",
+	"proactiveCriticalDeferMaxMs",
 	"proactiveTickMs",
 	"proactiveLeaseMs",
 	"proactiveMaxAttempts",
 	"proactiveRetryBackoffMs",
+	"voiceFeelWindowTurns",
+	"voiceFeelMinTurns",
+	"voiceFeelDailyBudget",
+	"voiceFeelCooldownMs",
+	"voiceFeelRules",
 ] as const
 
 export const STT_LIVE_FIELDS = [
@@ -93,6 +106,7 @@ export const STT_LIVE_FIELDS = [
 	"timeoutMs",
 	"enableEndpoint",
 	"decodePaddingMs",
+	"flushPaddingMs",
 	"rule1MinTrailingSilence",
 	"rule2MinTrailingSilence",
 	"rule3MinUtteranceLength",
@@ -122,9 +136,13 @@ export const STT_POOL_FIELDS = [
 
 export const TTS_LIVE_FIELDS = [
 	"sentenceFirstFragmentMaxWords",
+	"prewarmOnBoot",
+	"prewarmOnReload",
+	"prewarmPasses",
 	"phraseCacheMaxBytes",
 	"phraseCacheWarmupEnabled",
 	"phraseCacheReplyUnitsEnabled",
+	"phraseCacheVoiceStep",
 	"voiceName",
 	"language",
 	"pitch",
@@ -170,6 +188,8 @@ export const LLM_DRAIN_FIELDS = ["engine", "baseUrl", "apiKey"] as const
 export const LLM_LIVE_FIELDS = [
 	"modelName",
 	"reflectionModelName",
+	"reasoningEffort",
+	"reflectionReasoningEffort",
 	"temperature",
 	"contextWindow",
 	"numPredict",
@@ -182,6 +202,7 @@ export const LLM_LIVE_FIELDS = [
 	"intentModelName",
 	"embeddingModelName",
 	"intentEmbedThreshold",
+	"intentLexicalMinScore",
 	"descriptorRoutingEnabled",
 	"toolModelName",
 	"agentMaxSteps",
@@ -229,6 +250,9 @@ export const LLM_LIVE_FIELDS = [
 	"toolRequestMaxRetries",
 	"fastPathCompoundEnabled",
 	"fastPathCompoundMaxTargets",
+	"intentCacheEnabled",
+	"intentCacheSize",
+	"intentCacheMinSimilarity",
 ] as const
 
 export const WAKE_WORD_LISTENER_FIELDS = [
@@ -268,14 +292,17 @@ export const WAKE_WORD_LISTENER_FIELDS = [
 	"echoResidualMaxDelayMs",
 	"echoResidualMinRms",
 	"echoResidualMinFrames",
+	"echoReferenceSeconds",
 	"wakeVerifier",
 	"wakeVerifierWindowMs",
 	"wakeVerifierMinRms",
 	"wakeVerifierMinSpeechMs",
 	"wakeVerifierMinScore",
+	"wakeVerifierMaxMs",
 ] as const
 
 export const WAKE_WORD_LIVE_FIELDS = [
+	"vadPrewarmOnBoot",
 	"vadThreshold",
 	"vadMinSilenceS",
 	"vadEndOfSpeechMs",
@@ -319,6 +346,11 @@ export const WAKE_WORD_LIVE_FIELDS = [
 	"followUpLeadPadMs",
 	"stopWordAbortEnabled",
 	"stopWordMaxWords",
+	"stopWordMaxExtraWords",
+	"echoLiveSpeechTtlMs",
+	"twoTierSettleMaxWaitMs",
+	"speculationMaxAttempts",
+	"speculationMaxUtteranceMs",
 ] as const
 
 export const CONFIG_SECTION_PROPS: { section: string; prop: string }[] = [
@@ -337,10 +369,12 @@ export const CONFIG_SECTION_PROPS: { section: string; prop: string }[] = [
 export const RELOAD_SCOPE: Record<ReloadSubsystemType, ReloaderScopeType> = {
 	"stt-pool": "global",
 	"tts-pool": "global",
+	llm: "global",
 	mqtt: "global",
 	"voice-listener": "per-identity",
 	skills: "per-identity",
 	satellites: "per-identity",
 	identity: "per-identity",
 	proactivity: "per-identity",
+	"voice-feel": "per-identity",
 }

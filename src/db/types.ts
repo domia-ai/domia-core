@@ -27,6 +27,7 @@ import {
 	ARG_NORMALIZE_OP_ENUM_VALUES,
 	HARDWARE_CLASS_ENUM_VALUES,
 	BENCH_STAGE_ENUM_VALUES,
+	MCP_PROTOCOL_MODE_ENUM_VALUES,
 } from "./constants"
 
 export type DbClientType = BetterSQLite3Database<typeof schema> & {
@@ -44,6 +45,9 @@ export type DBClientOrTxType = DbClientType | DbTxType
 
 export type SelectDomiaType = InferSelectModel<typeof schema.domia>
 export type InsertDomiaType = InferInsertModel<typeof schema.domia>
+
+export type SelectHostNodeType = InferSelectModel<typeof schema.hostNode>
+export type InsertHostNodeType = InferInsertModel<typeof schema.hostNode>
 
 export type SelectRuntimeCapabilitiesType = InferSelectModel<
 	typeof schema.runtimeCapabilities
@@ -135,6 +139,7 @@ export type {
 } from "./json-types"
 
 export type ArgNormalizeOpType = (typeof ARG_NORMALIZE_OP_ENUM_VALUES)[number]
+export type McpProtocolModeType = (typeof MCP_PROTOCOL_MODE_ENUM_VALUES)[number]
 export type HardwareClassType = (typeof HARDWARE_CLASS_ENUM_VALUES)[number]
 export type BenchStageType = (typeof BENCH_STAGE_ENUM_VALUES)[number]
 
@@ -201,6 +206,13 @@ export type InsertAnnouncementType = InferInsertModel<
 >
 
 export type InsertTurnEventType = InferInsertModel<typeof schema.turnEvent>
+
+export type SelectVoiceFeelAdjustmentType = InferSelectModel<
+	typeof schema.voiceFeelAdjustment
+>
+export type InsertVoiceFeelAdjustmentType = InferInsertModel<
+	typeof schema.voiceFeelAdjustment
+>
 
 export type SelectProactiveScheduleType = InferSelectModel<
 	typeof schema.proactiveSchedule

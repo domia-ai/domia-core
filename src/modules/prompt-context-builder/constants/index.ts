@@ -37,3 +37,7 @@ export const DEFAULT_PERSONA_NAME = "Domia"
 export const DEFAULT_PERSONA_TRAITS = ["warm", "curious", "grounded"] as const
 
 export const RECENT_TURN_REPLY_CLIP_CHARS = 140
+
+export const KNOWN_FACTS_SECTION_TITLE = "WHAT YOU KNOW"
+
+export const KNOWLEDGE_BASE_SECTION_TITLE = "WHAT YOU KNOW ABOUT HERE"

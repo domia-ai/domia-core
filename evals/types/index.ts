@@ -6,12 +6,19 @@ export type EvalSuiteType =
 	| "routing"
 	| "memory"
 	| "conversation"
+	| "conversation-long"
 	| "parsing"
 	| "tools"
 	| "tools-confirm"
 	| "security"
+	| "tool-scenarios"
 
-export type EvalRequirementType = "skills" | "ha" | "facts" | "multilingual"
+export type EvalRequirementType =
+	| "skills"
+	| "ha"
+	| "music"
+	| "facts"
+	| "multilingual"
 
 export type PromptSectionType =
 	| "WHAT YOU KNOW"
@@ -42,6 +49,15 @@ export type EvalExpectType = {
 	noFactInDb?: { subject?: string; value: string }
 	factCountAtMost?: { subject?: string; value: string; count: number }
 	fastPath?: boolean
+	tools?: string[]
+	toolsNamespaced?: string[]
+	mockMusicState?: EvalMockMusicStateType
+	noTools?: boolean
+	noWrites?: boolean
+	compound?: number
+	replyNotQuestion?: boolean
+	replyMatches?: string
+	replyNotMatches?: string
 	calledToolCount?: number
 	traceToolStatus?: Record<string, string>
 	exactlyOnce?: string
@@ -63,12 +79,59 @@ export type EvalExpectType = {
 	}
 }
 
+export type EvalMockMusicStateType = {
+	player: string
+	state?: "idle" | "playing" | "paused"
+	volumeLevel?: number
+	muted?: boolean
+	currentItemMatches?: string
+}
+
+export type EvalOnReplyWhenType = {
+	toolCalled?: string
+	notToolCalled?: string
+	replyMatches?: string
+	routed?: "skill" | "chat" | "fast"
+	traceToolStatus?: Record<string, string>
+}
+
+export type EvalOnReplyRuleType = {
+	when: EvalOnReplyWhenType
+	next: string
+}
+
 export type EvalTurnType = {
+	id?: string
+	name?: string
+	gate?: boolean
 	text: string
+	satelliteId?: string
+	mockHa?: EvalCaseMockHaType
+	onReply?: EvalOnReplyRuleType[]
+	end?: boolean
 	expect: EvalExpectType
 }
 
 export type EvalCaseModeType = "gate" | "advisory"
+
+export type EvalCaseMockHaType = Partial<MockHaBehaviorType> & {
+	stateful?: boolean
+}
+
+export type EvalCaseMockMusicType = Partial<MockMusicBehaviorType> & {
+	stateful?: boolean
+}
+
+export type ConversationThresholdsType = {
+	judge?: { rubric: string; min: number }
+	minTurnPassRate?: number
+	ttftP50MaxMs?: number
+	ttfaP50MaxMs?: number
+	perceivedTtfaP50MaxMs?: number
+	minToolCorrectness?: number
+	minInstructionFollowing?: number
+	minContextRetention?: number
+}
 
 export type EvalCaseType = {
 	name: string
@@ -79,8 +142,35 @@ export type EvalCaseType = {
 	mode?: EvalCaseModeType
 	isolate?: "facts" | "conversation" | "session"
 	seedFacts?: SeedFactType[]
-	mockHa?: Partial<MockHaBehaviorType>
+	mockHa?: EvalCaseMockHaType
+	mockMusic?: EvalCaseMockMusicType
+	site?: string
+	entities?: Record<string, string>
+	conversation?: ConversationThresholdsType
 	turns: EvalTurnType[]
+}
+
+export type SiteEntityType = {
+	name: string
+	entityId: string
+	area: string
+	token: string
+	spoken: string
+	spokenSingular?: string
+	nameEs?: string
+}
+
+export type SiteSpeakerType = {
+	name: string
+	playerId: string
+	spoken: string
+	nameEs?: string
+}
+
+export type SiteMapType = {
+	name: string
+	entities: Record<string, SiteEntityType>
+	speakers?: Record<string, SiteSpeakerType>
 }
 
 export type EvalTurnRecordType = {
@@ -96,6 +186,13 @@ export type EvalTurnRecordType = {
 	status: string | null
 	skillResponse: unknown[] | null
 	llmPrompt: string | null
+	perceivedTtfaMs: number | null
+	eouDelayMs: number | null
+	endpointDebounceMs: number | null
+	implicitFeedback: string | null
+	llmTtftMs: number | null
+	llmFirstSentenceMs: number | null
+	heardReply: string | null
 	events: { type: string; seq: number; payload: string | null }[]
 }
 
@@ -269,18 +366,144 @@ export type TtsTournamentRowType = {
 	rssAfterMb: number
 }
 
-export type MockHaBehaviorType = {
+export type MockBehaviorCoreType = {
 	latencyMs: Record<string, number>
 	fail: Record<string, number | "always">
 	poison: Record<string, string>
+}
+
+export type MockBehaviorGateType = {
+	check: (tool: string) => Promise<string | null>
+	poisonOf: (tool: string) => string | undefined
+	resetCounts: () => void
+}
+
+export type MockHaBehaviorType = MockBehaviorCoreType & {
 	annotations: boolean
 	catalogSize: number
+	domainPrefixed: boolean
 }
 
 export type MockHaServerType = {
 	url: string
 	setBehavior: (patch: Partial<MockHaBehaviorType>) => Promise<void>
 	close: () => Promise<void>
+}
+
+export type MockMusicBehaviorType = MockBehaviorCoreType
+
+export type MockMusicTrackType = {
+	uri: string
+	name: string
+	artists: string[]
+	album: string
+	duration: number
+}
+
+export type MockMusicQueueItemType = {
+	item_id: string
+	name: string
+	index: number
+	duration: number
+	artists: string[]
+}
+
+export type MockMusicQueueType = {
+	queue_id: string
+	current_index: number
+	item_count: number
+	items: MockMusicQueueItemType[]
+	shuffle: boolean
+	repeat: "off" | "one" | "all"
+}
+
+export type MockMusicCurrentItemType = {
+	item_id: string
+	name: string
+	artists: string[]
+	album: string
+	duration: number
+	uri: string
+}
+
+export type MockMusicPlayerType = {
+	player_id: string
+	name: string
+	state: "idle" | "playing" | "paused"
+	volume_level: number
+	volume_muted: boolean
+	powered: boolean
+	available: boolean
+	current_item: MockMusicCurrentItemType | null
+	active_group: string | null
+	synced_to: string | null
+}
+
+export type MockMusicStateType = {
+	players: MockMusicPlayerType[]
+	queues: MockMusicQueueType[]
+}
+
+export type MockMusicServerType = {
+	url: string
+	setBehavior: (patch: Partial<MockMusicBehaviorType>) => Promise<void>
+	reset: () => Promise<void>
+	state: () => Promise<MockMusicStateType>
+	close: () => Promise<void>
+}
+
+export type MockMcpServerType = {
+	url: string
+	close: () => Promise<void>
+}
+
+export type MockDualEraServerType = {
+	url: string
+	ttlMs: number
+	close: () => Promise<void>
+}
+
+export type MockProvidersControlType = {
+	teardown: () => Promise<void>
+	ha: {
+		setBehavior: (patch: Record<string, unknown>) => Promise<void>
+		resync: () => Promise<void>
+	} | null
+	music: {
+		setBehavior: (patch: Record<string, unknown>) => Promise<void>
+		reset: () => Promise<void>
+		state: () => Promise<MockMusicStateType>
+	} | null
+}
+
+export type ToolScenarioRowType = {
+	intent_decision: string | null
+	tool_call_count: number | null
+	skill_response: string | null
+	llm_response: string | null
+	status: string | null
+	llm_ms: number | null
+	total_ms: number | null
+}
+
+export type ToolScenarioToolEntryType = {
+	kind?: string
+	tool?: string
+	status?: string
+	resolvedArgs?: Record<string, unknown>
+	args?: Record<string, unknown>
+}
+
+export type ToolScenarioResultType = {
+	name: string
+	text: string
+	gate: boolean
+	pass: boolean
+	detail: string
+	reply: string
+	tools: string[]
+	intent: string | null
+	totalMs: number | null
 }
 
 export type VirtualClockType = {
@@ -374,7 +597,90 @@ export type PauseCorpusManifestType = {
 
 export type SeedFactType = { subject: string; relation: string; value: string }
 
-export type JudgeVerdictType = { score: number; reason: string }
+export type JudgeEngineType = "ollama" | "openai"
+
+export type JudgeSpecType = {
+	engine: JudgeEngineType
+	model: string
+	label: string
+}
+
+export type JudgePanelMemberType = {
+	judge: string
+	score: number
+	reason: string
+	positionScores: number[]
+}
+
+export type JudgeVerdictType = {
+	score: number
+	reason: string
+	agreement: number
+	panel: JudgePanelMemberType[]
+}
+
+export type ConversationJudgeVerdictType = JudgeVerdictType & {
+	issues: string[]
+}
+
+export type StoredTranscriptType = {
+	file: string
+	caseName: string
+	rubric: string
+	turns: { user: string; reply: string }[]
+	storedScore: number | null
+}
+
+export type JudgeStabilityRepeatType = {
+	median: number
+	agreement: number
+	panel: JudgePanelMemberType[]
+}
+
+export type JudgeStabilityResultType = {
+	transcript: StoredTranscriptType
+	repeats: JudgeStabilityRepeatType[]
+}
+
+export type ConversationTurnResultType = {
+	step: number
+	id: string
+	name: string
+	user: string
+	reply: string
+	passed: boolean
+	anaphora: boolean
+	tools: string[]
+	intent: string | null
+	assertions: EvalAssertionType[]
+	record: EvalTurnRecordType | null
+	nextId: string | null
+}
+
+export type ConversationLatencyType = {
+	n: number
+	p50: number | null
+	p95: number | null
+}
+
+export type ConversationMetricsType = {
+	turnsRun: number
+	turnPassRate: number
+	toolCorrectness: number | null
+	instructionFollowing: number | null
+	kbGrounding: number | null
+	contextRetention: number | null
+	ttftMs: ConversationLatencyType
+	ttfaMs: ConversationLatencyType
+	perceivedTtfaMs: ConversationLatencyType
+	eouDelayP50: number | null
+}
+
+export type ConversationGateType = {
+	name: string
+	ok: boolean
+	detail: string
+}
 
 export type PairwiseWinnerType = "A" | "B" | "tie"
 
@@ -419,6 +725,12 @@ export type EvalRegistrySuiteType = {
 	description: string
 }
 
+export type EvalRequirementGateType = {
+	requirement: EvalRequirementType
+	reason: string
+	recovery: string
+}
+
 export type FakeWyomingEventType = {
 	type: string
 	data: Record<string, unknown>
@@ -437,4 +749,113 @@ export type FakeWyomingSatelliteType = {
 	) => Promise<boolean>
 	send: (type: string, data?: Record<string, unknown>, payload?: Buffer) => void
 	close: () => void
+}
+
+export type TurnTagExpectType = "complete" | "short" | "long"
+
+export type TurnTagObservedType = TurnTagExpectType | "untagged"
+
+export type TurnTagCorpusItemType = {
+	id: string
+	text: string
+	language: string
+	expect: TurnTagExpectType
+}
+
+export type TurnTagCorpusType = {
+	version: number
+	marks: Record<TurnTagExpectType, string>
+	items: TurnTagCorpusItemType[]
+}
+
+export type TurnTagSampleType = {
+	item: TurnTagCorpusItemType
+	got: TurnTagObservedType
+	firstChar: string
+}
+
+export type SttDenoiseCorpusType = {
+	cases: { id: string; text: string }[]
+}
+
+export type SttDenoiseManifestType = Record<
+	string,
+	{ cls: string; file: string }[]
+>
+
+export type SubsystemOutcomeType = {
+	subsystem: string
+	status: string
+	error?: string
+}
+
+export type ApplyResponseType = {
+	config?: Record<string, unknown>
+	apply?: {
+		result: string
+		revertedSections: string[]
+		subsystems: SubsystemOutcomeType[]
+	}
+}
+
+export type ConfigApplyProbeCaseType = {
+	label: string
+	section: "stt" | "tts" | "llm"
+	subsystem: string
+	patch: Record<string, unknown>
+}
+
+export type MockEntityStateType = { on: boolean; brightness: number | null }
+
+export type MindDumpRowType = Record<string, unknown>
+
+export type DumpTableType = { columns: string[]; rows: unknown[][] }
+
+export type DumpFileType = {
+	version: "mind-dump-2"
+	db: string
+	dumpedAt: string
+	domias: { id: string; domiaKey: string }[]
+	tables: Partial<Record<string, DumpTableType>>
+}
+
+export type MindDumpTableSpecType = {
+	name: string
+	naturalKey: string[]
+	singleton: boolean
+	activeSingleton: boolean
+	upsertByKey: boolean
+}
+
+export type RestoreReportType = {
+	deferred: number
+	inserted: number
+	matched: number
+	updated: number
+	remapped: number
+}
+
+export type VerifyIssueType = { table: string; key: string; reason: string }
+
+export type DomiaMapType = {
+	map: Map<string, string>
+	deferredIds: Set<string>
+	deferredKeys: string[]
+}
+
+export type GrammarProbeCaseType = {
+	name: string
+	text: string
+	expect: "calls" | "text"
+	tools?: string[]
+	minHits: number
+}
+
+export type ToolGrammarParserCaseType = {
+	name: string
+	input: string
+	expect: "tool_calls" | "reply" | "unparseable"
+	calls?: string[]
+	reply?: string
+	args?: Record<string, unknown>
 }

@@ -1,0 +1,220 @@
+[
+	{
+		"name": "ordered stateful home-assistant chain",
+		"suite": "tool-scenarios",
+		"language": "en",
+		"site": "lab",
+		"entities": {
+			"light": "lightA",
+			"secondLight": "lightB",
+			"tv": "unavailableDevice"
+		},
+		"turns": [
+			{
+				"name": "state query: primary lights",
+				"gate": true,
+				"text": "Are the {{entity.light.spoken}} on right now?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true
+				}
+			},
+			{
+				"name": "state query: primary light (singular)",
+				"gate": true,
+				"text": "Is the {{entity.light.spokenSingular}} on?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true
+				}
+			},
+			{
+				"name": "state query: media device",
+				"gate": true,
+				"text": "Is the {{entity.tv.spoken}} on?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true
+				}
+			},
+			{
+				"name": "command: turn on (fast-path)",
+				"gate": true,
+				"text": "Turn on the {{entity.light.spoken}}",
+				"expect": {
+					"tools": ["HassTurnOn"],
+					"fastPath": true
+				}
+			},
+			{
+				"name": "numeric: dim to fifty percent (fast-path)",
+				"gate": true,
+				"text": "Dim the {{entity.light.spoken}} to fifty percent",
+				"expect": {
+					"tools": ["HassLightSet"],
+					"fastPath": true
+				}
+			},
+			{
+				"name": "state query after action (must say on)",
+				"gate": true,
+				"text": "Is the {{entity.light.spokenSingular}} on?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true,
+					"replyMatches": "\\b(on|yes)\\b",
+					"replyNotMatches": "\\b(off|no)\\b"
+				}
+			},
+			{
+				"name": "state query: secondary light status (must say off)",
+				"gate": false,
+				"text": "What's the status of the {{entity.secondLight.spoken}}?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true,
+					"replyMatches": "\\b(off|no)\\b",
+					"replyNotMatches": "\\b(on|yes)\\b(?!\\s+the)"
+				}
+			},
+			{
+				"name": "state query: which lights are on (must name the primary)",
+				"gate": false,
+				"text": "Which lights are on right now?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true,
+					"replyMatches": "{{entity.light.token}}"
+				}
+			},
+			{
+				"name": "read tool: what time is it",
+				"gate": false,
+				"text": "What time is it?",
+				"expect": {
+					"noWrites": true,
+					"replyMatches": "\\d|o'clock|noon|midnight|\\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|forty|fifty)\\b"
+				}
+			},
+			{
+				"name": "numeric: set to twenty percent (fast-path)",
+				"gate": true,
+				"text": "Set the {{entity.light.spoken}} to twenty percent",
+				"expect": {
+					"tools": ["HassLightSet"],
+					"fastPath": true
+				}
+			},
+			{
+				"name": "anaphora: make it brighter (agent)",
+				"gate": false,
+				"text": "Make it brighter",
+				"expect": {
+					"tools": ["HassLightSet"]
+				}
+			},
+			{
+				"name": "area off via agent: all the lights in the area",
+				"gate": false,
+				"text": "Turn off all the lights in the {{entity.light.area}}",
+				"expect": {
+					"tools": ["HassTurnOff"]
+				}
+			},
+			{
+				"name": "state query after off (must say off)",
+				"gate": true,
+				"text": "Is the {{entity.light.spokenSingular}} on?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true,
+					"replyMatches": "\\boff\\b|\\bnot\\b|\\bno\\b"
+				}
+			},
+			{
+				"name": "compound: on + on (fast-path)",
+				"gate": true,
+				"text": "Turn on the {{entity.light.spoken}} and the {{entity.secondLight.spoken}}",
+				"expect": {
+					"tools": ["HassTurnOn", "HassTurnOn"],
+					"compound": 2
+				}
+			},
+			{
+				"name": "compound: off + off (fast-path)",
+				"gate": true,
+				"text": "Turn off the {{entity.light.spoken}} and the {{entity.secondLight.spoken}}",
+				"expect": {
+					"tools": ["HassTurnOff", "HassTurnOff"],
+					"compound": 2
+				}
+			},
+			{
+				"name": "negation: no tool",
+				"gate": true,
+				"text": "Don't turn on the {{entity.light.spoken}}",
+				"expect": {
+					"noTools": true
+				}
+			},
+			{
+				"name": "chat: no tool",
+				"gate": true,
+				"text": "Tell me a one-line joke",
+				"expect": {
+					"noTools": true
+				}
+			},
+			{
+				"name": "agent write: brighter (model quality)",
+				"gate": false,
+				"text": "Please make the {{entity.light.spoken}} a bit brighter",
+				"expect": {
+					"tools": ["HassLightSet"]
+				}
+			},
+			{
+				"name": "polite modal: can you turn off the lights (agent)",
+				"gate": true,
+				"text": "Can you turn off the {{entity.light.spoken}}?",
+				"expect": {
+					"tool": "HassTurnOff"
+				}
+			},
+			{
+				"name": "polite modal ES twin: puedes apagar la luz",
+				"gate": false,
+				"text": "¿Puedes apagar la {{entity.light.nameEs}}?",
+				"expect": {
+					"tool": "HassTurnOff"
+				}
+			},
+			{
+				"name": "blanket off via agent: all the lights",
+				"gate": false,
+				"text": "Turn off all the lights please",
+				"expect": {
+					"tools": ["HassTurnOff"]
+				}
+			},
+			{
+				"name": "state query after blanket off (must say off)",
+				"gate": false,
+				"text": "Are the {{entity.secondLight.spoken}} on?",
+				"expect": {
+					"noWrites": true,
+					"replyMatches": "\\boff\\b|\\bnot\\b|\\bno\\b"
+				}
+			},
+			{
+				"name": "cleanup: turn off (fast-path)",
+				"gate": true,
+				"text": "Turn off the {{entity.light.spoken}}",
+				"expect": {
+					"tools": ["HassTurnOff"],
+					"fastPath": true
+				}
+			}
+		]
+	}
+]

@@ -1,12 +1,15 @@
-import { SKILL_PROTOCOL_ENUM } from "@/db"
-
 import type { SkillAdapterType } from "../types"
-import { mcpAdapter } from "./mcp"
+import { mcpV1SseAdapter } from "./mcp-v1-sse"
+import { mcpV2Adapter } from "./mcp-v2"
 
-const registry: Record<string, SkillAdapterType> = {
-	[SKILL_PROTOCOL_ENUM.MCP]: mcpAdapter,
-}
+const registry: SkillAdapterType[] = [mcpV2Adapter, mcpV1SseAdapter]
 
 export const resolveSkillAdapter = (
 	protocol: string,
-): SkillAdapterType | null => registry[protocol] ?? null
+	type?: string,
+): SkillAdapterType | null =>
+	registry.find(
+		(adapter) =>
+			adapter.protocol === protocol &&
+			(type === undefined || adapter.transports.includes(type)),
+	) ?? null

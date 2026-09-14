@@ -20,6 +20,7 @@ import {
 	INTERACTION_COMPLETION_TIMEOUT,
 } from "./interaction-runtime"
 import { persistInteractionTimeout } from "./helpers"
+import { awaitReloadGate } from "./reload-gate"
 import type {
 	InteractionInputType,
 	RunInteractionInputType,
@@ -43,6 +44,16 @@ export const beginInteraction = async (
 	request: InteractionRequestType,
 	runtimeOpts: InteractionRuntimeOptionsType,
 ): Promise<BeginInteractionHandleType | null> => {
+	if (!(await awaitReloadGate(domia)))
+		throw domiaError(CORE_ERRORS.INTERACTION_RELOAD_GATED, {
+			logger: domiaBusLogger,
+			meta: {
+				site: "beginInteraction",
+				domiaId: domia.id,
+				domiaKey: domia.domiaKey,
+			},
+		})
+
 	const responseType =
 		request.requestedOutput.kind === "voice"
 			? RESPONSE_TYPE_ENUM.VOICE

@@ -36,11 +36,16 @@ export const postJson = async <T>(path: string, body: unknown): Promise<T> => {
 
 export const postChat = async (
 	text: string,
+	opts: { satelliteId?: string } = {},
 ): Promise<{ interactionId: string; reply: string }> => {
 	const res = await fetch(`${env.EVAL_URL}/chat`, {
 		method: "POST",
 		headers: { "content-type": "application/json", ...meshHeaders() },
-		body: JSON.stringify({ domiaKey: env.EVAL_DOMIA_KEY, text }),
+		body: JSON.stringify({
+			domiaKey: env.EVAL_DOMIA_KEY,
+			text,
+			...(opts.satelliteId ? { satelliteId: opts.satelliteId } : {}),
+		}),
 	})
 	if (!res.ok) throw new Error(`/chat ${res.status}: ${await res.text()}`)
 	return (await res.json()) as { interactionId: string; reply: string }

@@ -352,5 +352,48 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "route: pregunta de estado sin dispositivo → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Hay algo encendido?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
+	},
+	{
+		"name": "route: pregunta de estado de la luz → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "¿Está prendida la luz?",
+				"expect": {
+					"routed": "skill",
+					"tool": "GetLiveContext",
+					"noWrites": true
+				}
+			}
+		]
+	},
+	{
+		"name": "route: petición de reintento → skill",
+		"suite": "routing",
+		"language": "es",
+		"turns": [
+			{
+				"text": "No funcionó, inténtalo de nuevo por favor.",
+				"expect": {
+					"routed": "skill"
+				}
+			}
+		]
 	}
 ]

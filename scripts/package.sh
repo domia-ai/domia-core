@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Build a deployable tarball: compiled build/ + templates + scripts + runtime manifest.
-# Usage: scripts/package.sh [out-dir]   (PACKAGE_SKIP_BUILD=1 reuses an existing build/)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,8 +28,8 @@ CONTENTS=(
 	scripts
 	proto
 	drizzle.config.ts
-	src/db/schema.ts
-	src/db/constants.ts
+	src/db/schema
+	src/db/constants
 	src/db/json-types.ts
 	package.json
 	package-lock.json
@@ -41,6 +39,8 @@ CONTENTS=(
 	config/mqtt/mosquitto.conf
 	config/mqtt/conf.d
 	config/mqtt/acl.example
+	config/systemd
+	config/launchd
 	docs/DEPLOY.md
 	README.md
 	LICENSE

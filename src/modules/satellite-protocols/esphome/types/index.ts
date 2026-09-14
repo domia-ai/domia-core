@@ -8,6 +8,7 @@ export type NumberEntityInfoType = Extract<Entity, { type: "number" }> & {
 
 export type EsphomeBindingType = {
 	satelliteId: string
+	domiaId?: string
 	name: string | null
 	host: string
 	port: number
@@ -15,12 +16,12 @@ export type EsphomeBindingType = {
 	desiredWakeWords?: string[]
 	desiredNumbers?: Record<string, number>
 	desiredVolume?: number | null
-	followUpEnabled?: boolean
-	followUpNoSpeechMs?: number
-	playbackDrainMarginMs?: number
-	runListeningMaxMs?: number
-	followUpRequestMaxMs?: number
-	captureHeadTrimMs?: number
+	followUpEnabled: boolean
+	followUpNoSpeechMs: number
+	playbackDrainMarginMs: number
+	runListeningMaxMs: number
+	followUpRequestMaxMs: number
+	captureHeadTrimMs: number
 }
 
 export type RunPhaseType =
@@ -42,6 +43,12 @@ export type PlaybackItemType = {
 	enqueuedAt: number
 	startedAt?: number
 	expiresAt: number
+	overExternalMedia: boolean
+}
+
+export type MediaStateVerdictType = {
+	ours: "started" | "ended" | null
+	external: "playing" | "idle" | null
 }
 
 export type RunControllerDepsType = {
@@ -50,6 +57,7 @@ export type RunControllerDepsType = {
 	respondToRequest: (error: boolean) => void
 	sendAnnounce: (url: string, startConversation: boolean) => void
 	stopMedia: () => boolean
+	externalMediaPlaying: () => boolean
 	events: {
 		runStart: number
 		runEnd: number
@@ -97,7 +105,7 @@ export type RunControllerType = {
 		generation: number,
 		durationMs: number | null,
 	) => void
-	onMediaState: (state: number) => void
+	onMediaState: (state: number) => MediaStateVerdictType
 	onAnnounceFinished: () => void
 	finishTurn: () => void
 	isFollowUpRun: () => boolean
@@ -107,4 +115,18 @@ export type RunControllerType = {
 
 export type EsphomeSatelliteHandleType = {
 	close: () => void
+}
+
+export type EsphomeAudioPurposeType = "default" | "announcement"
+
+export type EsphomeAudioFormatType = {
+	format: string
+	sampleRate: number
+	channels: number
+	purpose: EsphomeAudioPurposeType
+}
+
+export type EsphomeMediaPlayerFormatsType = {
+	key: number | null
+	formats: EsphomeAudioFormatType[]
 }

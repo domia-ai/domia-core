@@ -13,7 +13,7 @@ import type {
 	SubsystemOutcomeType,
 } from "../types"
 
-import { LLM_DRAIN, classify } from "./classify"
+import { classify } from "./classify"
 import { diffConfig } from "./diff"
 import { buildRevertBundle } from "./revert"
 
@@ -40,7 +40,6 @@ export const createConfigApplyEngine = (
 		resolve,
 		quiesce,
 		runExclusive,
-		onLlmClientStale,
 		requestRestart,
 		defaultDrainMs,
 	} = deps
@@ -181,9 +180,6 @@ export const createConfigApplyEngine = (
 			const drainMs = newDomia.configReloadDrainMs
 			const changes = diffConfig(oldDomia, newDomia)
 			const plan = classify(changes)
-			const llmClientStale = changes.some(
-				(c) => c.section === "llm" && LLM_DRAIN.has(c.field),
-			)
 			const outcomes: SubsystemOutcomeType[] = []
 			const drained = new Set<string>()
 			let restartFallback = plan.restart
@@ -216,7 +212,6 @@ export const createConfigApplyEngine = (
 
 			if (plan.liveDrain) {
 				await quiesce([newDomia.id], drainMs)
-				if (llmClientStale) onLlmClientStale()
 				drained.add(newDomia.id)
 				outcomes.push({
 					subsystem: "live-drain",

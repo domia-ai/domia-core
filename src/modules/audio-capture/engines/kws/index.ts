@@ -6,6 +6,7 @@ import { type DomiaType } from "@/modules/core"
 import { getIntercom } from "@/modules/core-bus/utils/intercom-registry"
 import {
 	audioCaptureLogger,
+	createLogOnce,
 	domiaError,
 	AUDIO_ERRORS,
 	findOnnxFile,
@@ -15,7 +16,18 @@ import {
 } from "@/utils"
 import { createKeywordSpotter } from "@/utils/ml-runtime"
 import { createCaptureEnhancer } from "@/modules/speech-enhancer"
-import { verifyWake, wakeVerifierWindowBytes } from "@/modules/wake-verifier"
+import {
+	verifyWake,
+	wakeVerifierWindowBytes,
+	isConcurrentWakeVerifier,
+	type WakeTranscribeType,
+} from "@/modules/wake-verifier"
+import { getSttEngine } from "@/modules/stt-engine"
+import {
+	countWakeRejected,
+	countWakeVerified,
+	countWakeVerifierFailedOpen,
+} from "@/modules/core-bus/utils/turn-metrics"
 import { WAKE_VERIFIER_ENUM } from "@/db"
 
 import {
@@ -31,6 +43,8 @@ const SAMPLE_RATE = KWS_SAMPLE_RATE
 const CHUNK_SAMPLES = 1600
 const RESPAWN_BASE_MS = 1000
 const RESPAWN_MAX_MS = 30000
+
+const warnOnce = createLogOnce(audioCaptureLogger).warn
 
 const resolveKwsPaths = (
 	modelDir: string,
@@ -50,6 +64,18 @@ const resolveKwsPaths = (
 		tokens: path.join(dir, "tokens.txt"),
 		keywords: path.join(dir, "keywords.txt"),
 	}
+}
+
+const resolveLocalTranscriber = (
+	domia: DomiaType,
+): WakeTranscribeType | null => {
+	const engine = domia.sttConfig?.engine
+	if (!engine) return null
+	const adapter = getSttEngine(engine)
+	if (!adapter || adapter.capabilities.external === true) return null
+	const runPcm = adapter.runPcm
+	if (!runPcm) return null
+	return (pcm) => runPcm(domia, pcm)
 }
 
 export const runKws = (
@@ -135,10 +161,23 @@ export const runKws = (
 	const echoGate = wakeWordConfig.echoResidualGateEnabled
 		? createEchoGate(domia.id, wakeWordConfig)
 		: null
+	const localTranscriber = resolveLocalTranscriber(domia)
+	if (
+		wakeWordConfig.wakeVerifier === WAKE_VERIFIER_ENUM.STT &&
+		!localTranscriber
+	)
+		warnOnce(
+			`stt-verifier-inactive:${domia.domiaKey}`,
+			"⚠️ STT wake verifier inactive — the STT engine has no in-process transcriber, every wake is accepted unverified",
+			{ domiaKey: domia.domiaKey, sttEngine: domia.sttConfig?.engine },
+		)
 	const verifierWindowBytes =
 		wakeWordConfig.wakeVerifier === WAKE_VERIFIER_ENUM.NONE
 			? 0
 			: wakeVerifierWindowBytes(wakeWordConfig, SAMPLE_RATE)
+	const verifierConcurrent = isConcurrentWakeVerifier(
+		wakeWordConfig.wakeVerifier,
+	)
 	let verifierWindow = Buffer.alloc(0)
 	let verifying = false
 	let lastDetectionAt = 0
@@ -156,31 +195,68 @@ export const runKws = (
 			)
 	}
 
+	const dispatchWake = (keyword: string): void => {
+		void Promise.resolve(callbacks?.onWake?.(keyword)).catch((err: unknown) => {
+			audioCaptureLogger.warn("wake dispatch failed", { keyword, err })
+		})
+	}
+
+	const dispatchWakeRejected = (keyword: string): void => {
+		void Promise.resolve(callbacks?.onWakeRejected?.(keyword)).catch(
+			(err: unknown) => {
+				audioCaptureLogger.warn("wake rejection dispatch failed", {
+					keyword,
+					err,
+				})
+			},
+		)
+	}
+
 	const acceptWake = (keyword: string): void => {
 		if (verifierWindowBytes === 0) {
-			void callbacks?.onWake?.(keyword)
+			dispatchWake(keyword)
 			return
 		}
 		if (verifying) return
 		verifying = true
 		const window = Buffer.from(verifierWindow)
-		void verifyWake({ pcm: window, sampleRate: SAMPLE_RATE }, wakeWordConfig)
+		const verdictPromise = verifyWake(
+			{
+				pcm: window,
+				sampleRate: SAMPLE_RATE,
+				transcribe: localTranscriber ?? undefined,
+			},
+			wakeWordConfig,
+		)
+		if (verifierConcurrent) dispatchWake(keyword)
+		void verdictPromise
 			.then((verdict) => {
 				if (verdict.accepted) {
+					countWakeVerified(domia.id)
+					if (verdict.failedOpen) countWakeVerifierFailedOpen(domia.id)
 					audioCaptureLogger.info("✅ wake verified", {
-						keyword,
-						verifier: wakeWordConfig.wakeVerifier,
-						score: Number(verdict.score.toFixed(3)),
-					})
-					void callbacks?.onWake?.(keyword)
-				} else {
-					audioCaptureLogger.info("🙈 wake rejected by verifier", {
 						keyword,
 						verifier: wakeWordConfig.wakeVerifier,
 						score: Number(verdict.score.toFixed(3)),
 						detail: verdict.detail,
 					})
+					if (!verifierConcurrent) dispatchWake(keyword)
+					return
 				}
+				countWakeRejected(domia.id)
+				audioCaptureLogger.info("🛑 wake rejected by verifier", {
+					keyword,
+					verifier: wakeWordConfig.wakeVerifier,
+					score: Number(verdict.score.toFixed(3)),
+					detail: verdict.detail,
+				})
+				if (verifierConcurrent) dispatchWakeRejected(keyword)
+			})
+			.catch((err: unknown) => {
+				audioCaptureLogger.warn("wake verdict handling failed", {
+					keyword,
+					err,
+				})
 			})
 			.finally(() => {
 				verifying = false

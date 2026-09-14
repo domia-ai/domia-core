@@ -4,6 +4,7 @@ import type {
 	BargeInStatsType,
 	TwoTierStatsType,
 	TwoTierCounterKindType,
+	WakeVerifierStatsType,
 } from "../types"
 
 const replyQueueWaitByInteraction = new Map<string, number>()
@@ -107,6 +108,40 @@ export const bargeInStats = (domiaId: string): BargeInStatsType => {
 	return {
 		...counters,
 		recoveryRate: total > 0 ? counters.resumed / total : 0,
+	}
+}
+
+const wakeVerifierCountersByDomia = new Map<
+	string,
+	{ accepted: number; rejected: number; failedOpen: number }
+>()
+
+const wakeVerifierFor = (domiaId: string) => {
+	const existing = wakeVerifierCountersByDomia.get(domiaId)
+	if (existing) return existing
+	const fresh = { accepted: 0, rejected: 0, failedOpen: 0 }
+	wakeVerifierCountersByDomia.set(domiaId, fresh)
+	return fresh
+}
+
+export const countWakeVerified = (domiaId: string): void => {
+	wakeVerifierFor(domiaId).accepted += 1
+}
+
+export const countWakeRejected = (domiaId: string): void => {
+	wakeVerifierFor(domiaId).rejected += 1
+}
+
+export const countWakeVerifierFailedOpen = (domiaId: string): void => {
+	wakeVerifierFor(domiaId).failedOpen += 1
+}
+
+export const wakeVerifierStats = (domiaId: string): WakeVerifierStatsType => {
+	const counters = wakeVerifierFor(domiaId)
+	const total = counters.accepted + counters.rejected
+	return {
+		...counters,
+		rejectRate: total > 0 ? counters.rejected / total : 0,
 	}
 }
 

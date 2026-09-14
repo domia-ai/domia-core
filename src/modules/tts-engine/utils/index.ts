@@ -4,10 +4,7 @@ import {
 	resolveMaxWorkers,
 	type InferencePoolType,
 } from "@/modules/inference-pool"
-import {
-	type SelectTtsConfigType,
-	DEFAULT_TTS_PHRASE_CACHE_VOICE_STEP,
-} from "@/db"
+import { type SelectTtsConfigType } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import {
 	applyMoodToVoice,
@@ -90,7 +87,7 @@ const quantize = (value: number, step: number): number =>
 
 export const quantizeTtsVoice = (
 	voice: TtsVoiceType,
-	step = DEFAULT_TTS_PHRASE_CACHE_VOICE_STEP,
+	step: number,
 ): TtsVoiceType => ({
 	voiceName: voice.voiceName,
 	speed: quantize(voice.speed, step),
@@ -188,7 +185,10 @@ export const cachedTtsPcmChunks = async function* (
 		yield* ttsAdapterToPcmChunks(domia, adapter, text, options)
 		return
 	}
-	const voice = quantizeTtsVoice(resolveTtsVoice(options?.voice, cfg))
+	const voice = quantizeTtsVoice(
+		resolveTtsVoice(options?.voice, cfg),
+		cfg.phraseCacheVoiceStep,
+	)
 	const key = phraseCacheKey(domia, adapter, speech, voice)
 	if (!key) {
 		yield* ttsAdapterToPcmChunks(domia, adapter, text, options)
@@ -336,12 +336,10 @@ export const ttsVoiceFromDomia = (domia: DomiaType): TtsVoiceType | null => {
 
 const ttsPools = new Map<string, InferencePoolType>()
 
-export const getTtsPool = (
+export const createTtsPool = (
 	ttsConfig: SelectTtsConfigType,
 ): InferencePoolType => {
 	const engine = ttsConfig.engine
-	const existing = ttsPools.get(engine)
-	if (existing) return existing
 	const maxWorkers = ttsConfig.poolAutoScaleEnabled
 		? resolveMaxWorkers(ttsConfig.poolMaxWorkers, "tts")
 		: Math.max(1, ttsConfig.poolWarmWorkers)
@@ -356,6 +354,16 @@ export const getTtsPool = (
 		executionTimeoutMs: ttsConfig.poolExecutionTimeoutMs,
 		recycleAfterJobs: ttsConfig.workerRecycleAfterJobs,
 	})
+	return pool
+}
+
+export const getTtsPool = (
+	ttsConfig: SelectTtsConfigType,
+): InferencePoolType => {
+	const engine = ttsConfig.engine
+	const existing = ttsPools.get(engine)
+	if (existing) return existing
+	const pool = createTtsPool(ttsConfig)
 	ttsPools.set(engine, pool)
 	return pool
 }
@@ -367,7 +375,17 @@ export const ttsPoolBusy = (): boolean => {
 	return false
 }
 
-export const reloadTtsPool = async (): Promise<void> => {
+export const swapTtsPool = async (
+	engine: string,
+	next: InferencePoolType,
+): Promise<void> => {
+	const stale = [...ttsPools.entries()].map(([, pool]) => pool)
+	ttsPools.clear()
+	ttsPools.set(engine, next)
+	await Promise.all(stale.map((pool) => pool.shutdown()))
+}
+
+export const shutdownTtsPools = async (): Promise<void> => {
 	const old = [...ttsPools.values()]
 	ttsPools.clear()
 	await Promise.all(old.map((pool) => pool.shutdown()))

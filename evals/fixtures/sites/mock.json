@@ -1,0 +1,55 @@
+{
+	"name": "mock",
+	"entities": {
+		"lightA": {
+			"name": "Office Lights",
+			"entityId": "light.office_office_main_lights",
+			"area": "Office",
+			"token": "office",
+			"spoken": "office lights",
+			"spokenSingular": "office light",
+			"nameEs": "luz de la oficina"
+		},
+		"lightB": {
+			"name": "Exterior Sconces",
+			"entityId": "light.exterior_exterior_sconces",
+			"area": "Exterior",
+			"token": "sconces",
+			"spoken": "exterior sconces"
+		},
+		"unavailableDevice": {
+			"name": "BeyondTV",
+			"entityId": "media_player.beyondtv",
+			"area": "Living Room",
+			"token": "tv",
+			"spoken": "TV"
+		},
+		"lock": {
+			"name": "Front Door",
+			"entityId": "lock.front_door",
+			"area": "Entryway",
+			"token": "front door",
+			"spoken": "front door"
+		}
+	},
+	"speakers": {
+		"speakerA": {
+			"name": "Kitchen",
+			"playerId": "kitchen",
+			"spoken": "kitchen",
+			"nameEs": "cocina"
+		},
+		"speakerB": {
+			"name": "Living Room",
+			"playerId": "living_room",
+			"spoken": "living room",
+			"nameEs": "sala"
+		},
+		"satellite": {
+			"name": "Voice PE 1",
+			"playerId": "voice_pe_1",
+			"spoken": "Voice PE 1",
+			"satelliteId": "eval-mock-sat"
+		}
+	}
+}

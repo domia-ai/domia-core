@@ -1,6 +1,7 @@
 import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { domiaBusLogger, setTraceContext, toError } from "@/utils"
 import {
+	consumeCaptureAbort,
 	observeBargeIn,
 	startAudioRecording,
 	startAudioStream,
@@ -17,10 +18,16 @@ import {
 	markPipelineStart,
 	updateInteraction,
 } from "@/modules/session-manager"
-import { INTERACTION_INPUT_TYPE_ENUM, RESPONSE_TYPE_ENUM } from "@/db"
+import {
+	INTERACTION_INPUT_TYPE_ENUM,
+	INTERACTION_STATUS_ENUM,
+	RESPONSE_TYPE_ENUM,
+} from "@/db"
 import {
 	beginInteraction,
+	completeInteraction,
 	failInteraction,
+	persistTerminal,
 	prefetchMemoryBundle,
 	tryBeginRecording,
 	endRecording,
@@ -28,9 +35,27 @@ import {
 	getIntercom,
 	skillsMayIntercept,
 	twoTierEndpointArmed,
+	awaitReloadGate,
 } from "../utils"
 import { runSpeculativeTurn } from "./speculative-turn"
 import type { CoreBusContextType } from "../types"
+
+const rolledBackByVerifier = async (
+	domiaId: string,
+	interactionId: string | null,
+): Promise<boolean> => {
+	if (!consumeCaptureAbort(domiaId)) return false
+	domiaBusLogger.info(`🛑 capture rolled back by wake verifier — no turn`, {
+		domiaId,
+		interactionId,
+	})
+	if (!interactionId) return true
+	await persistTerminal(interactionId, INTERACTION_STATUS_ENUM.ABORTED, {
+		errorStep: "wake-verifier",
+	})
+	completeInteraction(interactionId, { interrupted: true })
+	return true
+}
 
 export const handleWakeDetected = async (
 	ctx: CoreBusContextType,
@@ -54,6 +79,14 @@ export const handleWakeDetected = async (
 	) {
 		domiaBusLogger.info(
 			`🚫 wake_detected ignored — playback active and barge-in disabled`,
+			{ domiaId },
+		)
+		return
+	}
+
+	if (!(await awaitReloadGate(domia))) {
+		domiaBusLogger.warn(
+			`🚫 wake_detected dropped — config reload still in flight`,
 			{ domiaId },
 		)
 		return
@@ -183,6 +216,7 @@ export const handleWakeDetected = async (
 				})
 			})()
 			const transcript = await stt.adapter.runStream(domia, ackedChunks)
+			if (await rolledBackByVerifier(domiaId, interactionId)) return
 
 			markPipelineStart(interactionId)
 			const speechEndVal = speechEndAt() ?? undefined
@@ -230,6 +264,7 @@ export const handleWakeDetected = async (
 		)
 		runtimeInteractionId = handle?.interactionId ?? null
 		const filePath = await startAudioRecording(domia)
+		if (await rolledBackByVerifier(domiaId, runtimeInteractionId)) return
 		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.AUDIO_READY, {
 			filePath,
 			interactionId: handle?.interactionId ?? undefined,

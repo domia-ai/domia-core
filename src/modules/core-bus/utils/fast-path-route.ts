@@ -5,7 +5,13 @@ import {
 	SKILL_TOOL_NAME_SEPARATOR,
 	type ToolTraceEntryType,
 } from "@/db"
-import { domiaBusLogger, getTraceContext, languageSetsFor } from "@/utils"
+import {
+	anaphoraCandidate,
+	applyAnaphora,
+	domiaBusLogger,
+	getTraceContext,
+	languageSetsFor,
+} from "@/utils"
 import { updateInteraction } from "@/modules/session-manager"
 import {
 	matchFastPath,
@@ -17,6 +23,7 @@ import {
 	getInvocationPolicy,
 	resolveToolFinalize,
 	renderFinalizeText,
+	SPEAKABLE_PLACEHOLDER,
 } from "@/modules/skill-engine"
 import { cachedTtsPcmChunks, ttsPoolBusy } from "@/modules/tts-engine"
 import {
@@ -42,30 +49,24 @@ const resolveAnaphora = async (
 	domia: CoreBusContextType["domia"],
 	transcript: string,
 ): Promise<string> => {
-	const rewrites = languageSetsFor(
-		domia.characterProfile?.language,
-	).anaphoraRewrites
+	const language = domia.characterProfile?.language
 	const trimmed = transcript.trim()
-	for (const { re, template } of rewrites) {
-		const match = re.exec(trimmed)
-		if (!match) continue
-		const entity = await lastActedEntity(domia).catch((err: unknown) => {
-			domiaBusLogger.warn("last-acted entity lookup failed — rewrite skipped", {
-				err,
-				domiaId: domia.id,
-			})
-			return null
-		})
-		if (!entity) return transcript
-		let rewritten = template.replace("{entity}", entity)
-		for (let g = 1; g < match.length; g++)
-			rewritten = rewritten.replace(`$${g}`, match[g] ?? "")
-		domiaBusLogger.info(`⚡ anaphora resolved: "${trimmed}" → "${rewritten}"`, {
+	if (!anaphoraCandidate(trimmed, language)) return transcript
+	const lastActed = await lastActedEntity(domia).catch((err: unknown) => {
+		domiaBusLogger.warn("last-acted entity lookup failed — rewrite skipped", {
+			err,
 			domiaId: domia.id,
 		})
-		return rewritten
-	}
-	return transcript
+		return null
+	})
+	if (!lastActed) return transcript
+	const rewritten = applyAnaphora(trimmed, language, lastActed)
+	if (!rewritten) return transcript
+	domiaBusLogger.info(`⚡ anaphora resolved: "${trimmed}" → "${rewritten}"`, {
+		domiaId: domia.id,
+		providerSlug: lastActed.providerSlug,
+	})
+	return rewritten
 }
 
 export const prewarmFastPathPhrase = (
@@ -89,6 +90,7 @@ export const prewarmFastPathPhrase = (
 		return true
 	const phrases = languageSetsFor(domia.characterProfile?.language).phrases
 	const template = finalize?.done ?? finalize?.ack
+	if (template?.includes(SPEAKABLE_PLACEHOLDER)) return true
 	const fallback = phrases.thatIsDone
 	const text = template
 		? (renderFinalizeText(template, match.args, match.resolvedArgs) ?? fallback)
@@ -157,7 +159,12 @@ const executeMatch = async (
 		const template = ok ? (finalize?.done ?? finalize?.ack) : finalize?.error
 		const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
 		text = template
-			? (renderFinalizeText(template, match.args, res.resolvedArgs) ?? fallback)
+			? (renderFinalizeText(
+					template,
+					match.args,
+					res.resolvedArgs,
+					res.speakableText,
+				) ?? fallback)
 			: fallback
 		trace = {
 			kind: "result",
@@ -211,7 +218,7 @@ export const attemptFastPathRoute = async (
 		if (verdict.reason === "no_match") {
 			const bare = matchBareEntity(domia, effectiveTranscript)
 			if (bare) {
-				setClarifiedEntity(domia.id, bare.name)
+				setClarifiedEntity(domia.id, bare.name, bare.providerSlug)
 				const phrases = languageSetsFor(
 					domia.characterProfile?.language ?? null,
 				).phrases
@@ -260,7 +267,11 @@ export const attemptFastPathRoute = async (
 	}
 	const language = domia.characterProfile?.language ?? null
 	const phrases = languageSetsFor(language).phrases
-	const reply = (text: string): void =>
+	const reply = (text: string): void => {
+		void updateInteraction({ id: interactionId, llmResponse: text }).catch(
+			(err: unknown) =>
+				domiaBusLogger.warn("detached updateInteraction failed", { err }),
+		)
 		publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
 			reply: text,
 			transcript,
@@ -270,6 +281,7 @@ export const attemptFastPathRoute = async (
 			speechEndAt: payload.speechEndAt,
 			liveVoice: payload.liveVoice,
 		})
+	}
 	const directlyRunnable = (m: FastPathMatchType): boolean => {
 		const policy = getInvocationPolicy(
 			domia.id,

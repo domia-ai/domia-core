@@ -42,7 +42,7 @@
 		"maxNumSentences": 1,
 		"streamingEnabled": true,
 		"pacerEnabled": false,
-		"poolWarmWorkers": 1,
+		"poolWarmWorkers": 2,
 		"poolMaxWorkers": 0,
 		"poolAutoScaleEnabled": true,
 		"poolIdleTimeoutMs": 60000,

@@ -1,3 +1,6 @@
+import { createLinearResampler } from "@/utils/ml-runtime"
+import type { Pcm16ConverterType, PcmFormatType } from "./types"
+
 const INT16_SCALE = 32768
 const BITS_PER_BYTE = 8
 
@@ -37,4 +40,50 @@ export const bytesToAudioMs = (
 ): number => {
 	const bytesPerSec = sampleRate * channels * (bitsPerSample / BITS_PER_BYTE)
 	return Math.round((bytes / bytesPerSec) * 1000)
+}
+
+const remixFrames = (
+	samples: Float32Array,
+	from: number,
+	to: number,
+): Float32Array => {
+	if (from === to) return samples
+	const frames = Math.floor(samples.length / from)
+	const out = new Float32Array(frames * to)
+	for (let f = 0; f < frames; f++) {
+		let sum = 0
+		for (let c = 0; c < from; c++) sum += samples[f * from + c]
+		const mixed = sum / from
+		for (let c = 0; c < to; c++) out[f * to + c] = mixed
+	}
+	return out
+}
+
+export const createPcm16Converter = (
+	source: PcmFormatType,
+	target: PcmFormatType,
+): Pcm16ConverterType => {
+	const frameBytes = 2 * source.channels
+	const resampler =
+		source.sampleRate === target.sampleRate
+			? null
+			: createLinearResampler(source.sampleRate, target.sampleRate)
+	let carry = Buffer.alloc(0)
+	const convert = (pcm: Buffer, last: boolean): Buffer => {
+		const joined = carry.length > 0 ? Buffer.concat([carry, pcm]) : pcm
+		const usable = joined.length - (joined.length % frameBytes)
+		carry = Buffer.from(joined.subarray(usable))
+		const interleaved = int16BufferToFloat32(joined.subarray(0, usable))
+		const mono = remixFrames(interleaved, source.channels, 1)
+		const resampled = resampler
+			? last
+				? resampler.flush(mono)
+				: resampler.resample(mono)
+			: mono
+		return float32ToInt16Buffer(remixFrames(resampled, 1, target.channels))
+	}
+	return {
+		push: (chunk) => convert(chunk, false),
+		flush: () => convert(Buffer.alloc(0), true),
+	}
 }

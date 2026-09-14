@@ -7,6 +7,19 @@ import {
 	registerAudioForServing,
 } from "@/modules/core-bus"
 import { getWavDurationMs } from "@/utils"
+import {
+	DEFAULT_SATELLITE_FOLLOW_UP,
+	DEFAULT_SATELLITE_FOLLOW_UP_NO_SPEECH_MS,
+	DEFAULT_SATELLITE_RUN_LISTENING_MAX_MS,
+	DEFAULT_SATELLITE_FOLLOW_UP_REQUEST_MAX_MS,
+	DEFAULT_SATELLITE_CAPTURE_HEAD_TRIM_MS,
+} from "@/db"
+import {
+	externalMediaKey,
+	isExternalMediaPlaying,
+	clearExternalMedia,
+	getExternalMediaControls,
+} from "@/modules/audio-playback"
 import { registerHostedIdentity } from "@/modules/core"
 import { getDomia } from "@/test-utils"
 
@@ -35,7 +48,12 @@ const connectDevice = (
 			host: "127.0.0.1",
 			port: 6053,
 			encryptionKey: null,
+			followUpEnabled: DEFAULT_SATELLITE_FOLLOW_UP,
+			followUpNoSpeechMs: DEFAULT_SATELLITE_FOLLOW_UP_NO_SPEECH_MS,
 			playbackDrainMarginMs: 100,
+			runListeningMaxMs: DEFAULT_SATELLITE_RUN_LISTENING_MAX_MS,
+			followUpRequestMaxMs: DEFAULT_SATELLITE_FOLLOW_UP_REQUEST_MAX_MS,
+			captureHeadTrimMs: DEFAULT_SATELLITE_CAPTURE_HEAD_TRIM_MS,
 			...overrides,
 		},
 		domia,
@@ -112,6 +130,7 @@ const runMediaVolumeChecks = async (): Promise<void> => {
 	const { device, handle, domiaKey } = connectDevice("eval-esp-volume")
 	await sleep(30)
 	const control = getSatelliteControl(domiaKey, "eval-esp-volume")
+	const mediaKey = externalMediaKey(domiaKey, "eval-esp-volume")
 
 	control?.setVolume?.(0.4)
 	checker.check(
@@ -121,6 +140,10 @@ const runMediaVolumeChecks = async (): Promise<void> => {
 	checker.check(
 		"desired volume persisted in presence meta while unapplied",
 		presenceOf(domiaKey, "eval-esp-volume")?.volume === 0.4,
+	)
+	checker.check(
+		"no transport volume controls before the media player is known",
+		getExternalMediaControls(mediaKey) === null,
 	)
 
 	device.setEntities([
@@ -134,8 +157,41 @@ const runMediaVolumeChecks = async (): Promise<void> => {
 		"desired volume applied once the media player appears",
 		(appliedVolume.args[1] as { volume?: number }).volume === 0.4,
 	)
+
+	const controls = getExternalMediaControls(mediaKey)
+	checker.check(
+		"adapter registers volume controls once the media player appears",
+		controls?.origin === "transport",
+	)
+	checker.check(
+		"transport reports the level as a percentage",
+		controls?.getVolume() === 40,
+		String(controls?.getVolume()),
+	)
+	const okSet = await controls?.setVolume(65)
+	await sleep(10)
+	const afterSet = device.callsOf("sendMediaPlayerCommand")
+	checker.check(
+		"transport setVolume drives the device and persists desiredVolume",
+		okSet === true &&
+			(afterSet[afterSet.length - 1].args[1] as { volume?: number }).volume ===
+				0.65 &&
+			presenceOf(domiaKey, "eval-esp-volume")?.volume === 0.65 &&
+			controls?.getVolume() === 65,
+		`${JSON.stringify(afterSet[afterSet.length - 1]?.args[1])} meta=${presenceOf(domiaKey, "eval-esp-volume")?.volume}`,
+	)
+	checker.check(
+		"transport setVolume clamps out-of-range levels",
+		(await controls?.setVolume(140)) === true && controls?.getVolume() === 100,
+		String(controls?.getVolume()),
+	)
+
 	handle.close()
 	await sleep(10)
+	checker.check(
+		"disconnect unregisters the volume controls",
+		getExternalMediaControls(mediaKey) === null,
+	)
 }
 
 const runRequestChecks = async (): Promise<void> => {
@@ -194,11 +250,86 @@ const runAnnounceDurationChecks = async (): Promise<void> => {
 	await sleep(10)
 }
 
+const runMediaOverMusicChecks = async (): Promise<void> => {
+	const satelliteId = "eval-esp-music"
+	const { device, handle, domiaKey } = connectDevice(satelliteId)
+	const mediaKey = externalMediaKey(domiaKey, satelliteId)
+	clearExternalMedia(mediaKey)
+	await sleep(30)
+	device.setEntities([
+		{ type: "media_player", id: "media_player_1", key: 7, name: "Speaker" },
+	])
+	device.emit("entities")
+	await sleep(10)
+
+	device.emit("telemetry", { type: "media_player", state: 2 })
+	await sleep(10)
+	checker.check(
+		"music telemetry with nothing in flight marks external media playing",
+		isExternalMediaPlaying(mediaKey),
+	)
+
+	const wavPath = path.resolve("evals/fixtures/g03.wav")
+	const wavMs = (await getWavDurationMs(wavPath)) ?? 0
+	registerAudioForServing("eval-esp-music-audio", wavPath)
+	const control = getSatelliteControl(domiaKey, satelliteId)
+	control?.announce("http://127.0.0.1:3100/audio/eval-esp-music-audio")
+	await sleep(30)
+	checker.check(
+		"announce dispatched while music plays",
+		device.callsOf("sendVoiceAssistantAnnounce").length === 1,
+	)
+
+	device.emit("telemetry", { type: "media_player", state: 4 })
+	await sleep(20)
+	checker.check(
+		"announcing state marks presence speaking",
+		identityStatus(domiaKey) === "speaking",
+	)
+
+	device.emit("telemetry", { type: "media_player", state: 2 })
+	const startedAt = Date.now()
+	const deadline = startedAt + wavMs + 3_000
+	while (identityStatus(domiaKey) === "speaking" && Date.now() < deadline) {
+		await sleep(50)
+	}
+	const retiredAfterMs = Date.now() - startedAt
+	checker.check(
+		"4 → 2 over music retires our playback on media-state (not the +5s fallback)",
+		identityStatus(domiaKey) !== "speaking" && retiredAfterMs < wavMs + 2_000,
+		`retired after ${retiredAfterMs}ms (wav ${Math.round(wavMs)}ms)`,
+	)
+	checker.check(
+		"external media still counts as playing after our announce",
+		isExternalMediaPlaying(mediaKey),
+	)
+
+	device.emit("voiceAssistantRequest", { start: false })
+	await sleep(20)
+	const stops = device
+		.callsOf("sendMediaPlayerCommand")
+		.map((c) => c.args[1] as { command?: number; announcement?: boolean })
+		.filter((opts) => opts.command === 0)
+	checker.check(
+		"device stop request targets the announcement pipeline, not the music",
+		stops.length >= 1 && stops.every((opts) => opts.announcement === true),
+		JSON.stringify(stops),
+	)
+
+	handle.close()
+	await sleep(30)
+	checker.check(
+		"disconnect clears the external media note",
+		!isExternalMediaPlaying(mediaKey),
+	)
+}
+
 const main = async (): Promise<void> => {
 	await runWiringChecks()
 	await runMediaVolumeChecks()
 	await runRequestChecks()
 	await runAnnounceDurationChecks()
+	await runMediaOverMusicChecks()
 	await runConfigVerifyChecks()
 	const pass = checker.passCount()
 	const fail = checker.failCount()

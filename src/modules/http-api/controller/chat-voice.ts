@@ -63,12 +63,13 @@ export const handlePostChat = async (
 	domia: DomiaType,
 	body: PostChatBodyType,
 ): Promise<PostChatResponseType> => {
-	const { text, speak } = postChatBodySchema.parse(body)
-	setTraceContext({ originDomiaKey: domia.domiaKey })
+	const { text, speak, satelliteId } = postChatBodySchema.parse(body)
+	setTraceContext({ originDomiaKey: domia.domiaKey, satelliteId })
 	try {
 		if (speak) {
 			const stages: Partial<Record<RequestVoiceReplyStage, number>> = {}
 			const result = await requestTextToVoiceReply(domia, text, {
+				satelliteId,
 				onStage: (stage, elapsedMs) => {
 					stages[stage] = elapsedMs
 				},
@@ -93,7 +94,13 @@ export const handlePostChat = async (
 		}
 
 		const startedAt = Date.now()
-		const { reply, interactionId } = await requestTextReply(domia, text)
+		const { reply, interactionId } = await requestTextReply(
+			domia,
+			text,
+			undefined,
+			undefined,
+			satelliteId,
+		)
 		const totalMs = Date.now() - startedAt
 		await updateInteraction({ id: interactionId, totalMs })
 		return {

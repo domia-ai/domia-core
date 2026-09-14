@@ -1,6 +1,16 @@
 import { createReadStream, existsSync } from "fs"
+import { readFile, stat } from "fs/promises"
 import { Readable } from "stream"
-import { buildStreamingWavHeader } from "@/utils"
+import {
+	buildStreamingWavHeader,
+	createFlacEncoder,
+	createPcm16Converter,
+	FLAC_BLOCK_SIZE,
+	readWavPcm,
+	wrapPcmToWav,
+	httpServerLogger,
+	type PcmFormatType,
+} from "@/utils"
 import { getHostedDomias } from "@/modules/core"
 import {
 	getInteractionById,
@@ -25,20 +35,51 @@ export const handleGetAudio = async (
 	reply: FastifyReply,
 ) => {
 	const { interactionId } = request.params
-	const { kind } = getAudioQuerySchema.parse(request.query)
+	const { kind, rate, channels, format } = getAudioQuerySchema.parse(
+		request.query,
+	)
+	httpServerLogger.debug("🔉 audio fetch", {
+		interactionId,
+		kind,
+		rate,
+		channels,
+		format,
+		client: request.ip,
+	})
+	const flac = format === "flac"
+	const contentType = flac ? "audio/flac" : "audio/wav"
+	const outputOf = (source: PcmFormatType): PcmFormatType => ({
+		sampleRate: rate ?? source.sampleRate,
+		channels: channels ?? source.channels,
+	})
+	const converterFor = (source: PcmFormatType, out: PcmFormatType) =>
+		out.sampleRate === source.sampleRate && out.channels === source.channels
+			? null
+			: createPcm16Converter(source, out)
 	if (kind === "tts") {
 		const live = getAudioStream(interactionId)
 		if (live) {
-			const header = buildStreamingWavHeader(live.sampleRate, live.channels, 16)
+			const source = { sampleRate: live.sampleRate, channels: live.channels }
+			const out = outputOf(source)
+			const converter = converterFor(source, out)
+			const encoder = flac
+				? createFlacEncoder({ ...out, blockSize: FLAC_BLOCK_SIZE })
+				: null
+			const emit = (pcm: Buffer): Buffer => (encoder ? encoder.push(pcm) : pcm)
 			const gen = async function* () {
-				yield header
+				yield encoder
+					? encoder.header()
+					: buildStreamingWavHeader(out.sampleRate, out.channels, 16)
 				try {
-					for await (const chunk of live.queue.iter()) yield chunk
+					for await (const chunk of live.queue.iter())
+						yield emit(converter ? converter.push(chunk) : chunk)
 				} catch {
 					/* single-consumer already draining */
 				}
+				if (converter) yield emit(converter.flush())
+				if (encoder) yield encoder.flush()
 			}
-			return reply.type("audio/wav").send(Readable.from(gen()))
+			return reply.type(contentType).send(Readable.from(gen()))
 		}
 	}
 	let filePath =
@@ -59,8 +100,48 @@ export const handleGetAudio = async (
 	if (!filePath || !existsSync(filePath)) {
 		return reply.code(404).send({ error: "Audio not found" })
 	}
-	const stream = createReadStream(filePath)
-	return reply.type("audio/wav").send(stream)
+	const conversionRequested =
+		rate !== undefined || channels !== undefined || flac
+	const wav = conversionRequested ? readWavPcm(await readFile(filePath)) : null
+	if (conversionRequested && wav?.bitsPerSample !== 16)
+		httpServerLogger.warn(
+			"🔉 audio conversion unsupported — serving original",
+			{
+				interactionId,
+				kind,
+				bitsPerSample: wav?.bitsPerSample ?? null,
+			},
+		)
+	const out = wav ? outputOf(wav) : null
+	const unchanged =
+		!flac &&
+		(!wav ||
+			(out?.sampleRate === wav.sampleRate && out.channels === wav.channels))
+	if (wav?.bitsPerSample === 16 && out && !unchanged) {
+		const converter = converterFor(wav, out)
+		const pcm = converter
+			? Buffer.concat([converter.push(wav.pcm), converter.flush()])
+			: wav.pcm
+		const encoder = flac
+			? createFlacEncoder({ ...out, blockSize: FLAC_BLOCK_SIZE })
+			: null
+		const body = encoder
+			? Buffer.concat([
+					encoder.header(pcm.length / (2 * out.channels)),
+					encoder.push(pcm),
+					encoder.flush(),
+				])
+			: wrapPcmToWav(pcm, out.sampleRate, out.channels, 16)
+		return reply
+			.type(contentType)
+			.header("content-length", body.length)
+			.send(body)
+	}
+	const { size } = await stat(filePath)
+	return reply
+		.type("audio/wav")
+		.header("content-length", size)
+		.send(createReadStream(filePath))
 }
 
 export const handleGetPresence = async () => {

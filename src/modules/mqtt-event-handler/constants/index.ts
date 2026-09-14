@@ -22,5 +22,3 @@ export const SIGNATURE_POLICY_REJECT_REASONS = new Set([
 	"unsigned",
 	"bad-signature",
 ])
-
-export const MESH_DROP_WARN_WINDOW_MS = 10_000

@@ -142,6 +142,11 @@ fetch_one() {
         || download_file "gtcrn_simple.onnx" \
           "https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx"
       ;;
+    dpdfnet)
+      [ -f "dpdfnet_baseline.onnx" ] && echo "[dpdfnet_baseline] already present, skipping" \
+        || download_file "dpdfnet_baseline.onnx" \
+          "https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/dpdfnet_baseline.onnx"
+      ;;
     kws)
       download_and_extract "kws-zipformer-gigaspeech-3.3M-2024-01-01" \
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2" \
@@ -199,6 +204,16 @@ fetch_one() {
       [ -f "gguf/mmproj-qwen3-asr-0.6b-q8.gguf" ] && echo "[qwen3-asr] mmproj present, skipping" \
         || download_file "gguf/mmproj-qwen3-asr-0.6b-q8.gguf" \
           "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/main/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
+      ;;
+    qwen3.5-4b)
+      [ -f "gguf/qwen3.5-4b-q4_k_m.gguf" ] && echo "[qwen3.5-4b] already present, skipping" \
+        || download_file "gguf/qwen3.5-4b-q4_k_m.gguf" \
+          "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
+      ;;
+    lfm2.5-2.6b)
+      [ -f "gguf/lfm2.5-2.6b-qad-q4_0.gguf" ] && echo "[lfm2.5-2.6b] already present, skipping" \
+        || download_file "gguf/lfm2.5-2.6b-qad-q4_0.gguf" \
+          "https://huggingface.co/LiquidAI/LFM2.5-2.6B-GGUF/resolve/main/LFM2.5-2.6B-QAD-Q4_0.gguf"
       ;;
     nemotron-streaming)
       download_and_extract "nemotron-3.5-streaming-560" \

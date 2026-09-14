@@ -1,6 +1,9 @@
 import { registerReloader, registerBusyCheck } from "@/modules/config-apply"
 import { reloadSttPool, sttPoolBusy } from "@/modules/stt-engine"
 import { reloadTtsPool, ttsPoolBusy } from "@/modules/tts-engine"
+import { clearLlmClientCache, probeLlmEngine } from "@/modules/llm-engine"
+import { warmupAfterTtsReload } from "@/modules/warmup"
+import { resetIntentCache } from "@/modules/intent-router"
 import { safeOwnDomia } from "@/modules/core"
 import { hasActivePlayback } from "@/modules/audio-playback"
 import { reloadMqtt } from "../mqtt"
@@ -8,6 +11,7 @@ import { reloadVoiceListener } from "../voice-listener"
 import { reloadSkills } from "../skills"
 import { reloadSatelliteClientsForDomia } from "../satellite-clients"
 import { reloadProactivity } from "../proactivity"
+import { reloadVoiceFeel } from "../voice-feel"
 import {
 	bootHostedIdentity,
 	teardownHostedIdentity,
@@ -16,14 +20,23 @@ import {
 export const setupConfigReloaders = (): void => {
 	registerReloader("stt-pool", {
 		scope: "global",
-		reload: async () => {
-			await reloadSttPool()
+		reload: async (domia) => {
+			await reloadSttPool(domia)
 		},
 	})
 	registerReloader("tts-pool", {
 		scope: "global",
-		reload: async () => {
-			await reloadTtsPool()
+		reload: async (domia) => {
+			await reloadTtsPool(domia)
+			warmupAfterTtsReload(domia)
+		},
+	})
+	registerReloader("llm", {
+		scope: "global",
+		reload: async (domia) => {
+			await probeLlmEngine(domia)
+			clearLlmClientCache()
+			resetIntentCache()
 		},
 	})
 	registerReloader("mqtt", {
@@ -58,6 +71,13 @@ export const setupConfigReloaders = (): void => {
 		scope: "per-identity",
 		reload: (domia) => {
 			reloadProactivity(domia)
+			return Promise.resolve()
+		},
+	})
+	registerReloader("voice-feel", {
+		scope: "per-identity",
+		reload: (domia) => {
+			reloadVoiceFeel(domia)
 			return Promise.resolve()
 		},
 	})

@@ -26,6 +26,9 @@ export type OnlineStream = {
 	handle: unknown
 	acceptWaveform: (input: Waveform) => void
 	inputFinished: () => void
+	setOption: (name: string, value: string) => void
+	getOption: (name: string) => string
+	hasOption: (name: string) => boolean
 }
 
 export type OnlineRecognizerResult = {
@@ -130,13 +133,29 @@ export type VadInstance = {
 	reset: () => void
 }
 
+export type RuntimeVersionsType = {
+	sherpa: string
+	onnxruntime: string
+}
+
+export type LinearResamplerInstance = {
+	resample: (samples: Float32Array) => Float32Array
+	flush: (samples: Float32Array) => Float32Array
+}
+
 export type RuntimeAddon = {
+	version: string
+	onnxruntimeVersion: string
 	OfflineRecognizer: new (config: unknown) => unknown
 	OnlineRecognizer: new (config: unknown) => unknown
 	OfflineTts: new (config: unknown) => unknown
 	KeywordSpotter: new (config: unknown) => unknown
 	Vad: new (config: unknown, bufferSizeInSeconds: number) => unknown
 	OnlineSpeechDenoiser: new (config: unknown) => unknown
+	LinearResampler: new (
+		inputSampleRate: number,
+		outputSampleRate: number,
+	) => unknown
 	readWave: (filePath: string) => Waveform
 	writeWave: (filePath: string, wave: Waveform) => void
 }

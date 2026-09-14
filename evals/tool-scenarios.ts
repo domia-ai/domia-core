@@ -1,215 +1,69 @@
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { env } from "./lib/env"
 import { meshHeaders, sleep } from "./lib/http"
 import { queryOne } from "./lib/db"
-import { makeChecker } from "./lib"
-
-type ScenarioExpectType = {
-	tools?: string[]
-	noTools?: boolean
-	noWrites?: boolean
-	fastPath?: boolean
-	compound?: number
-	replyNotQuestion?: boolean
-	replyMatches?: RegExp
-	replyNotMatches?: RegExp
-}
-
-type ScenarioType = {
-	name: string
-	text: string
-	gate: boolean
-	expect: ScenarioExpectType
-}
-
-type InteractionRowType = {
-	intent_decision: string | null
-	tool_call_count: number | null
-	skill_response: string | null
-	llm_response: string | null
-	status: string | null
-	llm_ms: number | null
-	total_ms: number | null
-}
-
-type ToolEntryType = { kind?: string; tool?: string; status?: string }
-
-type ResultType = {
-	name: string
-	text: string
-	gate: boolean
-	pass: boolean
-	detail: string
-	reply: string
-	tools: string[]
-	intent: string | null
-	totalMs: number | null
-}
+import {
+	aliasEntities,
+	CONFIRM_RE,
+	evalCaseFileSchema,
+	loadSiteMap,
+	makeChecker,
+	READ_TOOL_RE,
+	setupMockProviders,
+	stringOrEmpty,
+	substituteTurn,
+	turnPlaceholdersLeft,
+} from "./lib"
+import type {
+	EvalCaseType,
+	EvalTurnType,
+	MockMusicStateType,
+	MockProvidersControlType,
+	ToolScenarioResultType,
+	ToolScenarioRowType,
+	ToolScenarioToolEntryType,
+} from "./types"
 
 const SETTLE_MS = 600
-const READ_TOOL_RE = /GetLiveContext|GetDateTime|get_items|GetState|List/i
-const CONFIRM_RE = /do you want me|want me to|go ahead/i
-const TIME_RE =
-	/\d|o'clock|noon|midnight|\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty)\b.*\b(morning|afternoon|evening|night|am|pm)\b/i
-
-const SCENARIOS: ScenarioType[] = [
-	{
-		name: "state query: office lights",
-		text: "Are the office lights on right now?",
-		gate: true,
-		expect: { noWrites: true, replyNotQuestion: true },
-	},
-	{
-		name: "state query: office light (singular)",
-		text: "Is the office light on?",
-		gate: true,
-		expect: { noWrites: true, replyNotQuestion: true },
-	},
-	{
-		name: "state query: TV",
-		text: "Is the TV on?",
-		gate: true,
-		expect: { noWrites: true, replyNotQuestion: true },
-	},
-	{
-		name: "command: turn on (fast-path)",
-		text: "Turn on the office lights",
-		gate: true,
-		expect: { tools: ["HassTurnOn"], fastPath: true },
-	},
-	{
-		name: "numeric: dim to fifty percent (fast-path)",
-		text: "Dim the office lights to fifty percent",
-		gate: true,
-		expect: { tools: ["HassLightSet"], fastPath: true },
-	},
-	{
-		name: "state query after action (must say on)",
-		text: "Is the office light on?",
-		gate: true,
-		expect: {
-			noWrites: true,
-			replyNotQuestion: true,
-			replyMatches: /\bon\b/i,
-			replyNotMatches: /\boff\b/i,
-		},
-	},
-	{
-		name: "state query: sconces status (must say off)",
-		text: "What's the status of the exterior sconces?",
-		gate: false,
-		expect: {
-			noWrites: true,
-			replyNotQuestion: true,
-			replyMatches: /\boff\b/i,
-			replyNotMatches: /\bon\b(?!\s+the)/i,
-		},
-	},
-	{
-		name: "state query: which lights are on (must name office)",
-		text: "Which lights are on right now?",
-		gate: false,
-		expect: { noWrites: true, replyNotQuestion: true, replyMatches: /office/i },
-	},
-	{
-		name: "read tool: what time is it",
-		text: "What time is it?",
-		gate: false,
-		expect: { noWrites: true, replyMatches: TIME_RE },
-	},
-	{
-		name: "numeric: set to twenty percent (fast-path)",
-		text: "Set the office lights to twenty percent",
-		gate: true,
-		expect: { tools: ["HassLightSet"], fastPath: true },
-	},
-	{
-		name: "anaphora: make it brighter (agent)",
-		text: "Make it brighter",
-		gate: false,
-		expect: { tools: ["HassLightSet"] },
-	},
-	{
-		name: "area off via agent: all the lights in the office",
-		text: "Turn off all the lights in the office",
-		gate: false,
-		expect: { tools: ["HassTurnOff"] },
-	},
-	{
-		name: "state query after off (must say off)",
-		text: "Is the office light on?",
-		gate: true,
-		expect: {
-			noWrites: true,
-			replyNotQuestion: true,
-			replyMatches: /\boff\b|\bnot\b|\bno\b/i,
-		},
-	},
-	{
-		name: "compound: on + on (fast-path)",
-		text: "Turn on the office lights and the exterior sconces",
-		gate: true,
-		expect: { tools: ["HassTurnOn", "HassTurnOn"], compound: 2 },
-	},
-	{
-		name: "compound: off + off (fast-path)",
-		text: "Turn off the office lights and the exterior sconces",
-		gate: true,
-		expect: { tools: ["HassTurnOff", "HassTurnOff"], compound: 2 },
-	},
-	{
-		name: "negation: no tool",
-		text: "Don't turn on the office lights",
-		gate: true,
-		expect: { noTools: true },
-	},
-	{
-		name: "chat: no tool",
-		text: "Tell me a one-line joke",
-		gate: true,
-		expect: { noTools: true },
-	},
-	{
-		name: "agent write: brighter (model quality)",
-		text: "Please make the office lights a bit brighter",
-		gate: false,
-		expect: { tools: ["HassLightSet"] },
-	},
-	{
-		name: "polite modal: can you turn off the office lights (agent)",
-		text: "Can you turn off the office lights?",
-		gate: true,
-		expect: { tools: ["HassTurnOff"] },
-	},
-	{
-		name: "polite modal ES twin: puedes apagar la luz de la oficina",
-		text: "¿Puedes apagar la luz de la oficina?",
-		gate: false,
-		expect: { tools: ["HassTurnOff"] },
-	},
-	{
-		name: "cleanup: turn off (fast-path)",
-		text: "Turn off the office lights",
-		gate: true,
-		expect: { tools: ["HassTurnOff"], fastPath: true },
-	},
-]
+const CASE_FILE = join(process.cwd(), "evals", "cases", env.EVAL_SCENARIO_FILE)
 
 const checker = makeChecker()
 const labelIdx = process.argv.indexOf("--label")
-const label = labelIdx >= 0 ? process.argv[labelIdx + 1] : "tool-scenarios"
+const label =
+	labelIdx >= 0
+		? process.argv[labelIdx + 1]
+		: env.EVAL_SCENARIO_FILE.replace(/\.json$/, "")
+
+const loadCase = (): EvalCaseType => {
+	const parsed = evalCaseFileSchema.safeParse(
+		JSON.parse(readFileSync(CASE_FILE, "utf8")) as unknown,
+	)
+	if (!parsed.success) {
+		console.error(`❌ invalid case file ${CASE_FILE}:`)
+		for (const issue of parsed.error.issues)
+			console.error(`   ${issue.path.join(".") || "(root)"}: ${issue.message}`)
+		process.exit(1)
+	}
+	const found = parsed.data.find((c) => c.suite === "tool-scenarios")
+	if (!found) {
+		console.error(`❌ no tool-scenarios case in ${CASE_FILE}`)
+		process.exit(1)
+	}
+	return found
+}
 
 const postChat = async (
 	text: string,
+	satelliteId?: string,
 ): Promise<{ interactionId: string; reply: string; totalMs: number }> => {
 	const res = await fetch(
 		`${env.EVAL_URL}/chat?domiaKey=${env.EVAL_DOMIA_KEY}`,
 		{
 			method: "POST",
 			headers: { "content-type": "application/json", ...meshHeaders() },
-			body: JSON.stringify({ text }),
+			body: JSON.stringify({ text, ...(satelliteId ? { satelliteId } : {}) }),
 		},
 	)
 	const body = (await res.json()) as {
@@ -226,17 +80,17 @@ const postChat = async (
 
 const readRow = async (
 	interactionId: string,
-): Promise<InteractionRowType | null> => {
+): Promise<ToolScenarioRowType | null> => {
 	const start = Date.now()
 	while (Date.now() - start < env.EVAL_POLL_TIMEOUT_MS) {
-		const row = queryOne<InteractionRowType>(
+		const row = queryOne<ToolScenarioRowType>(
 			"SELECT intent_decision, tool_call_count, skill_response, llm_response, status, llm_ms, total_ms FROM interaction_trace WHERE id = ?",
 			[interactionId],
 		)
 		if (row && (row.status === "ok" || row.status === "failed")) {
 			await sleep(SETTLE_MS)
 			return (
-				queryOne<InteractionRowType>(
+				queryOne<ToolScenarioRowType>(
 					"SELECT intent_decision, tool_call_count, skill_response, llm_response, status, llm_ms, total_ms FROM interaction_trace WHERE id = ?",
 					[interactionId],
 				) ?? row
@@ -247,31 +101,120 @@ const readRow = async (
 	return null
 }
 
-const toolsOf = (row: InteractionRowType | null): string[] => {
+const resultEntries = (
+	row: ToolScenarioRowType | null,
+): ToolScenarioToolEntryType[] => {
 	if (!row?.skill_response) return []
 	try {
-		const entries = JSON.parse(row.skill_response) as ToolEntryType[]
-		return entries
-			.filter((e) => e.kind === "result" && e.tool)
-			.map((e) => String(e.tool).split("__").pop() ?? "")
+		const entries = JSON.parse(
+			row.skill_response,
+		) as ToolScenarioToolEntryType[]
+		return entries.filter((e) => e.kind === "result" && e.tool)
 	} catch {
 		return []
 	}
 }
 
+const namespacedToolsOf = (row: ToolScenarioRowType | null): string[] =>
+	resultEntries(row).map((e) => String(e.tool))
+
+const toolsOf = (row: ToolScenarioRowType | null): string[] =>
+	namespacedToolsOf(row).map((tool) => tool.split("__").pop() ?? "")
+
+const calledArgs = (
+	row: ToolScenarioRowType | null,
+): Record<string, unknown>[] =>
+	resultEntries(row).map((e) => e.resolvedArgs ?? e.args ?? {})
+
+const playerState = (
+	state: MockMusicStateType | null,
+	playerId: string,
+): MockMusicStateType["players"][number] | undefined =>
+	state?.players.find((p) => p.player_id === playerId)
+
 const evaluate = (
-	scenario: ScenarioType,
+	namespacedChecks: boolean,
+	turn: EvalTurnType,
 	reply: string,
-	row: InteractionRowType | null,
+	row: ToolScenarioRowType | null,
+	musicState: MockMusicStateType | null,
 ): { pass: boolean; detail: string } => {
 	const tools = toolsOf(row)
 	const intent = row?.intent_decision ?? ""
 	const reasons: string[] = []
-	const e = scenario.expect
+	const e = turn.expect
+	const replyMatches = e.replyMatches ? new RegExp(e.replyMatches, "i") : null
+	const replyNotMatches = e.replyNotMatches
+		? new RegExp(e.replyNotMatches, "i")
+		: null
 	if (e.tools && tools.join(",") !== e.tools.join(","))
 		reasons.push(
 			`tools=${tools.join(",") || "none"} expected=${e.tools.join(",")}`,
 		)
+	if (e.toolsNamespaced && namespacedChecks) {
+		const namespaced = namespacedToolsOf(row)
+		if (namespaced.join(",") !== e.toolsNamespaced.join(","))
+			reasons.push(
+				`namespaced=${namespaced.join(",") || "none"} expected=${e.toolsNamespaced.join(",")}`,
+			)
+	}
+	for (const required of e.tool ? [e.tool].flat() : [])
+		if (!tools.includes(required))
+			reasons.push(`tools=${tools.join(",") || "none"} lacks ${required}`)
+	for (const forbidden of e.notTools ?? [])
+		if (tools.includes(forbidden))
+			reasons.push(`tools=${tools.join(",")} includes ${forbidden}`)
+	if (e.argsSubset) {
+		const all = calledArgs(row)
+		const hit = all.some((args) =>
+			Object.entries(e.argsSubset ?? {}).every(
+				([key, value]) =>
+					stringOrEmpty(args[key]).toLowerCase() ===
+					stringOrEmpty(value).toLowerCase(),
+			),
+		)
+		if (!hit)
+			reasons.push(
+				`args=${JSON.stringify(all)} lacks ${JSON.stringify(e.argsSubset)}`,
+			)
+	}
+	if (e.anyArgMatches) {
+		const re = new RegExp(e.anyArgMatches, "i")
+		const all = calledArgs(row)
+		if (!all.some((args) => re.test(JSON.stringify(args))))
+			reasons.push(`args=${JSON.stringify(all)} lacks ${e.anyArgMatches}`)
+	}
+	if (e.mockMusicState && musicState) {
+		const want = e.mockMusicState
+		const player = playerState(musicState, want.player)
+		if (!player) reasons.push(`mock has no player ${want.player}`)
+		else {
+			if (want.state && player.state !== want.state)
+				reasons.push(
+					`${want.player}.state=${player.state} expected=${want.state}`,
+				)
+			if (
+				want.volumeLevel !== undefined &&
+				player.volume_level !== want.volumeLevel
+			)
+				reasons.push(
+					`${want.player}.volume=${player.volume_level} expected=${want.volumeLevel}`,
+				)
+			if (want.muted !== undefined && player.volume_muted !== want.muted)
+				reasons.push(
+					`${want.player}.muted=${player.volume_muted} expected=${want.muted}`,
+				)
+			if (
+				want.currentItemMatches &&
+				!new RegExp(want.currentItemMatches, "i").test(
+					player.current_item?.name ?? "",
+				)
+			)
+				reasons.push(
+					`${want.player}.current_item=${player.current_item?.name ?? "none"} lacks ${want.currentItemMatches}`,
+				)
+		}
+	}
 	if (e.noTools && tools.length > 0)
 		reasons.push(`unexpected tools=${tools.join(",")}`)
 	if (e.noWrites && tools.some((t) => !READ_TOOL_RE.test(t)))
@@ -284,47 +227,122 @@ const evaluate = (
 		)
 	if (e.replyNotQuestion && CONFIRM_RE.test(reply))
 		reasons.push("reply asked for confirmation")
-	if (e.replyMatches && !e.replyMatches.test(reply))
-		reasons.push(`reply lacks ${String(e.replyMatches)}`)
-	if (e.replyNotMatches?.test(reply))
-		reasons.push(`reply contradicts ${String(e.replyNotMatches)}`)
+	if (replyMatches && !replyMatches.test(reply))
+		reasons.push(`reply lacks ${String(replyMatches)}`)
+	if (replyNotMatches?.test(reply))
+		reasons.push(`reply contradicts ${String(replyNotMatches)}`)
 	if (reply.trim().length === 0) reasons.push("empty reply")
 	if (reply.trim().startsWith("{")) reasons.push("reply is JSON")
 	return { pass: reasons.length === 0, detail: reasons.join("; ") }
 }
 
-const main = async (): Promise<void> => {
-	const results: ResultType[] = []
-	for (const scenario of SCENARIOS) {
-		const { interactionId, reply, totalMs } = await postChat(scenario.text)
-		const row = await readRow(interactionId)
-		const verdict = evaluate(scenario, reply, row)
-		const tools = toolsOf(row)
-		results.push({
-			name: scenario.name,
-			text: scenario.text,
-			gate: scenario.gate,
-			pass: verdict.pass,
-			detail: verdict.detail,
-			reply,
-			tools,
-			intent: row?.intent_decision ?? null,
-			totalMs: row?.total_ms ?? totalMs,
-		})
-		const tag = scenario.gate ? "gate" : "score"
-		checker.check(
-			`[${tag}] ${scenario.name} → "${reply.slice(0, 60)}" (${totalMs}ms)`,
-			verdict.pass || !scenario.gate,
-			verdict.detail,
+const resolveTurns = (
+	evalCase: EvalCaseType,
+	siteName: string,
+): { turns: EvalTurnType[]; skipped: string[] } => {
+	const site = loadSiteMap(siteName)
+	const entities = aliasEntities(site, evalCase.entities)
+	const turns: EvalTurnType[] = []
+	const skipped: string[] = []
+	for (const raw of evalCase.turns) {
+		const turn = substituteTurn(raw, entities, site.speakers)
+		const left = turnPlaceholdersLeft(turn)
+		if (left.length > 0) {
+			skipped.push(
+				`${raw.name ?? raw.text} — site "${siteName}" lacks ${left.join(", ")}`,
+			)
+			continue
+		}
+		turns.push(turn)
+	}
+	return { turns, skipped }
+}
+
+const siteOf = (evalCase: EvalCaseType): string => {
+	if (evalCase.mockMusic)
+		return process.env.EVAL_MUSIC_SITE ?? evalCase.site ?? env.EVAL_MUSIC_SITE
+	return process.env.EVAL_HA_SITE ?? evalCase.site ?? env.EVAL_HA_SITE
+}
+
+const applyMusicBehavior = async (
+	mock: MockProvidersControlType | null,
+	patch: EvalCaseType["mockMusic"],
+): Promise<void> => {
+	if (!mock?.music || !patch) return
+	const { stateful, ...rest } = patch
+	if (stateful === false)
+		throw new Error(
+			"the eval mock music server is stateful — mockMusic.stateful:false is unsupported",
 		)
-		if (!scenario.gate && !verdict.pass)
-			console.log(`  ↳ score miss: ${verdict.detail}`)
-		await sleep(300)
+	if (Object.keys(rest).length > 0) await mock.music.setBehavior(rest)
+}
+
+const main = async (): Promise<void> => {
+	const evalCase = loadCase()
+	const siteName = siteOf(evalCase)
+	const { turns, skipped } = resolveTurns(evalCase, siteName)
+	for (const note of skipped) console.log(`⏭️  SKIPPED ${note}`)
+	console.log(`▶ site ${siteName} · ${turns.length} scenario(s)\n`)
+	const mock: MockProvidersControlType | null =
+		siteName === "mock"
+			? await setupMockProviders({
+					ha: true,
+					music: Boolean(evalCase.mockMusic),
+				})
+			: null
+	await applyMusicBehavior(mock, evalCase.mockMusic)
+	const stateAssertions = turns.filter((t) => t.expect.mockMusicState).length
+	if (stateAssertions > 0 && !mock?.music)
+		console.log(
+			`⏭️  ${stateAssertions} mock-state assertion(s) skipped — site ${siteName} runs no mock music server`,
+		)
+	const results: ToolScenarioResultType[] = []
+	try {
+		for (const turn of turns) {
+			const { interactionId, reply, totalMs } = await postChat(
+				turn.text,
+				turn.satelliteId,
+			)
+			const row = await readRow(interactionId)
+			const musicState = turn.expect.mockMusicState
+				? ((await mock?.music?.state()) ?? null)
+				: null
+			const verdict = evaluate(
+				siteName === "mock",
+				turn,
+				reply,
+				row,
+				musicState,
+			)
+			const gate = turn.gate === true
+			results.push({
+				name: turn.name ?? turn.text,
+				text: turn.text,
+				gate,
+				pass: verdict.pass,
+				detail: verdict.detail,
+				reply,
+				tools: toolsOf(row),
+				intent: row?.intent_decision ?? null,
+				totalMs: row?.total_ms ?? totalMs,
+			})
+			checker.check(
+				`[${gate ? "gate" : "score"}] ${turn.name ?? turn.text} → "${reply.slice(0, 60)}" (${totalMs}ms)`,
+				verdict.pass || !gate,
+				verdict.detail,
+			)
+			if (!gate && !verdict.pass)
+				console.log(`  ↳ score miss: ${verdict.detail}`)
+			await sleep(env.EVAL_TURN_GAP_MS)
+		}
+	} finally {
+		await mock?.teardown()
 	}
 	const gates = results.filter((r) => r.gate)
 	const scores = results.filter((r) => !r.gate)
 	const summary = {
 		label,
+		site: siteName,
 		url: env.EVAL_URL,
 		domiaKey: env.EVAL_DOMIA_KEY,
 		capturedAt: new Date().toISOString(),
@@ -332,6 +350,7 @@ const main = async (): Promise<void> => {
 		gateTotal: gates.length,
 		scorePass: scores.filter((r) => r.pass).length,
 		scoreTotal: scores.length,
+		skipped,
 		medianTotalMs: [...results]
 			.map((r) => r.totalMs ?? 0)
 			.sort((a, b) => a - b)[Math.floor(results.length / 2)],
@@ -344,7 +363,7 @@ const main = async (): Promise<void> => {
 		JSON.stringify(summary, null, 2),
 	)
 	console.log(
-		`\n${label}: gates ${summary.gatePass}/${summary.gateTotal} · score ${summary.scorePass}/${summary.scoreTotal} · median ${summary.medianTotalMs}ms → evals/bench-results/tool-scenarios-${label}.json`,
+		`\n${label} (${siteName}): gates ${summary.gatePass}/${summary.gateTotal} · score ${summary.scorePass}/${summary.scoreTotal} · median ${summary.medianTotalMs}ms → evals/bench-results/tool-scenarios-${label}.json`,
 	)
 	process.exit(summary.gatePass === summary.gateTotal ? 0 : 1)
 }

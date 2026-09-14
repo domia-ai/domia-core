@@ -1,8 +1,9 @@
 import type { RecognizerEntryType, OnlineEntryType } from "../types"
+import type { OnlineStream } from "@/utils/ml-runtime/types"
 import fs from "fs"
 import path from "path"
 
-import { STT_ENGINE_ENUM } from "@/db"
+import { STT_ENGINE_ENUM, NEMOTRON_STREAMING_AUTO_LANGUAGE } from "@/db"
 import {
 	STT_ERRORS,
 	sttEngineLogger,
@@ -86,6 +87,44 @@ const buildStreamingTransducer = (config: SttWorkerEngineConfigType) => {
 		rule2MinTrailingSilence: config.rule2MinTrailingSilence,
 		rule3MinUtteranceLength: config.rule3MinUtteranceLength,
 	})
+}
+
+const buildNemotronStreaming = (config: SttWorkerEngineConfigType) => {
+	const dir = path.resolve(config.modelPath)
+	if (!fs.existsSync(dir)) missing(dir)
+	const q = resolveQuantization(config.quantization)
+	const encoder = findOnnxFile({ dir, prefix: "encoder", quantization: q })
+	const decoder = findOnnxFile({ dir, prefix: "decoder", quantization: q })
+	const joiner = findOnnxFile({ dir, prefix: "joiner", quantization: q })
+	const tokens = path.join(dir, "tokens.txt")
+	if (!encoder || !decoder || !joiner || !fs.existsSync(tokens)) missing(dir)
+	return createOnlineRecognizer({
+		featConfig: FEAT_128,
+		modelConfig: {
+			transducer: { encoder, decoder, joiner },
+			tokens,
+			numThreads: config.numThreads,
+			provider: config.provider,
+			debug: 0,
+		},
+		enableEndpoint: config.enableEndpoint,
+		rule1MinTrailingSilence: config.rule1MinTrailingSilence,
+		rule2MinTrailingSilence: config.rule2MinTrailingSilence,
+		rule3MinUtteranceLength: config.rule3MinUtteranceLength,
+	})
+}
+
+const openOnlineStream = (
+	entry: OnlineEntryType,
+	config: SttWorkerEngineConfigType,
+): OnlineStream => {
+	const stream = entry.rec.createStream()
+	if (config.engine === STT_ENGINE_ENUM.NEMOTRON_STREAMING)
+		stream.setOption(
+			"language",
+			config.language ?? NEMOTRON_STREAMING_AUTO_LANGUAGE,
+		)
+	return stream
 }
 
 const buildWhisper = (config: SttWorkerEngineConfigType) => {
@@ -190,6 +229,7 @@ const configKey = (config: SttWorkerEngineConfigType): string =>
 		config.engine,
 		path.resolve(config.modelPath),
 		config.modelName ?? "",
+		config.language ?? "",
 		config.quantization ?? "default",
 		config.numThreads,
 		config.provider,
@@ -213,6 +253,8 @@ const getRecognizer = (
 		cached = { online: true, rec: buildZipformer(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.STREAMING_TRANSDUCER) {
 		cached = { online: true, rec: buildStreamingTransducer(config) }
+	} else if (config.engine === STT_ENGINE_ENUM.NEMOTRON_STREAMING) {
+		cached = { online: true, rec: buildNemotronStreaming(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.WHISPER) {
 		cached = { online: false, rec: buildWhisper(config) }
 	} else if (config.engine === STT_ENGINE_ENUM.PARAKEET) {
@@ -224,30 +266,29 @@ const getRecognizer = (
 	return cached
 }
 
+const acceptSilence = (
+	stream: OnlineStream,
+	sampleRate: number,
+	paddingMs: number,
+): void => {
+	const padSamples = Math.round((sampleRate * paddingMs) / 1000)
+	if (padSamples <= 0) return
+	stream.acceptWaveform({ sampleRate, samples: new Float32Array(padSamples) })
+}
+
 const transcribe = (
 	entry: RecognizerEntryType,
+	config: SttWorkerEngineConfigType,
 	samples: Float32Array,
 	sampleRate: number,
-	decodePaddingMs: number,
 ): string => {
 	if (entry.online) {
 		const rec = entry.rec
-		const stream = rec.createStream()
-		const padSamples = Math.round((sampleRate * decodePaddingMs) / 1000)
+		const stream = openOnlineStream(entry, config)
 		// online engines start cold with no left-context — lead with silence so the first word isn't clipped
-		if (padSamples > 0) {
-			stream.acceptWaveform({
-				sampleRate,
-				samples: new Float32Array(padSamples),
-			})
-		}
+		acceptSilence(stream, sampleRate, config.decodePaddingMs)
 		stream.acceptWaveform({ sampleRate, samples })
-		if (padSamples > 0) {
-			stream.acceptWaveform({
-				sampleRate,
-				samples: new Float32Array(padSamples),
-			})
-		}
+		acceptSilence(stream, sampleRate, config.flushPaddingMs)
 		stream.inputFinished()
 		while (rec.isReady(stream)) rec.decode(stream)
 		return rec.getResult(stream).text.trim()
@@ -281,7 +322,7 @@ export const handleSttSessionJob = (
 				meta: { engine: job.engineConfig.engine },
 			})
 		}
-		activeSession = { stream: entry.rec.createStream(), entry }
+		activeSession = { stream: openOnlineStream(entry, job.engineConfig), entry }
 		return { ok: true }
 	}
 	if (!activeSession)
@@ -299,13 +340,7 @@ export const handleSttSessionJob = (
 		return { partial: entry.rec.getResult(stream).text.trim() }
 	}
 	if (job.kind === "session-end") {
-		const padSamples = Math.round((job.sampleRate * job.decodePaddingMs) / 1000)
-		if (padSamples > 0) {
-			stream.acceptWaveform({
-				sampleRate: job.sampleRate,
-				samples: new Float32Array(padSamples),
-			})
-		}
+		acceptSilence(stream, job.sampleRate, job.flushPaddingMs)
 		stream.inputFinished()
 		decodePending()
 		const text = entry.rec.getResult(stream).text.trim()
@@ -320,11 +355,14 @@ export const transcribeSttJob = (
 	job: SttWorkerJobType,
 ): SttWorkerResultType => {
 	const entry = getRecognizer(job.engineConfig)
-	const pad = job.engineConfig.decodePaddingMs
 	if (job.kind === "file") {
 		const wave = readWave(job.wavPath)
-		return { text: transcribe(entry, wave.samples, wave.sampleRate, pad) }
+		return {
+			text: transcribe(entry, job.engineConfig, wave.samples, wave.sampleRate),
+		}
 	}
 	const samples = int16BufferToFloat32(job.pcm)
-	return { text: transcribe(entry, samples, job.sampleRate, pad) }
+	return {
+		text: transcribe(entry, job.engineConfig, samples, job.sampleRate),
+	}
 }

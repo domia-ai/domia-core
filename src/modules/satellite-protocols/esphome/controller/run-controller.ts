@@ -5,9 +5,12 @@ import type {
 	RunControllerType,
 	RunPhaseType,
 	PlaybackItemType,
+	MediaStateVerdictType,
 } from "../types"
 
-const MEDIA_PLAYING_STATES = new Set([2, 4])
+const MEDIA_STATE_PLAYING = 2
+const MEDIA_STATE_ANNOUNCING = 4
+const NO_VERDICT: MediaStateVerdictType = { ours: null, external: null }
 const PLAYBACK_QUEUE_MAX_DEPTH = 4
 const PLAYBACK_ITEM_TTL_MS = 30_000
 const PLAYBACK_FALLBACK_EXTRA_MS = 5_000
@@ -275,6 +278,7 @@ export const createEsphomeRunController = (
 		const item = queue.shift()
 		if (!item) return
 		item.startedAt = Date.now()
+		item.overExternalMedia = deps.externalMediaPlaying()
 		activePlayback = item
 		announcingObserved = false
 		deps.onPlaybackStart(item.durationMs)
@@ -290,13 +294,22 @@ export const createEsphomeRunController = (
 		} else {
 			deps.sendAnnounce(item.url, false)
 		}
+		armPlaybackFallback(item)
+	}
+
+	const armPlaybackFallback = (item: PlaybackItemType): void => {
+		if (playbackFallbackTimer) clearTimeout(playbackFallbackTimer)
 		const fallbackMs =
 			(item.durationMs ?? PLAYBACK_ITEM_TTL_MS) +
 			deps.budgets.drainMarginMs +
-			PLAYBACK_FALLBACK_EXTRA_MS
+			(item.overExternalMedia ? 0 : PLAYBACK_FALLBACK_EXTRA_MS)
 		const gen = item.playbackGeneration
 		playbackFallbackTimer = setTimeout(() => {
 			if (disposed || activePlayback?.playbackGeneration !== gen) return
+			if (item.overExternalMedia) {
+				finishPlayback("duration-over-media")
+				return
+			}
 			logger.warn(
 				"⚠️ playback fallback timeout — treating as ended (anomaly)",
 				{
@@ -344,6 +357,7 @@ export const createEsphomeRunController = (
 			playbackGeneration,
 			enqueuedAt: Date.now(),
 			expiresAt: Date.now() + PLAYBACK_ITEM_TTL_MS,
+			overExternalMedia: false,
 		})
 		dispatchNext()
 		return playbackGeneration
@@ -357,19 +371,13 @@ export const createEsphomeRunController = (
 		if (activePlayback?.playbackGeneration === generation) {
 			activePlayback.durationMs = durationMs
 			deps.onPlaybackDurationKnown?.(durationMs)
+			armPlaybackFallback(activePlayback)
 		}
 		const queued = queue.find((q) => q.playbackGeneration === generation)
 		if (queued) queued.durationMs = durationMs
 	}
 
-	const onMediaState = (state: number): void => {
-		if (disposed || !activePlayback) return
-		if (MEDIA_PLAYING_STATES.has(state)) {
-			announcingObserved = true
-			return
-		}
-		if (!announcingObserved) return
-		const item = activePlayback
+	const scheduleDrainFinish = (item: PlaybackItemType): void => {
 		const elapsed = Date.now() - (item.startedAt ?? item.enqueuedAt)
 		const minPlaybackMs = item.durationMs
 			? Math.max(0, item.durationMs - deps.budgets.drainMarginMs)
@@ -385,6 +393,27 @@ export const createEsphomeRunController = (
 			finishPlayback("media-state")
 		}, waitMs)
 		drainTimer.unref()
+	}
+
+	const onMediaState = (state: number): MediaStateVerdictType => {
+		if (disposed) return NO_VERDICT
+		const external =
+			state === MEDIA_STATE_PLAYING ? ("playing" as const) : ("idle" as const)
+		const item = activePlayback
+		if (!item) {
+			if (state === MEDIA_STATE_ANNOUNCING) return NO_VERDICT
+			return { ours: null, external }
+		}
+		const ours =
+			state === MEDIA_STATE_ANNOUNCING ||
+			(state === MEDIA_STATE_PLAYING && !item.overExternalMedia)
+		if (ours) {
+			announcingObserved = true
+			return { ours: "started", external: null }
+		}
+		if (!announcingObserved) return { ours: null, external }
+		scheduleDrainFinish(item)
+		return { ours: "ended", external }
 	}
 
 	const onAnnounceFinished = (): void => {

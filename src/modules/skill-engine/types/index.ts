@@ -100,6 +100,18 @@ export type SkillSpecializationType = {
 		rawName: string,
 		args: Record<string, unknown>,
 	) => { text: string } | null
+	virtualTools?: (
+		provider: SelectSkillProviderType,
+		language: string | null,
+	) => RawSkillToolType[]
+	callVirtualTool?: (
+		provider: SelectSkillProviderType,
+		handle: SkillConnHandleType,
+		rawName: string,
+		args: Record<string, unknown>,
+		language: string | null,
+		signal?: AbortSignal,
+	) => Promise<SkillCallResultType> | null
 	resolveArgs?: (
 		provider: SelectSkillProviderType,
 		rawName: string,
@@ -122,6 +134,13 @@ export type SkillSpecializationType = {
 		args: Record<string, unknown>,
 		language: string | null,
 	) => ToolInvocationDescriptionType | null
+	inferWriteTarget?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		args: Record<string, unknown>,
+		transcript: string,
+		language: string | null,
+	) => ToolTargetInferenceType
 	preCall?: (
 		provider: SelectSkillProviderType,
 		rawName: string,
@@ -132,6 +151,7 @@ export type SkillSpecializationType = {
 		rawName: string,
 		resolvedArgs: Record<string, unknown>,
 		result: SkillCallResultType,
+		language: string | null,
 	) => Promise<SkillCallResultType> | SkillCallResultType
 	status?: (provider: SelectSkillProviderType) => Record<string, unknown> | null
 	discover?: (timeoutMs: number) => Promise<DiscoveredProviderType[]>
@@ -166,9 +186,9 @@ export type SkillProviderStatusType = {
 	cachedTools: number
 	allowedTools: number
 	lastSyncAt: string | null
-	toolsTtlMs: number | null
 	toolsFreshUntil: string | null
 	toolsRefreshMs: number
+	protocolEra: SkillProtocolEraType | null
 	tools: SkillToolStatusType[]
 	specialization: Record<string, unknown> | null
 }
@@ -184,8 +204,14 @@ export type ListToolsOptionsType = {
 export type ToolInvocationDescriptionType = {
 	target?: string
 	targetNames?: string[]
+	implicit?: boolean
 	summary?: string
 }
+
+export type ToolTargetInferenceType =
+	| { kind: "targeted" }
+	| { kind: "inferred"; args: Record<string, unknown> }
+	| { kind: "untargeted" }
 
 export type SkillCallStatusType =
 	| "ok"
@@ -219,8 +245,10 @@ export type RawSkillToolType = {
 
 export type RawSkillToolListType = {
 	tools: RawSkillToolType[]
-	ttlMs: number | null
+	ttlMs?: number
 }
+
+export type SkillProtocolEraType = "legacy" | "modern"
 
 export type SkillConnHandleType = {
 	listTools: () => Promise<RawSkillToolListType>
@@ -230,8 +258,29 @@ export type SkillConnHandleType = {
 		signal?: AbortSignal,
 		opts?: SkillCallToolOptionsType,
 	) => Promise<SkillCallResultType>
+	protocolEra?: () => SkillProtocolEraType | null
 	close: () => Promise<void>
 }
+
+export type McpContentPartType = {
+	type?: unknown
+	text?: unknown
+	annotations?: { audience?: unknown }
+}
+
+export type SkillRenderedContentType = {
+	text: string
+	speakableText: string | null
+	droppedParts: number
+}
+
+export type ValidatedElicitResultType =
+	| {
+			action: "accept"
+			content: Record<string, string | number | boolean | string[]>
+	  }
+	| { action: "decline" }
+	| { action: "cancel" }
 
 export type SkillElicitResultType =
 	| { action: "accept"; content: Record<string, unknown> }
@@ -248,6 +297,7 @@ export type SkillConnHooksType = {
 
 export type SkillAdapterType = {
 	protocol: string
+	transports: readonly string[]
 	connect: (
 		cfg: SelectSkillProviderType,
 		hooks?: SkillConnHooksType,
@@ -263,7 +313,6 @@ export type SkillConnectionType = {
 	allowedTools: Set<string>
 	descriptor: ResolvedSkillDescriptorType
 	toolMeta: Map<string, ResolvedToolMetaType>
-	toolsTtlMs: number | null
 	toolsFreshUntil: number | null
 	language: string | null
 	provider: SelectSkillProviderType

@@ -1,0 +1,369 @@
+[
+	{
+		"name": "thirty-turn home conversation",
+		"suite": "conversation-long",
+		"language": "en",
+		"site": "mock",
+		"isolate": "conversation",
+		"mockHa": {
+			"stateful": true
+		},
+		"seedFacts": [
+			{
+				"subject": "the user",
+				"relation": "has favorite color",
+				"value": "blue"
+			},
+			{
+				"subject": "the user",
+				"relation": "lives in",
+				"value": "Barcelona"
+			}
+		],
+		"conversation": {
+			"minTurnPassRate": 0.9,
+			"minToolCorrectness": 0.9,
+			"minContextRetention": 0.8,
+			"ttftP50MaxMs": 600,
+			"perceivedTtfaP50MaxMs": 1800,
+			"judge": {
+				"min": 4,
+				"rubric": "A companion that remembers what was just said, never contradicts itself about device state, never repeats the same reply, keeps every answer short and spoken, and only claims to have acted when a tool result says so."
+			}
+		},
+		"turns": [
+			{
+				"id": "greet",
+				"name": "greeting",
+				"text": "Hey, good morning.",
+				"expect": {
+					"noTools": true,
+					"maxReplyWords": 45
+				}
+			},
+			{
+				"id": "kb-color",
+				"name": "seeded fact: favourite colour",
+				"text": "Quick one — what's my favourite colour?",
+				"expect": {
+					"noTools": true,
+					"recallsFact": {
+						"value": "blue"
+					},
+					"replyMatches": "blue"
+				}
+			},
+			{
+				"id": "kb-home",
+				"name": "seeded fact: where I live",
+				"text": "And where do I live?",
+				"expect": {
+					"noTools": true,
+					"recallsFact": {
+						"value": "Barcelona"
+					},
+					"replyMatches": "barcelona"
+				}
+			},
+			{
+				"id": "kb-scope",
+				"name": "capability question stays read-only",
+				"text": "What can you do around the house?",
+				"expect": {
+					"noWrites": true,
+					"maxReplyWords": 70
+				}
+			},
+			{
+				"id": "light-on",
+				"name": "command: turn the first light on",
+				"gate": true,
+				"text": "Turn on the {{entity.lightA.spoken}}",
+				"expect": {
+					"tools": ["HassTurnOn"]
+				}
+			},
+			{
+				"id": "light-check",
+				"name": "state after the write",
+				"gate": true,
+				"text": "Is the {{entity.lightA.spokenSingular}} on?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true,
+					"replyMatches": "\\b(on|yes)\\b",
+					"replyNotMatches": "\\boff\\b"
+				}
+			},
+			{
+				"id": "light-dim",
+				"name": "numeric: dim to forty percent",
+				"gate": true,
+				"text": "Dim the {{entity.lightA.spoken}} to forty percent",
+				"expect": {
+					"tools": ["HassLightSet"]
+				}
+			},
+			{
+				"id": "light-brighter",
+				"name": "anaphora: make it brighter",
+				"text": "Make it a bit brighter",
+				"expect": {
+					"tools": ["HassLightSet"]
+				}
+			},
+			{
+				"id": "light-second-on",
+				"name": "command: second light",
+				"gate": true,
+				"text": "Turn on the {{entity.lightB.spoken}} as well",
+				"expect": {
+					"tools": ["HassTurnOn"]
+				}
+			},
+			{
+				"id": "lights-status",
+				"name": "which lights are on",
+				"text": "Which lights are on right now?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true,
+					"replyMatches": "{{entity.lightA.token}}"
+				}
+			},
+			{
+				"id": "negation",
+				"name": "negation executes nothing",
+				"gate": true,
+				"text": "Don't turn off the {{entity.lightB.spoken}}",
+				"expect": {
+					"noTools": true,
+					"calledToolCount": 0
+				}
+			},
+			{
+				"id": "hypothetical",
+				"name": "hypothetical executes nothing",
+				"gate": true,
+				"text": "If I asked you to turn everything off, what would happen?",
+				"expect": {
+					"noTools": true,
+					"calledToolCount": 0
+				}
+			},
+			{
+				"id": "past-tense",
+				"name": "past tense executes nothing",
+				"gate": true,
+				"text": "Earlier I turned on the {{entity.lightA.spoken}}, didn't I?",
+				"expect": {
+					"noTools": true,
+					"calledToolCount": 0
+				}
+			},
+			{
+				"id": "name-tell",
+				"name": "memory: tells its name",
+				"text": "By the way, my name is Marta.",
+				"expect": {
+					"noTools": true,
+					"maxReplyWords": 45
+				}
+			},
+			{
+				"id": "jazz-tell",
+				"name": "memory: tells a preference",
+				"text": "I love jazz music, especially in the evening.",
+				"expect": {
+					"noTools": true,
+					"maxReplyWords": 45
+				}
+			},
+			{
+				"id": "name-recall",
+				"name": "memory: recalls the name",
+				"text": "What's my name?",
+				"expect": {
+					"noTools": true,
+					"replyMatches": "marta",
+					"promptSection": {
+						"section": "RECENT TURNS",
+						"includes": ["marta"]
+					}
+				}
+			},
+			{
+				"id": "like-recall",
+				"name": "memory: uses the preference",
+				"text": "If you could play something I like, what would you pick?",
+				"expect": {
+					"noTools": true,
+					"replyMatches": "jazz",
+					"promptSection": {
+						"section": "RECENT TURNS",
+						"includes": ["jazz"]
+					}
+				}
+			},
+			{
+				"id": "fail-off",
+				"name": "failure injection: first turn-off fails",
+				"text": "Turn off the {{entity.lightB.spoken}}",
+				"mockHa": {
+					"fail": {
+						"HassTurnOff": 1
+					}
+				},
+				"onReply": [
+					{
+						"when": {
+							"traceToolStatus": {
+								"HassTurnOff": "ok"
+							}
+						},
+						"next": "after-off"
+					}
+				],
+				"expect": {
+					"replyNotQuestion": true
+				}
+			},
+			{
+				"id": "retry",
+				"name": "failure injection: user asks for a retry",
+				"text": "That didn't work — try it again please.",
+				"expect": {
+					"tools": ["HassTurnOff"]
+				}
+			},
+			{
+				"id": "after-off",
+				"name": "state after the failure branch",
+				"gate": true,
+				"text": "Is the {{entity.lightB.spoken}} off now?",
+				"expect": {
+					"noWrites": true,
+					"replyMatches": "\\b(off|not on|yes)\\b",
+					"replyNotMatches": "\\bstill on\\b"
+				}
+			},
+			{
+				"id": "compound-on",
+				"name": "compound: two lights on",
+				"gate": true,
+				"text": "Turn on the {{entity.lightA.spoken}} and the {{entity.lightB.spoken}}",
+				"expect": {
+					"tools": ["HassTurnOn", "HassTurnOn"],
+					"compound": 2
+				}
+			},
+			{
+				"id": "set-both",
+				"name": "numeric: set to seventy percent",
+				"gate": true,
+				"text": "Set the {{entity.lightA.spoken}} to seventy percent",
+				"expect": {
+					"tools": ["HassLightSet"]
+				}
+			},
+			{
+				"id": "recall-recent",
+				"name": "recall: what did I just change",
+				"text": "What did I just ask you to change?",
+				"expect": {
+					"noTools": true,
+					"replyMatches": "(seventy|70)",
+					"promptSection": {
+						"section": "RECENT TURNS",
+						"includes": ["seventy"]
+					}
+				}
+			},
+			{
+				"id": "lock-ask",
+				"name": "confirmation: destructive tool asks first",
+				"gate": true,
+				"text": "Lock the {{entity.lock.spoken}}",
+				"onReply": [
+					{
+						"when": {
+							"toolCalled": "HassLockDoor"
+						},
+						"next": "lock-after"
+					}
+				],
+				"expect": {
+					"expectStopReason": "confirm_required",
+					"calledToolCount": 0,
+					"notTools": ["HassLockDoor"]
+				}
+			},
+			{
+				"id": "lock-deny",
+				"name": "confirmation: denied never executes",
+				"gate": true,
+				"text": "No, leave it.",
+				"expect": {
+					"traceToolStatus": {
+						"HassLockDoor": "denied"
+					},
+					"calledToolCount": 1
+				}
+			},
+			{
+				"id": "lock-after",
+				"name": "confirmation: state question after the branch",
+				"text": "Is the {{entity.lock.spoken}} locked?",
+				"expect": {
+					"noWrites": true,
+					"replyNotQuestion": true
+				}
+			},
+			{
+				"id": "all-off",
+				"name": "wrap up: everything off",
+				"gate": true,
+				"text": "Turn off all the lights please",
+				"expect": {
+					"tool": "HassTurnOff"
+				}
+			},
+			{
+				"id": "status",
+				"name": "wrap up: what is on",
+				"text": "So is anything still on?",
+				"expect": {
+					"noWrites": true,
+					"replyMatches": "\\b(off|nothing|none|no)\\b"
+				}
+			},
+			{
+				"id": "final-recall",
+				"name": "wrap up: name and preference",
+				"text": "Before we finish — remind me, what's my name?",
+				"expect": {
+					"noTools": true,
+					"replyMatches": "marta",
+					"recallsFact": {
+						"value": "Marta"
+					}
+				}
+			},
+			{
+				"id": "goodbye",
+				"name": "goodbye",
+				"end": true,
+				"text": "Thanks, goodnight.",
+				"expect": {
+					"noTools": true,
+					"maxReplyWords": 40,
+					"noRepeat": true,
+					"judge": {
+						"min": 4,
+						"rubric": "A short, warm goodbye that does not start a new topic or ask a new question."
+					}
+				}
+			}
+		]
+	}
+]

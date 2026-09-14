@@ -30,6 +30,7 @@ export type ReflectionGateType = {
 		settings: ReflectionGateSettingsType,
 		fn: () => Promise<T>,
 		skipValue: T,
+		priority?: boolean,
 	) => Promise<T>
 }
 
@@ -44,4 +45,12 @@ export type ReflectionGateSettingsType = {
 	maxIdleWaitMs: number
 	slotTimeoutMs: number
 	yieldMaxAttempts: number
+}
+
+export type ReflectionRetryInputType = {
+	factsEnabled: boolean
+	explicitMemory: boolean
+	hasReflectionModel: boolean
+	keptCount: number
+	userText: string
 }

@@ -7,6 +7,7 @@ export const requestTextReply = async (
 	text: string,
 	timeoutMs?: number,
 	interactionId?: string,
+	satelliteId?: string,
 ): Promise<RequestTextReplyResult> => {
 	const result = await runInteraction(domia, {
 		input: { kind: "text", text },
@@ -15,6 +16,7 @@ export const requestTextReply = async (
 		audioDelivery: "none",
 		timeoutMs,
 		interactionId,
+		satelliteId,
 	})
 	return { reply: result.reply, interactionId: result.interactionId }
 }

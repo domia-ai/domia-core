@@ -87,6 +87,12 @@ export const setupCoreBus = ({
 			interactionId: p.interactionId,
 			originDomiaKey: p.originDomiaKey,
 			traceId: ensureTraceId(inherited),
+			satelliteId:
+				p.satelliteId ??
+				(p.interactionId
+					? (getInteractionRuntime(p.interactionId)?.envelope.satelliteId ??
+						undefined)
+					: undefined),
 		}
 	}
 

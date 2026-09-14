@@ -1,4 +1,7 @@
-import type { SelectWakeWordConfigType } from "@/db"
+import {
+	type SelectWakeWordConfigType,
+	DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
+} from "@/db"
 import type { EagerPrefillHandleType, EagerPrefillRelationType } from "@/buses"
 import { domiaBusLogger } from "@/utils"
 
@@ -9,6 +12,7 @@ import type {
 	TwoTierTrackerType,
 	TwoTierStateType,
 	TwoTierStatsType,
+	TwoTierSettleOutcomeType,
 	CoreBusFeaturesType,
 } from "../types"
 
@@ -39,6 +43,8 @@ export const twoTierConfigFromWakeWord = (
 	prefillIdleGuardMs: config?.twoTierPrefillIdleGuardMs ?? 0,
 	resumeGraceMs: config?.twoTierResumeGraceMs ?? 0,
 	maxEagerPrefills: config?.twoTierMaxEagerPrefills ?? 0,
+	settleMaxWaitMs:
+		config?.twoTierSettleMaxWaitMs ?? DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
 })
 
 export const twoTierEndpointArmed = (
@@ -148,16 +154,33 @@ export const createTwoTierTracker = (
 export const settleEagerPrefill = async (
 	handle: EagerPrefillHandleType | undefined,
 	interactionId: string,
-): Promise<void> => {
-	if (!handle) return
+	maxWaitMs: number,
+): Promise<TwoTierSettleOutcomeType> => {
+	if (!handle) return "decode"
 	if (handle.relation === "diverges") {
 		handle.cancel("final diverged from eager partial")
-		return
+		return "decode"
 	}
 	const waitStart = Date.now()
-	await handle.settled
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const timedOut = await Promise.race([
+		handle.settled.then(() => false),
+		new Promise<boolean>((resolve) => {
+			timer = setTimeout(() => resolve(true), Math.max(0, maxWaitMs))
+		}),
+	])
+	if (timer) clearTimeout(timer)
+	if (timedOut) {
+		handle.cancel(`eager prefill did not settle within ${maxWaitMs}ms`)
+		domiaBusLogger.warn(
+			`🧊 eager prefill did not settle within ${maxWaitMs}ms — cancelled, decoding cold`,
+			{ interactionId },
+		)
+		return "decode"
+	}
 	domiaBusLogger.info(
 		`🔥 eager prefill ${handle.relation === "equal" ? "matches" : "prefixes"} the final — decode on hot KV (waited ${Date.now() - waitStart}ms)`,
 		{ interactionId },
 	)
+	return "reuse"
 }

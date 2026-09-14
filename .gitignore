@@ -50,3 +50,6 @@ evals/fixtures/stt/h18-echo-*/
 /data/certs/
 /config/mqtt/acl.txt
 /dist/
+
+# Lossless mind snapshots taken before db:reset (local, may hold secrets)
+/data/snapshots/

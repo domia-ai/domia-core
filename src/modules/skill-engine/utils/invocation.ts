@@ -3,6 +3,7 @@ import { skillEngineLogger } from "@/utils"
 import type {
 	SkillConnectionType,
 	ToolInvocationDescriptionType,
+	ToolTargetInferenceType,
 } from "../types"
 
 export const genericInvocationTarget = (
@@ -39,4 +40,31 @@ export const describeConnectionInvocation = (
 	}
 	const target = genericInvocationTarget(args)
 	return target ? { target } : {}
+}
+
+export const inferConnectionWriteTarget = (
+	conn: SkillConnectionType | null | undefined,
+	rawName: string,
+	args: Record<string, unknown>,
+	transcript: string,
+	language?: string | null,
+): ToolTargetInferenceType => {
+	const hook = conn?.specialization?.inferWriteTarget
+	if (!conn || !hook) return { kind: "targeted" }
+	try {
+		return hook(
+			conn.provider,
+			rawName,
+			args,
+			transcript,
+			language ?? conn.language ?? null,
+		)
+	} catch (err) {
+		skillEngineLogger.warn("specialization inferWriteTarget failed", {
+			provider: conn.name,
+			tool: rawName,
+			err,
+		})
+		return { kind: "targeted" }
+	}
 }

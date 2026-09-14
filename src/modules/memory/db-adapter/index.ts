@@ -1,4 +1,18 @@
-import { eq, desc, and, gte, gt, or, asc, isNull, count } from "drizzle-orm"
+import {
+	eq,
+	desc,
+	and,
+	gte,
+	gt,
+	lte,
+	ne,
+	or,
+	asc,
+	isNull,
+	isNotNull,
+	count,
+	sql,
+} from "drizzle-orm"
 
 import {
 	dbClient,
@@ -15,7 +29,32 @@ import {
 	type InsertUserModelType,
 	MS_TIMESTAMP,
 	DEFAULT_TIMESTAMP,
+	FACT_SOURCE_KIND_ENUM,
 } from "@/db"
+import type { FactValidityType } from "../types"
+
+const CLOSED_AT = sql`coalesce(${memoryFact.validUntil}, ${MS_TIMESTAMP})`
+
+const ACTIVE_FACT = and(
+	isNull(memoryFact.supersededAt),
+	or(isNull(memoryFact.validUntil), gt(memoryFact.validUntil, MS_TIMESTAMP)),
+)
+
+const EXPIRED_FACT = and(
+	isNotNull(memoryFact.validUntil),
+	or(
+		isNotNull(memoryFact.supersededAt),
+		lte(memoryFact.validUntil, MS_TIMESTAMP),
+	),
+)
+
+const freshInferredFact = (inferredCutoff: string | null) =>
+	inferredCutoff
+		? or(
+				ne(memoryFact.sourceKind, FACT_SOURCE_KIND_ENUM.INFERRED),
+				gte(memoryFact.createdAt, inferredCutoff),
+			)
+		: undefined
 
 const dbAdapter = {
 	insertFact: (
@@ -44,6 +83,8 @@ const dbAdapter = {
 					value: data.value,
 					confidence: data.confidence,
 					supersededAt: null,
+					validFrom: data.validFrom,
+					validUntil: data.validUntil ?? null,
 					updatedAt: MS_TIMESTAMP,
 				},
 			}),
@@ -79,11 +120,18 @@ const dbAdapter = {
 	reactivateFact: (
 		id: string,
 		confidence: number,
+		validity: FactValidityType,
 		client: DBClientOrTxType = dbClient,
 	) =>
 		client
 			.update(memoryFact)
-			.set({ supersededAt: null, confidence, updatedAt: MS_TIMESTAMP })
+			.set({
+				supersededAt: null,
+				confidence,
+				validFrom: validity.validFrom,
+				validUntil: validity.validUntil,
+				updatedAt: MS_TIMESTAMP,
+			})
 			.where(eq(memoryFact.id, id)),
 	setFactConfidence: (
 		id: string,
@@ -107,7 +155,11 @@ const dbAdapter = {
 	) =>
 		client
 			.update(memoryFact)
-			.set({ supersededAt: MS_TIMESTAMP, updatedAt: MS_TIMESTAMP })
+			.set({
+				supersededAt: MS_TIMESTAMP,
+				validUntil: CLOSED_AT,
+				updatedAt: MS_TIMESTAMP,
+			})
 			.where(
 				and(
 					eq(memoryFact.domiaId, domiaId),
@@ -143,6 +195,29 @@ const dbAdapter = {
 			orderBy: desc(memoryFact.createdAt),
 			limit,
 		}),
+	getRecallFacts: async (
+		domiaId: string,
+		activeLimit: number,
+		expiredLimit: number,
+		inferredCutoff: string | null,
+		client: DBClientOrTxType = dbClient,
+	) => {
+		const recallRows = (temporal: typeof ACTIVE_FACT, limit: number) =>
+			client.query.memoryFact.findMany({
+				where: and(
+					eq(memoryFact.domiaId, domiaId),
+					temporal,
+					freshInferredFact(inferredCutoff),
+				),
+				orderBy: desc(memoryFact.createdAt),
+				limit,
+			})
+		const [active, expired] = await Promise.all([
+			recallRows(ACTIVE_FACT, activeLimit),
+			expiredLimit > 0 ? recallRows(EXPIRED_FACT, expiredLimit) : [],
+		])
+		return [...active, ...expired]
+	},
 	getFactsForDomia: (domiaId: string, client: DBClientOrTxType = dbClient) =>
 		client.query.memoryFact.findMany({
 			where: eq(memoryFact.domiaId, domiaId),

@@ -1,12 +1,11 @@
 import { getOwnDomia, getHostedDomias } from "@/modules/core"
 import { persistConfig } from "@/modules/config"
-import { getActiveTurn, abortAndWait } from "@/modules/core-bus"
+import { getActiveTurn, abortAndWait, reloadGate } from "@/modules/core-bus"
 import {
 	activeVoiceReplies,
 	queuedVoiceReplies,
 } from "@/modules/voice-admission"
 import { requestRestart } from "@/modules/runtime-control"
-import { clearLlmClientCache } from "@/modules/llm-engine"
 import { createAsyncSemaphore } from "@/utils"
 import { DEFAULT_CONFIG_RELOAD_DRAIN_MS } from "@/db"
 import {
@@ -87,13 +86,13 @@ const engine = createConfigApplyEngine({
 		resolveLatest: (domiaKey) => getOwnDomia(domiaKey),
 		quiesce,
 		runExclusive,
+		gateReload: (domiaIds) => reloadGate.acquire(domiaIds),
 	}),
 	reloaderFor: (subsystem) => reloaders.get(subsystem),
 	persist: (domia, input) => persistConfig(domia, input),
 	resolve: (domiaKey) => getOwnDomia(domiaKey),
 	quiesce,
 	runExclusive,
-	onLlmClientStale: () => clearLlmClientCache(),
 	requestRestart: () => requestRestart(),
 	defaultDrainMs: DEFAULT_CONFIG_RELOAD_DRAIN_MS,
 })

@@ -1,7 +1,7 @@
 import Database from "better-sqlite3"
 import { env } from "./env"
-import { sleep } from "./http"
-import type { EvalTurnRecordType, LadderRowType } from "../types"
+import { sleep, postConfigRefresh } from "./http"
+import type { EvalCaseType, EvalTurnRecordType, LadderRowType } from "../types"
 
 const POLL_INTERVAL_MS = 250
 
@@ -10,6 +10,7 @@ const openDb = (): Database.Database =>
 
 export const execWrite = (sql: string, params: unknown[] = []): void => {
 	const db = new Database(env.EVAL_DB, { fileMustExist: true })
+	db.pragma("foreign_keys = ON")
 	try {
 		db.prepare(sql).run(...params)
 	} finally {
@@ -70,7 +71,8 @@ const readRecord = (
 	try {
 		const row = db
 			.prepare(
-				`SELECT intent_decision, tool_call_count, llm_ms, ttfa_ms, agent_decision_ms, agent_tool_ms, agent_finalize_ms, status, skill_response, llm_prompt
+				`SELECT intent_decision, tool_call_count, llm_ms, ttfa_ms, agent_decision_ms, agent_tool_ms, agent_finalize_ms, status, skill_response, llm_prompt,
+				        perceived_ttfa_ms, eou_delay_ms, endpoint_debounce_ms, implicit_feedback, llm_ttft_ms, llm_first_sentence_ms, heard_reply
 				 FROM interaction_trace WHERE id = ?`,
 			)
 			.get(interactionId) as
@@ -85,6 +87,13 @@ const readRecord = (
 					status: string | null
 					skill_response: string | null
 					llm_prompt: string | null
+					perceived_ttfa_ms: number | null
+					eou_delay_ms: number | null
+					endpoint_debounce_ms: number | null
+					implicit_feedback: string | null
+					llm_ttft_ms: number | null
+					llm_first_sentence_ms: number | null
+					heard_reply: string | null
 			  }
 			| undefined
 		if (!row) return null
@@ -124,6 +133,13 @@ const readRecord = (
 			status: row.status,
 			skillResponse,
 			llmPrompt: row.llm_prompt,
+			perceivedTtfaMs: row.perceived_ttfa_ms,
+			eouDelayMs: row.eou_delay_ms,
+			endpointDebounceMs: row.endpoint_debounce_ms,
+			implicitFeedback: row.implicit_feedback,
+			llmTtftMs: row.llm_ttft_ms,
+			llmFirstSentenceMs: row.llm_first_sentence_ms,
+			heardReply: row.heard_reply,
 			events,
 		}
 	} finally {
@@ -164,4 +180,31 @@ export const pollRecord = async (
 		await sleep(POLL_INTERVAL_MS)
 	}
 	return readRecord(interactionId, false) ?? last
+}
+
+export const seedCaseFacts = async (c: EvalCaseType): Promise<void> => {
+	if (!c.seedFacts?.length) return
+	const domiaId = queryOne<{ id: string }>(
+		"SELECT id FROM domia WHERE domia_key = ?",
+		[env.EVAL_DOMIA_KEY],
+	)?.id
+	if (!domiaId) return
+	const now = new Date().toISOString()
+	for (const [i, fact] of c.seedFacts.entries()) {
+		execWrite(
+			`INSERT OR REPLACE INTO memory_fact (id, domia_id, subject, relation, value, value_key, confidence, kind, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, 0.9, 'user_fact', ?, ?)`,
+			[
+				`seed-${c.name.replace(/\W+/g, "-").slice(0, 40)}-${i}`,
+				domiaId,
+				fact.subject,
+				fact.relation,
+				fact.value,
+				fact.value.toLowerCase(),
+				now,
+				now,
+			],
+		)
+	}
+	await postConfigRefresh()
 }

@@ -117,3 +117,10 @@ export type LlmEngineAdapterType = {
 		signal?: AbortSignal,
 	) => Promise<string>
 }
+
+export type LlmProbeResultType = { ok: true } | { ok: false; reason: string }
+
+export type LlmProbeType = (
+	domia: DomiaType,
+	timeoutMs: number,
+) => Promise<LlmProbeResultType>

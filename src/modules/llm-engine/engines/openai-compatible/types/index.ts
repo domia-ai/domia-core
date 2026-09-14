@@ -13,3 +13,16 @@ export type LlamaTimingsType = {
 }
 
 export type ToolCallAccType = { name: string; args: string }
+
+export type PythonicCallSegmentType = { name: string; args: string }
+
+export type GrammarStreamVerdictType =
+	| { state: "pending" }
+	| { state: "decision" }
+	| { state: "reply"; flush: string }
+
+export type GrammarStreamGateType = {
+	push: (token: string) => GrammarStreamVerdictType
+	end: () => GrammarStreamVerdictType
+	buffered: () => string
+}

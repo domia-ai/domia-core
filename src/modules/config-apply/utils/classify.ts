@@ -5,6 +5,7 @@ import {
 	MODULES_LIVE_FIELDS,
 	MODULES_PROACTIVITY_FIELDS,
 	MODULES_SKILLS_FIELDS,
+	MODULES_VOICE_FEEL_FIELDS,
 	RELOAD_SCOPE,
 	STT_LIVE_FIELDS,
 	STT_POOL_FIELDS,
@@ -37,7 +38,7 @@ const FIELD_ACTION_TABLES: Partial<
 		[new Set<string>(TTS_POOL_FIELDS), "tts-pool"],
 	],
 	llm: [
-		[LLM_DRAIN, "live-drain"],
+		[LLM_DRAIN, "llm"],
 		[new Set<string>(LLM_LIVE_FIELDS), "live"],
 	],
 	wakeWord: [
@@ -47,6 +48,7 @@ const FIELD_ACTION_TABLES: Partial<
 	modules: [
 		[new Set<string>(MODULES_SKILLS_FIELDS), "skills"],
 		[new Set<string>(MODULES_PROACTIVITY_FIELDS), "proactivity"],
+		[new Set<string>(MODULES_VOICE_FEEL_FIELDS), "voice-feel"],
 		[new Set<string>(MODULES_LIVE_FIELDS), "live"],
 	],
 }

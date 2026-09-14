@@ -71,7 +71,7 @@ const runPocket = async (
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	try {
-		const pool = getTtsPool(ttsConfig)
+		const pool = options?.pool ?? getTtsPool(ttsConfig)
 		const parts: Buffer[] = []
 		for (const sentence of splitTextIntoSentences(text)) {
 			const result = await pool.submit<TtsWorkerResultType>(
@@ -164,7 +164,7 @@ const runPocketStream = async function* (
 ): AsyncIterable<Buffer> {
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
-	const pool = getTtsPool(ttsConfig)
+	const pool = options?.pool ?? getTtsPool(ttsConfig)
 	// chunkStreaming requires the patched sherpa addon — stock generateAsync callbacks abort the worker
 	const chunked = ttsConfig.engineConfig?.chunkStreaming === true
 	for (const sentence of splitTextIntoSentences(text)) {

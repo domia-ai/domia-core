@@ -32,6 +32,7 @@ export const createFakeEsphomeDevice = (): FakeEsphomeDeviceType => {
 		sendVoiceAssistantTimerEvent = rec("sendVoiceAssistantTimerEvent")
 		sendNumberCommand = rec("sendNumberCommand")
 		sendMediaPlayerCommand = rec("sendMediaPlayerCommand")
+		sendPing = rec("sendPing")
 		getEntitiesWithIds = () => entities
 		constructor() {
 			super()

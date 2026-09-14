@@ -13,4 +13,5 @@ export type TraceContextType = {
 	interactionId?: string
 	originDomiaKey?: string
 	traceId?: string
+	satelliteId?: string
 }

@@ -34,7 +34,6 @@ import {
 } from "@/utils"
 import {
 	PROACTIVE_IDLE_POLL_MS,
-	PROACTIVE_CRITICAL_DEFER_MAX_MS,
 	PROACTIVE_LEASE_RENEW_MARGIN_MS,
 	PROACTIVE_NUDGE_BROADCAST_ID,
 } from "../constants"
@@ -227,7 +226,7 @@ const deliverScheduled = async (
 
 	const deferMs =
 		item.importance === PROACTIVE_IMPORTANCE_ENUM.CRITICAL
-			? PROACTIVE_CRITICAL_DEFER_MAX_MS
+			? settings.proactiveCriticalDeferMaxMs
 			: settings.proactiveDeferMaxMs
 	if (deferMs + PROACTIVE_LEASE_RENEW_MARGIN_MS > settings.proactiveLeaseMs) {
 		const until = new Date(

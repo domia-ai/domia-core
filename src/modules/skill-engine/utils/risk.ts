@@ -84,8 +84,20 @@ export const deriveRiskClass = (
 	return "write_destructive"
 }
 
-export const deriveDefaultPolicy = (risk: ToolRiskClassType): ToolPolicyType =>
-	risk === "write_destructive" ? "confirm" : "allow"
+export const deriveDefaultPolicy = (
+	risk: ToolRiskClassType,
+	hints: EffectiveHintsType,
+	trustTier: string,
+): ToolPolicyType => {
+	if (risk === "write_destructive") return "confirm"
+	if (
+		risk !== "read" &&
+		hints.openWorld === true &&
+		!annotationsHonored(trustTier)
+	)
+		return "confirm"
+	return "allow"
+}
 
 export const escalateRisk = (
 	base: ToolRiskClassType,

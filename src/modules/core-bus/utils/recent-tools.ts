@@ -8,7 +8,15 @@ import {
 	type ToolTraceEntryType,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
-import { describeInvocation } from "@/modules/skill-engine"
+import type { AgentRetryCallType } from "@/modules/agent"
+import {
+	describeInvocation,
+	specializationKindOf,
+	toolBaseName,
+	toolProviderSlug,
+} from "@/modules/skill-engine"
+
+import type { LastActedEntityType } from "../types"
 
 const MAX_LINE_CHARS = 120
 
@@ -39,26 +47,55 @@ const renderEntry = (
 		args ?? {},
 		domia.characterProfile?.language,
 	).target
-	const shortName = entry.tool.includes("__")
-		? entry.tool.slice(entry.tool.indexOf("__") + 2)
-		: entry.tool
-	const targetPart = typeof target === "string" ? `(${target})` : ""
+	const shortName = toolBaseName(entry.tool)
+	const targetPart = typeof target === "string" ? ` → ${target}` : ""
 	return `${shortName}${targetPart} ok · ${agoLabel(createdAt)}`
 }
 
-const clarifiedEntities = new Map<string, { name: string; at: number }>()
+const clarifiedEntities = new Map<
+	string,
+	{ name: string; providerSlug: string | null; at: number }
+>()
 
-export const setClarifiedEntity = (domiaId: string, name: string): void => {
-	clarifiedEntities.set(domiaId, { name, at: Date.now() })
+export const setClarifiedEntity = (
+	domiaId: string,
+	name: string,
+	providerSlug: string | null,
+): void => {
+	clarifiedEntities.set(domiaId, { name, providerSlug, at: Date.now() })
 }
 
 export const clearClarifiedEntity = (domiaId: string): void => {
 	clarifiedEntities.delete(domiaId)
 }
 
+const actedEntityOf = (
+	domiaId: string,
+	entity: string,
+	namespacedName: string,
+): LastActedEntityType => {
+	const providerSlug = toolProviderSlug(namespacedName)
+	return {
+		entity,
+		providerSlug,
+		kind: providerSlug ? specializationKindOf(domiaId, providerSlug) : null,
+	}
+}
+
+const clarifiedEntityOf = (
+	domiaId: string,
+	clarified: { name: string; providerSlug: string | null },
+): LastActedEntityType => ({
+	entity: clarified.name,
+	providerSlug: clarified.providerSlug,
+	kind: clarified.providerSlug
+		? specializationKindOf(domiaId, clarified.providerSlug)
+		: null,
+})
+
 export const lastActedEntity = async (
 	domia: DomiaType,
-): Promise<string | null> => {
+): Promise<LastActedEntityType | null> => {
 	const maxAgeMs =
 		domia.llmModelConfig?.anaphoraMaxAgeMs ?? DEFAULT_ANAPHORA_MAX_AGE_MS
 	const clarified = clarifiedEntities.get(domia.id)
@@ -93,12 +130,52 @@ export const lastActedEntity = async (
 			if (target) {
 				const actedAt = Date.now() - traceAgeMs(row.createdAt)
 				if (liveClarified && liveClarified.at > actedAt)
-					return liveClarified.name
-				return target
+					return clarifiedEntityOf(domia.id, liveClarified)
+				return actedEntityOf(domia.id, target, entry.tool)
 			}
 		}
 	}
-	return liveClarified?.name ?? null
+	return liveClarified ? clarifiedEntityOf(domia.id, liveClarified) : null
+}
+
+export const lastToolCall = async (
+	domia: DomiaType,
+): Promise<AgentRetryCallType | null> => {
+	const turns =
+		domia.llmModelConfig?.agentRecentToolsTurns ??
+		DEFAULT_AGENT_RECENT_TOOLS_TURNS
+	if (turns <= 0) return null
+	const maxAgeMs =
+		domia.llmModelConfig?.anaphoraMaxAgeMs ?? DEFAULT_ANAPHORA_MAX_AGE_MS
+	const rows = await dbClient
+		.select({
+			skillResponse: interactionTrace.skillResponse,
+			createdAt: interactionTrace.createdAt,
+		})
+		.from(interactionTrace)
+		.where(
+			and(
+				eq(interactionTrace.domiaId, domia.id),
+				isNotNull(interactionTrace.skillResponse),
+			),
+		)
+		.orderBy(desc(interactionTrace.createdAt))
+		.limit(turns)
+	let lastExecuted: AgentRetryCallType | null = null
+	for (const row of rows) {
+		if (traceAgeMs(row.createdAt) > maxAgeMs) break
+		for (const entry of [...(row.skillResponse ?? [])].reverse()) {
+			if (entry.kind !== "result") continue
+			if (entry.status !== "ok" && entry.status !== "failed") continue
+			const call = {
+				tool: entry.tool,
+				args: entry.args ?? entry.resolvedArgs ?? {},
+			}
+			if (entry.status === "failed") return call
+			lastExecuted = lastExecuted ?? call
+		}
+	}
+	return lastExecuted
 }
 
 export const recentToolsLine = async (

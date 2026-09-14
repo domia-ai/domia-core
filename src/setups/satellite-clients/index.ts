@@ -31,6 +31,7 @@ const connectBindings = async (
 				close = connectEsphomeSatellite(
 					{
 						satelliteId: row.satelliteId,
+						domiaId: row.domiaId,
 						name: row.name,
 						host: row.host,
 						port: row.port,

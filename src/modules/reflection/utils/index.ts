@@ -4,6 +4,10 @@ import {
 } from "@/db"
 import { createAsyncSemaphore, isSemaphoreBusyError } from "@/utils"
 
+import {
+	REFLECTION_PRIORITY_CONCURRENCY,
+	REFLECTION_PRIORITY_QUEUE_MAX_DEPTH,
+} from "../constants"
 import type {
 	ReflectionGateDepsType,
 	ReflectionGateSettingsType,
@@ -107,25 +111,34 @@ export const createReflectionGate = (
 		settings: ReflectionGateSettingsType,
 		fn: () => Promise<T>,
 		skipValue: T,
+		priority = false,
 	): Promise<T> => {
-		const semaphore = semaphoreFor(identityId)
-		semaphore.setLimit(settings.concurrency)
-		semaphore.setMaxWaiters(settings.queueMaxDepth)
-		const pending = pendingByIdentity.get(identityId) ?? 0
-		if (pending >= settings.concurrency + settings.queueMaxDepth) {
+		const lane = priority ? `${identityId}#priority` : identityId
+		const concurrency = priority
+			? REFLECTION_PRIORITY_CONCURRENCY
+			: settings.concurrency
+		const queueMaxDepth = priority
+			? REFLECTION_PRIORITY_QUEUE_MAX_DEPTH
+			: settings.queueMaxDepth
+		const semaphore = semaphoreFor(lane)
+		semaphore.setLimit(concurrency)
+		semaphore.setMaxWaiters(queueMaxDepth)
+		const pending = pendingByIdentity.get(lane) ?? 0
+		if (pending >= concurrency + queueMaxDepth) {
 			logger.info("reflection backlog full — skipping (best-effort)", {
 				identityId,
 				pending,
+				priority,
 			})
 			return skipValue
 		}
-		pendingByIdentity.set(identityId, pending + 1)
+		pendingByIdentity.set(lane, pending + 1)
 		try {
 			return await runGatedInner(semaphore, settings, fn, skipValue)
 		} finally {
-			const current = pendingByIdentity.get(identityId) ?? 1
-			if (current <= 1) pendingByIdentity.delete(identityId)
-			else pendingByIdentity.set(identityId, current - 1)
+			const current = pendingByIdentity.get(lane) ?? 1
+			if (current <= 1) pendingByIdentity.delete(lane)
+			else pendingByIdentity.set(lane, current - 1)
 		}
 	}
 

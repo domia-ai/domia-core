@@ -22,6 +22,7 @@ import {
 	LLM_LIVE_FIELDS,
 	MODULES_SKILLS_FIELDS,
 	MODULES_PROACTIVITY_FIELDS,
+	MODULES_VOICE_FEEL_FIELDS,
 	MODULES_LIVE_FIELDS,
 	WAKE_WORD_LISTENER_FIELDS,
 	WAKE_WORD_LIVE_FIELDS,
@@ -32,6 +33,8 @@ import {
 	createConfigApplyEngine,
 	createReloadRunner,
 } from "@/modules/config-apply/utils"
+import { createReloadGate } from "@/modules/core-bus/utils/reload-gate"
+import type { ReloadGateType } from "@/modules/core-bus/types"
 import type {
 	ConfigApplyOutcomeType,
 	ConfigApplyStateType,
@@ -64,6 +67,8 @@ type ApplyHarnessType = {
 	apply: (input: unknown) => Promise<ConfigApplyOutcomeType>
 	snapshot: () => ConfigApplyStateType
 	restarts: () => number
+	gate: ReloadGateType
+	domiaId: () => string
 }
 
 const meta = new Set<string>(CONFIG_SECTION_META_FIELDS)
@@ -86,6 +91,7 @@ const sections: SectionSpecType[] = [
 		buckets: [
 			{ name: "skills", fields: MODULES_SKILLS_FIELDS },
 			{ name: "proactivity", fields: MODULES_PROACTIVITY_FIELDS },
+			{ name: "voice-feel", fields: MODULES_VOICE_FEEL_FIELDS },
 			{ name: "live", fields: MODULES_LIVE_FIELDS },
 		],
 	},
@@ -109,7 +115,7 @@ const sections: SectionSpecType[] = [
 		section: "llm",
 		columns: columnsOf(llmModelConfig).filter((c) => !meta.has(c)),
 		buckets: [
-			{ name: "live-drain", fields: LLM_DRAIN_FIELDS },
+			{ name: "llm", fields: LLM_DRAIN_FIELDS },
 			{ name: "live", fields: LLM_LIVE_FIELDS },
 		],
 	},
@@ -140,6 +146,7 @@ const makeHarness = (): ApplyHarnessType => {
 	let restarts = 0
 	const reloaders = new Map<ReloadSubsystemType, ConfigReloaderType>()
 	const state = createApplyState()
+	const gate = createReloadGate()
 
 	const patchSection = (
 		target: Record<string, unknown>,
@@ -181,13 +188,13 @@ const makeHarness = (): ApplyHarnessType => {
 			resolveLatest: () => Promise.resolve(current),
 			quiesce: () => Promise.resolve(),
 			runExclusive: (_key, fn) => fn(),
+			gateReload: (domiaIds) => gate.acquire(domiaIds),
 		}),
 		reloaderFor: (subsystem) => reloaders.get(subsystem),
 		persist,
 		resolve: () => Promise.resolve(current),
 		quiesce: () => Promise.resolve(),
 		runExclusive: (_key, fn) => fn(),
-		onLlmClientStale: () => undefined,
 		requestRestart: () => {
 			restarts += 1
 		},
@@ -200,6 +207,8 @@ const makeHarness = (): ApplyHarnessType => {
 		apply: (input) => engine.applyConfig(current, input),
 		snapshot: () => state.snapshot(EVAL_DOMIA_KEY),
 		restarts: () => restarts,
+		gate,
+		domiaId: () => current.id,
 	}
 }
 
@@ -328,6 +337,111 @@ const checkUnrevertableFailureReconciles = async (
 	)
 }
 
+const checkReloadGateContract = async (
+	checker: ReturnType<typeof makeChecker>,
+): Promise<void> => {
+	const gate = createReloadGate()
+	checker.check(
+		"an identity with no reload in flight is admitted immediately",
+		await gate.waitForRelease("d1", 0),
+	)
+	const release = gate.acquire(["d1", "d2"])
+	checker.check(
+		"acquiring the gate marks every drained identity",
+		gate.isGated("d1") && gate.isGated("d2"),
+		`d1=${gate.isGated("d1")} d2=${gate.isGated("d2")}`,
+	)
+	checker.check(
+		"a gated identity is refused once the drain window elapses",
+		!(await gate.waitForRelease("d1", 0)),
+	)
+	const waiter = gate.waitForRelease("d2", 2000)
+	release()
+	checker.check("releasing the gate wakes the held interaction", await waiter)
+	release()
+	checker.check(
+		"releasing twice keeps every identity admitted",
+		!gate.isGated("d1") && !gate.isGated("d2"),
+	)
+}
+
+const checkReloadHoldsNewInteractions = async (
+	checker: ReturnType<typeof makeChecker>,
+): Promise<void> => {
+	const harness = makeHarness()
+	const domiaId = harness.domiaId()
+	let gatedDuringReload = false
+	let reloadDone = false
+	let wokeBeforeReloadDone = false
+	let waiter: Promise<boolean> = Promise.resolve(false)
+
+	harness.register("tts-pool", {
+		scope: "global",
+		reload: async () => {
+			gatedDuringReload = harness.gate.isGated(domiaId)
+			waiter = harness.gate.waitForRelease(domiaId, 2000).then((ok) => {
+				if (!reloadDone) wokeBeforeReloadDone = true
+				return ok
+			})
+			await new Promise((resolve) => setTimeout(resolve, 20))
+			reloadDone = true
+		},
+	})
+
+	const outcome = await harness.apply({ tts: { poolWarmWorkers: 3 } })
+
+	checker.check(
+		"the identity is gated for the whole reload",
+		gatedDuringReload,
+		String(gatedDuringReload),
+	)
+	checker.check(
+		"a new interaction is held, not admitted, while the pool swaps",
+		!wokeBeforeReloadDone,
+		String(wokeBeforeReloadDone),
+	)
+	checker.check(
+		"the held interaction is admitted once the reload finishes",
+		await waiter,
+	)
+	checker.check(
+		"the gate is clear after a successful reload",
+		!harness.gate.isGated(domiaId),
+	)
+	checker.check(
+		"the gated reload still reports reloaded",
+		subsystemOutcome(outcome, "tts-pool")?.status === "reloaded",
+		subsystemOutcome(outcome, "tts-pool")?.status ?? "missing",
+	)
+}
+
+const checkReloadGateReleasedOnFailure = async (
+	checker: ReturnType<typeof makeChecker>,
+): Promise<void> => {
+	const harness = makeHarness()
+	const domiaId = harness.domiaId()
+	harness.register("tts-pool", {
+		scope: "global",
+		reload: () => Promise.reject(new Error("eval reload boom")),
+	})
+
+	const outcome = await harness.apply({ tts: { poolWarmWorkers: 4 } })
+
+	checker.check(
+		"a throwing reloader still reports its failure",
+		subsystemOutcome(outcome, "tts-pool")?.status !== "reloaded",
+		subsystemOutcome(outcome, "tts-pool")?.status ?? "missing",
+	)
+	checker.check(
+		"the gate is released when the reloader throws",
+		!harness.gate.isGated(domiaId),
+	)
+	checker.check(
+		"interactions are admitted again after a failed reload",
+		await harness.gate.waitForRelease(domiaId, 0),
+	)
+}
+
 const main = async (): Promise<void> => {
 	const checker = makeChecker()
 	for (const { section, columns, buckets } of sections) {
@@ -405,6 +519,11 @@ const main = async (): Promise<void> => {
 	console.log("\n[runtime] failed reload revert + reconciliation")
 	await checkFailedReloadReverts(checker)
 	await checkUnrevertableFailureReconciles(checker)
+
+	console.log("\n[runtime] reload gate")
+	await checkReloadGateContract(checker)
+	await checkReloadHoldsNewInteractions(checker)
+	await checkReloadGateReleasedOnFailure(checker)
 
 	console.log(
 		`\nconfig-apply classification: ${checker.passCount()} passed, ${checker.failCount()} failed`,

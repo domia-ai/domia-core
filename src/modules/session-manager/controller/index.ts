@@ -436,10 +436,15 @@ export const updateInteraction = async (
 
 export const recordImplicitFeedback = (
 	interactionId: string,
-	signal: ImplicitFeedbackType,
+	signal: ImplicitFeedbackType | null,
+	reason?: string,
 ): void => {
 	void dbAdapter
-		.updateInteractionTrace({ id: interactionId, implicitFeedback: signal })
+		.updateInteractionTrace({
+			id: interactionId,
+			...(signal ? { implicitFeedback: signal } : {}),
+			...(reason ? { abortReason: reason } : {}),
+		})
 		.catch((err: unknown) =>
 			memoryLogger.warn("implicit feedback not persisted", {
 				err,

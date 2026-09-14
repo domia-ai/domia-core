@@ -3,9 +3,11 @@ import { registerCatalogExtension } from "@/utils"
 
 import type { SkillSpecializationType } from "../types"
 import { homeAssistantSpecialization } from "./home-assistant"
+import { musicAssistantSpecialization } from "./music-assistant"
 
 const registry: Record<string, SkillSpecializationType> = {
 	[homeAssistantSpecialization.kind]: homeAssistantSpecialization,
+	[musicAssistantSpecialization.kind]: musicAssistantSpecialization,
 }
 
 export const registerSpecialization = (
@@ -39,4 +41,4 @@ export const resolveSpecialization = (
 ): SkillSpecializationType | null =>
 	resolveSpecializationByKind(provider.descriptor?.kind)
 
-export { homeAssistantSpecialization }
+export { homeAssistantSpecialization, musicAssistantSpecialization }

@@ -1078,7 +1078,7 @@ const runPauseAbortLedgerChecks = async (): Promise<void> => {
 	const scope = beginTurn(domiaId, interactionId)
 	const ledger = createPlaybackLedger(
 		{ sampleRate: 16000, channels: 1 },
-		{ wordLevelHeard: false },
+		{ wordLevelHeard: false, silenceTrim: true, silenceRms: 0.01 },
 	)
 	registerTurnLedger(interactionId, ledger)
 	ledger.pause()
@@ -1105,17 +1105,17 @@ const runStopWordFinalChecks = (): void => {
 	console.log("\nstop-word matcher on final transcript (barge-in abort)")
 	checker.check(
 		"EN stop word in final transcript is matched",
-		matchStopPhrase("stop", "en", 6) === "stop" &&
-			matchStopPhrase("never mind", "en", 6) === "never mind",
+		matchStopPhrase("stop", "en", 6, 1) === "stop" &&
+			matchStopPhrase("never mind", "en", 6, 1) === "never mind",
 	)
 	checker.check(
 		"ES stop word in final transcript is matched",
-		matchStopPhrase("para", "es", 6) === "para" &&
-			matchStopPhrase("cállate", "es", 6) !== null,
+		matchStopPhrase("para", "es", 6, 1) === "para" &&
+			matchStopPhrase("cállate", "es", 6, 1) !== null,
 	)
 	checker.check(
 		"non-stop final transcript does not match",
-		matchStopPhrase("turn off the office lights", "en", 6) === null,
+		matchStopPhrase("turn off the office lights", "en", 6, 1) === null,
 	)
 }
 

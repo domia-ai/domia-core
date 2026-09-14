@@ -1,3 +1,4 @@
+import type { WakeVerifierEnumType } from "@/db"
 import { audioCaptureLogger } from "@/utils"
 import { getWakeVerifier } from "../engines"
 import type {
@@ -15,7 +16,12 @@ export const verifyWake = async (
 		audioCaptureLogger.warn("wake verifier unknown — accepting wake", {
 			verifier: config.wakeVerifier,
 		})
-		return { accepted: true, score: 1, detail: "unknown verifier" }
+		return {
+			accepted: true,
+			score: 1,
+			detail: "unknown verifier",
+			failedOpen: true,
+		}
 	}
 	try {
 		return await verifier.verify(input, config)
@@ -24,9 +30,17 @@ export const verifyWake = async (
 			verifier: verifier.id,
 			err,
 		})
-		return { accepted: true, score: 1, detail: "verifier error" }
+		return {
+			accepted: true,
+			score: 1,
+			detail: "verifier error",
+			failedOpen: true,
+		}
 	}
 }
+
+export const isConcurrentWakeVerifier = (id: WakeVerifierEnumType): boolean =>
+	getWakeVerifier(id)?.concurrent === true
 
 export const wakeVerifierWindowBytes = (
 	config: WakeVerifierConfigType,

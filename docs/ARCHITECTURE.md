@@ -29,13 +29,29 @@ the turn), follow-up mode, and feedback sounds are part of the same flow.
   comparable scorecard.
 
 Speech inference runs **in-process** via `sherpa-onnx-node` (no Python, no sidecar): KWS wake word, Silero
-VAD, a smart-turn turn detector, a GTCRN speech enhancer, a wake-word verifier, and optional acoustic echo
-cancellation (AEC). **Seven STT engines** — Whisper, Moonshine, Zipformer, Parakeet, and streaming-transducer
-in-process, plus **OpenAI-compatible** and **NeMo-Speech** talked to over HTTP as external GGML servers — and
-**six TTS engines** (Kokoro — default — Vits, Matcha, Kitten, Pocket, Supertonic). The LLM runs on a local
+VAD, a smart-turn turn detector, a speech enhancer (GTCRN or DPDFNet), a wake-word verifier, and optional
+acoustic echo cancellation (AEC). **Eight STT engines** — Whisper, Moonshine, Zipformer, Parakeet,
+streaming-transducer and Nemotron-streaming in-process, plus **OpenAI-compatible** and **NeMo-Speech** talked to over HTTP as external GGML servers — and
+**six TTS engines** (Kokoro — default — Vits, Matcha, Kitten, Pocket, Supertonic; Supertonic's weights are OpenRAIL-M and its upstream repo was archived on 2026-09-09 — the sherpa int8 bundle keeps working but gets no new voices, so it is an option, never a default). The LLM runs on a local
 **OpenAI-compatible server** (llama.cpp `llama-server`, the template default on `:11435/v1`) or **Ollama**.
 Heavy inference goes through child-process worker pools (warm/lazy/reap/recycle) so one hub can serve several
 rooms in parallel.
+
+**Two-stage wake word.** Stage 1 is the always-on sherpa KWS spotter (`wakeWord`, `sensitivity`,
+`threshold`). Stage 2 is an optional verifier that re-examines the last `wakeVerifierWindowMs` of audio
+ending at the trigger and can veto it: `ENERGY` (cheap RMS/speech-coverage shape check) or `STT`, which
+transcribes the wake window with the node's own in-process recognizer and folds the transcript against the
+configured wake phrase — accent- and case-insensitive, tolerant of the segmentation errors STT makes
+("comp uter", "compute her") and of longer forms that share the phrase's onset ("computadora"), while
+rejecting neighbours like "commuter" or "compete". `STT` only arms where speech recognition already runs in
+the same process: external HTTP engines (NeMo-Speech, OpenAI-compatible) and satellite/dump-archetype nodes
+with no local recognizer fail open, and satellites that detect their own wake word (Voice PE, Wyoming) never
+reach this path. Because transcription is not free, the `STT` verifier runs **concurrently** with the wake:
+recording and speculation start immediately and a rejection rolls them back (`🛑 wake rejected by verifier`,
+then the turn and capture are aborted), so a true wake is never delayed. Every failure mode fails open —
+including `wakeVerifierMaxMs`, the budget past which a slow verdict is discarded and the wake accepted.
+Counters land in `GET /latency` under `stats.wakeVerifier` (`accepted`, `rejected`, `failedOpen`,
+`rejectRate`). The verifier is off by default (`wakeVerifier = NONE`).
 
 ## The mesh: delegation, multi-hub, multi-tenant
 
@@ -59,7 +75,12 @@ protocols are implemented behind one adapter contract (`NATIVE`, `WYOMING`, `ESP
 `OPENAI_REALTIME`):
 
 1. **ESPHome** — stock Home Assistant voice hardware (e.g. the Voice PE) connects with **factory firmware,
-   no reflash**, over the native ESPHome API. Verified end-to-end on real hardware.
+   no reflash**, over the native ESPHome API. Verified end-to-end on real hardware. Each device advertises the
+   audio it can play (its media player's `supported_formats`; Voice PE: FLAC, 48 kHz, mono for announcements),
+   and the node serves every reply and announcement in that format: `/audio/:id?rate=&channels=&format=`
+   resamples (sherpa linear resampler) and encodes FLAC on the fly, for live streams and files alike, at under
+   1 % of real time on an Orin. Firmware 2026.6 silently drops anything else (22 kHz WAV from VITS never
+   played), so this is required, not an optimization. A ping watchdog reconnects a device that goes silent.
 2. **Wyoming** — the Home Assistant satellite protocol; Domia connects out to the satellite.
 3. **LiveKit** — a WebRTC room transport for network satellites.
 4. **OpenAI-Realtime** — Domia acts as a local backend speaking the OpenAI Realtime event contract.
@@ -130,7 +151,9 @@ The character layers are prompt text over the same single LLM call — they cost
   one bounded re-prompt, parallel tool execution, respond-first async tools ("on it" now, result spoken when
   ready), abort-aware.
 - **Specializations:** a registry for premium skills where Domia ships custom code, activated purely by
-  provider config. Home Assistant is #1 (entity aliases, core-tool pinning, zero-LLM confirmation templates).
+  provider config. Home Assistant is #1 (entity aliases, core-tool pinning, zero-LLM confirmation templates);
+  Music Assistant is #2 (a composite `music_play` virtual tool over MA's native MCP, player roster with
+  per-satellite defaults, fast-path controls). Two providers run side by side in one identity.
 - **Embeddings are shared infrastructure:** the same in-process embedding primitive serves tool routing,
   fact recall, and knowledge-base recall (backends: Transformers.js in-process default, Ollama alternate).
 
@@ -168,6 +191,34 @@ The routes (from `src/setups/http-server/http-server.ts`):
 | Models / skills / bench | `GET /models`, `POST /models/install`, `GET /skills`, `GET /skills/discover`, `POST /bench/run`, `GET /templates`                                                                                               |
 | Proactivity             | `GET /proactivity/status`, `GET`/`POST /proactivity/schedule`                                                                                                                                                   |
 | Sync / ops              | `GET /sync`, `GET /health`, `GET /`, `GET /stats/latency`, `POST /mesh/rotate`, `POST /admin/restart`                                                                                                           |
+
+### LLM-as-judge: a panel, not one model
+
+Conversation-quality suites (`npm run evals -- conversation-30`, `conversation`, `llm-tournament`) score
+replies with a local LLM judge. A single judge is not trustworthy on its own: repeated calls at
+`temperature: 0` are near-deterministic, so what looks like a flapping score is really **position bias** (the
+same transcript scores differently depending on where the rubric sits in the prompt) and **self-preference**
+(a judge favours output from its own family). `evals/lib/judge.ts` answers both:
+
+- **A panel.** `EVAL_JUDGE_MODELS` takes a comma list of judges — a bare name runs on Ollama
+  (`EVAL_JUDGE_HOST`), an `openai:` prefix runs on the OpenAI-compatible server (`EVAL_JUDGE_OPENAI_HOST`,
+  llama-server by default), so one panel can mix model families _and_ engines. Unset, the panel is the single
+  `EVAL_JUDGE_MODEL` and nothing changes.
+- **Position-swapped prompts.** Every judge scores the same rubric twice, once with the transcript first and
+  once with the rubric first, and its score is the mean of the two. A judge whose two positions disagree is
+  position-biased, and the spread says by how much.
+- **Median + agreement.** The panel verdict is the **median** of the per-judge scores; `agreement` is the
+  fraction of judges within ±1 of it. The gate uses the median; the JSON summary and the transcript markdown
+  in `evals/bench-results/` carry the median, the agreement and every judge's score, positional pair and
+  reason. Pairwise judging (`llm-tournament`) votes per judge across both orders and takes the majority.
+- **A judge that does not answer does not vote.** Each call is retried once; a judge that still returns
+  nothing usable is warned about, kept in the panel with score `0`, and excluded from both the median and the
+  agreement — so a busy or unreachable model degrades the panel instead of dragging the score down.
+
+`npm run evals -- judge-stability` replays the three newest stored `conversation-long-*.json` transcripts
+through the panel three times each and reports per-judge repetition spread, per-judge position spread and
+cross-judge agreement; it passes only when every transcript's median is the same integer across the three
+repeats. Run it after changing a rubric, a judge model or the panel.
 
 ## Honest not-done list
 

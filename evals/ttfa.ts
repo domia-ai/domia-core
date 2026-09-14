@@ -20,7 +20,11 @@ import {
 	type TtsEngineAdapterType,
 } from "@/modules/tts-engine"
 import { registerHostedIdentity } from "@/modules/core"
-import { DEFAULT_TTS_PHRASE_CACHE_MAX_CHARS, TTS_ENGINE_ENUM } from "@/db"
+import {
+	DEFAULT_TTS_PHRASE_CACHE_MAX_CHARS,
+	DEFAULT_TTS_PHRASE_CACHE_VOICE_STEP,
+	TTS_ENGINE_ENUM,
+} from "@/db"
 import { SUPPORTED_LANGUAGES } from "@/utils"
 import { getDomia } from "@/test-utils"
 
@@ -265,12 +269,15 @@ const runPhraseCacheChecks = async (): Promise<void> => {
 	const adapter = fakeAdapter(calls)
 	resetPhraseCache()
 
-	const q = quantizeTtsVoice({
-		voiceName: "af_heart",
-		speed: 1.012,
-		pitch: 0.987,
-		silenceScale: 0.213,
-	})
+	const q = quantizeTtsVoice(
+		{
+			voiceName: "af_heart",
+			speed: 1.012,
+			pitch: 0.987,
+			silenceScale: 0.213,
+		},
+		DEFAULT_TTS_PHRASE_CACHE_VOICE_STEP,
+	)
 	checker.check(
 		"voice quantization snaps mood drift to the cache grid",
 		q.speed === 1 && q.pitch === 1 && q.silenceScale === 0.2,

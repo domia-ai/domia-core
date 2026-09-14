@@ -38,6 +38,14 @@ export const HA_SENSITIVE_DOMAIN_RE = /^(lock|alarm_control_panel|cover|siren)$/
 export const HA_READ_TOOL_RE =
 	/getlivecontext|getstate|get_state|getdatetime|get_date_time|gettime|query|status/i
 
+export const HA_TARGET_ARGS = [
+	"name",
+	"area",
+	"floor",
+	"domain",
+	"device_class",
+]
+
 export const HA_ALIASES: Record<string, string[]> = {
 	brighter: ["brightness", "light", "bright"],
 	dimmer: ["dim", "light", "brightness"],

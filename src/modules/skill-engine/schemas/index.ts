@@ -1,6 +1,10 @@
 import { z } from "zod"
 
-import { ARG_NORMALIZE_OP_ENUM_VALUES } from "@/db"
+import {
+	ARG_NORMALIZE_OP_ENUM_VALUES,
+	MCP_PROTOCOL_MODE_ENUM_VALUES,
+	DEFAULT_MCP_PROTOCOL_MODE,
+} from "@/db"
 
 const finalizeRuleSchema = z
 	.object({
@@ -106,6 +110,30 @@ const localeSchema = routingSchema
 		fastPath: fastPathBlockSchema.optional(),
 	})
 	.strict()
+
+const elicitContentValueSchema = z.union([
+	z.string(),
+	z.number(),
+	z.boolean(),
+	z.array(z.string()),
+])
+
+export const skillProviderProtocolSchema = z.object({
+	protocolMode: z
+		.enum(MCP_PROTOCOL_MODE_ENUM_VALUES)
+		.catch(DEFAULT_MCP_PROTOCOL_MODE),
+})
+
+export const skillElicitResultSchema = z.discriminatedUnion("action", [
+	z
+		.object({
+			action: z.literal("accept"),
+			content: z.record(z.string(), elicitContentValueSchema),
+		})
+		.strict(),
+	z.object({ action: z.literal("decline") }).strict(),
+	z.object({ action: z.literal("cancel") }).strict(),
+])
 
 export const domiaSkillDescriptorSchema = z
 	.object({

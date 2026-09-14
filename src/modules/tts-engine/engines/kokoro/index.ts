@@ -146,7 +146,7 @@ export const runKokoro = async (
 	const filePath = path.join(outputDir, `domia-${generateUuid()}.wav`)
 
 	try {
-		const pool = getTtsPool(ttsConfig)
+		const pool = options?.pool ?? getTtsPool(ttsConfig)
 		const parts: Buffer[] = []
 		let sampleRate = KOKORO_SAMPLE_RATE
 		for (const sentence of splitTextIntoSentences(text)) {
@@ -193,7 +193,7 @@ const runKokoroStream = async function* (
 	const ttsConfig = requireTtsConfig(domia)
 	const voice = resolveTtsVoice(options?.voice, ttsConfig, domia)
 	const sid = resolveSid(voice.voiceName)
-	const pool = getTtsPool(ttsConfig)
+	const pool = options?.pool ?? getTtsPool(ttsConfig)
 	for (const sentence of splitTextIntoSentences(text)) {
 		const result = await pool.submit<TtsWorkerResultType>(
 			jobOf(ttsConfig, sentence, voice, sid),

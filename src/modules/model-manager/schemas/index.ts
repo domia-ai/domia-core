@@ -20,12 +20,16 @@ const sha256Hex = z
 
 const sizeBytes = z.number().int().positive()
 
+const license = z.string().min(1).max(200)
+
 export const modelInstallSpecSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("sherpa-archive"),
 		label: z.string().max(120).optional(),
 		stage: z.string().max(40).optional(),
+		license: license.optional(),
 		url: httpUrl,
+		subdir: safeName.optional(),
 		target: safeName,
 		sourceDir: safeName.optional(),
 		sha256: sha256Hex.optional(),
@@ -35,7 +39,9 @@ export const modelInstallSpecSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("file"),
 		label: z.string().max(120).optional(),
 		stage: z.string().max(40).optional(),
+		license: license.optional(),
 		url: httpUrl,
+		subdir: safeName.optional(),
 		target: safeName,
 		sha256: sha256Hex.optional(),
 		sizeBytes: sizeBytes.optional(),
@@ -44,6 +50,7 @@ export const modelInstallSpecSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("ollama"),
 		label: z.string().max(120).optional(),
 		stage: z.string().max(40).optional(),
+		license: license.optional(),
 		model: ollamaName,
 	}),
 ])

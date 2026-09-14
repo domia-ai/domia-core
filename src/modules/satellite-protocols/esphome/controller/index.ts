@@ -1,4 +1,8 @@
-import { type DomiaType } from "@/modules/core"
+import {
+	type DomiaType,
+	invalidateOwnDomia,
+	setSatelliteDesiredVolume,
+} from "@/modules/core"
 import {
 	createSatelliteSession,
 	createReconnectScheduler,
@@ -8,6 +12,7 @@ import {
 	setPresenceStatus,
 	getPresence,
 	getAudioFilePath,
+	withAudioFormat,
 	setSatelliteConnecting,
 	setSatelliteError,
 	updateSatelliteMeta,
@@ -16,12 +21,32 @@ import {
 	type SatelliteWakeWordType,
 	type SatelliteNumberEntityType,
 } from "@/modules/core-bus"
-import { DEFAULT_SATELLITE_RECONNECT_MS } from "@/db"
-import { satelliteEsphomeLogger as logger, getWavDurationMs } from "@/utils"
+import {
+	externalMediaKey,
+	noteExternalMedia,
+	clearExternalMedia,
+	isExternalMediaPlaying,
+	registerExternalMediaControls,
+	unregisterExternalMediaControls,
+	type ExternalMediaControlsType,
+} from "@/modules/audio-playback"
+import {
+	DEFAULT_SATELLITE_LIVENESS_PING_MS,
+	DEFAULT_SATELLITE_LIVENESS_TIMEOUT_MS,
+	DEFAULT_SATELLITE_RECONNECT_MS,
+	VOLUME_PERCENT_SCALE,
+} from "@/db"
+import {
+	satelliteEsphomeLogger as logger,
+	getWavDurationMs,
+	type AudioDeliveryFormatType,
+} from "@/utils"
 
 import type { Entity, NumberEvent } from "esphome-client"
 import { createEsphomeRunController } from "./run-controller"
+import { mediaPlayerFormatsOf, playbackFormatOf } from "../utils"
 import type {
+	EsphomeAudioFormatType,
 	EsphomeModuleType,
 	EsphomeBindingType,
 	EsphomeSatelliteHandleType,
@@ -44,6 +69,7 @@ export const connectEsphomeSatellite = (
 	esphomeOverride?: EsphomeModuleType,
 ): EsphomeSatelliteHandleType => {
 	const presenceKey = domiaKey ?? fallback.domiaKey
+	const mediaKey = externalMediaKey(presenceKey, binding.satelliteId)
 	const scheduler = createReconnectScheduler(DEFAULT_SATELLITE_RECONNECT_MS)
 	let client: { disconnect: () => void } | null = null
 	let reconnectCount = 0
@@ -53,7 +79,7 @@ export const connectEsphomeSatellite = (
 	const desiredNumbers: Record<string, number> = {
 		...(binding.desiredNumbers ?? {}),
 	}
-	let followUpEnabled = binding.followUpEnabled ?? false
+	let followUpEnabled = binding.followUpEnabled
 	let lastTranscriptChars = 0
 	let runController: RunControllerType | null = null
 	let configVerifyTimer: ReturnType<typeof setTimeout> | null = null
@@ -66,7 +92,7 @@ export const connectEsphomeSatellite = (
 		const resetMs =
 			durationMs !== null
 				? durationMs +
-					(binding.playbackDrainMarginMs ?? 250) +
+					binding.playbackDrainMarginMs +
 					SPEAKING_DURATION_SLACK_MS
 				: SPEAKING_FALLBACK_MS
 		if (speakingResetTimer) clearTimeout(speakingResetTimer)
@@ -96,7 +122,12 @@ export const connectEsphomeSatellite = (
 	}
 	let numberEntities: SatelliteNumberEntityType[] = []
 	let mediaPlayerId: string | null = null
+	let playbackFormat: AudioDeliveryFormatType | null = null
+	const formatsByEntityKey = new Map<number, EsphomeAudioFormatType[]>()
+	const forDevice = (url: string): string =>
+		playbackFormat ? withAudioFormat(url, playbackFormat) : url
 	let desiredVolume = binding.desiredVolume ?? null
+	let deviceVolume: number | null = null
 	const idByKey = new Map<number, string>()
 	const publishNumbers = () =>
 		updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
@@ -128,9 +159,55 @@ export const connectEsphomeSatellite = (
 			clientId: "domia",
 		})
 		client = esp
+		let lastReceivedAt = Date.now()
+		const liveness = setInterval(() => {
+			const silentMs = Date.now() - lastReceivedAt
+			if (silentMs >= DEFAULT_SATELLITE_LIVENESS_TIMEOUT_MS) {
+				logger.warn("esphome satellite silent — forcing reconnect", {
+					host: binding.host,
+					silentMs,
+				})
+				clearInterval(liveness)
+				esp.disconnect()
+				return
+			}
+			if (silentMs >= DEFAULT_SATELLITE_LIVENESS_PING_MS) esp.sendPing()
+		}, DEFAULT_SATELLITE_LIVENESS_PING_MS)
+		liveness.unref()
 
 		const event = (type: number, data?: { name: string; value: string }[]) =>
 			esp.sendVoiceAssistantEvent(type, data)
+
+		const applyVolume = (volume: number): number => {
+			const clamped = Math.min(1, Math.max(0, volume))
+			desiredVolume = clamped
+			if (mediaPlayerId)
+				esp.sendMediaPlayerCommand(mediaPlayerId, { volume: clamped })
+			updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
+				volume: clamped,
+			})
+			return clamped
+		}
+
+		const controls: ExternalMediaControlsType = {
+			origin: "transport",
+			setVolume: async (level) => {
+				const clamped = applyVolume(level / VOLUME_PERCENT_SCALE)
+				if (binding.domiaId) {
+					await setSatelliteDesiredVolume(
+						binding.domiaId,
+						binding.satelliteId,
+						clamped,
+					)
+					invalidateOwnDomia(presenceKey)
+				}
+				return mediaPlayerId !== null
+			},
+			getVolume: () => {
+				const level = desiredVolume ?? deviceVolume
+				return level === null ? null : Math.round(level * VOLUME_PERCENT_SCALE)
+			},
+		}
 
 		runController?.dispose()
 		let captureGateUntil = 0
@@ -150,9 +227,11 @@ export const connectEsphomeSatellite = (
 				if (!mediaPlayerId) return false
 				esp.sendMediaPlayerCommand(mediaPlayerId, {
 					command: MediaPlayerCommand.STOP,
+					announcement: true,
 				})
 				return true
 			},
+			externalMediaPlaying: () => isExternalMediaPlaying(mediaKey),
 			events: {
 				runStart: VoiceAssistantEvent.RUN_START,
 				runEnd: VoiceAssistantEvent.RUN_END,
@@ -166,17 +245,17 @@ export const connectEsphomeSatellite = (
 				sttEnd: VoiceAssistantEvent.STT_END,
 			},
 			budgets: {
-				listeningMaxMs: binding.runListeningMaxMs ?? 20000,
-				followUpNoSpeechMs: binding.followUpNoSpeechMs ?? 8000,
-				drainMarginMs: binding.playbackDrainMarginMs ?? 250,
-				followUpRequestMaxMs: binding.followUpRequestMaxMs ?? 5000,
+				listeningMaxMs: binding.runListeningMaxMs,
+				followUpNoSpeechMs: binding.followUpNoSpeechMs,
+				drainMarginMs: binding.playbackDrainMarginMs,
+				followUpRequestMaxMs: binding.followUpRequestMaxMs,
 				processingMaxMs: 30000,
 			},
 			onRunAccepted: (followUpRun, minListenMs, muteMs) => {
 				setPresenceStatus(presenceKey, "listening")
 				if (followUpRun && minListenMs > 0)
 					sessionRef?.setMinListenUntil(Date.now() + minListenMs)
-				const gateMs = followUpRun ? muteMs : (binding.captureHeadTrimMs ?? 0)
+				const gateMs = followUpRun ? muteMs : binding.captureHeadTrimMs
 				captureGateUntil = gateMs > 0 ? Date.now() + gateMs : 0
 			},
 			onRunCancelled: () => sessionRef?.onCancel(),
@@ -255,7 +334,7 @@ export const connectEsphomeSatellite = (
 			playAudioUrl: (url, interactionId) => {
 				const followUp = shouldFollowUp()
 				const generation = rc.enqueuePlayback(
-					url,
+					forDevice(url),
 					"reply",
 					followUp,
 					null,
@@ -275,13 +354,19 @@ export const connectEsphomeSatellite = (
 					)
 			},
 			announce: (url) => {
-				const generation = rc.enqueuePlayback(url, "announce", false, null)
+				const generation = rc.enqueuePlayback(
+					forDevice(url),
+					"announce",
+					false,
+					null,
+				)
 				patchDurationFromUrl(generation, url)
 			},
 			pauseAudio: () => {
 				if (!mediaPlayerId) return false
 				esp.sendMediaPlayerCommand(mediaPlayerId, {
 					command: MediaPlayerCommand.PAUSE,
+					announcement: true,
 				})
 				return true
 			},
@@ -289,6 +374,7 @@ export const connectEsphomeSatellite = (
 				if (!mediaPlayerId) return false
 				esp.sendMediaPlayerCommand(mediaPlayerId, {
 					command: MediaPlayerCommand.PLAY,
+					announcement: true,
 				})
 				return true
 			},
@@ -299,6 +385,7 @@ export const connectEsphomeSatellite = (
 				captions: false,
 			},
 			finishTurn: () => rc.finishTurn(),
+			externalMediaPlaying: () => isExternalMediaPlaying(mediaKey),
 			followUp: true,
 		}
 
@@ -326,13 +413,24 @@ export const connectEsphomeSatellite = (
 				setWakeWords: (ids) => {
 					desiredWakeWords = [...ids]
 					esp.setVoiceAssistantConfiguration(ids)
+					esp.requestVoiceAssistantConfiguration()
 				},
 				announce: (url) => {
-					const generation = rc.enqueuePlayback(url, "announce", false, null)
+					const generation = rc.enqueuePlayback(
+						forDevice(url),
+						"announce",
+						false,
+						null,
+					)
 					patchDurationFromUrl(generation, url)
 				},
 				startConversation: (url) => {
-					const generation = rc.enqueuePlayback(url, "announce", true, null)
+					const generation = rc.enqueuePlayback(
+						forDevice(url),
+						"announce",
+						true,
+						null,
+					)
 					patchDurationFromUrl(generation, url)
 				},
 				setNumber: (entityId, value) => {
@@ -345,13 +443,7 @@ export const connectEsphomeSatellite = (
 					}
 				},
 				setVolume: (volume) => {
-					const clamped = Math.min(1, Math.max(0, volume))
-					desiredVolume = clamped
-					if (mediaPlayerId)
-						esp.sendMediaPlayerCommand(mediaPlayerId, { volume: clamped })
-					updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
-						volume: clamped,
-					})
+					applyVolume(volume)
 				},
 				sendTimerEvent: (evt) =>
 					esp.sendVoiceAssistantTimerEvent({
@@ -425,10 +517,30 @@ export const connectEsphomeSatellite = (
 			}
 		})
 
+		esp.on(
+			"message",
+			({ type, payload }: { type: number; payload: Buffer }) => {
+				lastReceivedAt = Date.now()
+				const advertised = mediaPlayerFormatsOf(type, payload)
+				if (advertised?.key !== null && advertised?.key !== undefined)
+					formatsByEntityKey.set(advertised.key, advertised.formats)
+			},
+		)
+
 		esp.on("entities", () => {
 			const withIds = esp.getEntitiesWithIds()
 			const mp = withIds.find((e) => e.type === "media_player")
 			mediaPlayerId = mp?.id ?? null
+			const formats = mp ? (formatsByEntityKey.get(mp.key) ?? []) : []
+			playbackFormat = playbackFormatOf(formats)
+			if (playbackFormat)
+				logger.info("🎚️ device playback format", {
+					satelliteId: binding.satelliteId,
+					playbackFormat,
+					formats,
+				})
+			if (mediaPlayerId) registerExternalMediaControls(mediaKey, controls)
+			else unregisterExternalMediaControls(mediaKey)
 			if (mediaPlayerId && desiredVolume !== null)
 				esp.sendMediaPlayerCommand(mediaPlayerId, { volume: desiredVolume })
 			const nums = withIds.filter(isNumberEntity)
@@ -474,12 +586,17 @@ export const connectEsphomeSatellite = (
 					satelliteId: binding.satelliteId,
 					state: evt.state,
 				})
-				rc.onMediaState(evt.state)
+				const verdict = rc.onMediaState(evt.state)
+				if (verdict.external)
+					noteExternalMedia(mediaKey, verdict.external === "playing")
 			}
-			if (typeof evt.volume === "number")
+			if (typeof evt.volume === "number") {
+				deviceVolume = evt.volume
+				desiredVolume = evt.volume
 				updateSatelliteMeta(presenceKey, binding.satelliteId, "esphome", {
 					volume: evt.volume,
 				})
+			}
 		})
 
 		esp.on("voiceAssistantAnnounceFinished", () => {
@@ -501,8 +618,14 @@ export const connectEsphomeSatellite = (
 		})
 
 		esp.on("disconnect", (reason?: string) => {
+			clearInterval(liveness)
 			lastTranscriptChars = 0
 			rc.dispose()
+			clearExternalMedia(mediaKey)
+			unregisterExternalMediaControls(mediaKey)
+			mediaPlayerId = null
+			playbackFormat = null
+			formatsByEntityKey.clear()
 			if (configVerifyTimer) clearTimeout(configVerifyTimer)
 			configVerifyTimer = null
 			session.onClose()

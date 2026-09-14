@@ -1,8 +1,10 @@
-import { eq, and, isNull } from "drizzle-orm"
+import { eq, and, isNull, sql } from "drizzle-orm"
 
 import {
 	dbClient,
+	domia,
 	skillProvider,
+	satelliteConfig,
 	toolRun,
 	TOOL_RUN_STATUS_ENUM,
 	type DBClientOrTxType,
@@ -23,6 +25,42 @@ const dbAdapter = {
 			.update(skillProvider)
 			.set({ toolsCache: tools, lastSyncAt })
 			.where(eq(skillProvider.id, serverId)),
+	satelliteMediaPlayerName: (
+		domiaId: string,
+		satelliteId: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.satelliteConfig.findFirst({
+			columns: { mediaPlayerName: true },
+			where: and(
+				eq(satelliteConfig.domiaId, domiaId),
+				eq(satelliteConfig.satelliteId, satelliteId),
+			),
+		}),
+	satelliteIdForPlayerName: (
+		domiaId: string,
+		name: string,
+		client: DBClientOrTxType = dbClient,
+	): string | null =>
+		client
+			.select({ satelliteId: satelliteConfig.satelliteId })
+			.from(satelliteConfig)
+			.where(
+				and(
+					eq(satelliteConfig.domiaId, domiaId),
+					sql`lower(${satelliteConfig.mediaPlayerName}) = ${name.trim().toLowerCase()}`,
+				),
+			)
+			.get()?.satelliteId ?? null,
+	domiaKeyOf: (
+		domiaId: string,
+		client: DBClientOrTxType = dbClient,
+	): string | null =>
+		client
+			.select({ domiaKey: domia.domiaKey })
+			.from(domia)
+			.where(eq(domia.id, domiaId))
+			.get()?.domiaKey ?? null,
 	claimToolRun: (
 		row: InsertToolRunType,
 		client: DBClientOrTxType = dbClient,

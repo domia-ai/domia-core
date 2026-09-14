@@ -8,7 +8,11 @@ import {
 	type InsertSatelliteConfigType,
 	type SelectSatelliteConfigType,
 } from "@/db"
-import type { DomiaWithRawRelationsType, DomiaType } from "../types"
+import type {
+	DomiaWithRawRelationsType,
+	DomiaType,
+	SatelliteSettingsPatchType,
+} from "../types"
 
 const REDACTED = "__redacted__"
 
@@ -174,3 +178,9 @@ export const setSatelliteDesiredVolume = (
 	satelliteId: string,
 	desiredVolume: number,
 ) => dbAdapter.setSatelliteDesiredVolume(domiaId, satelliteId, desiredVolume)
+
+export const setSatelliteSettings = (
+	domiaId: string,
+	satelliteId: string,
+	settings: SatelliteSettingsPatchType,
+) => dbAdapter.setSatelliteSettings(domiaId, satelliteId, settings)

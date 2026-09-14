@@ -8,7 +8,7 @@ import { connectProvider, disconnectProviders } from "@/modules/skill-engine"
 import { matchFastPath, invalidateFastPathIndex } from "@/modules/fast-path"
 import { baseLlmModelConfig } from "@/test-utils/mocks/llm-model-config"
 
-import { startMockHa, makeChecker, stringOrEmpty } from "./lib"
+import { startMockHa, startMockMusic, makeChecker, stringOrEmpty } from "./lib"
 
 const checker = makeChecker()
 const BENCH_DIR = join(process.cwd(), "evals", "bench-results")
@@ -93,6 +93,42 @@ const COMPOUNDS: { text: string; tools: string[]; names: string[] }[] = [
 		text: "switch on the living room light and the kitchen light",
 		tools: ["HassTurnOn", "HassTurnOn"],
 		names: ["Living Room Light", "Kitchen Light"],
+	},
+	{
+		text: "turn on the kitchen light and the bedroom light too",
+		tools: ["HassTurnOn", "HassTurnOn"],
+		names: ["Kitchen Light", "Bedroom Light"],
+	},
+]
+
+const ADDITIVE: { text: string; tool: string; name: string }[] = [
+	{
+		text: "turn on the exterior sconces as well",
+		tool: "HassTurnOn",
+		name: "Exterior Sconces",
+	},
+	{
+		text: "turn off the kitchen light too",
+		tool: "HassTurnOff",
+		name: "Kitchen Light",
+	},
+	{
+		text: "also turn off the bedroom light",
+		tool: "HassTurnOff",
+		name: "Bedroom Light",
+	},
+]
+
+const ADDITIVE_ES: { text: string; tool: string; name: string }[] = [
+	{
+		text: "enciende también la luz de la oficina",
+		tool: "HassTurnOn",
+		name: "Office Lights",
+	},
+	{
+		text: "apaga la luz del dormitorio también",
+		tool: "HassTurnOff",
+		name: "Bedroom Light",
 	},
 ]
 
@@ -371,6 +407,102 @@ const haProvider = (url: string): SelectSkillProviderType => ({
 	updatedAt: "",
 })
 
+const MUSIC_TOOLS: { rawName: string; properties: Record<string, unknown> }[] =
+	[
+		{ rawName: "playback_pause", properties: { queue_id: { type: "string" } } },
+		{
+			rawName: "playback_resume",
+			properties: { queue_id: { type: "string" } },
+		},
+		{
+			rawName: "playback_next_track",
+			properties: { queue_id: { type: "string" } },
+		},
+		{
+			rawName: "playback_previous_track",
+			properties: { queue_id: { type: "string" } },
+		},
+		{
+			rawName: "volume_volume_set",
+			properties: {
+				player_id: { type: "string" },
+				level: { type: "number" },
+			},
+		},
+		{
+			rawName: "volume_volume_up",
+			properties: { player_id: { type: "string" } },
+		},
+		{
+			rawName: "volume_volume_down",
+			properties: { player_id: { type: "string" } },
+		},
+		{
+			rawName: "volume_volume_mute",
+			properties: {
+				player_id: { type: "string" },
+				muted: { type: "boolean" },
+			},
+		},
+		{ rawName: "music_play", properties: { query: { type: "string" } } },
+		{
+			rawName: "music_now_playing",
+			properties: { player: { type: "string" } },
+		},
+	]
+
+const musicProvider = (url: string): SelectSkillProviderType =>
+	({
+		...haProvider(url),
+		id: randomUUID(),
+		name: "music",
+		descriptor: { version: 1, kind: "music-assistant" },
+		trustTier: "untrusted",
+		priority: 1,
+		toolsCache: MUSIC_TOOLS.map((tool) => ({
+			provider: "music",
+			rawName: tool.rawName,
+			namespacedName: `music__${tool.rawName}`,
+			inputSchema: { type: "object", properties: tool.properties },
+		})),
+	}) as unknown as SelectSkillProviderType
+
+const MUSIC_POSITIVES: { text: string; tool: string }[] = [
+	{ text: "pause the music", tool: "playback_pause" },
+	{ text: "stop the song", tool: "playback_pause" },
+	{ text: "next song", tool: "playback_next_track" },
+	{ text: "turn the volume down", tool: "volume_volume_down" },
+	{ text: "set the volume to 40 percent", tool: "volume_volume_set" },
+	{ text: "which song is this", tool: "music_now_playing" },
+	{ text: "mute the speakers", tool: "volume_volume_mute" },
+]
+
+const MUSIC_SLOT_POSITIVES: { text: string; tool: string; playerId: string }[] =
+	[
+		{
+			text: "mute the kitchen",
+			tool: "volume_volume_mute",
+			playerId: "kitchen",
+		},
+		{
+			text: "pause the music in the living room",
+			tool: "playback_pause",
+			playerId: "living_room",
+		},
+	]
+
+const MUSIC_NEGATIVES: { text: string; class: string }[] = [
+	{ text: "stop talking", class: "stop-word" },
+	{ text: "play it cool", class: "idiom" },
+	{ text: "I love this song", class: "chat" },
+	{ text: "turn off the lights", class: "home-vocabulary" },
+]
+
+const HA_KEEPS: { text: string; tool: string }[] = [
+	{ text: "turn off the kitchen light", tool: "HassTurnOff" },
+	{ text: "turn on the bedroom light", tool: "HassTurnOn" },
+]
+
 const domiaAt = (minCoverage: number): DomiaType =>
 	({
 		id: DOMIA_ID,
@@ -490,12 +622,71 @@ const main = async (): Promise<void> => {
 			`kind=${v.kind}`,
 		)
 	}
+	for (const additive of ADDITIVE) {
+		const v = matchFastPath(domia, additive.text)
+		checker.check(
+			`additive cue keeps one target for "${additive.text}"`,
+			v.kind === "match" &&
+				v.match.tool === additive.tool &&
+				stringOrEmpty(v.match.resolvedArgs.name) === additive.name,
+			`kind=${v.kind} ${v.kind === "match" ? JSON.stringify(v.match.resolvedArgs) : ""}`,
+		)
+	}
 
 	checker.check(
 		"every generated template class is exercised by the corpus",
 		templatesHit.size >= 4,
 		`templates hit: ${[...templatesHit].join(" · ")}`,
 	)
+
+	const music = await startMockMusic()
+	const musicCfg = musicProvider(music.url)
+	const musicConnected = await connectProvider(musicCfg, "music", "en")
+	checker.check(
+		"music provider connects alongside home-assistant",
+		musicConnected,
+	)
+	await waitForContextFor(domiaAt(0.1), "mute the kitchen")
+	const bothDomia = domiaAt(0.1)
+	for (const pos of MUSIC_POSITIVES) {
+		const v = matchFastPath(bothDomia, pos.text)
+		checker.check(
+			`music fast path: "${pos.text}" → ${pos.tool}`,
+			v.kind === "match" && v.match.tool === pos.tool,
+			`kind=${v.kind} tool=${v.kind === "match" ? v.match.tool : ""}`,
+		)
+	}
+	for (const slot of MUSIC_SLOT_POSITIVES) {
+		const v = matchFastPath(bothDomia, slot.text)
+		const args = v.kind === "match" ? v.match.resolvedArgs : {}
+		checker.check(
+			`music roster slot: "${slot.text}" → ${slot.tool} on ${slot.playerId}`,
+			v.kind === "match" &&
+				v.match.tool === slot.tool &&
+				Object.values(args).includes(slot.playerId),
+			`kind=${v.kind} tool=${v.kind === "match" ? v.match.tool : ""} args=${JSON.stringify(args)}`,
+		)
+	}
+	for (const neg of MUSIC_NEGATIVES) {
+		const v = matchFastPath(bothDomia, neg.text)
+		const tool = v.kind === "match" ? v.match.tool : ""
+		checker.check(
+			`music negative (${neg.class}): "${neg.text}" takes no music tool`,
+			!MUSIC_TOOLS.some((t) => t.rawName === tool),
+			`kind=${v.kind} tool=${tool}`,
+		)
+	}
+	for (const keep of HA_KEEPS) {
+		const v = matchFastPath(bothDomia, keep.text)
+		checker.check(
+			`home-assistant keeps "${keep.text}" → ${keep.tool}`,
+			v.kind === "match" && v.match.tool === keep.tool,
+			`kind=${v.kind} tool=${v.kind === "match" ? v.match.tool : ""}`,
+		)
+	}
+	await disconnectProviders([musicCfg.id])
+	await music.close()
+	invalidateFastPathIndex(DOMIA_ID)
 
 	const esProvider = haProvider(mock.url)
 	await disconnectProviders([cfg.id])
@@ -579,6 +770,17 @@ const main = async (): Promise<void> => {
 				tools.join(",") === compound.tools.join(",") &&
 				names.join(",") === compound.names.join(","),
 			`kind=${v.kind} tools=${tools.join(",")} names=${names.join(",")}`,
+		)
+	}
+
+	for (const additive of ADDITIVE_ES) {
+		const v = matchFastPath(domiaEs, additive.text)
+		checker.check(
+			`es additive cue keeps one target for "${additive.text}"`,
+			v.kind === "match" &&
+				v.match.tool === additive.tool &&
+				stringOrEmpty(v.match.resolvedArgs.name) === additive.name,
+			`kind=${v.kind} ${v.kind === "match" ? JSON.stringify(v.match.resolvedArgs) : ""}`,
 		)
 	}
 

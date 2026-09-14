@@ -1,4 +1,4 @@
-import { appLogger, createKeyedMutex } from "@/utils"
+import { appLogger, createKeyedMutex, domiaError, CORE_ERRORS } from "@/utils"
 import {
 	type DomiaType,
 	getDomia,
@@ -15,6 +15,7 @@ import { warmupOnBoot } from "@/modules/warmup"
 import { setupCoreBus, teardownCoreBus } from "@/setups/core-bus"
 import { setupSkills, stopSkills } from "@/setups/skills"
 import { setupProactivity, teardownProactivity } from "@/setups/proactivity"
+import { startVoiceFeel, stopVoiceFeel } from "@/setups/voice-feel"
 import { setupHeartbeat } from "@/setups/heartbeat"
 import { stopVoiceListener } from "@/setups/voice-listener"
 import { reloadSatelliteClientsForDomia } from "@/setups/satellite-clients"
@@ -40,10 +41,11 @@ const bootHostedIdentityLocked = async (
 		)
 		domia = await getDomia(key)
 	}
-	if (!domia?.runtimeCapabilities) {
-		appLogger.warn("hosted identity could not be seeded — skipping", { key })
-		return null
-	}
+	if (!domia?.runtimeCapabilities)
+		throw domiaError(CORE_ERRORS.IDENTITY_NOT_RESOLVABLE, {
+			logger: appLogger,
+			meta: { domiaKey: key, message: "hosted identity could not be seeded" },
+		})
 	const caps = normalizeRuntimeCapabilities(domia.runtimeCapabilities)
 	setupCoreBus({ domia, runtimeCapabilities: caps })
 	registerHostedIdentity(domia.domiaKey)
@@ -54,6 +56,7 @@ const bootHostedIdentityLocked = async (
 		}),
 	)
 	setupProactivity(domia)
+	startVoiceFeel(domia)
 	const handle = setupHeartbeat({ domia })
 	if (typeof handle.unref === "function") handle.unref()
 	heartbeatHandles.set(key, handle)
@@ -76,6 +79,7 @@ const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 	if (handle) clearInterval(handle)
 	heartbeatHandles.delete(key)
 	teardownProactivity(key)
+	stopVoiceFeel(key)
 	await stopSkills(key)
 	stopVoiceListener(key)
 	if (domia) teardownCoreBus(domia.id)
@@ -87,5 +91,11 @@ const teardownHostedIdentityLocked = async (key: string): Promise<void> => {
 
 export const bootHostedIdentities = async (): Promise<void> => {
 	const roster = await getHostedDomias()
-	for (const entry of roster) await bootHostedIdentity(entry.domiaKey)
+	for (const entry of roster)
+		await bootHostedIdentity(entry.domiaKey).catch((err: unknown) =>
+			appLogger.warn("hosted identity could not be booted — skipping", {
+				domiaKey: entry.domiaKey,
+				err,
+			}),
+		)
 }

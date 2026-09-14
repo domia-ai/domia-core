@@ -36,6 +36,10 @@ export const CORE_ERRORS = {
 		code: "CORE/INTERACTION_CREATE_FAILED",
 		message: "The interaction could not be created.",
 	},
+	INTERACTION_RELOAD_GATED: {
+		code: "CORE/INTERACTION_RELOAD_GATED",
+		message: "A config reload is in flight for this identity.",
+	},
 	HOST_NODE_MISSING: {
 		code: "CORE/HOST_NODE_MISSING",
 		message: "The host_node singleton row is missing after ensure.",
@@ -201,6 +205,10 @@ export const MODEL_MANAGER_ERRORS = {
 	TOO_MANY_INSTALL_JOBS: {
 		code: "MODEL_MANAGER/TOO_MANY_INSTALL_JOBS",
 		message: "Too many model installs are already running on this node.",
+	},
+	UNSAFE_TARGET_PATH: {
+		code: "MODEL_MANAGER/UNSAFE_TARGET_PATH",
+		message: "The model install target escapes the models directory.",
 	},
 } as const
 

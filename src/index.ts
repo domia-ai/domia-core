@@ -9,6 +9,7 @@ import {
 import { initialize } from "./modules/config-engine"
 import { setGrpcClientTunables } from "./modules/grpc-client"
 import { isHostedIdentity, getNodeId } from "./modules/core"
+import { loadNodeConfig } from "./modules/node-config"
 import { setLocalMqttClient } from "./modules/heartbeat-manager"
 import { setupTempSweeper } from "./setups/temp-sweeper"
 import { setupRetention } from "./setups/retention"
@@ -70,6 +71,7 @@ async function main() {
 	const { missingBinaries } = setupEnvironment(runtimeCapabilities)
 
 	const nodeId = await getNodeId()
+	await loadNodeConfig()
 	const localMqttClient = setupMqtt({
 		domia: ownDomia,
 		config: ownDomia.localMqttConfig,

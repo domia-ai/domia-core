@@ -1,9 +1,25 @@
 import { createServer } from "http"
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
+import {
+	NodeStreamableHTTPServerTransport,
+	toNodeHandler,
+} from "@modelcontextprotocol/node"
+import {
+	McpServer,
+	createMcpHandler,
+	inputRequired,
+	inputResponse,
+	acceptedContent,
+} from "@modelcontextprotocol/server"
 import { z } from "zod"
-import { sleep } from "./http"
-import type { MockHaServerType, MockHaBehaviorType } from "../types"
+import { createBehaviorGate, withPoison } from "./mock-behavior"
+import type {
+	MockHaServerType,
+	MockHaBehaviorType,
+	MockBehaviorGateType,
+	MockMcpServerType,
+	MockDualEraServerType,
+	MockEntityStateType,
+} from "../types"
 
 const ENTITIES = [
 	{
@@ -21,7 +37,29 @@ const ENTITIES = [
 		domain: "light",
 		area: "Living Room",
 	},
+	{
+		names: ["Office Lights", "Luz de la Oficina"],
+		domain: "light",
+		area: "Office",
+	},
+	{
+		names: ["Exterior Sconces"],
+		domain: "light",
+		area: "Exterior",
+	},
+	{
+		names: ["BeyondTV"],
+		domain: "media_player",
+		area: "Living Room",
+	},
+	{
+		names: ["Front Door"],
+		domain: "lock",
+		area: "Entryway",
+	},
 ]
+
+export const mockEntityNames = (): string[] => ENTITIES.flatMap((e) => e.names)
 
 const defaultBehavior = (): MockHaBehaviorType => ({
 	latencyMs: {},
@@ -29,26 +67,83 @@ const defaultBehavior = (): MockHaBehaviorType => ({
 	poison: {},
 	annotations: false,
 	catalogSize: 0,
+	domainPrefixed: false,
 })
 
-const liveContext = (behavior: MockHaBehaviorType): string => {
-	const rows = ENTITIES.map(
-		(e) =>
-			`- names: ${e.names.join(", ")}\n  domain: ${e.domain}\n  areas: ${e.area}`,
-	)
-	const poison = behavior.poison.GetLiveContext
+const TOOL_DOMAINS: Record<string, string> = {
+	GetLiveContext: "homeassistant",
+	GetDateTime: "llm",
+	HassTurnOn: "intent",
+	HassTurnOff: "intent",
+	HassLightSet: "light",
+	HassLockDoor: "lock",
+}
+
+const advertisedName = (behavior: MockHaBehaviorType, tool: string): string => {
+	if (!behavior.domainPrefixed) return tool
+	const prefix = TOOL_DOMAINS[tool] ?? "intent"
+	return `${prefix}__${tool}`
+}
+
+const createEntityStates = (): MockEntityStateType[] =>
+	ENTITIES.map(() => ({ on: false, brightness: null }))
+
+const matchesTarget = (
+	entity: (typeof ENTITIES)[number],
+	args: { name?: string; area?: string; domain?: string[] },
+): boolean => {
+	const name = args.name?.trim().toLowerCase()
+	const area = args.area?.trim().toLowerCase()
+	const domainOk = !args.domain?.length || args.domain.includes(entity.domain)
+	const nameHit =
+		name !== undefined &&
+		name.length > 0 &&
+		(entity.names.some((n) => {
+			const folded = n.toLowerCase()
+			return folded === name || folded.includes(name) || name.includes(folded)
+		}) ||
+			entity.area.toLowerCase() === name)
+	const areaHit = area !== undefined && entity.area.toLowerCase() === area
+	if (name) return nameHit && (area === undefined || areaHit) && domainOk
+	if (area !== undefined) return areaHit && domainOk
+	return !!args.domain?.length && domainOk
+}
+
+const applyWrite = (
+	states: MockEntityStateType[],
+	args: { name?: string; area?: string; domain?: string[] },
+	patch: Partial<MockEntityStateType>,
+): void => {
+	ENTITIES.forEach((entity, i) => {
+		if (matchesTarget(entity, args)) Object.assign(states[i], patch)
+	})
+}
+
+const liveContext = (
+	gate: MockBehaviorGateType,
+	states: MockEntityStateType[],
+): string => {
+	const rows = ENTITIES.map((e, i) => {
+		const state = states[i]
+		const brightness =
+			state.on && state.brightness !== null
+				? `\n  brightness: ${state.brightness}`
+				: ""
+		return `- names: ${e.names.join(", ")}\n  domain: ${e.domain}\n  areas: ${e.area}\n  state: ${state.on ? "on" : "off"}${brightness}`
+	})
+	const poison = gate.poisonOf("GetLiveContext")
 	if (poison)
 		rows.push(`- names: ${poison}\n  domain: light\n  areas: Living Room`)
 	return rows.join("\n")
 }
 
-const targetArgs = {
+const targetArgs = z.object({
 	name: z.string().optional(),
 	area: z.string().optional(),
 	floor: z.string().optional(),
 	domain: z.array(z.string()).optional(),
 	device_class: z.array(z.string()).optional(),
-}
+})
 
 const text = (t: string): { content: { type: "text"; text: string }[] } => ({
 	content: [{ type: "text" as const, text: t }],
@@ -62,43 +157,14 @@ const errText = (
 })
 
 const gated = async (
-	behavior: MockHaBehaviorType,
+	gate: MockBehaviorGateType,
 	tool: string,
 	ok: () => string,
 ): Promise<
 	{ content: { type: "text"; text: string }[] } & { isError?: boolean }
 > => {
-	const err = await gate(behavior, tool)
+	const err = await gate.check(tool)
 	return err ? errText(err) : text(ok())
-}
-
-const failCounts = new Map<string, number>()
-
-const gate = async (
-	behavior: MockHaBehaviorType,
-	tool: string,
-): Promise<string | null> => {
-	const latency = behavior.latencyMs[tool] ?? behavior.latencyMs["*"]
-	if (latency) await sleep(latency)
-	const fail = behavior.fail[tool] ?? behavior.fail["*"]
-	if (fail === "always") return `Error: ${tool} unavailable`
-	if (typeof fail === "number") {
-		const used = failCounts.get(tool) ?? 0
-		if (used < fail) {
-			failCounts.set(tool, used + 1)
-			return `Error: ${tool} temporarily failed`
-		}
-	}
-	return null
-}
-
-const resultText = (
-	behavior: MockHaBehaviorType,
-	tool: string,
-	base: string,
-): string => {
-	const poison = behavior.poison[tool]
-	return poison ? `${base}. ${poison}` : base
 }
 
 const SYNTHETIC_VERBS = [
@@ -161,23 +227,27 @@ const withAnnotations = (
 ): { annotations?: Record<string, unknown> } =>
 	behavior.annotations ? { annotations } : {}
 
-const buildMcpServer = (behavior: MockHaBehaviorType): McpServer => {
+const buildMcpServer = (
+	behavior: MockHaBehaviorType,
+	states: MockEntityStateType[],
+	gate: MockBehaviorGateType,
+): McpServer => {
 	const mcp = new McpServer({ name: "eval-mock-ha", version: "1.0.0" })
 	mcp.registerTool(
-		"GetLiveContext",
+		advertisedName(behavior, "GetLiveContext"),
 		{
 			description:
 				"Provides real-time information about the CURRENT state, value, or mode of devices, sensors, entities, or areas.",
-			inputSchema: {},
+			inputSchema: z.object({}),
 			...withAnnotations(behavior, {
 				readOnlyHint: true,
 				openWorldHint: false,
 			}),
 		},
-		async () => gated(behavior, "GetLiveContext", () => liveContext(behavior)),
+		async () => gated(gate, "GetLiveContext", () => liveContext(gate, states)),
 	)
 	mcp.registerTool(
-		"HassTurnOn",
+		advertisedName(behavior, "HassTurnOn"),
 		{
 			description:
 				"Turns on/opens/presses a device or entity. Use for requests like 'turn on', 'activate', 'enable'.",
@@ -190,16 +260,17 @@ const buildMcpServer = (behavior: MockHaBehaviorType): McpServer => {
 			}),
 		},
 		async (args) =>
-			gated(behavior, "HassTurnOn", () =>
-				resultText(
-					behavior,
+			gated(gate, "HassTurnOn", () => {
+				applyWrite(states, args, { on: true })
+				return withPoison(
+					gate,
 					"HassTurnOn",
 					`Turned on ${args.name ?? args.area ?? "device"}`,
-				),
-			),
+				)
+			}),
 	)
 	mcp.registerTool(
-		"HassTurnOff",
+		advertisedName(behavior, "HassTurnOff"),
 		{
 			description:
 				"Turns off/closes a device or entity. Use for requests like 'turn off', 'deactivate', 'disable'.",
@@ -212,24 +283,24 @@ const buildMcpServer = (behavior: MockHaBehaviorType): McpServer => {
 			}),
 		},
 		async (args) =>
-			gated(behavior, "HassTurnOff", () =>
-				resultText(
-					behavior,
+			gated(gate, "HassTurnOff", () => {
+				applyWrite(states, args, { on: false })
+				return withPoison(
+					gate,
 					"HassTurnOff",
 					`Turned off ${args.name ?? args.area ?? "device"}`,
-				),
-			),
+				)
+			}),
 	)
 	mcp.registerTool(
-		"HassLightSet",
+		advertisedName(behavior, "HassLightSet"),
 		{
 			description: "Sets the brightness percentage or color of a light",
-			inputSchema: {
-				...targetArgs,
+			inputSchema: targetArgs.extend({
 				color: z.string().optional(),
 				temperature: z.number().optional(),
 				brightness: z.number().optional(),
-			},
+			}),
 			...withAnnotations(behavior, {
 				readOnlyHint: false,
 				destructiveHint: false,
@@ -238,43 +309,50 @@ const buildMcpServer = (behavior: MockHaBehaviorType): McpServer => {
 			}),
 		},
 		async (args) =>
-			gated(behavior, "HassLightSet", () =>
-				resultText(
-					behavior,
+			gated(gate, "HassLightSet", () => {
+				applyWrite(states, args, {
+					on: true,
+					...(args.brightness === undefined
+						? {}
+						: { brightness: args.brightness }),
+				})
+				return withPoison(
+					gate,
 					"HassLightSet",
 					`Set ${args.name ?? args.area ?? "light"}`,
-				),
-			),
+				)
+			}),
 	)
 	mcp.registerTool(
-		"HassLockDoor",
+		advertisedName(behavior, "HassLockDoor"),
 		{
 			description: "Locks or unlocks a door lock entity.",
 			inputSchema: targetArgs,
 		},
 		async (args) =>
-			gated(behavior, "HassLockDoor", () => `Locked ${args.name ?? "door"}`),
+			gated(gate, "HassLockDoor", () => `Locked ${args.name ?? "door"}`),
 	)
 	for (const name of syntheticNames(behavior.catalogSize)) {
 		mcp.registerTool(
-			name,
+			advertisedName(behavior, name),
 			{
 				description: `Controls the ${name.replace(/^Hass/, "").toLowerCase()} accessory in the home.`,
 				inputSchema: targetArgs,
 			},
 			async (args) =>
-				gated(
-					behavior,
-					name,
-					() => `${name} done for ${args.name ?? "target"}`,
-				),
+				gated(gate, name, () => `${name} done for ${args.name ?? "target"}`),
 		)
 	}
 	return mcp
 }
 
-export const startMockHa = async (port = 0): Promise<MockHaServerType> => {
-	let behavior = defaultBehavior()
+export const startMockHa = async (
+	port = 0,
+	baseBehavior: Partial<MockHaBehaviorType> = {},
+): Promise<MockHaServerType> => {
+	const states = createEntityStates()
+	let behavior = { ...defaultBehavior(), ...baseBehavior }
+	const gate = createBehaviorGate(() => behavior)
 	const server = createServer((req, res) => {
 		if (req.url === "/__control" && req.method === "POST") {
 			let body = ""
@@ -282,8 +360,8 @@ export const startMockHa = async (port = 0): Promise<MockHaServerType> => {
 			req.on("end", () => {
 				try {
 					const patch = JSON.parse(body || "{}") as Partial<MockHaBehaviorType>
-					behavior = { ...defaultBehavior(), ...patch }
-					failCounts.clear()
+					behavior = { ...defaultBehavior(), ...baseBehavior, ...patch }
+					gate.resetCounts()
 					res.writeHead(200, { "content-type": "application/json" })
 					res.end(JSON.stringify(behavior))
 				} catch {
@@ -293,8 +371,8 @@ export const startMockHa = async (port = 0): Promise<MockHaServerType> => {
 			return
 		}
 		void (async () => {
-			const mcp = buildMcpServer(behavior)
-			const transport = new StreamableHTTPServerTransport({
+			const mcp = buildMcpServer(behavior, states, gate)
+			const transport = new NodeStreamableHTTPServerTransport({
 				sessionIdGenerator: undefined,
 			})
 			res.on("close", () => {
@@ -327,5 +405,172 @@ export const startMockHa = async (port = 0): Promise<MockHaServerType> => {
 				server.close(() => resolve())
 				server.closeAllConnections()
 			}),
+	}
+}
+
+const buildPlainMcpServer = (): McpServer => {
+	const mcp = new McpServer({ name: "eval-plain-mcp", version: "1.0.0" })
+	mcp.registerTool(
+		"NoteRead",
+		{
+			description: "Reads the text of a note by its title.",
+			inputSchema: z.object({ title: z.string() }),
+			annotations: { readOnlyHint: true, openWorldHint: false },
+		},
+		(args) => text(`Note ${args.title}: buy milk`),
+	)
+	mcp.registerTool(
+		"NoteDelete",
+		{
+			description: "Permanently deletes a note by its title.",
+			inputSchema: z.object({ title: z.string() }),
+			annotations: { destructiveHint: true, openWorldHint: false },
+		},
+		(args) => text(`Deleted note ${args.title}`),
+	)
+	mcp.registerTool(
+		"NotePublish",
+		{
+			description: "Publishes a note to the public web board.",
+			inputSchema: z.object({ title: z.string() }),
+			annotations: {
+				readOnlyHint: false,
+				destructiveHint: false,
+				idempotentHint: true,
+				openWorldHint: true,
+			},
+		},
+		(args) => text(`Published note ${args.title}`),
+	)
+	return mcp
+}
+
+export const startPlainMcp = async (port = 0): Promise<MockMcpServerType> => {
+	const server = createServer((req, res) => {
+		void (async () => {
+			const mcp = buildPlainMcpServer()
+			const transport = new NodeStreamableHTTPServerTransport({
+				sessionIdGenerator: undefined,
+			})
+			res.on("close", () => {
+				void transport.close()
+				void mcp.close()
+			})
+			await mcp.connect(transport)
+			await transport.handleRequest(req, res)
+		})().catch(() => {
+			if (!res.headersSent) res.writeHead(500).end()
+		})
+	})
+	await new Promise<void>((resolve) =>
+		server.listen(port, "127.0.0.1", resolve),
+	)
+	const address = server.address()
+	const boundPort = typeof address === "object" && address ? address.port : port
+	return {
+		url: `http://127.0.0.1:${boundPort}/mcp`,
+		close: () =>
+			new Promise<void>((resolve) => {
+				server.close(() => resolve())
+				server.closeAllConnections()
+			}),
+	}
+}
+
+const DUAL_ERA_TOOLS_TTL_MS = 900
+
+const buildDualEraServer = (announce: () => void): McpServer => {
+	const mcp = new McpServer(
+		{ name: "eval-dual-era", version: "1.0.0" },
+		{
+			capabilities: { tools: { listChanged: true } },
+			cacheHints: {
+				"tools/list": {
+					ttlMs: DUAL_ERA_TOOLS_TTL_MS,
+					cacheScope: "public",
+				},
+			},
+		},
+	)
+	mcp.registerTool(
+		"EraProbe",
+		{
+			description: "Reports that the connection is alive.",
+			inputSchema: z.object({}),
+			annotations: { readOnlyHint: true, openWorldHint: false },
+		},
+		() => text("probe ok"),
+	)
+	mcp.registerTool(
+		"ConfirmDeploy",
+		{
+			description: "Deploys an environment once the user confirms.",
+			inputSchema: z.object({ env: z.string() }),
+		},
+		(args, ctx) => {
+			const answer = inputResponse(ctx.mcpReq.inputResponses, "confirm")
+			if (answer.kind === "missing")
+				return inputRequired({
+					inputRequests: {
+						confirm: inputRequired.elicit({
+							message: `Deploy to ${args.env}?`,
+							requestedSchema: {
+								type: "object",
+								properties: { confirm: { type: "boolean" } },
+								required: ["confirm"],
+							},
+						}),
+					},
+					requestState: "awaiting-confirm",
+				})
+			const accepted = acceptedContent<{ confirm: boolean }>(
+				ctx.mcpReq.inputResponses,
+				"confirm",
+			)
+			if (!accepted) return errText("deploy cancelled")
+			return accepted.confirm
+				? text(`deployed:${args.env}`)
+				: errText("deploy declined")
+		},
+	)
+	mcp.registerTool(
+		"TriggerToolsChanged",
+		{
+			description: "Announces a tool list change to open subscriptions.",
+			inputSchema: z.object({}),
+		},
+		() => {
+			announce()
+			return text("announced")
+		},
+	)
+	return mcp
+}
+
+export const startDualEraMcp = async (
+	port = 0,
+): Promise<MockDualEraServerType> => {
+	const handler = createMcpHandler(() =>
+		buildDualEraServer(() => handler.notify.toolsChanged()),
+	)
+	const nodeHandler = toNodeHandler(handler)
+	const server = createServer((req, res) => {
+		void nodeHandler(req, res)
+	})
+	await new Promise<void>((resolve) =>
+		server.listen(port, "127.0.0.1", resolve),
+	)
+	const address = server.address()
+	const boundPort = typeof address === "object" && address ? address.port : port
+	return {
+		url: `http://127.0.0.1:${boundPort}/mcp`,
+		ttlMs: DUAL_ERA_TOOLS_TTL_MS,
+		close: async () => {
+			await handler.close()
+			await new Promise<void>((resolve) => {
+				server.close(() => resolve())
+				server.closeAllConnections()
+			})
+		},
 	}
 }

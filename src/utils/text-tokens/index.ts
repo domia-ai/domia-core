@@ -6,6 +6,15 @@ const NON_ALPHANUMERIC = /[^\p{L}\p{N}]+/u
 export const foldText = (text: string): string =>
 	text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").trim()
 
+const escapeRegex = (text: string): string =>
+	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+export const containsCue = (foldedText: string, cue: string): boolean =>
+	new RegExp(
+		`(^|[^\\p{L}\\p{N}])${escapeRegex(foldText(cue))}($|[^\\p{L}\\p{N}])`,
+		"u",
+	).test(foldedText)
+
 export const tokensOf = (
 	text: string,
 	options?: TokensOptionsType,

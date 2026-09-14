@@ -4,7 +4,6 @@ import {
 	env,
 	waitForHealth,
 	postChat,
-	postModules,
 	postConfig,
 	getConfig,
 	resetConversation,
@@ -15,11 +14,8 @@ import {
 	execWrite,
 	postConfigRefresh,
 	probeRequirements,
-	startMockHa,
-	queryOne,
-	queryAll,
-	sleep,
-	MOCK_HA_PROVIDER_ID,
+	setupMockProviders,
+	seedCaseFacts,
 } from "./lib"
 import type {
 	EvalCaseType,
@@ -28,6 +24,7 @@ import type {
 	EvalAssertionType,
 	EvalRequirementType,
 	EvalSuiteType,
+	MockProvidersControlType,
 } from "./types"
 
 const CASES_DIR = join(process.cwd(), "evals", "cases")
@@ -37,6 +34,12 @@ const LIVE = env.EVAL_LIVE === "1"
 const LABEL =
 	env.LABEL ??
 	`run-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}`
+
+const EXCLUDED_SUITES: EvalSuiteType[] = [
+	"conversation",
+	"conversation-long",
+	"tool-scenarios",
+]
 
 const loadCases = (): EvalCaseType[] => {
 	const files = readdirSync(CASES_DIR).filter((f) => f.endsWith(".json"))
@@ -61,7 +64,7 @@ const loadCases = (): EvalCaseType[] => {
 		cases.push(...parsed.data)
 	}
 	return cases.filter((c) => {
-		if (c.suite === "conversation") return false
+		if (EXCLUDED_SUITES.includes(c.suite)) return false
 		if (c.suite === "home-live" && !LIVE) return false
 		if (SUITES && !SUITES.includes(c.suite)) return false
 		return true
@@ -88,67 +91,10 @@ const MOCK_SUITES: EvalSuiteType[] = [
 	"routing",
 ]
 
-const reloadSkills = async (): Promise<void> => {
-	await postModules({ skillsEngine: false })
-	await sleep(500)
-	await postModules({ skillsEngine: true })
-}
+const withTools = !SUITES || SUITES.includes("tools")
 
-const waitForMockSync = async (): Promise<boolean> => {
-	const start = Date.now()
-	while (Date.now() - start < 15000) {
-		const row = queryOne<{ v: string | null }>(
-			"SELECT tools_cache AS v FROM skill_provider WHERE id = ?",
-			[MOCK_HA_PROVIDER_ID],
-		)
-		if (row?.v?.includes("HassTurnOn")) return true
-		await sleep(500)
-	}
-	return false
-}
-
-const setupMockHa = async (): Promise<{
-	teardown: () => Promise<void>
-	setBehavior: (patch: Record<string, unknown>) => Promise<void>
-	resync: () => Promise<void>
-}> => {
-	const mock = await startMockHa()
-	const realProviders = queryAll<{ id: string }>(
-		"SELECT id FROM skill_provider WHERE is_active = 1 AND id != ?",
-		[MOCK_HA_PROVIDER_ID],
-	)
-	for (const p of realProviders)
-		execWrite("UPDATE skill_provider SET is_active = 0 WHERE id = ?", [p.id])
-	execWrite(
-		`INSERT OR REPLACE INTO skill_provider
-		 (id, name, is_active, domia_id, protocol, type, url, descriptor, priority)
-		 VALUES (?, 'home-assistant', 1,
-		   (SELECT id FROM domia WHERE domia_key = ?), 'mcp', 'http', ?,
-		   '{"version": 1, "kind": "home-assistant"}', 0)`,
-		[MOCK_HA_PROVIDER_ID, env.EVAL_DOMIA_KEY, mock.url],
-	)
-	await reloadSkills()
-	const synced = await waitForMockSync()
-	if (!synced) console.warn("⚠️ mock-ha provider did not sync tools in time")
-	return {
-		teardown: async () => {
-			execWrite("DELETE FROM skill_provider WHERE id = ?", [
-				MOCK_HA_PROVIDER_ID,
-			])
-			for (const p of realProviders)
-				execWrite("UPDATE skill_provider SET is_active = 1 WHERE id = ?", [
-					p.id,
-				])
-			await reloadSkills()
-			await mock.close()
-		},
-		setBehavior: mock.setBehavior,
-		resync: async () => {
-			await reloadSkills()
-			await waitForMockSync()
-		},
-	}
-}
+const setupMockHa = (): Promise<MockProvidersControlType> =>
+	setupMockProviders({ ha: true, music: withTools, plain: withTools })
 
 const isolateFacts = async (): Promise<void> => {
 	execWrite(
@@ -164,7 +110,9 @@ const runCaseOnce = async (
 	const assertions: EvalAssertionType[] = []
 	const interactionIds: string[] = []
 	for (const turn of c.turns) {
-		const { interactionId, reply } = await postChat(turn.text)
+		const { interactionId, reply } = await postChat(turn.text, {
+			satelliteId: turn.satelliteId,
+		})
 		interactionIds.push(interactionId)
 		const needsTool = Boolean(
 			turn.expect.tool || turn.expect.argsSubset || turn.expect.argMatchers,
@@ -186,21 +134,20 @@ const runCaseOnce = async (
 
 const runCase = async (
 	c: EvalCaseType,
-	mockControl?: {
-		setBehavior: (patch: Record<string, unknown>) => Promise<void>
-		resync: () => Promise<void>
-	},
+	mockControl?: MockProvidersControlType,
 ): Promise<EvalCaseResultType> => {
 	const runs = c.runs ?? 1
 	const passRatio = c.passRatio ?? 1
 	const runsDetail: EvalRunDetailType[] = []
-	if (mockControl && c.mockHa) {
-		await mockControl.setBehavior(c.mockHa)
-		if (c.mockHa.annotations || c.mockHa.catalogSize) await mockControl.resync()
+	if (mockControl?.ha && c.mockHa) {
+		await mockControl.ha.setBehavior(c.mockHa)
+		if (c.mockHa.annotations || c.mockHa.catalogSize)
+			await mockControl.ha.resync()
 	}
 	for (let i = 0; i < runs; i++) {
 		if (c.isolate === "facts") await isolateFacts()
 		if (MOCK_SUITES.includes(c.suite)) await resetConversation()
+		await seedCaseFacts(c)
 		const { assertions, interactionIds } = await runCaseOnce(c)
 		runsDetail.push({
 			run: i + 1,
@@ -209,9 +156,10 @@ const runCase = async (
 			assertions,
 		})
 	}
-	if (mockControl && c.mockHa) {
-		await mockControl.setBehavior({})
-		if (c.mockHa.annotations || c.mockHa.catalogSize) await mockControl.resync()
+	if (mockControl?.ha && c.mockHa) {
+		await mockControl.ha.setBehavior({})
+		if (c.mockHa.annotations || c.mockHa.catalogSize)
+			await mockControl.ha.resync()
 	}
 	const runsPassed = runsDetail.filter((r) => r.passed).length
 	return {

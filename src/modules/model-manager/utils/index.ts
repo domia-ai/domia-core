@@ -1,3 +1,5 @@
+import { isAbsolute, relative, resolve } from "path"
+
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"])
 const WINDOWS_DRIVE = /^[A-Za-z]:/
 const ALLOWED_ARCHIVE_ENTRY_TYPES = new Set(["-", "d"])
@@ -54,6 +56,21 @@ export const parseArchiveListing = (listing: string): string[] =>
 		.split("\n")
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0)
+
+export const resolveModelTargetPath = (
+	modelsDir: string,
+	target: string,
+	subdir?: string,
+): string | null => {
+	const base = resolve(modelsDir)
+	const resolved = resolve(base, subdir ?? ".", target)
+	const rel = relative(base, resolved)
+	if (rel.length === 0 || isAbsolute(rel)) return null
+	if (rel.split(/[\\/]/).includes("..")) return null
+	if (subdir !== undefined && relative(base, resolve(base, subdir)) !== subdir)
+		return null
+	return resolved
+}
 
 export const archiveSuffix = (url: string): string => {
 	try {

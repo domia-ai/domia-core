@@ -40,6 +40,7 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	INTERACTION_STATUS_ENUM,
 	RESPONSE_TYPE_ENUM,
+	DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
 } from "@/db"
 import { playFeedbackSound } from "@/modules/feedback-sounds"
 import { admitVoiceReply } from "@/modules/voice-admission"
@@ -323,7 +324,12 @@ const handleSttDoneFlow = async (
 				if (await attemptLocalSkillsRoute(ctx, session, payload, turnSignal))
 					return
 				if (!payload.prestartedTokens)
-					await settleEagerPrefill(payload.eagerPrefill, interactionId)
+					await settleEagerPrefill(
+						payload.eagerPrefill,
+						interactionId,
+						domia.wakeWordConfig?.twoTierSettleMaxWaitMs ??
+							DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
+					)
 				if (
 					await tryLocalFullStreamVoice(
 						ctx,

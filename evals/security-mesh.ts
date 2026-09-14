@@ -8,13 +8,11 @@ import { MQTT_TYPE_ENUM } from "@/db"
 import {
 	DEFAULT_KNOWLEDGE_MAX_CHARS,
 	DEFAULT_MODEL_INSTALL_ALLOWED_HOSTS,
-	DEFAULT_PEER_STALE_AFTER_MS,
+	DEFAULT_MESH_CONTROL_TOLERANCE_MS,
+	DEFAULT_MESH_DROP_WARN_WINDOW_MS,
 } from "@/db/constants"
 import { MQTT_EVENT_ENUM } from "@/setups/mqtt/constants"
-import {
-	MESH_DROP_WARN_WINDOW_MS,
-	MESH_IDENTITY_FIELD_BY_EVENT,
-} from "@/modules/mqtt-event-handler/constants"
+import { MESH_IDENTITY_FIELD_BY_EVENT } from "@/modules/mqtt-event-handler/constants"
 import {
 	archiveSuffix,
 	findUnsafeArchiveEntry,
@@ -658,7 +656,7 @@ const topicWiringChecks = (): void => {
 			payload,
 			topicIdentity,
 			identityField: MESH_IDENTITY_FIELD_BY_EVENT[event],
-			toleranceMs: DEFAULT_PEER_STALE_AFTER_MS,
+			toleranceMs: DEFAULT_MESH_CONTROL_TOLERANCE_MS,
 			guard,
 			isLastWill: event === MQTT_EVENT_ENUM.OFFLINE,
 		}).reason
@@ -719,7 +717,7 @@ const topicWiringChecks = (): void => {
 
 const dropWarnThrottleChecks = (): void => {
 	console.log("\n== F4 drop-warn flood suppression ==")
-	const windowMs = MESH_DROP_WARN_WINDOW_MS
+	const windowMs = DEFAULT_MESH_DROP_WARN_WINDOW_MS
 	const throttle = createMeshDropWarnThrottle({ windowMs })
 	const burst = 31_043
 	const label = "heartbeat from DOMIA_A"

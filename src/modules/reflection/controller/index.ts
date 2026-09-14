@@ -1,3 +1,6 @@
+import { languageSetsFor } from "@/utils/language-catalogs"
+import type { RelationFamilyType } from "@/modules/memory/types"
+import { RELATION_FAMILY_RE } from "@/modules/memory/constants"
 import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import { reportReflectionToTarget } from "@/modules/grpc-client"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
@@ -27,6 +30,8 @@ import {
 	isEphemeralFact,
 	isExplicitMemoryCommand,
 	getActiveFactRefs,
+	TAUGHT_FACT_RELATIONS,
+	NEGATIVE_PREFERENCE_RELATIONS,
 	type RawFactType,
 } from "@/modules/memory"
 import { reflectionLogger, parseLlmJson, sleep, withTimeout } from "@/utils"
@@ -44,10 +49,12 @@ import {
 	DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 } from "@/db"
 import { createReflectionGate } from "../utils"
+import { FACT_USER_GROUNDING_MIN_OVERLAP } from "../constants"
 import type {
 	ReflectionFlagsType,
 	ReflectionResultType,
 	ReflectionGateSettingsType,
+	ReflectionRetryInputType,
 } from "../types"
 
 const buildReflectionPrompt = (
@@ -105,31 +112,113 @@ const isPureQuestion = (text: string): boolean => {
 }
 
 const foldText = (s: string): string =>
-	s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "")
+	s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/[‘’ʼ]/g, "'")
 
 const valueTokens = (s: string): string[] =>
 	foldText(s)
 		.split(/[^\p{L}\p{N}]+/u)
 		.filter((w) => w.length >= 2)
 
-const tokenOverlap = (a: string[], b: string[]): boolean =>
-	a.some((w) =>
+const overlapRatio = (a: string[], b: string[]): number => {
+	if (a.length === 0) return 0
+	const matched = a.filter((w) =>
 		b.some((u) =>
 			w.length >= 3 && u.length >= 3
 				? w.startsWith(u) || u.startsWith(w)
 				: w === u,
 		),
-	)
+	).length
+	return matched / a.length
+}
 
-const filterReflectionFacts = (
+const tokenOverlap = (a: string[], b: string[]): boolean =>
+	overlapRatio(a, b) > 0
+
+const relationFamily = (relation: string): RelationFamilyType | null => {
+	const folded = relation.toLowerCase().replace(/\s+/g, " ").trim()
+	for (const [family, re] of Object.entries(RELATION_FAMILY_RE))
+		if (re.test(folded)) return family as RelationFamilyType
+	return null
+}
+
+const cueHit = (foldedUserText: string, cue: string): boolean =>
+	new RegExp(
+		`(^|[^\\p{L}\\p{N}])${foldText(cue).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`,
+		"u",
+	).test(foldedUserText)
+
+export const isSelfDescriptionTurn = (
+	userText: string,
+	language?: string | null,
+): boolean => {
+	const text = userText.trim()
+	if (!text || text.endsWith("?")) return false
+	const folded = foldText(text)
+	return languageSetsFor(language ?? null).selfDescriptionCues.some((cue) =>
+		cueHit(folded, cue),
+	)
+}
+
+const relationGrounded = (
+	relation: string,
+	userWords: string[],
+	foldedUserText: string,
+	cues: Record<RelationFamilyType, string[]>,
+): boolean => {
+	if (
+		TAUGHT_FACT_RELATIONS.has(
+			relation.toLowerCase().replace(/\s+/g, " ").trim(),
+		)
+	)
+		return true
+	if (
+		overlapRatio(valueTokens(relation), userWords) >=
+		FACT_USER_GROUNDING_MIN_OVERLAP
+	)
+		return true
+	const family = relationFamily(relation)
+	return (
+		family !== null && cues[family].some((cue) => cueHit(foldedUserText, cue))
+	)
+}
+
+const normalizeRelation = (relation: string): string =>
+	relation.toLowerCase().replace(/\s+/g, " ").trim()
+
+const isPolarityMismatch = (
+	relation: string,
+	foldedUserText: string,
+	negativeCues: string[],
+): boolean =>
+	NEGATIVE_PREFERENCE_RELATIONS.has(normalizeRelation(relation)) &&
+	!negativeCues.some((cue) => cueHit(foldedUserText, cue))
+
+export const shouldRetryFactExtraction = (
+	input: ReflectionRetryInputType,
+): boolean =>
+	input.factsEnabled &&
+	!input.explicitMemory &&
+	input.hasReflectionModel &&
+	input.keptCount === 0 &&
+	FIRST_PERSON.test(input.userText) &&
+	!isPureQuestion(input.userText)
+
+export const filterReflectionFacts = (
 	facts: RawFactType[],
 	userText: string,
+	replyText: string,
 	persona: PersonaContextType,
 ): RawFactType[] => {
 	if (isPureQuestion(userText)) return []
-	const user = foldText(userText)
 	const userWords = valueTokens(userText)
+	const foldedUserText = foldText(userText)
+	const sets = languageSetsFor(persona.characterProfile?.language ?? null)
+	const cues = sets.relationFamilyCues
+	const replyWords = valueTokens(replyText)
 	const personaName = (persona.characterProfile?.name ?? "domia").toLowerCase()
+	const replyExclusive: string[] = []
+	const hallucinatedRelations: string[] = []
+	const invertedPolarity: string[] = []
 	const kept = facts.filter((fact) => {
 		if (isEphemeralFact(fact.relation, fact.value)) return false
 		const subject = fact.subject.toLowerCase()
@@ -142,10 +231,39 @@ const filterReflectionFacts = (
 			return false
 		}
 		if (fact.op === "delete") return true
+		if (
+			isPolarityMismatch(
+				fact.relation,
+				foldedUserText,
+				sets.negativePreferenceCues,
+			)
+		) {
+			invertedPolarity.push(`${fact.relation} ${fact.value}`)
+			return false
+		}
 		const words = valueTokens(fact.value)
 		if (words.length === 0) return false
-		return words.some((w) => user.includes(w))
+		const grounded = overlapRatio(words, userWords)
+		if (grounded === 0 && overlapRatio(words, replyWords) > 0)
+			replyExclusive.push(`${fact.relation} ${fact.value}`)
+		if (grounded < FACT_USER_GROUNDING_MIN_OVERLAP) return false
+		if (relationGrounded(fact.relation, userWords, foldedUserText, cues))
+			return true
+		hallucinatedRelations.push(`${fact.relation} ${fact.value}`)
+		return false
 	})
+	if (invertedPolarity.length)
+		reflectionLogger.warn("facts with an inverted polarity dropped", {
+			dropped: invertedPolarity,
+		})
+	if (hallucinatedRelations.length)
+		reflectionLogger.warn("facts with an ungrounded relation dropped", {
+			dropped: hallucinatedRelations,
+		})
+	if (replyExclusive.length)
+		reflectionLogger.warn("reply-exclusive facts dropped (attribution guard)", {
+			dropped: replyExclusive,
+		})
 	const deleteGrounded = (fact: RawFactType): boolean =>
 		tokenOverlap(valueTokens(`${fact.relation} ${fact.value}`), userWords)
 	const deletes = kept.filter((f) => f.op === "delete")
@@ -197,6 +315,14 @@ const gateSettings = (domia: DomiaType): ReflectionGateSettingsType => ({
 		DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 })
 
+const prioritySettings = (
+	settings: ReflectionGateSettingsType,
+): ReflectionGateSettingsType => ({
+	...settings,
+	onlyWhenIdle: false,
+	yieldToVoice: false,
+})
+
 export const runReflection = async (
 	responder: DomiaType,
 	persona: PersonaContextType,
@@ -219,23 +345,40 @@ export const runReflection = async (
 			"🧠 explicit memory command — reflecting with main model",
 			{ responderId: key },
 		)
-	const reflector =
-		reflectionModel && responder.llmModelConfig && !explicitMemory
+	const selfDescription =
+		flags.facts &&
+		isSelfDescriptionTurn(userText, responder.characterProfile?.language)
+	const asReflector = (modelName?: string): DomiaType =>
+		responder.llmModelConfig
 			? {
 					...responder,
 					llmModelConfig: {
 						...responder.llmModelConfig,
-						modelName: reflectionModel,
+						...(modelName ? { modelName } : {}),
+						reasoningEffort: responder.llmModelConfig.reflectionReasoningEffort,
 					},
 				}
 			: responder
+	const reflector = asReflector(
+		reflectionModel && !explicitMemory && !selfDescription
+			? reflectionModel
+			: undefined,
+	)
 	try {
 		const empty: ReflectionResultType = {
 			emotion: null,
 			userEmotion: null,
 			facts: [],
 		}
-		const settings = gateSettings(responder)
+		const priority = explicitMemory || selfDescription
+		const settings = priority
+			? prioritySettings(gateSettings(responder))
+			: gateSettings(responder)
+		if (priority)
+			reflectionLogger.info(
+				"🧠 self-description — reflecting on the priority lane",
+				{ responderId: key },
+			)
 		const prompt = buildReflectionPrompt(
 			persona,
 			userText,
@@ -273,6 +416,12 @@ export const runReflection = async (
 					if (wasYielded()) return empty
 					const parsed = parseLlmJson(raw)
 					const obj = parsed.value ?? {}
+					reflectionLogger.debug("🧠 reflection raw output", {
+						site: "reflection",
+						model: reflector.llmModelConfig?.modelName,
+						state: parsed.state,
+						raw,
+					})
 					if (parsed.state === "repaired") {
 						const factsTruncated =
 							raw.includes('"facts"') &&
@@ -295,21 +444,22 @@ export const runReflection = async (
 					const userEmotion: UserEmotionType | null = flags.emotion
 						? parseUserEmotionFromObject(obj.userEmotion)
 						: null
+					const candidates = flags.facts ? parseFacts(obj.facts) : []
 					let facts: RawFactType[] = flags.facts
-						? filterReflectionFacts(parseFacts(obj.facts), userText, persona)
+						? filterReflectionFacts(candidates, userText, replyText, persona)
 						: []
 					if (explicitMemory && facts.length === 0)
 						reflectionLogger.warn("explicit memory command yielded no facts", {
-							parsed: parseFacts(obj.facts).length,
+							parsed: candidates.length,
 							rawFacts: JSON.stringify(obj.facts ?? null).slice(0, 400),
 						})
-					const declarationMissed =
-						flags.facts &&
-						!explicitMemory &&
-						!!reflectionModel &&
-						facts.length === 0 &&
-						FIRST_PERSON.test(userText) &&
-						!isPureQuestion(userText)
+					const declarationMissed = shouldRetryFactExtraction({
+						factsEnabled: flags.facts,
+						explicitMemory,
+						hasReflectionModel: !!reflectionModel,
+						keptCount: facts.length,
+						userText,
+					})
 					if (explicitMemory)
 						facts = facts.map((f) => ({ ...f, explicit: true }))
 					if (declarationMissed) {
@@ -326,22 +476,32 @@ export const runReflection = async (
 							false,
 						)
 						const retryRaw = await withTimeout(
-							runLLMJson(responder, retryPrompt, shouldAbort),
+							runLLMJson(asReflector(), retryPrompt, shouldAbort),
 							settings.timeoutMs,
 							"reflection-retry",
 						)
 						if (!wasYielded()) {
-							const retryObj = parseLlmJson(retryRaw).value ?? {}
-							facts = filterReflectionFacts(
+							const retryParsed = parseLlmJson(retryRaw)
+							const retryObj = retryParsed.value ?? {}
+							reflectionLogger.debug("🧠 reflection raw output", {
+								site: "reflection-retry",
+								model: responder.llmModelConfig?.modelName,
+								state: retryParsed.state,
+								raw: retryRaw,
+							})
+							const retryFacts = filterReflectionFacts(
 								parseFacts(retryObj.facts),
 								userText,
+								replyText,
 								persona,
 							)
+							if (retryFacts.length) facts = retryFacts
 						}
 					}
 					return { emotion, userEmotion, facts }
 				},
 				empty,
+				priority,
 			)
 			if (!wasYielded()) return result
 			reflectionLogger.info(

@@ -1,2 +1,3 @@
 export * from "./types"
-export * from "./catalogs"
+export * from "./registry"
+export * from "./anaphora"

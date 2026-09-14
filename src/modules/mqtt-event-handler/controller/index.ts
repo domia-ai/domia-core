@@ -5,7 +5,6 @@ import type {
 } from "../types"
 import {
 	MESH_CONTROL_ENVELOPE_FIELDS,
-	MESH_DROP_WARN_WINDOW_MS,
 	MESH_IDENTITY_FIELD_BY_EVENT,
 	SIGNATURE_POLICY_REJECT_REASONS,
 } from "../constants"
@@ -15,6 +14,7 @@ import {
 	type LoggerType,
 	type MeshControlRejectReasonType,
 	type MeshDropWarnSummaryType,
+	type MeshDropWarnThrottleType,
 	createMeshDropWarnThrottle,
 	createMeshReplayGuard,
 	verifyMeshControlEnvelope,
@@ -27,6 +27,7 @@ import {
 	getNodeId,
 } from "@/modules/core"
 import { setPeerSpeaking, clearPeerSpeech } from "@/modules/core-bus"
+import { getNodeConfig } from "@/modules/node-config"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
 import { receiveHeartbeat } from "@/modules/heartbeat-manager"
 import { markPeerOfflineByNodeId } from "@/modules/network-sync"
@@ -42,15 +43,24 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 
 const meshGuard = createMeshReplayGuard()
 
-const dropWarns = createMeshDropWarnThrottle({
-	windowMs: MESH_DROP_WARN_WINDOW_MS,
-})
+let dropWarnWindowMs = getNodeConfig().meshDropWarnWindowMs
+let dropWarns = createMeshDropWarnThrottle({ windowMs: dropWarnWindowMs })
+
+const meshDropWarns = (): MeshDropWarnThrottleType => {
+	const windowMs = getNodeConfig().meshDropWarnWindowMs
+	if (windowMs !== dropWarnWindowMs) {
+		dropWarnWindowMs = windowMs
+		dropWarns = createMeshDropWarnThrottle({ windowMs })
+	}
+	return dropWarns
+}
 
 const summaryLine = (summary: MeshDropWarnSummaryType): string =>
 	`⚠️ ${summary.label} dropped — ${summary.reason} ×${summary.suppressed} more in the last ${Math.round(summary.windowMs / 1_000)}s`
 
 const flushDropWarns = (logger: LoggerType): void => {
-	for (const summary of dropWarns.sweep()) logger.warn(summaryLine(summary))
+	for (const summary of meshDropWarns().sweep())
+		logger.warn(summaryLine(summary))
 }
 
 const warnDrop = ({
@@ -60,7 +70,7 @@ const warnDrop = ({
 	text,
 	logger,
 }: WarnDropArgsType): void => {
-	const { emit, summary } = dropWarns.record({ identity, reason, label })
+	const { emit, summary } = meshDropWarns().record({ identity, reason, label })
 	if (summary) logger.warn(summaryLine(summary))
 	if (emit) logger.warn(text)
 }
@@ -173,7 +183,7 @@ export const handleMqttMessage = ({
 			payload,
 			topicIdentity,
 			identityField: MESH_IDENTITY_FIELD_BY_EVENT[eventName],
-			toleranceMs: domia.peerStaleAfterMs,
+			toleranceMs: getNodeConfig().meshControlToleranceMs,
 			guard: meshGuard,
 			isLastWill: eventName === MQTT_EVENT_ENUM.OFFLINE,
 		})

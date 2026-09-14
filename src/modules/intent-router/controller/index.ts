@@ -2,6 +2,7 @@ import {
 	SKILLS_ROUTING_ENUM,
 	DEFAULT_INTENT_MODEL,
 	DEFAULT_INTENT_EMBED_THRESHOLD,
+	DEFAULT_INTENT_LEXICAL_MIN_SCORE,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { runLLMIntent } from "@/modules/llm-engine"
@@ -17,11 +18,20 @@ import {
 	exampleEmbeddings,
 	toolEmbeddings,
 	lexicalToolScore,
+	splitClauses,
+	hasReadTool,
+	intentCacheScope,
+	isIntentCacheEnabled,
+	lookupIntentCacheExact,
+	lookupIntentCacheSemantic,
+	noteIntentCacheMiss,
+	rememberIntentDecision,
 } from "../utils"
 import type {
 	IntentDecisionType,
 	IntentToolHintType,
 	IntentRoutingHintsType,
+	IntentEmbeddingOutcomeType,
 } from "../types"
 
 const EMBED_AMBIGUITY_BAND = 0.06
@@ -42,6 +52,60 @@ export const routingBlockerHit = (
 	}
 	return null
 }
+
+const foldMarker = (v: string): string =>
+	v.toLowerCase().replace(/[‘’ʼ]/g, "'").normalize("NFD").replace(/\p{M}/gu, "")
+
+const markerHit = (transcript: string, markers: string[]): string | null => {
+	const folded = foldMarker(transcript)
+	for (const marker of markers)
+		if (folded.includes(foldMarker(marker))) return marker
+	return null
+}
+
+export const personalQuestionHit = (
+	transcript: string,
+	language: string | null | undefined,
+): string | null =>
+	markerHit(
+		transcript,
+		languageSetsFor(language ?? null).personalQuestionMarkers,
+	)
+
+const EDGE_PUNCTUATION_RE = /^[\s¿¡"']+|[\s?!.,"']+$/g
+
+const structuralStateQuestion = (
+	transcript: string,
+	openers: string[],
+	stateWords: string[],
+): string | null => {
+	const folded = foldMarker(transcript).replace(EDGE_PUNCTUATION_RE, "")
+	const opener = openers.find((o) => folded.startsWith(`${foldMarker(o)} `))
+	if (!opener) return null
+	const word = stateWords.find((w) => folded.endsWith(` ${foldMarker(w)}`))
+	return word ? `${opener} … ${word}` : null
+}
+
+export const stateQuestionHit = (
+	transcript: string,
+	language: string | null | undefined,
+): string | null => {
+	const sets = languageSetsFor(language ?? null)
+	return (
+		markerHit(transcript, sets.stateQuestionMarkers) ??
+		structuralStateQuestion(
+			transcript,
+			sets.stateQuestionOpeners,
+			sets.stateWords,
+		)
+	)
+}
+
+export const retryCueHit = (
+	transcript: string,
+	language: string | null | undefined,
+): string | null =>
+	markerHit(transcript, languageSetsFor(language ?? null).retryCues)
 
 export const scoreIntentEmbedding = async (
 	domia: DomiaType,
@@ -90,19 +154,55 @@ const numericFollowUp = (
 	return hasNumber
 }
 
+const someClauseNeedsTools = async (
+	domia: DomiaType,
+	transcript: string,
+	toolVecs: number[][],
+	exampleVecs: number[][] | null,
+): Promise<boolean> => {
+	const language = domia.characterProfile?.language
+	const clauses = splitClauses(transcript, language).filter(
+		(clause) => personalQuestionHit(clause, language) === null,
+	)
+	if (clauses.length === 0) return false
+	const vectors = await embed(domia, clauses)
+	if (!vectors) return false
+	const reference = exampleVecs ? [...toolVecs, ...exampleVecs] : toolVecs
+	return vectors.some((query) =>
+		reference.some(
+			(vec) => cosine(query, vec) >= DEFAULT_INTENT_EMBED_THRESHOLD,
+		),
+	)
+}
+
 const classifyByEmbedding = async (
 	domia: DomiaType,
 	transcript: string,
 	tools: IntentToolHintType[],
+	scope: string | null,
 	hints?: IntentRoutingHintsType,
-): Promise<IntentDecisionType | "ambiguous" | null> => {
+): Promise<IntentEmbeddingOutcomeType> => {
+	const language = domia.characterProfile?.language
+	const lexicalOnly = (
+		outcome: IntentDecisionType,
+	): IntentEmbeddingOutcomeType => ({ outcome, vector: null })
 	const hit = keyphraseHit(transcript, tools)
-	if (hit) return { needsSkill: true, reason: `keyphrase:${hit}` }
-	if (numericFollowUp(transcript, domia.characterProfile?.language))
-		return { needsSkill: true, reason: "numeric-followup" }
+	if (hit) return lexicalOnly({ needsSkill: true, reason: `keyphrase:${hit}` })
+	if (numericFollowUp(transcript, language))
+		return lexicalOnly({ needsSkill: true, reason: "numeric-followup" })
+	const retry = retryCueHit(transcript, language)
+	if (retry) return lexicalOnly({ needsSkill: true, reason: `retry:${retry}` })
+	if (personalQuestionHit(transcript, language) === null) {
+		const stateQuestion = stateQuestionHit(transcript, language)
+		if (stateQuestion && hasReadTool(domia.id, tools))
+			return lexicalOnly({
+				needsSkill: true,
+				reason: `state-question:${stateQuestion}`,
+			})
+	}
 	if (hints?.keywords?.length) {
 		const kw = keywordHit(transcript, hints.keywords)
-		if (kw) return { needsSkill: true, reason: `keyword:${kw}` }
+		if (kw) return lexicalOnly({ needsSkill: true, reason: `keyword:${kw}` })
 	}
 	const started = Date.now()
 	const [toolVecs, exampleVecs, queryVecs] = await Promise.all([
@@ -113,7 +213,11 @@ const classifyByEmbedding = async (
 		embed(domia, [transcript]),
 	])
 	const query = queryVecs?.[0]
-	if (!toolVecs || !query) return null
+	if (!toolVecs || !query) return { outcome: null, vector: null }
+	if (scope) {
+		const cached = lookupIntentCacheSemantic(domia, scope, query)
+		if (cached) return { outcome: cached, vector: query }
+	}
 	let best = 0
 	for (const vec of toolVecs) best = Math.max(best, cosine(query, vec))
 	if (exampleVecs)
@@ -126,10 +230,13 @@ const classifyByEmbedding = async (
 			: best >= threshold - EMBED_AMBIGUITY_BAND
 				? "ambiguous"
 				: "chat"
+	const lexicalMin =
+		domia.llmModelConfig?.intentLexicalMinScore ??
+		DEFAULT_INTENT_LEXICAL_MIN_SCORE
 	let lexical = 0
 	if (verdict === "chat") {
 		lexical = await lexicalToolScore(domia, transcript, tools)
-		if (lexical > 0) verdict = "ambiguous"
+		if (lexical > 0 && lexical >= lexicalMin) verdict = "ambiguous"
 	}
 	if (verdict === "skill") {
 		const blocker = routingBlockerHit(
@@ -138,14 +245,32 @@ const classifyByEmbedding = async (
 		)
 		if (blocker) verdict = "ambiguous"
 	}
+	const marker =
+		verdict !== "chat" && best < DEFAULT_INTENT_EMBED_THRESHOLD
+			? personalQuestionHit(transcript, domia.characterProfile?.language)
+			: null
+	const personal =
+		marker &&
+		!(await someClauseNeedsTools(domia, transcript, toolVecs, exampleVecs))
+			? marker
+			: null
+	if (personal) verdict = "chat"
 	intentRouterLogger.info(
-		`intent embedding gate: sim=${best.toFixed(3)} lex=${lexical.toFixed(2)} thr=${threshold} → ${verdict} (${Date.now() - started}ms)`,
+		`intent embedding gate: sim=${best.toFixed(3)} lex=${lexical.toFixed(2)} thr=${threshold} lexMin=${lexicalMin}${personal ? ` personal="${personal}"` : ""} → ${verdict} (${Date.now() - started}ms)`,
 		{ domiaId: domia.id },
 	)
-	if (verdict === "ambiguous") return "ambiguous"
+	if (verdict === "ambiguous") return { outcome: "ambiguous", vector: query }
+	if (personal)
+		return {
+			outcome: { needsSkill: false, reason: `personal:${personal}` },
+			vector: query,
+		}
 	return {
-		needsSkill: verdict === "skill",
-		reason: `embedding:${best.toFixed(2)}`,
+		outcome: {
+			needsSkill: verdict === "skill",
+			reason: `embedding:${best.toFixed(2)}`,
+		},
+		vector: query,
 	}
 }
 
@@ -190,15 +315,34 @@ export const classifyNeedsSkill = async (
 		return { needsSkill: true, reason: "always-agent" }
 	if (routing === SKILLS_ROUTING_ENUM.FAST_ROUTER)
 		return { needsSkill: tools.length > 0, reason: "fast-router" }
+	const scope = isIntentCacheEnabled(domia)
+		? intentCacheScope(domia, tools, opts.hints)
+		: null
+	if (scope) {
+		const exact = lookupIntentCacheExact(scope, transcript)
+		if (exact) return exact
+		noteIntentCacheMiss()
+	}
+	const remember = (
+		decision: IntentDecisionType,
+		vector: number[] | null,
+	): IntentDecisionType => {
+		if (scope)
+			rememberIntentDecision(domia, scope, transcript, vector, decision)
+		return decision
+	}
+	let queryVector: number[] | null = null
 	if (routing === SKILLS_ROUTING_ENUM.EMBEDDING_GATE) {
-		const decided = await classifyByEmbedding(
+		const { outcome, vector } = await classifyByEmbedding(
 			domia,
 			transcript,
 			tools,
+			scope,
 			opts.hints,
 		)
-		if (decided && decided !== "ambiguous") return decided
-		if (decided === null) {
+		queryVector = vector
+		if (outcome && outcome !== "ambiguous") return remember(outcome, vector)
+		if (outcome === null) {
 			intentRouterLogger.warn(
 				"embedding gate unavailable — falling back to LLM classifier",
 				{ domiaId: domia.id },
@@ -224,7 +368,7 @@ export const classifyNeedsSkill = async (
 			})
 			return { needsSkill: false, reason: "classify-failed" }
 		}
-		return { needsSkill: decided, reason: "classified" }
+		return remember({ needsSkill: decided, reason: "classified" }, queryVector)
 	} catch (error) {
 		intentRouterLogger.warn("intent classify failed — failing closed to chat", {
 			domiaId: domia.id,

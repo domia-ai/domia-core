@@ -8,6 +8,7 @@ const STEADY_NOISE_PENALTY = 0.5
 
 export const energyWakeVerifier: WakeVerifierEngineAdapterType = {
 	id: WAKE_VERIFIER_ENUM.ENERGY,
+	concurrent: false,
 	verify: ({ pcm, sampleRate }, config) => {
 		const frameBytes = Math.max(
 			2,

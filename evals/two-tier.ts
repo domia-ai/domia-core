@@ -42,6 +42,7 @@ import {
 	DEFAULT_TWO_TIER_PREFILL_IDLE_GUARD_MS,
 	DEFAULT_TWO_TIER_RESUME_GRACE_MS,
 	DEFAULT_TWO_TIER_MAX_EAGER_PREFILLS,
+	DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
 	type SelectWakeWordConfigType,
 	type SelectLlmModelConfigType,
 } from "@/db"
@@ -60,6 +61,7 @@ const cfg = (
 	prefillIdleGuardMs: 150,
 	resumeGraceMs: 300,
 	maxEagerPrefills: 3,
+	settleMaxWaitMs: DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
 	...overrides,
 })
 
@@ -234,13 +236,14 @@ const runTrackerChecks = (): void => {
 
 	const defaults = twoTierConfigFromWakeWord(baseWakeWordConfig())
 	checker.check(
-		"schema defaults: OFF, chars/guard/grace/max carried from constants",
+		"schema defaults: OFF, chars/guard/grace/max/settle-wait carried from constants",
 		defaults.enabled === DEFAULT_TWO_TIER_ENDPOINT_ENABLED &&
 			defaults.eagerMinPartialChars ===
 				DEFAULT_TWO_TIER_EAGER_MIN_PARTIAL_CHARS &&
 			defaults.prefillIdleGuardMs === DEFAULT_TWO_TIER_PREFILL_IDLE_GUARD_MS &&
 			defaults.resumeGraceMs === DEFAULT_TWO_TIER_RESUME_GRACE_MS &&
-			defaults.maxEagerPrefills === DEFAULT_TWO_TIER_MAX_EAGER_PREFILLS,
+			defaults.maxEagerPrefills === DEFAULT_TWO_TIER_MAX_EAGER_PREFILLS &&
+			defaults.settleMaxWaitMs === DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
 		JSON.stringify(defaults),
 	)
 }
@@ -464,7 +467,11 @@ const runSpeculativeTurnChecks = async (): Promise<void> => {
 			activeVoiceReplies(a.domia.id) === 0,
 	)
 	const settledStart = Date.now()
-	await settleEagerPrefill(aPayload?.eagerPrefill, "two-tier-eval")
+	await settleEagerPrefill(
+		aPayload?.eagerPrefill,
+		"two-tier-eval",
+		DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
+	)
 	checker.check(
 		"settleEagerPrefill awaits the hot prefill before decode",
 		Date.now() - settledStart < 500 && a.llm.calls[0].signal?.aborted === false,
@@ -522,10 +529,36 @@ const runSpeculativeTurnChecks = async (): Promise<void> => {
 			cancelled = true
 		},
 	}
-	await settleEagerPrefill(divergent, "two-tier-eval")
+	await settleEagerPrefill(
+		divergent,
+		"two-tier-eval",
+		DEFAULT_TWO_TIER_SETTLE_MAX_WAIT_MS,
+	)
 	checker.check(
 		"settleEagerPrefill never waits on a divergent prefill",
 		cancelled,
+	)
+
+	const stuck = { cancels: 0 }
+	const neverSettles: EagerPrefillHandleType = {
+		partial: "x",
+		relation: "extends",
+		settled: new Promise<void>(() => undefined),
+		cancel: () => {
+			stuck.cancels += 1
+		},
+	}
+	const stuckStart = Date.now()
+	const stuckOutcome = await settleEagerPrefill(
+		neverSettles,
+		"two-tier-eval",
+		50,
+	)
+	const stuckWaitMs = Date.now() - stuckStart
+	checker.check(
+		"a never-settling prefill falls back to decode within the settle wait",
+		stuckOutcome === "decode" && stuck.cancels === 1 && stuckWaitMs < 1000,
+		`outcome=${stuckOutcome} cancels=${stuck.cancels} waited=${stuckWaitMs}ms`,
 	)
 
 	let released = 0

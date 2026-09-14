@@ -19,6 +19,7 @@ import { foldText as fold, tokensOf } from "@/utils/text-tokens"
 import type { SkillSpecializationType, SkillConnHandleType } from "../../types"
 import { resolveDescriptor } from "../../utils/descriptor"
 import { findToolByBaseName, toolBaseName } from "../../utils/tool-name"
+import { bestByName, stripTokens } from "../../utils/name-match"
 import type { HaEntityType, HaContextCacheType } from "./types"
 import {
 	HA_SPECIALIZATION_KIND,
@@ -27,6 +28,7 @@ import {
 	HA_PLACEHOLDER_RE,
 	HA_CONTEXT_TTL_MS,
 	HA_CONTEXT_TOOL,
+	HA_TARGET_ARGS,
 	HA_NAME_MATCH_MIN,
 	HA_FULL_COVERAGE_SCORE,
 	HA_SENSITIVE_TOOL_RE,
@@ -171,82 +173,30 @@ const contextFor = (providerId: string): HaContextCacheType | null => {
 	return cached
 }
 
-const nameScore = (
-	query: string,
-	candidate: string,
-	generic: Set<string>,
-): number => {
-	const qAll = tokensOf(query)
-	const qSignal = qAll.filter((t) => !generic.has(t))
-	const useSignal = qSignal.length > 0
-	const q = new Set(useSignal ? qSignal : qAll)
-	const cAll = tokensOf(candidate)
-	const cSignal = cAll.filter((t) => !generic.has(t))
-	const c = useSignal && cSignal.length > 0 ? cSignal : cAll
-	if (q.size === 0 || c.length === 0) return 0
-	let hits = 0
-	for (const token of c) {
-		for (const qt of q) {
-			if (token === qt || token.startsWith(qt) || qt.startsWith(token)) {
-				hits++
-				break
-			}
-		}
-	}
-	if (!useSignal) return Math.min(1, hits / q.size)
-	let covered = 0
-	for (const qt of q) {
-		for (const token of c) {
-			if (token === qt || token.startsWith(qt) || qt.startsWith(token)) {
-				covered++
-				break
-			}
-		}
-	}
-	const ratio = hits / Math.max(q.size, c.length)
-	return covered === q.size ? Math.max(ratio, HA_FULL_COVERAGE_SCORE) : ratio
-}
-
-const stripTokens = (candidate: string, drop: Set<string>): string =>
-	tokensOf(candidate)
-		.filter((t) => !drop.has(t))
-		.join(" ")
+const entityNameVariants = (
+	entity: HaEntityType,
+	areaTokens: Set<string> | null,
+): string[] =>
+	entity.names.flatMap((candidate) => [
+		candidate,
+		...(areaTokens ? [stripTokens(candidate, areaTokens)] : []),
+		...(entity.area ? [`${candidate} ${entity.area}`] : []),
+	])
 
 const bestEntityIn = (
 	entities: HaEntityType[],
 	query: string,
 	generic: Set<string>,
 	areaTokens: Set<string> | null,
-): HaEntityType | null => {
-	const folded = fold(query)
-	let best: { entity: HaEntityType; score: number } | null = null
-	let tied = false
-	for (const entity of entities) {
-		let entityScore = 0
-		for (const candidate of entity.names) {
-			const stripped = areaTokens ? stripTokens(candidate, areaTokens) : null
-			const score =
-				fold(candidate) === folded || (stripped && fold(stripped) === folded)
-					? 1
-					: Math.max(
-							nameScore(query, candidate, generic),
-							stripped ? nameScore(query, stripped, generic) : 0,
-							entity.area
-								? nameScore(query, `${candidate} ${entity.area}`, generic)
-								: 0,
-						)
-			entityScore = Math.max(entityScore, score)
-		}
-		if (entityScore > (best?.score ?? 0)) {
-			best = { entity, score: entityScore }
-			tied = false
-		} else if (entityScore === best?.score && entityScore > 0) {
-			tied = true
-		}
-	}
-	if (!best || best.score < HA_NAME_MATCH_MIN || tied) return null
-	return best.entity
-}
+): HaEntityType | null =>
+	bestByName(
+		entities,
+		(entity) => entityNameVariants(entity, areaTokens),
+		query,
+		generic,
+		HA_NAME_MATCH_MIN,
+		HA_FULL_COVERAGE_SCORE,
+	)
 
 const resolveEntity = (
 	ctx: HaContextCacheType,
@@ -291,6 +241,36 @@ const echoesName = (value: string, name: string): boolean => {
 	const nameTokens = new Set(tokensOf(name))
 	const valueTokens = tokensOf(value)
 	return valueTokens.length > 0 && valueTokens.every((t) => nameTokens.has(t))
+}
+
+const hasTargetArg = (args: Record<string, unknown>): boolean =>
+	HA_TARGET_ARGS.some((key) => {
+		const value = args[key]
+		if (typeof value === "string") return value.trim().length > 0
+		return Array.isArray(value) && value.length > 0
+	})
+
+const phraseInTokens = (tokens: string[], phrase: string): boolean => {
+	const parts = tokensOf(phrase)
+	if (parts.length === 0) return false
+	return tokens.some((_, i) => parts.every((p, k) => tokens[i + k] === p))
+}
+
+const domainsSpokenIn = (tokens: string[], language: string | null): string[] =>
+	Object.entries(languageSetsFor(language).domainWords)
+		.filter(([, words]) => words.some((w) => phraseInTokens(tokens, w)))
+		.map(([domain]) => domain)
+
+const actionableDomainsOf = (providerId: string): string[] => {
+	const ctx = contextFor(providerId)
+	if (!ctx) return []
+	return [
+		...new Set(
+			ctx.entities
+				.map((e) => e.domain)
+				.filter((d) => d.length > 0 && !HA_SENSITIVE_DOMAIN_RE.test(d)),
+		),
+	]
 }
 
 const invocationTarget = (args: Record<string, unknown>): string | null => {
@@ -509,6 +489,28 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 			targetNames,
 			...(verb ? { summary: `${verb} ${target}` } : {}),
 		}
+	},
+	inferWriteTarget: (provider, _rawName, args, transcript, language) => {
+		if (hasTargetArg(args)) return { kind: "targeted" }
+		const tokens = tokensOf(transcript)
+		const spoken = domainsSpokenIn(tokens, language)
+		if (spoken.length > 0) {
+			skillEngineLogger.info(
+				`🏠 targetless write → domain ${JSON.stringify(spoken)}`,
+			)
+			return { kind: "inferred", args: { domain: spoken } }
+		}
+		const blanket = languageSetsFor(language).allCues.some((cue) =>
+			phraseInTokens(tokens, cue),
+		)
+		const actionable = blanket ? actionableDomainsOf(provider.id) : []
+		if (actionable.length > 0) {
+			skillEngineLogger.info(
+				`🏠 blanket write → domain ${JSON.stringify(actionable)}`,
+			)
+			return { kind: "inferred", args: { domain: actionable } }
+		}
+		return { kind: "untargeted" }
 	},
 	fastPathSlotValues: (provider, key) => {
 		const ctx = contextCache.get(provider.id)

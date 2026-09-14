@@ -15,6 +15,7 @@ import {
 	DEFAULT_OLLAMA_KEEP_ALIVE_MS,
 	DEFAULT_TOOL_CALL_TEMPERATURE,
 	DEFAULT_TOOL_CALL_NUM_PREDICT,
+	REASONING_EFFORT_ENUM,
 } from "@/db"
 import type {
 	ChatMessageType,
@@ -62,7 +63,15 @@ const getClient = (domia: DomiaType): Ollama => {
 	return client
 }
 
-const resolveKeepAlive = (domia: DomiaType): number => {
+const resolveThink = (
+	domia: DomiaType,
+): { think: boolean | "low" | "medium" | "high" } | Record<string, never> => {
+	const effort = domia.llmModelConfig?.reasoningEffort
+	if (!effort) return {}
+	return { think: effort === REASONING_EFFORT_ENUM.NONE ? false : effort }
+}
+
+export const resolveKeepAlive = (domia: DomiaType): number => {
 	const ms = domia.llmModelConfig?.keepAliveMs ?? DEFAULT_OLLAMA_KEEP_ALIVE_MS
 	return ms < 0 ? -1 : Math.round(ms / 1000)
 }
@@ -89,7 +98,7 @@ const requireModel = (domia: DomiaType): string => {
 	return modelName
 }
 
-const resolveOptions = (domia: DomiaType) => {
+export const resolveOptions = (domia: DomiaType) => {
 	const config = domia.llmModelConfig
 	return {
 		temperature: config?.temperature,
@@ -127,6 +136,7 @@ export const runOllama = async (
 			prompt: promptContext,
 			stream: false,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			options: resolveOptions(domia),
 		})
 		onUsage?.(ollamaUsage(response, domia.llmModelConfig?.contextWindow))
@@ -158,6 +168,7 @@ const runOllamaStream = async function* (
 			prompt: promptContext,
 			stream: true,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			options: resolveOptions(domia),
 		})
 		abortStream = () => stream.abort()
@@ -200,6 +211,7 @@ const runOllamaConstrainedJson = async (
 			prompt,
 			stream: false,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			format: schema,
 			options: { ...resolveOptions(domia), temperature: 0, num_predict: 256 },
 		})
@@ -232,6 +244,7 @@ const runOllamaChatConstrainedJson = async (
 			messages: toOllamaMessages(messages),
 			stream: true,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			format: schema,
 			options: resolveToolCallOptions(domia),
 		})
@@ -272,6 +285,7 @@ const runOllamaJson = async (
 			prompt: promptContext,
 			stream: true,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			format: "json",
 			options: { ...resolveOptions(domia), num_predict: JSON_NUM_PREDICT },
 		})
@@ -359,6 +373,7 @@ const runOllamaWithTools = async (
 			tools: toOllamaTools(effectiveTools),
 			stream: true,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			options: resolveToolCallOptions(domia),
 		})
 		onAbort = () => stream.abort()
@@ -427,6 +442,7 @@ const runOllamaReplyStreamOrTools = async (
 			tools: toOllamaTools(toolChoice === "none" ? [] : tools),
 			stream: true,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			options: resolveToolCallOptions(domia),
 		})
 		signal?.addEventListener(
@@ -525,8 +541,13 @@ const runOllamaIntent = async (
 			prompt,
 			stream: false,
 			keep_alive: resolveKeepAlive(domia),
+			...resolveThink(domia),
 			format: "json",
-			options: { temperature: 0, num_predict: INTENT_NUM_PREDICT },
+			options: {
+				num_ctx: domia.llmModelConfig?.contextWindow,
+				temperature: 0,
+				num_predict: INTENT_NUM_PREDICT,
+			},
 		})
 		return response.response.trim() || ""
 	} catch (error) {
@@ -549,7 +570,7 @@ const warmupModel = async (
 		prompt: "Hi",
 		stream: false,
 		keep_alive: resolveKeepAlive(domia),
-		options: { num_predict: 1 },
+		options: { ...resolveOptions(domia), num_predict: 1 },
 	})
 }
 

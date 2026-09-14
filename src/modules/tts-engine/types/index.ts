@@ -1,5 +1,6 @@
 import { TtsEngineEnumType } from "@/db"
 import type { DomiaType } from "@/modules/core"
+import type { InferencePoolType } from "@/modules/inference-pool"
 
 export type RunTtsResultType = {
 	engineUsed: TtsEngineEnumType
@@ -35,6 +36,7 @@ export type TtsVoiceInputType = {
 
 export type RunTtsOptionsType = {
 	voice?: TtsVoiceInputType
+	pool?: InferencePoolType
 }
 
 export type PhraseCacheEntryType = {
@@ -139,6 +141,18 @@ export type SupertonicWorkerEngineConfigType = {
 	provider: string
 	maxNumSentences: number
 	numSteps: number
+	quantization: string | null
+}
+
+export type SupertonicPathsType = {
+	dir: string
+	durationPredictor: string
+	textEncoder: string
+	vectorEstimator: string
+	vocoder: string
+	ttsJson: string
+	unicodeIndexer: string
+	voiceStyle: string
 }
 
 export type SupertonicWorkerJobType = {

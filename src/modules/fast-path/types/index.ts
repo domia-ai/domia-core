@@ -37,6 +37,12 @@ export type CompiledFastPathIndexType = {
 	builtAt: number
 }
 
+export type BareEntityMatchType = {
+	name: string
+	phrase: string
+	providerSlug: string
+}
+
 export type FastPathMatchType = {
 	tool: string
 	namespacedName: string
@@ -54,21 +60,23 @@ export type FastPathCandidateVerdictType =
 	| { kind: "ambiguous" }
 	| { kind: "none" }
 
+export type FastPathMissReasonType =
+	| "disabled"
+	| "no_index"
+	| "too_long"
+	| "blocked_token"
+	| "no_match"
+	| "ambiguous"
+
+export type FastPathUntimedVerdictType =
+	| { kind: "match"; match: FastPathMatchType }
+	| { kind: "compound"; matches: FastPathMatchType[] }
+	| { kind: "miss"; reason: FastPathMissReasonType }
+
 export type FastPathVerdictType =
 	| { kind: "match"; match: FastPathMatchType; fastPathMs: number }
 	| { kind: "compound"; matches: FastPathMatchType[]; fastPathMs: number }
-	| {
-			kind: "miss"
-			reason:
-				| "disabled"
-				| "no_index"
-				| "too_long"
-				| "blocked_token"
-				| "no_match"
-				| "ambiguous"
-				| "rebuilding"
-			fastPathMs: number
-	  }
+	| { kind: "miss"; reason: FastPathMissReasonType; fastPathMs: number }
 
 export type FastPathParseResultType = {
 	consumed: boolean

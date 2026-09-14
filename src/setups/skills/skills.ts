@@ -1,7 +1,9 @@
 import { skillEngineLogger } from "@/utils"
 import { type DomiaType, invalidateOwnDomia } from "@/modules/core"
+import type { SelectSkillProviderType } from "@/db"
 import {
 	connectAll,
+	reconnectProviders,
 	listTools,
 	disconnectProviders,
 	markDispatchedToolRunsLost,
@@ -18,6 +20,49 @@ import { presentElicit } from "@/modules/core-bus"
 import type { McpSetupHandleType } from "./types"
 
 const skillHandles = new Map<string, McpSetupHandleType>()
+const appliedProviders = new Map<string, Map<string, string>>()
+
+const connectionFingerprint = (
+	cfg: SelectSkillProviderType,
+	language: string | null,
+): string =>
+	JSON.stringify([
+		cfg.protocol,
+		cfg.type,
+		cfg.url,
+		cfg.isActive,
+		cfg.auth,
+		cfg.config,
+		cfg.timeout,
+		cfg.trustTier,
+		cfg.descriptor,
+		language,
+	])
+
+const activeProviders = (domia: DomiaType): SelectSkillProviderType[] =>
+	(domia.skillProviders ?? []).filter((s) => s.isActive)
+
+const changedProviders = (domia: DomiaType): SelectSkillProviderType[] => {
+	const applied = appliedProviders.get(domia.domiaKey)
+	if (!applied) return []
+	const language = domia.characterProfile?.language ?? null
+	return activeProviders(domia).filter(
+		(cfg) => applied.get(cfg.id) !== connectionFingerprint(cfg, language),
+	)
+}
+
+const rememberProviders = (domia: DomiaType): void => {
+	const language = domia.characterProfile?.language ?? null
+	appliedProviders.set(
+		domia.domiaKey,
+		new Map(
+			activeProviders(domia).map((s) => [
+				s.id,
+				connectionFingerprint(s, language),
+			]),
+		),
+	)
+}
 
 let lostSweepDone = false
 let confirmationsRehydrated = false
@@ -62,7 +107,8 @@ export const setupSkills = async (
 	}
 	if (!confirmationsRehydrated) await ensureConfirmationsRehydrated()
 	const skillsOn = domia.moduleSettings?.skillsEngine === true
-	const servers = (domia.skillProviders ?? []).filter((s) => s.isActive)
+	const servers = activeProviders(domia)
+	rememberProviders(domia)
 	if (!skillsOn || servers.length === 0) {
 		skillHandles.delete(domia.domiaKey)
 		skillEngineLogger.info("🧩 Skills disabled — no providers connected")
@@ -104,12 +150,16 @@ export const setupSkills = async (
 	)
 
 	const providerIds = servers.map((s) => s.id)
+	const stopTimers = (): void => {
+		stopped = true
+		if (refreshTimer) clearTimeout(refreshTimer)
+		clearSkillsRefreshHook(domia.id)
+		clearElicitationPresenter(domia.id)
+	}
 	const handle: McpSetupHandleType = {
+		stopTimers,
 		stop: async () => {
-			stopped = true
-			if (refreshTimer) clearTimeout(refreshTimer)
-			clearSkillsRefreshHook(domia.id)
-			clearElicitationPresenter(domia.id)
+			stopTimers()
 			await disconnectProviders(providerIds)
 		},
 	}
@@ -120,10 +170,22 @@ export const setupSkills = async (
 export const stopSkills = async (domiaKey: string): Promise<void> => {
 	const handle = skillHandles.get(domiaKey)
 	skillHandles.delete(domiaKey)
+	appliedProviders.delete(domiaKey)
 	if (handle) await handle.stop()
 }
 
 export const reloadSkills = async (domia: DomiaType): Promise<void> => {
-	await stopSkills(domia.domiaKey)
+	if (domia.moduleSettings?.skillsEngine !== true) {
+		await stopSkills(domia.domiaKey)
+		return
+	}
+	const changed = changedProviders(domia)
+	if (changed.length > 0)
+		await reconnectProviders(
+			domia,
+			changed.map((c) => c.id),
+		)
+	skillHandles.get(domia.domiaKey)?.stopTimers()
+	skillHandles.delete(domia.domiaKey)
 	await setupSkills(domia)
 }

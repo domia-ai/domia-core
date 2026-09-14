@@ -159,7 +159,7 @@ const anaphoraChecks = async (): Promise<void> => {
 	checker.check(
 		"stale trace outside the window yields no entity",
 		stale === null,
-		`got=${stale}`,
+		`got=${JSON.stringify(stale)}`,
 	)
 	dbClient
 		.insert(interactionTrace)
@@ -168,8 +168,13 @@ const anaphoraChecks = async (): Promise<void> => {
 	const fresh = await lastActedEntity(fakeDomia)
 	checker.check(
 		"fresh trace inside the window yields its entity",
-		fresh === "Fresh Lamp",
-		`got=${fresh}`,
+		fresh?.entity === "Fresh Lamp",
+		`got=${JSON.stringify(fresh)}`,
+	)
+	checker.check(
+		"the last acted entity carries its provider slug and a null kind off-connection",
+		fresh?.providerSlug === "reg" && fresh.kind === null,
+		`got=${JSON.stringify(fresh)}`,
 	)
 	dbClient
 		.delete(interactionTrace)

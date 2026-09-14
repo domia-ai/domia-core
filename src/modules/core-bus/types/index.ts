@@ -148,6 +148,7 @@ export type LedgerAnchorType = {
 	text: string
 	startByte: number
 	endByte: number
+	speechEndByte: number
 }
 
 export type PlaybackLedgerType = {
@@ -725,7 +726,10 @@ export type TwoTierEndpointConfigType = {
 	prefillIdleGuardMs: number
 	resumeGraceMs: number
 	maxEagerPrefills: number
+	settleMaxWaitMs: number
 }
+
+export type TwoTierSettleOutcomeType = "reuse" | "decode"
 
 export type TwoTierWindowType = {
 	debounceMs: () => number
@@ -802,6 +806,13 @@ export type SpeculationStatsType = {
 	wastedFirstUnit: number
 	discarded: number
 	wasteRate: number
+}
+
+export type WakeVerifierStatsType = {
+	accepted: number
+	rejected: number
+	failedOpen: number
+	rejectRate: number
 }
 
 export type BargeInStatsType = {
@@ -885,6 +896,8 @@ export type TimerUnitType = {
 
 export type SpokenPositionOptsType = {
 	wordLevelHeard: boolean
+	silenceTrim: boolean
+	silenceRms: number
 }
 
 export type TurnCompletionGuardOptsType = {
@@ -904,3 +917,15 @@ export type SpeakTargetType =
 	| { kind: "local" }
 	| { kind: "satellite"; satelliteId: string }
 	| { kind: "broadcast" }
+
+export type ReloadGateType = {
+	acquire: (domiaIds: string[]) => () => void
+	isGated: (domiaId: string) => boolean
+	waitForRelease: (domiaId: string, timeoutMs: number) => Promise<boolean>
+}
+
+export type LastActedEntityType = {
+	entity: string
+	providerSlug: string | null
+	kind: string | null
+}

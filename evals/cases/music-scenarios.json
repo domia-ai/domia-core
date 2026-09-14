@@ -1,0 +1,306 @@
+[
+	{
+		"name": "music by voice with both providers connected",
+		"suite": "tool-scenarios",
+		"language": "en",
+		"site": "mock",
+		"mockMusic": {
+			"stateful": true
+		},
+		"entities": {
+			"light": "lightA",
+			"secondLight": "lightB"
+		},
+		"turns": [
+			{
+				"name": "play with no speaker uses the satellite default player",
+				"gate": true,
+				"text": "Play Karma Police",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "music_play",
+					"notTools": ["HassTurnOn", "HassTurnOff"],
+					"replyMatches": "Karma Police|playing",
+					"mockMusicState": {
+						"player": "{{speaker.satellite.playerId}}",
+						"state": "playing",
+						"currentItemMatches": "Karma Police"
+					}
+				}
+			},
+			{
+				"name": "play by artist on a named speaker",
+				"gate": true,
+				"text": "Play Radiohead in the {{speaker.speakerA.spoken}}",
+				"expect": {
+					"tool": "music_play",
+					"notTools": ["HassTurnOn", "HassTurnOff"],
+					"argsSubset": {
+						"player": "{{speaker.speakerA.name}}"
+					},
+					"replyMatches": "Radiohead|playing",
+					"mockMusicState": {
+						"player": "{{speaker.speakerA.playerId}}",
+						"state": "playing"
+					}
+				}
+			},
+			{
+				"name": "anaphora: turn it up resolves on the speaker that just played",
+				"gate": true,
+				"text": "Turn it up",
+				"expect": {
+					"fastPath": true,
+					"tools": ["volume_volume_up"],
+					"toolsNamespaced": ["music__volume_volume_up"],
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"],
+					"mockMusicState": {
+						"player": "{{speaker.speakerA.playerId}}",
+						"volumeLevel": 40
+					}
+				}
+			},
+			{
+				"name": "anaphora: turn it off after a play pauses that speaker, never a light",
+				"gate": true,
+				"text": "Turn it off",
+				"expect": {
+					"fastPath": true,
+					"tool": "playback_pause",
+					"notTools": ["HassTurnOff"],
+					"mockMusicState": {
+						"player": "{{speaker.speakerA.playerId}}",
+						"state": "paused"
+					}
+				}
+			},
+			{
+				"name": "pause (fast path)",
+				"gate": true,
+				"text": "Pause the music",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["playback_pause"],
+					"toolsNamespaced": ["music__playback_pause"],
+					"mockMusicState": {
+						"player": "{{speaker.satellite.playerId}}",
+						"state": "paused"
+					}
+				}
+			},
+			{
+				"name": "resume (fast path)",
+				"gate": true,
+				"text": "Resume the music",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["playback_resume"],
+					"mockMusicState": {
+						"player": "{{speaker.satellite.playerId}}",
+						"state": "playing"
+					}
+				}
+			},
+			{
+				"name": "next track (fast path)",
+				"gate": true,
+				"text": "Next song",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["playback_next_track"]
+				}
+			},
+			{
+				"name": "volume set to sixty (fast path)",
+				"gate": true,
+				"text": "Set the volume to sixty percent",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["volume_volume_set"],
+					"mockMusicState": {
+						"player": "{{speaker.satellite.playerId}}",
+						"volumeLevel": 60
+					}
+				}
+			},
+			{
+				"name": "volume down (fast path)",
+				"gate": true,
+				"text": "Turn the volume down",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["volume_volume_down"],
+					"mockMusicState": {
+						"player": "{{speaker.satellite.playerId}}",
+						"volumeLevel": 55
+					}
+				}
+			},
+			{
+				"name": "mute (fast path)",
+				"gate": true,
+				"text": "Mute the speakers",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["volume_volume_mute"],
+					"mockMusicState": {
+						"player": "{{speaker.satellite.playerId}}",
+						"muted": true
+					}
+				}
+			},
+			{
+				"name": "which song is this (fast path now playing)",
+				"gate": true,
+				"text": "Which song is this",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["music_now_playing"],
+					"noWrites": true,
+					"replyMatches": "Karma Police|Radiohead"
+				}
+			},
+			{
+				"name": "what's playing (agent path now playing)",
+				"gate": true,
+				"text": "What's playing right now?",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "music_now_playing",
+					"noWrites": true,
+					"replyMatches": "Karma Police|Radiohead"
+				}
+			},
+			{
+				"name": "stop the music pauses playback, never the lights",
+				"gate": true,
+				"text": "Stop the music",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "playback_pause",
+					"notTools": ["HassTurnOff"]
+				}
+			},
+			{
+				"name": "turn off the music pauses playback, never the lights",
+				"gate": true,
+				"text": "Turn off the music",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "playback_pause",
+					"notTools": ["HassTurnOff"]
+				}
+			},
+			{
+				"name": "home-assistant regression: turn on the light (fast path)",
+				"gate": true,
+				"text": "Turn on the {{entity.light.spoken}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["HassTurnOn"],
+					"toolsNamespaced": ["home-assistant__HassTurnOn"]
+				}
+			},
+			{
+				"name": "home-assistant regression: turn on a named light (fast path)",
+				"gate": true,
+				"text": "Turn on the {{entity.secondLight.spoken}}",
+				"expect": {
+					"fastPath": true,
+					"tools": ["HassTurnOn"],
+					"toolsNamespaced": ["home-assistant__HassTurnOn"],
+					"argsSubset": {
+						"name": "{{entity.secondLight.name}}"
+					}
+				}
+			},
+			{
+				"name": "anaphora: turn it off after a light turn-on stays on home assistant",
+				"gate": true,
+				"text": "Turn it off",
+				"expect": {
+					"fastPath": true,
+					"tool": "HassTurnOff",
+					"notTools": ["playback_pause", "volume_volume_down"],
+					"argsSubset": {
+						"name": "{{entity.secondLight.name}}"
+					}
+				}
+			},
+			{
+				"name": "home-assistant regression: turn off the light",
+				"gate": true,
+				"text": "Turn off the {{entity.light.spoken}}",
+				"expect": {
+					"tool": "HassTurnOff",
+					"notTools": ["playback_pause"]
+				}
+			},
+			{
+				"name": "play something by an artist in another room (model quality)",
+				"gate": false,
+				"text": "Play something by Bad Bunny in the {{speaker.speakerB.spoken}}",
+				"expect": {
+					"tool": "music_play",
+					"anyArgMatches": "{{speaker.speakerB.name}}",
+					"mockMusicState": {
+						"player": "{{speaker.speakerB.playerId}}",
+						"state": "playing"
+					}
+				}
+			},
+			{
+				"name": "ES twin: pon música de un artista en una bocina",
+				"gate": false,
+				"text": "Pon música de Radiohead en la {{speaker.speakerA.nameEs}}",
+				"expect": {
+					"tool": "music_play"
+				}
+			},
+			{
+				"name": "ES twin: pausa la música",
+				"gate": false,
+				"text": "Pausa la música",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "playback_pause"
+				}
+			},
+			{
+				"name": "ES twin: siguiente canción",
+				"gate": false,
+				"text": "Siguiente canción",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "playback_next_track"
+				}
+			},
+			{
+				"name": "ES twin: sube el volumen",
+				"gate": false,
+				"text": "Sube el volumen",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "volume_volume_up"
+				}
+			},
+			{
+				"name": "ES twin: ¿qué está sonando?",
+				"gate": false,
+				"text": "¿Qué está sonando?",
+				"satelliteId": "{{speaker.satellite.satelliteId}}",
+				"expect": {
+					"tool": "music_now_playing",
+					"noWrites": true
+				}
+			}
+		]
+	}
+]

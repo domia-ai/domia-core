@@ -1,7 +1,5 @@
 import { languageSetsFor } from "@/utils"
 
-const MAX_EXTRA_WORDS = 1
-
 export const normalizeStopText = (text: string): string =>
 	text
 		.toLowerCase()
@@ -17,6 +15,7 @@ export const matchStopPhrase = (
 	text: string,
 	language: string | null | undefined,
 	maxWords: number,
+	maxExtraWords: number,
 ): string | null => {
 	const normalized = normalizeStopText(text)
 	if (!normalized) return null
@@ -29,7 +28,7 @@ export const matchStopPhrase = (
 	for (const phrase of phrases) {
 		const phraseWords = phrase.split(" ").length
 		const extra = words.length - phraseWords
-		if (extra < 0 || extra > MAX_EXTRA_WORDS) continue
+		if (extra < 0 || extra > maxExtraWords) continue
 		if (
 			normalized === phrase ||
 			normalized.startsWith(`${phrase} `) ||

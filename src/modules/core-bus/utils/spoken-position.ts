@@ -7,16 +7,28 @@ import type {
 } from "../types"
 
 const BYTES_PER_SAMPLE = 2
+const INT16_FULL_SCALE = 32768
 
 const bytesToMs = (bytes: number, format: StreamingSinkFormatType): number =>
 	(bytes / (format.sampleRate * format.channels * BYTES_PER_SAMPLE)) * 1000
 
+export const lastLoudSampleOffset = (
+	chunk: Buffer,
+	amplitude: number,
+): number => {
+	const threshold = amplitude * INT16_FULL_SCALE
+	for (let offset = chunk.length - 2; offset >= 0; offset -= 2) {
+		if (Math.abs(chunk.readInt16LE(offset)) >= threshold) return offset + 2
+	}
+	return 0
+}
+
 export const truncateAtWordBoundary = (text: string, chars: number): string => {
 	if (chars <= 0) return ""
 	if (chars >= text.length) return text
-	const slice = text.slice(0, chars)
-	const lastSpace = slice.lastIndexOf(" ")
-	return lastSpace > 0 ? slice.slice(0, lastSpace) : slice
+	if (/\s/.test(text[chars])) return text.slice(0, chars).trimEnd()
+	const lastSpace = text.lastIndexOf(" ", chars)
+	return lastSpace > 0 ? text.slice(0, lastSpace) : ""
 }
 
 export const heardTextFromUniformRate = (
@@ -30,6 +42,32 @@ export const heardTextFromUniformRate = (
 		reply,
 		Math.floor(reply.length * (positionMs / totalMs)),
 	)
+}
+
+export const heardPrefixOfAnchors = (
+	anchors: LedgerAnchorType[],
+	positionMs: number,
+	format: StreamingSinkFormatType,
+): string => {
+	const heard: string[] = []
+	for (const anchor of anchors) {
+		const startMs = bytesToMs(anchor.startByte, format)
+		const speechEndMs = bytesToMs(anchor.speechEndByte, format)
+		if (speechEndMs <= positionMs) {
+			heard.push(anchor.text)
+			continue
+		}
+		if (startMs >= positionMs) break
+		const fraction = (positionMs - startMs) / Math.max(1, speechEndMs - startMs)
+		heard.push(
+			truncateAtWordBoundary(
+				anchor.text,
+				Math.floor(anchor.text.length * fraction),
+			),
+		)
+		break
+	}
+	return heard.filter(Boolean).join(" ")
 }
 
 export const createPlaybackLedger = (
@@ -62,26 +100,11 @@ export const createPlaybackLedger = (
 		if (fidelity === "none" || anchors.length === 0) return ""
 		if (fidelity === "sentence") {
 			return anchors
-				.filter((a) => bytesToMs(a.endByte, format) <= posMs)
+				.filter((a) => bytesToMs(a.speechEndByte, format) <= posMs)
 				.map((a) => a.text)
 				.join(" ")
 		}
-		const heard: string[] = []
-		for (const a of anchors) {
-			const startMs = bytesToMs(a.startByte, format)
-			const endMs = bytesToMs(a.endByte, format)
-			if (endMs <= posMs) {
-				heard.push(a.text)
-				continue
-			}
-			if (startMs >= posMs) break
-			const fraction = (posMs - startMs) / Math.max(1, endMs - startMs)
-			heard.push(
-				truncateAtWordBoundary(a.text, Math.floor(a.text.length * fraction)),
-			)
-			break
-		}
-		return heard.filter(Boolean).join(" ")
+		return heardPrefixOfAnchors(anchors, posMs, format)
 	}
 
 	return {
@@ -97,12 +120,25 @@ export const createPlaybackLedger = (
 		},
 		wrapSentence: async function* (text, pcm) {
 			const startByte = totalBytes
+			let speechEndByte = startByte
 			for await (const chunk of pcm) {
+				if (opts.silenceTrim) {
+					const loud = lastLoudSampleOffset(chunk, opts.silenceRms)
+					if (loud > 0) speechEndByte = totalBytes + loud
+				}
 				totalBytes += chunk.length
 				yield chunk
 			}
 			if (totalBytes > startByte) {
-				anchors.push({ text, startByte, endByte: totalBytes })
+				anchors.push({
+					text,
+					startByte,
+					endByte: totalBytes,
+					speechEndByte:
+						opts.silenceTrim && speechEndByte > startByte
+							? speechEndByte
+							: totalBytes,
+				})
 			}
 		},
 		pause: () => {

@@ -4,12 +4,14 @@ import type { DomiaType } from "@/modules/core"
 export type ReloadSubsystemType =
 	| "stt-pool"
 	| "tts-pool"
+	| "llm"
 	| "voice-listener"
 	| "mqtt"
 	| "skills"
 	| "satellites"
 	| "identity"
 	| "proactivity"
+	| "voice-feel"
 
 export type ReloaderScopeType = "global" | "per-identity"
 
@@ -119,6 +121,7 @@ export type ReloadRunnerDepsType = {
 	resolveLatest: (domiaKey: string) => Promise<DomiaType | undefined>
 	quiesce: (domiaIds: string[], drainMs: number) => Promise<void>
 	runExclusive: <T>(key: string, fn: () => Promise<T>) => Promise<T>
+	gateReload: (domiaIds: string[]) => () => void
 }
 
 export type ReloadRunInputType = {
@@ -166,7 +169,6 @@ export type ConfigApplyEngineDepsType = {
 	resolve: (domiaKey: string) => Promise<DomiaType | undefined>
 	quiesce: (domiaIds: string[], drainMs: number) => Promise<void>
 	runExclusive: <T>(key: string, fn: () => Promise<T>) => Promise<T>
-	onLlmClientStale: () => void
 	requestRestart: () => void
 	defaultDrainMs: number
 }

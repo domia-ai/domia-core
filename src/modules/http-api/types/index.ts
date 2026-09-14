@@ -17,6 +17,7 @@ import {
 	getAudioQuerySchema,
 	postBenchRunBodySchema,
 	postMeshRotateBodySchema,
+	voiceFeelIdParamsSchema,
 } from "../schemas"
 import type { MeshSecretPostureType } from "@/utils"
 import type { SpeakResultType } from "@/modules/core-bus"
@@ -25,6 +26,8 @@ import type {
 	ConfigApplyResultType,
 	ConfigApplyStateType,
 } from "@/modules/config-apply"
+import type { SkillProviderStatusType } from "@/modules/skill-engine"
+import type { VoiceFeelAdjustmentViewType } from "@/modules/voice-feel"
 
 export type GetConfigResponseType = {
 	config: ConfigSnapshotType
@@ -35,6 +38,11 @@ export type PostConfigResponseType = {
 	config: ConfigSnapshotType
 	apply: ConfigApplyResultType
 	state: ConfigApplyStateType
+}
+
+export type GetSkillsResponseType = {
+	skillsEngine: boolean
+	providers: SkillProviderStatusType[]
 }
 
 export type ProactivityIdentityType = {
@@ -191,4 +199,15 @@ export type PostMeshRotateBodyType = z.infer<typeof postMeshRotateBodySchema>
 
 export type PostMeshRotateResponseType = MeshSecretPostureType & {
 	action: PostMeshRotateBodyType["action"]
+}
+
+export type VoiceFeelIdParamsType = z.infer<typeof voiceFeelIdParamsSchema>
+
+export type VoiceFeelIdRouteType = {
+	Params: VoiceFeelIdParamsType
+}
+
+export type VoiceFeelMutationResponseType = {
+	adjustment: VoiceFeelAdjustmentViewType
+	apply: ConfigApplyResultType
 }

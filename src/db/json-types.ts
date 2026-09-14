@@ -2,9 +2,15 @@ import type {
 	ArgNormalizeOpType,
 	HardwareClassType,
 	BenchStageType,
+	McpProtocolModeType,
 } from "./types"
 
-export type { ArgNormalizeOpType, HardwareClassType, BenchStageType }
+export type {
+	ArgNormalizeOpType,
+	HardwareClassType,
+	BenchStageType,
+	McpProtocolModeType,
+}
 
 export type SkillAuthType =
 	| { kind: "bearer"; token: string }
@@ -39,11 +45,16 @@ export type ToolFinalizeRuleType = {
 export type ToolFinalizeMapType = Partial<Record<string, ToolFinalizeRuleType>>
 
 export type SkillProviderConfigType = {
+	protocolMode?: McpProtocolModeType
 	dataPlane?: "ws" | "poll"
 	wsUrl?: string
 	command?: string
 	commandArgs?: string[]
 	commandEnv?: Record<string, string>
+	rosterTtlMs?: number
+	searchLimit?: number
+	volumeStepPercent?: number
+	playerAliases?: Record<string, string>
 }
 
 export type SkillDescriptorRoutingType = {
@@ -191,3 +202,37 @@ export type BenchThresholdsType = Record<
 	HardwareClassType,
 	Record<BenchStageType, number>
 >
+
+export type VoiceFeelFeaturesType = {
+	turns: number
+	earlyBargeInRate: number
+	lateBargeInRate: number
+	cutOffRate: number
+	perceivedTtfaP50: number
+	eouDelayP50: number
+	noSpeechRate: number
+}
+
+export type VoiceFeelFeatureKeyType = keyof VoiceFeelFeaturesType
+
+export type VoiceFeelConditionType = {
+	feature: VoiceFeelFeatureKeyType
+	op: "gt" | "lt"
+	value: number
+}
+
+export type VoiceFeelKnobType = {
+	section: string
+	field: string
+}
+
+export type VoiceFeelRuleType = {
+	id: string
+	when: readonly VoiceFeelConditionType[]
+	knob: VoiceFeelKnobType
+	step: number
+	min: number
+	max: number
+	minTurns: number
+	enabled: boolean
+}

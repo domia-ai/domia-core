@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process"
 
 import { env } from "./lib/env"
-import { probeRequirements } from "./lib/requirements"
+import { gateRequirements, probeRequirements } from "./lib/requirements"
 import type {
 	EvalBatteryType,
 	EvalRegistrySuiteType,
@@ -22,6 +22,33 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "LLM-output JSON and tool-call parsing",
 	},
 	{
+		name: "intent-cache",
+		file: "intent-cache.ts",
+		battery: "pure",
+		description:
+			"semantic intent cache: exact/semantic hits, scope invalidation, LRU",
+	},
+	{
+		name: "heard-prefix",
+		file: "heard-prefix.ts",
+		battery: "pure",
+		description:
+			"truncate-to-heard: sentence timing, silence trim, word boundaries",
+	},
+	{
+		name: "tool-grammar",
+		file: "tool-grammar.ts",
+		battery: "pure",
+		description: "GBNF tool grammar, catalog prompt block and decision parser",
+	},
+	{
+		name: "voice-feel-rules",
+		file: "voice-feel-rules.ts",
+		battery: "pure",
+		description:
+			"voice-feel features, rule clamps, budget, cooldown and revert",
+	},
+	{
 		name: "language-scaffold",
 		file: "language-scaffold.ts",
 		battery: "pure",
@@ -35,6 +62,53 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "config column classification + config schema coverage",
 	},
 	{
+		name: "skills-reload",
+		file: "skills-reload.ts",
+		battery: "pure",
+		description:
+			"make-before-break skill provider swap on reload (mock MCP servers)",
+	},
+	{
+		name: "node-config",
+		file: "node-config.ts",
+		battery: "pure",
+		description: "host_node column classification, node bundle schema caps",
+	},
+	{
+		name: "config-mirror",
+		file: "config-mirror.ts",
+		battery: "pure",
+		description:
+			"the peer config subset network-sync mirrors (llm/stt/tts) reaches a delegating node",
+	},
+	{
+		name: "model-catalog",
+		file: "model-catalog.ts",
+		battery: "pure",
+		description:
+			"model install spec: subdir resolution, path escapes, license in GET /models",
+	},
+	{
+		name: "tts-model-files",
+		file: "tts-model-files.ts",
+		battery: "pure",
+		description:
+			"supertonic int8/fp32 model file discovery from the bundle dir",
+	},
+	{
+		name: "gate-requirements",
+		file: "gate-requirements.ts",
+		battery: "pure",
+		description:
+			"unmet eval requirements report a reason + recovery instead of passing silently",
+	},
+	{
+		name: "site-map",
+		file: "site-map.ts",
+		battery: "pure",
+		description: "tool-scenario case file, site maps and entity substitution",
+	},
+	{
 		name: "agnostic-gate",
 		file: "agnostic-gate.ts",
 		battery: "pure",
@@ -46,6 +120,26 @@ const SUITES: EvalRegistrySuiteType[] = [
 		battery: "pure",
 		description:
 			"agent guards, confirmations, stale tools, provider status (mock MCP)",
+	},
+	{
+		name: "music-assistant",
+		file: "music-assistant.ts",
+		battery: "pure",
+		description:
+			"music specialization: speaker matching, play planning, spoken text, virtual tools",
+	},
+	{
+		name: "mcp-client",
+		file: "mcp-client.ts",
+		battery: "pure",
+		description: "MCP transport, pagination, elicitation and adapter selection",
+	},
+	{
+		name: "mock-music",
+		file: "mock-music.ts",
+		battery: "pure",
+		description:
+			"mock Music Assistant MCP server: tools, state and behavior gate",
 	},
 	{
 		name: "protocols",
@@ -66,6 +160,20 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "ESPHome adapter contract",
 	},
 	{
+		name: "audio-delivery",
+		file: "audio-delivery.ts",
+		battery: "pure",
+		description:
+			"satellite audio delivery: FLAC encoder, PCM converter, WAV reader, device formats, audio URLs",
+	},
+	{
+		name: "external-media",
+		file: "external-media.ts",
+		battery: "pure",
+		description:
+			"external media registry: playing notes and transport controls",
+	},
+	{
 		name: "fact-dedup",
 		file: "fact-dedup.ts",
 		battery: "pure",
@@ -76,6 +184,12 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "reflection.ts",
 		battery: "pure",
 		description: "reflection scheduling and starvation guard",
+	},
+	{
+		name: "reflection-extraction",
+		file: "reflection-extraction.ts",
+		battery: "pure",
+		description: "fact grounding, attribution and retry predicate",
 	},
 	{
 		name: "bench-run",
@@ -108,7 +222,15 @@ const SUITES: EvalRegistrySuiteType[] = [
 		name: "ears",
 		file: "ears.ts",
 		battery: "pure",
-		description: "echo gate, stop words, wake verifier, denoiser round trip",
+		description:
+			"echo gate, stop words, two-stage wake verifier, denoiser round trip",
+	},
+	{
+		name: "sherpa-gate",
+		file: "sherpa-gate.ts",
+		battery: "pure",
+		description:
+			"canonical KWS check — the gate every sherpa-onnx-node bump must pass",
 	},
 	{
 		name: "otel",
@@ -121,6 +243,21 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "http-surface.ts",
 		battery: "node",
 		description: "every documented HTTP route answers with the expected status",
+	},
+	{
+		name: "voice-feel-live",
+		file: "voice-feel-live.ts",
+		battery: "node",
+		description:
+			"the advisory autotuner records a recommendation and never writes config",
+	},
+	{
+		name: "config-apply-live",
+		file: "config-apply-live.ts",
+		battery: "node",
+		requires: [],
+		description:
+			"a failing engine reload reverts its config section on a live node",
 	},
 	{
 		name: "security-mesh",
@@ -180,7 +317,58 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "tool-scenarios.ts",
 		battery: "tool",
 		requires: ["skills", "ha"],
-		description: "MT1 gates on the real Home Assistant (office light)",
+		description:
+			"MT1 gates on the real Home Assistant (EVAL_HA_SITE=mock|lab|casa)",
+	},
+	{
+		name: "tool-scenarios-mock",
+		file: "tool-scenarios.ts",
+		battery: "tool",
+		env: { EVAL_HA_SITE: "mock" },
+		requires: ["skills"],
+		description: "the tool-scenario chain against the in-process mock HA",
+	},
+	{
+		name: "music-scenarios-mock",
+		file: "tool-scenarios.ts",
+		battery: "tool",
+		env: {
+			EVAL_SCENARIO_FILE: "music-scenarios.json",
+			EVAL_MUSIC_SITE: "mock",
+		},
+		requires: ["skills"],
+		description:
+			"the music chain against the in-process mock Music Assistant + mock HA",
+	},
+	{
+		name: "music-scenarios",
+		file: "tool-scenarios.ts",
+		battery: "tool",
+		env: {
+			EVAL_SCENARIO_FILE: "music-scenarios.json",
+			EVAL_MUSIC_SITE: "casa",
+		},
+		requires: ["skills", "music"],
+		description:
+			"the music chain on the real Music Assistant (EVAL_MUSIC_SITE=casa) — PLAYS ON REAL SPEAKERS",
+	},
+	{
+		name: "conversation-30",
+		file: "conversation-long.ts",
+		battery: "tool",
+		env: { EVAL_HA_SITE: "mock" },
+		requires: ["skills"],
+		description:
+			"30-turn tool-calling conversation against the in-process mock HA (branching, metrics, judge)",
+	},
+	{
+		name: "conversation-30-live",
+		file: "conversation-long.ts",
+		battery: "quality",
+		env: { EVAL_LIVE: "1" },
+		requires: ["skills", "ha"],
+		description:
+			"the 30-turn conversation on the real Home Assistant (EVAL_HA_SITE=lab|casa) — ACTUATES REAL DEVICES",
 	},
 	{
 		name: "tools-scorecard",
@@ -223,6 +411,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "conversation corpus + judge",
 	},
 	{
+		name: "judge-stability",
+		file: "judge-stability.ts",
+		battery: "quality",
+		description:
+			"replays the newest stored conversation transcripts through the judge panel and reports repetition stability + cross-judge agreement (EVAL_JUDGE_MODELS)",
+	},
+	{
 		name: "satellite-persistence",
 		file: "satellite-persistence.ts",
 		battery: "node",
@@ -251,6 +446,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "stt-noise.ts",
 		battery: "hardware",
 		description: "STT under noise classes",
+	},
+	{
+		name: "stt-denoise",
+		file: "stt-denoise.ts",
+		battery: "pure",
+		description:
+			"denoiser engines over the noisy STT fixtures — WER must not regress",
 	},
 	{
 		name: "turn-hold",
@@ -299,6 +501,27 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "llm-tournament.ts",
 		battery: "hardware",
 		description: "LLM model tournament",
+	},
+	{
+		name: "tool-grammar-llm",
+		file: "tool-grammar-llm.ts",
+		battery: "hardware",
+		description:
+			"grammar-native tool decisions against the real llama-server engine path",
+	},
+	{
+		name: "turn-tag-llm",
+		file: "turn-tag-llm.ts",
+		battery: "hardware",
+		description:
+			"single-token turn mark reliability (+ ~ #) on the real LLM, EN+ES corpus",
+	},
+	{
+		name: "mind-dump",
+		file: "mind-dump.ts",
+		battery: "utility",
+		description:
+			"STRICT lossless mind snapshot: dump | verify | restore | counts over 11 tables (remaps domia_id by key; use before/after every db:reset)",
 	},
 	{
 		name: "node-snapshot",
@@ -391,23 +614,41 @@ const main = async (): Promise<void> => {
 	const met: Set<EvalRequirementType> = needsNode
 		? probeRequirements()
 		: new Set()
+	const allowSkip = env.EVAL_ALLOW_SKIP === "1"
 	const failed: string[] = []
 	const skipped: string[] = []
+	const gated: string[] = []
 	for (const suite of selected) {
-		const unmet = (suite.requires ?? []).filter((r) => !met.has(r))
+		const unmet = gateRequirements(suite.requires, met)
 		if (unmet.length > 0) {
-			console.log(`\n⏭️  ${suite.name} SKIPPED — needs ${unmet.join(", ")}`)
-			skipped.push(suite.name)
+			if (allowSkip) {
+				console.log(
+					`\n⏭️  ${suite.name} SKIPPED — needs ${unmet.map((u) => u.requirement).join(", ")} (EVAL_ALLOW_SKIP=1)`,
+				)
+				skipped.push(suite.name)
+				continue
+			}
+			console.error(
+				`\n❌ ${suite.name} CANNOT RUN — missing ${unmet.map((u) => u.requirement).join(", ")}`,
+			)
+			for (const u of unmet) {
+				console.error(`   ${u.requirement}: ${u.reason}`)
+				console.error(`   recover with: ${u.recovery}`)
+			}
+			console.error(
+				"   set EVAL_ALLOW_SKIP=1 to skip unmet suites instead of failing",
+			)
+			gated.push(suite.name)
 			continue
 		}
 		console.log(`\n▶ ${suite.name}`)
 		if (runSuite(suite, extra) !== 0) failed.push(suite.name)
 	}
-	const ran = selected.length - skipped.length
+	const ran = selected.length - skipped.length - gated.length
 	console.log(
-		`\n${battery ?? target}: ${ran - failed.length}/${ran} suites passed${skipped.length ? ` — skipped: ${skipped.join(", ")}` : ""}${failed.length ? ` — failed: ${failed.join(", ")}` : ""}`,
+		`\n${battery ?? target}: ${ran - failed.length}/${ran} suites passed${skipped.length ? ` — skipped: ${skipped.join(", ")}` : ""}${gated.length ? ` — BLOCKED (unmet requirements): ${gated.join(", ")}` : ""}${failed.length ? ` — failed: ${failed.join(", ")}` : ""}`,
 	)
-	process.exit(failed.length === 0 ? 0 : 1)
+	process.exit(failed.length === 0 && gated.length === 0 ? 0 : 1)
 }
 
 void main()

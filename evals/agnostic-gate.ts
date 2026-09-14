@@ -26,6 +26,14 @@ const RULES: GateRuleType[] = [
 	{ label: "lutron", re: /lutron/i },
 	{ label: "area literal", re: /(["'`]area["'`]|\.area\b|\barea:)/ },
 	{ label: "domain literal", re: /(["'`]domain["'`]|\.domain\b|\bdomain:)/ },
+	{ label: "player_id", re: /\bplayer_id\b/ },
+	{ label: "queue_id", re: /\bqueue_id\b/ },
+	{
+		label: "playback_ tool",
+		re: /\bplayback_(play|pause|resume|next|previous|stop|seek|shuffle|repeat|volume)/,
+	},
+	{ label: "library_ tool", re: /\blibrary_/ },
+	{ label: "music-assistant", re: /music[-_ ]?assistant/i },
 ]
 
 const walk = (dir: string): string[] =>

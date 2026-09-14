@@ -60,7 +60,7 @@ export const createCaptureEnhancer = (
 			{
 				engine: engine.id,
 				modelPath: config.denoiseModelPath,
-				hint: "npm run setup:models:gtcrn",
+				hint: `npm run setup:models:${engine.id.toLowerCase()}`,
 				label,
 			},
 		)

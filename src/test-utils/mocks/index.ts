@@ -1,4 +1,5 @@
 export * from "./domia"
+export * from "./host-node"
 export * from "./emotion-state"
 export * from "./module-settings"
 export * from "./character-profile"

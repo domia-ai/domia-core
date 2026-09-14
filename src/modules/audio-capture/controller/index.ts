@@ -30,6 +30,7 @@ import {
 	observeIntraTurnPause,
 	ensureRecordingPath,
 	openMicSource,
+	registerCaptureStop,
 	spawnSoxCapture,
 	writePcmAsWav,
 	clampEndpointDebounceMs,
@@ -110,7 +111,9 @@ export const startAudioRecording = async (
 		() => stopSox("watchdog timeout"),
 		config.maxRecordingMs + debounceMs,
 	)
+	const unregisterStop = registerCaptureStop(domia.id, stopSox)
 	await once(sox, "close")
+	unregisterStop()
 	clearTimeout(watchdog)
 	await writePcmAsWav(
 		outputPath,
@@ -343,7 +346,11 @@ export const startSpeculativeCapture = (
 		() => stopSox("watchdog timeout"),
 		config.maxRecordingMs + debounceMs,
 	)
-	const closePromise = source.closed.then(() => clearTimeout(watchdog))
+	const unregisterStop = registerCaptureStop(domia.id, stopSox)
+	const closePromise = source.closed.then(() => {
+		unregisterStop()
+		clearTimeout(watchdog)
+	})
 	const finalPcmPromise = closePromise.then(() => Buffer.concat(captured))
 	const filePathPromise = finalPcmPromise.then(async (pcm) => {
 		await writePcmAsWav(outputPath, pcm, config)
@@ -545,8 +552,10 @@ export const startAudioStream = (
 		() => stopSox("watchdog timeout"),
 		config.maxRecordingMs + debounceMs,
 	)
+	const unregisterStop = registerCaptureStop(domia.id, stopSox)
 	const closePromise = new Promise<void>((resolve) => {
 		sox.on("close", () => {
+			unregisterStop()
 			clearTimeout(watchdog)
 			resolve()
 		})

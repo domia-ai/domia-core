@@ -1,14 +1,19 @@
 import { configSchema } from "@/modules/config-engine/schemas"
 import {
 	SUPPORTED_LANGUAGES,
+	anaphoraCandidate,
+	applyAnaphora,
 	languageSetsFor,
+	registerCatalogExtension,
 	registerLanguageCatalog,
 } from "@/utils/language-catalogs"
 import type { LanguageCatalogType } from "@/utils/language-catalogs"
 
 import { makeChecker } from "./lib"
+import { stateQuestionHit } from "@/modules/intent-router"
 
 const SYNTHETIC_CODE = "xx"
+const SYNTHETIC_KIND = "zub"
 
 const validConfig = (language: string): Record<string, unknown> => ({
 	domiaKey: "EVAL",
@@ -33,6 +38,7 @@ const syntheticCatalogFromEn = (): LanguageCatalogType => {
 		questionStarters: [...en.questionStarters],
 		requestModals: [...en.requestModals],
 		conjunctions: [...en.conjunctions],
+		additiveCues: [...en.additiveCues],
 		timerKeywords: ["timer", "alarm"],
 		memoryCommandKeywords: ["remember", "forget"],
 		unitWords: { ...en.unitWords },
@@ -40,6 +46,10 @@ const syntheticCatalogFromEn = (): LanguageCatalogType => {
 		negations: ["nay"],
 		fastPathBlockers: [...en.fastPathBlockers],
 		routingBlockers: [...en.routingBlockers],
+		personalQuestionMarkers: [...en.personalQuestionMarkers],
+		stateQuestionMarkers: ["zub encendido"],
+		retryCues: ["zub otra vez"],
+		anaphoraRewrites: [{ pattern: "^wub it$", template: "wub {entity}" }],
 		phrases: { done: "Zub done." },
 	}
 }
@@ -164,6 +174,50 @@ const run = (): void => {
 		"timer keywords stay merged for es",
 		es.timerKeywordsRe.test("temporizador") && es.timerKeywordsRe.test("timer"),
 	)
+	c.check(
+		"state-question markers stay merged for es",
+		es.stateQuestionMarkers.includes("hay algo encendido") &&
+			es.stateQuestionMarkers.includes("is anything still on"),
+	)
+	c.check(
+		"retry cues stay merged for es",
+		es.retryCues.includes("inténtalo de nuevo") &&
+			es.retryCues.includes("try it again"),
+	)
+	c.check(
+		"state-question openers and state words stay merged for es",
+		es.stateQuestionOpeners.includes("están las") &&
+			es.stateQuestionOpeners.includes("are the") &&
+			es.stateWords.includes("encendidas") &&
+			es.stateWords.includes("locked"),
+	)
+
+	console.log("\nstructural state questions")
+	const structuralHits: [string, string][] = [
+		["Are the kitchen island pendants on?", "en"],
+		["Is my front door locked?", "en"],
+		["is the bedroom TV still playing", "en"],
+		["¿Están las luces de la cocina encendidas?", "es"],
+		["¿Está la puerta del garaje cerrada con llave?", "es"],
+	]
+	for (const [text, lang] of structuralHits)
+		c.check(`hit: ${text}`, stateQuestionHit(text, lang) !== null)
+	const structuralMisses: [string, string][] = [
+		["Turn the kitchen lights on", "en"],
+		["Are the pendants on the island", "en"],
+		["Is the kitchen a nice place to cook", "en"],
+		["The office lights are on", "en"],
+		["Enciende las luces de la cocina", "es"],
+	]
+	for (const [text, lang] of structuralMisses)
+		c.check(`miss: ${text}`, stateQuestionHit(text, lang) === null)
+	c.check(
+		"synthetic catalog keeps its own markers plus the en fallback",
+		xx.stateQuestionMarkers.includes("zub encendido") &&
+			xx.stateQuestionMarkers.includes("is anything still on") &&
+			xx.retryCues.includes("zub otra vez") &&
+			xx.retryCues.includes("try it again"),
+	)
 
 	console.log("\narticle regex per language")
 	c.check(
@@ -191,6 +245,75 @@ const run = (): void => {
 	c.check(
 		"es regex does not strip en articles",
 		"the lamp".replace(es.articlePrefixRe, "") === "the lamp",
+	)
+
+	console.log("\nprovider-scoped anaphora rewrites")
+	registerCatalogExtension(SYNTHETIC_KIND, {
+		en: {
+			anaphoraRewrites: [
+				{ pattern: "^zub it$", template: "zub {entity}" },
+				{ pattern: "^zub it (up|down)$", template: "zub {entity} $1" },
+			],
+		},
+	})
+	const scoped = languageSetsFor("en").anaphoraRewrites.filter(
+		(r) => r.kind === SYNTHETIC_KIND,
+	)
+	c.check(
+		"an extension rewrite carries the specialization kind",
+		scoped.length === 2,
+		`scoped=${scoped.length}`,
+	)
+	c.check(
+		"the candidate pre-check ignores the kind",
+		anaphoraCandidate("zub it", "en") && !anaphoraCandidate("nope it", "en"),
+	)
+	c.check(
+		"a scoped rewrite fires when the last acted provider matches its kind",
+		applyAnaphora("zub it", "en", {
+			entity: "Thing",
+			kind: SYNTHETIC_KIND,
+		}) === "zub Thing",
+	)
+	c.check(
+		"a scoped rewrite stays silent for another provider kind",
+		applyAnaphora("zub it", "en", { entity: "Thing", kind: "other" }) === null,
+	)
+	c.check(
+		"a scoped rewrite stays silent when the last acted provider has no kind",
+		applyAnaphora("zub it", "en", { entity: "Thing", kind: null }) === null,
+	)
+	c.check(
+		"capture groups survive the rewrite",
+		applyAnaphora("zub it up", "en", {
+			entity: "Thing",
+			kind: SYNTHETIC_KIND,
+		}) === "zub Thing up",
+	)
+	c.check(
+		"an extension rewrite falls back to en for another language",
+		applyAnaphora("zub it", SYNTHETIC_CODE, {
+			entity: "Thing",
+			kind: SYNTHETIC_KIND,
+		}) === "zub Thing",
+	)
+	c.check(
+		"a base-catalog rewrite applies to any last acted provider",
+		applyAnaphora("wub it", SYNTHETIC_CODE, {
+			entity: "Thing",
+			kind: SYNTHETIC_KIND,
+		}) === "wub Thing" &&
+			applyAnaphora("wub it", SYNTHETIC_CODE, {
+				entity: "Thing",
+				kind: null,
+			}) === "wub Thing",
+	)
+	c.check(
+		"an unmatched transcript yields no rewrite",
+		applyAnaphora("turn the lamp on", "en", {
+			entity: "Thing",
+			kind: SYNTHETIC_KIND,
+		}) === null,
 	)
 
 	console.log("\ndisplay names + script")

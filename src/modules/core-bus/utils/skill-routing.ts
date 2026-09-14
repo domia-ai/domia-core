@@ -5,7 +5,11 @@ import {
 	type SkillToolType,
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
-import { shortlistTools, buildToolManifest } from "@/modules/skill-engine"
+import {
+	shortlistTools,
+	buildToolManifest,
+	toolBaseName,
+} from "@/modules/skill-engine"
 import { rankTools, getMatcherEngine } from "@/modules/matcher"
 
 import type { CoreBusContextType } from "../types"
@@ -66,7 +70,11 @@ export const shortlistedToolsOf = async (
 	if (result.applied) {
 		domiaBusLogger.info(
 			`🧰 tool shortlist ${result.tools.length}/${result.total} (dropped ${result.dropped})`,
-			{ domiaId: domia.id },
+			{
+				domiaId: domia.id,
+				kept: result.tools.map((t) => toolBaseName(t.namespacedName)),
+				core: [...manifest.coreNames],
+			},
 		)
 	}
 

@@ -16,7 +16,7 @@ export const targetMentioned = (
 	sets: ResolvedLanguageSetsType,
 	lastActedTarget?: string | null,
 ): boolean => {
-	if (!described.target) return true
+	if (!described.target || described.implicit) return true
 	const spoken = new Set([
 		...tokensOf(transcript),
 		...(lastActedTarget ? tokensOf(lastActedTarget) : []),

@@ -12,6 +12,7 @@ import {
 	speculationStats,
 	bargeInStats,
 	twoTierStats,
+	wakeVerifierStats,
 } from "@/modules/core-bus"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
 import { getFactsSince } from "@/modules/memory"
@@ -42,6 +43,7 @@ export const handleGetLatencyStats = async (domia: DomiaType) => {
 			speculation: speculationStats(domia.id),
 			bargeIn: bargeInStats(domia.id),
 			twoTier: twoTierStats(domia.id),
+			wakeVerifier: wakeVerifierStats(domia.id),
 		},
 	}
 }

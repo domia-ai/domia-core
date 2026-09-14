@@ -8,27 +8,24 @@ import type {
 } from "../types"
 
 const REFERENCE_RATE = DEFAULT_PCM_SAMPLE_RATE
-const REFERENCE_SECONDS = 4
-const RING_SAMPLES = REFERENCE_RATE * REFERENCE_SECONDS
 const MIN_LAG_MS = 20
 const COARSE_LAG_STEP_MS = 2
-const LIVE_SPEECH_TTL_MS = 1500
 
 const references = new Map<string, PlaybackReferenceType>()
 const liveSpeechAt = new Map<string, number>()
 
-const referenceOf = (key: string): PlaybackReferenceType => {
-	let ref = references.get(key)
-	if (!ref) {
-		ref = {
-			ring: new Float32Array(RING_SAMPLES),
-			writePos: 0,
-			totalWritten: 0,
-			lastSampleAt: 0,
-		}
-		references.set(key, ref)
+const referenceOf = (key: string, seconds: number): PlaybackReferenceType => {
+	const ringSamples = Math.max(1, Math.round(REFERENCE_RATE * seconds))
+	const ref = references.get(key)
+	if (ref?.ring.length === ringSamples) return ref
+	const fresh: PlaybackReferenceType = {
+		ring: new Float32Array(ringSamples),
+		writePos: 0,
+		totalWritten: 0,
+		lastSampleAt: ref?.lastSampleAt ?? 0,
 	}
-	return ref
+	references.set(key, fresh)
+	return fresh
 }
 
 const resampleToReference = (
@@ -54,13 +51,15 @@ export const notePlaybackReference = (
 	pcm: Buffer,
 	sampleRate: number,
 	channels: number,
+	seconds: number,
 ): void => {
 	const mono = downmixToMonoPcm16(pcm, channels)
 	const samples = resampleToReference(int16BufferToFloat32(mono), sampleRate)
-	const ref = referenceOf(key)
+	const ref = referenceOf(key, seconds)
+	const ringSamples = ref.ring.length
 	for (const sample of samples) {
 		ref.ring[ref.writePos] = sample
-		ref.writePos = (ref.writePos + 1) % RING_SAMPLES
+		ref.writePos = (ref.writePos + 1) % ringSamples
 	}
 	ref.totalWritten += samples.length
 	ref.lastSampleAt = Date.now()
@@ -84,14 +83,15 @@ const readReference = (
 	endOffsetFromNewest: number,
 	length: number,
 ): Float32Array | null => {
-	const available = Math.min(ref.totalWritten, RING_SAMPLES)
+	const ringSamples = ref.ring.length
+	const available = Math.min(ref.totalWritten, ringSamples)
 	const endIndexFromOldest = available - endOffsetFromNewest
 	const startIndexFromOldest = endIndexFromOldest - length
 	if (startIndexFromOldest < 0 || endIndexFromOldest > available) return null
-	const oldestPos = (ref.writePos - available + RING_SAMPLES) % RING_SAMPLES
+	const oldestPos = (ref.writePos - available + ringSamples) % ringSamples
 	const out = new Float32Array(length)
 	for (let i = 0; i < length; i++) {
-		out[i] = ref.ring[(oldestPos + startIndexFromOldest + i) % RING_SAMPLES]
+		out[i] = ref.ring[(oldestPos + startIndexFromOldest + i) % ringSamples]
 	}
 	return out
 }
@@ -231,7 +231,7 @@ export const createEchoGate = (
 
 export const liveSpeechSeenRecently = (
 	key: string,
-	withinMs = LIVE_SPEECH_TTL_MS,
+	withinMs: number,
 ): boolean => {
 	const at = liveSpeechAt.get(key)
 	return at !== undefined && Date.now() - at <= withinMs

@@ -3,21 +3,29 @@ import { performance } from "perf_hooks"
 
 import {
 	DEFAULT_PCM_SAMPLE_RATE,
-	DEFAULT_DENOISE_MODEL_PATH,
+	DEFAULT_GTCRN_MODEL_PATH,
 	DEFAULT_ECHO_RESIDUAL_MIN_RATIO,
 	DEFAULT_ECHO_RESIDUAL_WINDOW_MS,
 	DEFAULT_ECHO_RESIDUAL_MAX_DELAY_MS,
 	DEFAULT_ECHO_RESIDUAL_MIN_RMS,
 	DEFAULT_ECHO_RESIDUAL_MIN_FRAMES,
+	DEFAULT_ECHO_REFERENCE_SECONDS,
 	DEFAULT_STOP_WORD_MAX_WORDS,
+	DEFAULT_STOP_WORD_MAX_EXTRA_WORDS,
 	DEFAULT_WAKE_VERIFIER_WINDOW_MS,
 	DEFAULT_WAKE_VERIFIER_MIN_RMS,
 	DEFAULT_WAKE_VERIFIER_MIN_SPEECH_MS,
 	DEFAULT_WAKE_VERIFIER_MIN_SCORE,
+	DEFAULT_WAKE_VERIFIER_MAX_MS,
+	DEFAULT_WAKE_WORD,
 	WAKE_VERIFIER_ENUM,
 	SPEECH_ENHANCER_ENGINE_ENUM,
 } from "@/db/constants"
 import {
+	abortActiveCapture,
+	clearCaptureAbort,
+	consumeCaptureAbort,
+	registerCaptureStop,
 	createEchoGate,
 	notePlaybackReference,
 	matchStopPhrase,
@@ -27,6 +35,8 @@ import {
 import {
 	verifyWake,
 	wakeVerifierRegistry,
+	isConcurrentWakeVerifier,
+	matchWakePhrase,
 	type WakeVerifierConfigType,
 } from "@/modules/wake-verifier"
 import { createCaptureEnhancer, gtcrnEngine } from "@/modules/speech-enhancer"
@@ -131,7 +141,13 @@ const residualGateChecks = (c: ReturnType<typeof makeChecker>): void => {
 	const echoEnd = reference.length - msBytes(echoDelayMs)
 	const echo = scaled(reference.subarray(echoStart, echoEnd), 0.35)
 
-	notePlaybackReference("gate:echo", reference, RATE, 1)
+	notePlaybackReference(
+		"gate:echo",
+		reference,
+		RATE,
+		1,
+		DEFAULT_ECHO_REFERENCE_SECONDS,
+	)
 	const selfEcho = feedGate("gate:echo", mixed(echo, whiteNoise(600, 300)))
 	c.check(
 		"self-echo (delayed, attenuated playback) is rejected",
@@ -146,13 +162,25 @@ const residualGateChecks = (c: ReturnType<typeof makeChecker>): void => {
 	)
 	const lagReference = mixed(chirp(2500, 400), whiteNoise(2500, 200))
 	const lagEcho = scaled(lagReference.subarray(echoStart, echoEnd), 0.35)
-	notePlaybackReference("gate:lag", lagReference, RATE, 1)
+	notePlaybackReference(
+		"gate:lag",
+		lagReference,
+		RATE,
+		1,
+		DEFAULT_ECHO_REFERENCE_SECONDS,
+	)
 	const lagProbe = feedGate("gate:lag", mixed(lagEcho, whiteNoise(600, 300)))
 	console.log(
 		`  ↳ advisory: echo lag estimate on synthetic audio lags=${lagProbe.lags.join(",") || "none"} expected≈${echoDelayMs} (accuracy needs a real-mic session)`,
 	)
 
-	notePlaybackReference("gate:live", reference, RATE, 1)
+	notePlaybackReference(
+		"gate:live",
+		reference,
+		RATE,
+		1,
+		DEFAULT_ECHO_REFERENCE_SECONDS,
+	)
 	const live = feedGate("gate:live", mixed(echo, chirp(600, 9000)))
 	c.check(
 		"live speech over playback is accepted",
@@ -160,7 +188,13 @@ const residualGateChecks = (c: ReturnType<typeof makeChecker>): void => {
 		`residuals=${live.residuals.join(",")}`,
 	)
 
-	notePlaybackReference("gate:silence", reference, RATE, 1)
+	notePlaybackReference(
+		"gate:silence",
+		reference,
+		RATE,
+		1,
+		DEFAULT_ECHO_REFERENCE_SECONDS,
+	)
 	const quiet = feedGate("gate:silence", fabricateSegmentPcm("silence", 600))
 	c.check(
 		"silence never triggers (below min RMS)",
@@ -174,7 +208,13 @@ const residualGateChecks = (c: ReturnType<typeof makeChecker>): void => {
 	)
 
 	const short = createEchoGate("gate:frames", gateConfig)
-	notePlaybackReference("gate:frames", reference, RATE, 1)
+	notePlaybackReference(
+		"gate:frames",
+		reference,
+		RATE,
+		1,
+		DEFAULT_ECHO_REFERENCE_SECONDS,
+	)
 	const one = short.observe(chirp(gateConfig.echoResidualWindowMs, 9000))
 	c.check(
 		"a single live frame does not yet accept (min consecutive frames)",
@@ -187,6 +227,7 @@ const residualGateChecks = (c: ReturnType<typeof makeChecker>): void => {
 		fabricateSegmentPcm("speech", 3000),
 		RATE,
 		1,
+		DEFAULT_ECHO_REFERENCE_SECONDS,
 	)
 	const costGate = createEchoGate("gate:cost", gateConfig)
 	const t0 = performance.now()
@@ -203,6 +244,7 @@ const residualGateChecks = (c: ReturnType<typeof makeChecker>): void => {
 const stopWordChecks = (c: ReturnType<typeof makeChecker>): void => {
 	console.log("\nstop-word catalog + matcher")
 	const maxWords = DEFAULT_STOP_WORD_MAX_WORDS
+	const maxExtra = DEFAULT_STOP_WORD_MAX_EXTRA_WORDS
 	const en = languageSetsFor("en").interruptPhrases
 	const es = languageSetsFor("es").interruptPhrases
 	c.check("EN catalog ships interrupt phrases", en.includes("stop"))
@@ -227,8 +269,8 @@ const stopWordChecks = (c: ReturnType<typeof makeChecker>): void => {
 	for (const [text, lang, expected] of hits)
 		c.check(
 			`matches "${text}" (${lang})`,
-			matchStopPhrase(text, lang, maxWords) === expected,
-			`got=${matchStopPhrase(text, lang, maxWords)}`,
+			matchStopPhrase(text, lang, maxWords, maxExtra) === expected,
+			`got=${matchStopPhrase(text, lang, maxWords, maxExtra)}`,
 		)
 	const misses: [string, string][] = [
 		["stop the timer", "en"],
@@ -242,12 +284,12 @@ const stopWordChecks = (c: ReturnType<typeof makeChecker>): void => {
 	for (const [text, lang] of misses)
 		c.check(
 			`ignores "${text || "<empty>"}" (${lang})`,
-			matchStopPhrase(text, lang, maxWords) === null,
-			`got=${matchStopPhrase(text, lang, maxWords)}`,
+			matchStopPhrase(text, lang, maxWords, maxExtra) === null,
+			`got=${matchStopPhrase(text, lang, maxWords, maxExtra)}`,
 		)
 	c.check(
 		"unknown language falls back to EN",
-		matchStopPhrase("stop", "xx-unknown", maxWords) === "stop",
+		matchStopPhrase("stop", "xx-unknown", maxWords, maxExtra) === "stop",
 	)
 	c.check(
 		"normalization strips accents, case, punctuation and labels",
@@ -261,15 +303,17 @@ const verifierChecks = async (
 ): Promise<void> => {
 	console.log("\nwake-word verifier slot")
 	const config: WakeVerifierConfigType = {
+		wakeWord: DEFAULT_WAKE_WORD,
 		wakeVerifier: WAKE_VERIFIER_ENUM.ENERGY,
 		wakeVerifierWindowMs: DEFAULT_WAKE_VERIFIER_WINDOW_MS,
 		wakeVerifierMinRms: DEFAULT_WAKE_VERIFIER_MIN_RMS,
 		wakeVerifierMinSpeechMs: DEFAULT_WAKE_VERIFIER_MIN_SPEECH_MS,
 		wakeVerifierMinScore: DEFAULT_WAKE_VERIFIER_MIN_SCORE,
+		wakeVerifierMaxMs: DEFAULT_WAKE_VERIFIER_MAX_MS,
 	}
 	c.check(
-		"registry exposes NONE and ENERGY",
-		Object.keys(wakeVerifierRegistry).sort().join(",") === "ENERGY,NONE",
+		"registry exposes NONE, ENERGY and STT",
+		Object.keys(wakeVerifierRegistry).sort().join(",") === "ENERGY,NONE,STT",
 	)
 	const silence = fabricateSegmentPcm("silence", 1500)
 	const word = Buffer.concat([
@@ -313,6 +357,154 @@ const verifierChecks = async (
 	c.check("unknown verifier id fails open", unknown.accepted)
 }
 
+const WAKE_POSITIVES = [
+	"computer",
+	"hey computer",
+	"ok computer please",
+	"computadora",
+	"compute her",
+	"comp uter",
+	"COMPUTER.",
+	"la computadora",
+]
+
+const WAKE_NEGATIVES = [
+	"commuter",
+	"compete",
+	"comprar",
+	"the train to work",
+	"com",
+	"",
+	"   ",
+]
+
+const sttVerifierChecks = async (
+	c: ReturnType<typeof makeChecker>,
+): Promise<void> => {
+	console.log("\nwake-word STT verifier (stage 2)")
+	const config: WakeVerifierConfigType = {
+		wakeWord: DEFAULT_WAKE_WORD,
+		wakeVerifier: WAKE_VERIFIER_ENUM.STT,
+		wakeVerifierWindowMs: DEFAULT_WAKE_VERIFIER_WINDOW_MS,
+		wakeVerifierMinRms: DEFAULT_WAKE_VERIFIER_MIN_RMS,
+		wakeVerifierMinSpeechMs: DEFAULT_WAKE_VERIFIER_MIN_SPEECH_MS,
+		wakeVerifierMinScore: DEFAULT_WAKE_VERIFIER_MIN_SCORE,
+		wakeVerifierMaxMs: DEFAULT_WAKE_VERIFIER_MAX_MS,
+	}
+	const window = fabricateSegmentPcm("speech", 500)
+	const withTranscript = (text: string, delayMs = 0) =>
+		verifyWake(
+			{
+				pcm: window,
+				sampleRate: RATE,
+				transcribe: () =>
+					new Promise<string>((resolve) => {
+						setTimeout(() => resolve(text), delayMs)
+					}),
+			},
+			config,
+		)
+
+	c.check(
+		"STT verifier runs concurrently with the wake",
+		isConcurrentWakeVerifier(WAKE_VERIFIER_ENUM.STT),
+	)
+	c.check(
+		"ENERGY and NONE gate the wake instead",
+		!isConcurrentWakeVerifier(WAKE_VERIFIER_ENUM.ENERGY) &&
+			!isConcurrentWakeVerifier(WAKE_VERIFIER_ENUM.NONE),
+	)
+
+	for (const text of WAKE_POSITIVES) {
+		const match = matchWakePhrase(text, DEFAULT_WAKE_WORD)
+		const verdict = await withTranscript(text)
+		c.check(
+			`accepts "${text}"`,
+			verdict.accepted && match.score >= DEFAULT_WAKE_VERIFIER_MIN_SCORE,
+			`score=${match.score.toFixed(3)}`,
+		)
+	}
+
+	for (const text of WAKE_NEGATIVES) {
+		const match = matchWakePhrase(text, DEFAULT_WAKE_WORD)
+		const verdict = await withTranscript(text)
+		c.check(
+			`rejects "${text}"`,
+			!verdict.accepted && match.score < DEFAULT_WAKE_VERIFIER_MIN_SCORE,
+			`score=${match.score.toFixed(3)}`,
+		)
+	}
+
+	const multiWord = matchWakePhrase("hey domia", "hey domia")
+	c.check("multi-word wake phrase matches exactly", multiWord.score === 1)
+	const mangledMultiWord = matchWakePhrase("hey dominia", "hey domia")
+	c.check(
+		"multi-word wake phrase survives a mangled tail",
+		mangledMultiWord.score >= DEFAULT_WAKE_VERIFIER_MIN_SCORE,
+		`score=${mangledMultiWord.score.toFixed(3)}`,
+	)
+	c.check(
+		"empty wake phrase scores zero",
+		matchWakePhrase("computer", "").score === 0,
+	)
+
+	const slowConfig = { ...config, wakeVerifierMaxMs: 60 }
+	const startedAt = performance.now()
+	const timedOut = await verifyWake(
+		{
+			pcm: window,
+			sampleRate: RATE,
+			transcribe: () =>
+				new Promise<string>((resolve) => {
+					setTimeout(() => resolve("commuter"), 5000).unref()
+				}),
+		},
+		slowConfig,
+	)
+	const elapsed = performance.now() - startedAt
+	c.check(
+		"slow transcriber fails open inside the budget",
+		timedOut.accepted && timedOut.failedOpen === true && elapsed < 500,
+		`elapsed=${Math.round(elapsed)}ms detail=${timedOut.detail}`,
+	)
+
+	const throwing = await verifyWake(
+		{
+			pcm: window,
+			sampleRate: RATE,
+			transcribe: () => Promise.reject(new Error("stt down")),
+		},
+		config,
+	)
+	c.check(
+		"transcriber failure fails open",
+		throwing.accepted && throwing.failedOpen === true,
+	)
+
+	const noTranscriber = await verifyWake(
+		{ pcm: window, sampleRate: RATE },
+		config,
+	)
+	c.check(
+		"no in-process STT fails open (dump-archetype nodes)",
+		noTranscriber.accepted && noTranscriber.failedOpen === true,
+		noTranscriber.detail,
+	)
+
+	const emptyWindow = await verifyWake(
+		{
+			pcm: Buffer.alloc(0),
+			sampleRate: RATE,
+			transcribe: () => Promise.resolve("commuter"),
+		},
+		config,
+	)
+	c.check(
+		"empty window fails open",
+		emptyWindow.accepted && emptyWindow.failedOpen === true,
+	)
+}
+
 const snrDb = (clean: Float32Array, test: Float32Array): number => {
 	let sig = 0
 	let err = 0
@@ -354,7 +546,7 @@ const denoiserChecks = (c: ReturnType<typeof makeChecker>): void => {
 	const baseConfig = {
 		denoiseEnabled: true,
 		denoiseEngine: SPEECH_ENHANCER_ENGINE_ENUM.GTCRN,
-		denoiseModelPath: DEFAULT_DENOISE_MODEL_PATH,
+		denoiseModelPath: DEFAULT_GTCRN_MODEL_PATH,
 		denoiseNumThreads: 1,
 		denoiseProvider: "cpu",
 		sampleRate: RATE,
@@ -374,11 +566,11 @@ const denoiserChecks = (c: ReturnType<typeof makeChecker>): void => {
 		"eval",
 	)
 	c.check("non-16k capture → passthrough (documented)", !wrongRate.active)
-	if (!gtcrnEngine.available(DEFAULT_DENOISE_MODEL_PATH)) {
+	if (!gtcrnEngine.available(DEFAULT_GTCRN_MODEL_PATH)) {
 		const missing = createCaptureEnhancer(baseConfig, "eval")
 		c.check("missing model → passthrough with a warning", !missing.active)
 		console.log(
-			`  ⏭️ denoiser round trip SKIPPED — model missing at ${DEFAULT_DENOISE_MODEL_PATH} (run: npm run setup:models:gtcrn)`,
+			`  ⏭️ denoiser round trip SKIPPED — model missing at ${DEFAULT_GTCRN_MODEL_PATH} (run: npm run setup:models:gtcrn)`,
 		)
 		return
 	}
@@ -611,11 +803,49 @@ const aecChecks = async (c: ReturnType<typeof makeChecker>): Promise<void> => {
 	await releaseAec("DOMIA_EVAL")
 }
 
+const captureAbortChecks = (c: ReturnType<typeof makeChecker>): void => {
+	console.log("\nwake-verifier capture rollback")
+	const id = "eval-capture-abort"
+	const stops: string[] = []
+	const unregisterOld = registerCaptureStop(id, (reason) =>
+		stops.push(`old:${reason}`),
+	)
+	c.check(
+		"abort stops the registered capture",
+		abortActiveCapture(id, "wake-verifier") &&
+			stops.join(",") === "old:wake-verifier",
+	)
+	c.check(
+		"aborted capture is distinguishable from end of speech",
+		consumeCaptureAbort(id),
+	)
+	c.check("abort marker is consumed exactly once", !consumeCaptureAbort(id))
+	const unregisterNew = registerCaptureStop(id, (reason) =>
+		stops.push(`new:${reason}`),
+	)
+	unregisterOld()
+	c.check(
+		"late unregister of an aborted capture keeps the newer capture stoppable",
+		abortActiveCapture(id, "second") && stops.includes("new:second"),
+	)
+	unregisterNew()
+	clearCaptureAbort(id)
+	c.check(
+		"rejection before capture starts still marks the wake for rollback",
+		!abortActiveCapture(id, "early") && consumeCaptureAbort(id),
+	)
+	abortActiveCapture(id, "stale")
+	clearCaptureAbort(id)
+	c.check("a new wake clears a stale rollback marker", !consumeCaptureAbort(id))
+}
+
 const main = async (): Promise<void> => {
 	const c = makeChecker()
 	residualGateChecks(c)
 	stopWordChecks(c)
+	captureAbortChecks(c)
 	await verifierChecks(c)
+	await sttVerifierChecks(c)
 	denoiserChecks(c)
 	await aecChecks(c)
 	console.log(`\nears: ${c.passCount()} passed, ${c.failCount()} failed`)
