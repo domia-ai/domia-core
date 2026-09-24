@@ -4,6 +4,13 @@ import { factSchema } from "../schemas"
 
 export type RawFactType = z.infer<typeof factSchema> & { explicit?: boolean }
 
+export type UpsertFactsResultType = {
+	stored: number
+	corroborated: number
+	removed: number
+	rejected: string[]
+}
+
 export type FactValidityType = {
 	validFrom: string
 	validUntil: string | null

@@ -2,12 +2,24 @@ export const SKILL_PROTOCOL_ENUM = {
 	MCP: "mcp",
 	HTTP: "http",
 	MQTT: "mqtt",
+	BUILTIN: "builtin",
 } as const
 export const SKILL_PROTOCOL_ENUM_VALUES = [
 	SKILL_PROTOCOL_ENUM.MCP,
 	SKILL_PROTOCOL_ENUM.HTTP,
 	SKILL_PROTOCOL_ENUM.MQTT,
+	SKILL_PROTOCOL_ENUM.BUILTIN,
 ] as const
+export const BUILTIN_PROVIDER_NAME = "domia"
+export const BUILTIN_PROVIDER_URL = "builtin://localhost/domia"
+export const BUILTIN_PROVIDER_ID_PREFIX = "builtin:"
+export const ROUTINE_MAX_STEPS = 8
+export const ROUTINE_TOOL_PREFIX = "routine_"
+export const ROUTINE_SLUG_PATTERN = /^[a-z0-9_]{1,40}$/
+export const DEFAULT_FAST_PATH_DURATION_MAX_SECONDS = 86_400
+export const FAST_PATH_SKIP_PHRASES_PER_SIDE = 3
+export const FAST_PATH_COMPOUND_MAX_LEADING_STOPWORDS = 2
+export const FAST_PATH_CLOCK_NIGHT_PM_FROM_HOUR = 5
 export const MCP_TRANSPORT_ENUM = {
 	HTTP: "http",
 	SSE: "sse",
@@ -112,7 +124,7 @@ export const DEFAULT_AGENT_REPEAT_BLOCK_AT = 2
 export const DEFAULT_AGENT_MAX_TOOL_CALLS_PER_TURN = 6
 export const DEFAULT_AGENT_RECENT_TOOLS_TURNS = 2
 export const DEFAULT_ANAPHORA_MAX_AGE_MS = 120_000
-export const DEFAULT_FAST_PATH_ENABLED = false
+export const DEFAULT_FAST_PATH_ENABLED = true
 export const DEFAULT_FAST_PATH_MIN_COVERAGE = 0.1
 export const DEFAULT_FAST_PATH_MAX_UTTERANCE_CHARS = 80
 export const DEFAULT_FAST_PATH_BLOCKLIST_ENABLED = true
@@ -190,7 +202,8 @@ export const EMBED_BACKEND_ENUM_VALUES = [
 	EMBED_BACKEND_ENUM.OLLAMA,
 ] as const
 export const DEFAULT_EMBED_BACKEND = EMBED_BACKEND_ENUM.TRANSFORMERS
-export const DEFAULT_SKILLS_ENGINE = false
+export const DEFAULT_SKILLS_ENGINE = true
+export const DEFAULT_BUILTIN_TOOLS = true
 export const DEFAULT_SKILL_PROTOCOL = SKILL_PROTOCOL_ENUM.MCP
 export const DEFAULT_MCP_TRANSPORT_TYPE = MCP_TRANSPORT_ENUM.HTTP
 export const DEFAULT_MCP_PROTOCOL_MODE = MCP_PROTOCOL_MODE_ENUM.LEGACY
@@ -241,3 +254,45 @@ export const DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS = 3
 export const SKILL_TOOL_NAME_SEPARATOR = "__"
 export const DEFAULT_FINALIZE_ACK = "Done."
 export const DEFAULT_FINALIZE_ERROR = "Sorry, I couldn't do that."
+export const SKILL_DESCRIPTOR_RESOURCE_URI = "domia://descriptor"
+export const SKILL_SERVER_DESCRIPTOR_MAX_BYTES = 64 * 1024
+export const SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATES = 200
+export const SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATE_CHARS = 200
+export const SKILL_SERVER_DESCRIPTOR_MAX_EXPANSION_RULES = 50
+export const SKILL_SERVER_DESCRIPTOR_MAX_EXPANSION_DEPTH = 4
+export const SKILL_SERVER_DESCRIPTOR_MAX_SLOT_VALUES = 50
+export const SKILL_SERVER_DESCRIPTOR_MAX_FINALIZE_CHARS = 200
+export const SKILL_SERVER_DESCRIPTOR_MAX_DESCRIPTION_CHARS = 500
+export const SKILL_SERVER_DESCRIPTOR_ALLOWED_FIELDS = [
+	"description",
+	"routing.aliases",
+	"routing.exampleUtterances",
+	"routing.keywords",
+	"execution.finalize",
+	"execution.genericWords",
+	"fastPath.intents[].tool",
+	"fastPath.intents[].templates",
+	"fastPath.intents[].slots (enum | map | schemaEnum | range | duration | clockTime)",
+	"fastPath.intents[].requiredKeywords",
+	"fastPath.intents[].argDefaults",
+	"fastPath.intents[].priority",
+	"fastPath.expansionRules",
+	"i18n.<lang>.<same fields>",
+] as const
+export const SKILL_SERVER_DESCRIPTOR_STRIPPED_FIELDS = [
+	"kind",
+	"execution.coreTools",
+	"execution.toolPolicy",
+	"execution.toolHints",
+	"execution.paramAllow",
+	"execution.argNormalize",
+	"execution.resilience",
+	"execution.hiddenTools",
+	"fastPath.intents[].allowBlockedTokens",
+] as const
+export const SKILL_SERVER_DESCRIPTOR_REJECTED_FIELDS = [
+	"fastPath.intents[].slots.source.kind = context",
+] as const
+export const DEFAULT_TOOL_RUN_MAX_AGE_MS = 30 * 86_400_000
+export const DEFAULT_TOOL_RUN_MAX_ROWS_PER_DOMIA = 5_000
+export const DEFAULT_SETTLED_CONFIRMATION_MAX_AGE_MS = 7 * 86_400_000

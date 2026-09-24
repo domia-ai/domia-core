@@ -1,0 +1,40 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"never mind",
+				"nevermind",
+				"forget it",
+				"cancel [(that|it)]",
+				"no thanks",
+				"leave it",
+				"drop it"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["never mind", "forget it"],
+	"exampleUtterances": ["never mind", "forget it"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"okayNeverMind": "Okay."
+	},
+	"samples": [
+		{
+			"text": "never mind"
+		},
+		{
+			"text": "forget it"
+		},
+		{
+			"text": "cancel that"
+		},
+		{
+			"text": "no thanks"
+		}
+	]
+}

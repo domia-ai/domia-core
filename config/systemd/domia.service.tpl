@@ -8,6 +8,7 @@ User=${SERVICE_USER}
 WorkingDirectory=${WORKDIR}
 Environment=PATH=${NODE_BIN_DIR}:/usr/local/bin:/usr/bin:/bin
 ExecStart=${WORKDIR}/node_modules/.bin/dotenvx run -f ${DOMIA_ENV} -- node build/index.js
+OOMScoreAdjust=-500
 Restart=always
 RestartSec=5
 

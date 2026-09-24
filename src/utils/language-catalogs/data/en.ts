@@ -1,4 +1,8 @@
-import type { LanguageCatalogType, SpokenTimeRendererType } from "../types"
+import type {
+	LanguageCatalogType,
+	SpokenDateRendererType,
+	SpokenTimeRendererType,
+} from "../types"
 
 const EN_HOUR_WORDS = [
 	"twelve",
@@ -59,11 +63,19 @@ const enSpokenTime: SpokenTimeRendererType = (d) => {
 	return `${hour} ${enMinuteWords(minutes)} ${period}`
 }
 
+const enSpokenDate: SpokenDateRendererType = (d) =>
+	new Intl.DateTimeFormat("en-US", {
+		weekday: "long",
+		month: "long",
+		day: "numeric",
+	}).format(d)
+
 export const EN: LanguageCatalogType = {
 	displayName: "English",
 	locale: "en-US",
 	latinScript: true,
 	spokenTime: enSpokenTime,
+	spokenDate: enSpokenDate,
 	articles: ["the", "my", "our"],
 	stopwords: [
 		"the",
@@ -213,7 +225,54 @@ export const EN: LanguageCatalogType = {
 		],
 		lock: ["lock", "locks"],
 	},
-	timerKeywords: ["timer", "alarm"],
+	skipWords: [
+		"please",
+		"can you",
+		"could you",
+		"would you",
+		"will you",
+		"for me",
+		"i'd like",
+		"i'd like to",
+		"i want",
+		"i want you to",
+		"hey",
+	],
+	durationUnits: {
+		hour: 3600,
+		hours: 3600,
+		hr: 3600,
+		hrs: 3600,
+		minute: 60,
+		minutes: 60,
+		min: 60,
+		mins: 60,
+		second: 1,
+		seconds: 1,
+		sec: 1,
+		secs: 1,
+	},
+	durationPhrases: {
+		"half an hour": 1800,
+		"half hour": 1800,
+		"an hour and a half": 5400,
+		"a quarter of an hour": 900,
+	},
+	unitArticles: ["a", "an"],
+	clockWords: {
+		am: ["am", "a m", "in the morning"],
+		earlyMorning: [],
+		pm: ["pm", "p m", "in the afternoon", "in the evening"],
+		night: ["at night", "tonight"],
+		oclock: ["o clock", "oclock"],
+		prefixes: ["at"],
+		halfBefore: ["half past"],
+		quarterBefore: ["quarter past", "a quarter past"],
+		minusBefore: ["quarter to", "a quarter to"],
+		halfAfter: ["thirty"],
+		quarterAfter: ["fifteen"],
+		minusAfter: [],
+	},
 	memoryCommandKeywords: ["remember", "memorize", "forget", "don't forget"],
 	unitWords: { hour: "hour", minute: "minute", second: "second", plural: "s" },
 	affirmations: [
@@ -545,6 +604,8 @@ export const EN: LanguageCatalogType = {
 		"imagine",
 		"suppose",
 		"if",
+		"story",
+		"poem",
 	],
 	phrases: {
 		done: "Done.",
@@ -568,6 +629,8 @@ export const EN: LanguageCatalogType = {
 		proactiveReminder: "Reminder: {text}",
 		proactiveIdleNudge: "Still there? Let me know if you need anything.",
 		proactiveTimeReached: "It's {time}.",
+		currentTime: "It's {time}.",
+		notAvailableHere: "I can't do that from this device.",
 		formerly: "(formerly)",
 		warmup: "Ready when you are.",
 	},

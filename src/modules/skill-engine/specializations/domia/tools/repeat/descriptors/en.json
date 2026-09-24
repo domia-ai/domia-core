@@ -1,0 +1,32 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(repeat|say) that [again]",
+				"say it again",
+				"repeat [it]",
+				"what did you say",
+				"what was that",
+				"come again",
+				"pardon [me]",
+				"sorry, what"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["repeat", "again", "pardon"],
+	"exampleUtterances": ["repeat that", "what did you say"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": { "nothingToRepeat": "I haven't said anything yet." },
+	"samples": [
+		{ "text": "repeat that" },
+		{ "text": "say it again" },
+		{ "text": "what did you say" },
+		{ "text": "come again" },
+		{ "text": "pardon" }
+	]
+}

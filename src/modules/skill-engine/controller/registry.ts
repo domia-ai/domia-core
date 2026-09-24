@@ -26,6 +26,7 @@ import type {
 	ResolvedToolMetaType,
 	ToolInvocationDescriptionType,
 	ToolTargetInferenceType,
+	OriginCapabilitiesType,
 } from "../types"
 
 import { connections } from "./state"
@@ -135,6 +136,17 @@ export const specializationKindOf = (
 
 export const getConnectionsFor = (domiaId: string): SkillConnectionType[] =>
 	[...connections.values()].filter((c) => c.provider.domiaId === domiaId)
+
+export const toolAvailableFor = (
+	domiaId: string,
+	namespacedName: string,
+	origin: OriginCapabilitiesType,
+): boolean => {
+	const { providerSlug, rawName } = splitName(namespacedName)
+	const conn = findConn(domiaId, providerSlug)
+	if (!conn?.specialization?.toolAvailability) return true
+	return conn.specialization.toolAvailability(conn.provider, rawName, origin)
+}
 
 export const claimToolRunSpoken = (
 	interactionId: string,

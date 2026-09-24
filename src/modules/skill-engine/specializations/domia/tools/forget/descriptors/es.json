@@ -1,0 +1,17 @@
+{
+	"keywords": ["olvida lo", "olvídate de", "olvida todo", "borra lo que sabes"],
+	"exampleUtterances": [
+		"olvida lo que te dije de mi trabajo",
+		"olvídate de todo lo del café"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"forgotThat": "Listo, lo he olvidado.",
+		"nothingToForget": "No tengo nada guardado sobre {what}."
+	},
+	"confirmSummary": "olvidar todo sobre {what}"
+}

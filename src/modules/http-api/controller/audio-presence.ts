@@ -16,7 +16,7 @@ import {
 	getInteractionById,
 	getAnnouncementById,
 } from "@/modules/session-manager"
-import type { GetAudioRouteType } from "../types"
+import type { GetAudioRouteType, PresenceEntryResponseType } from "../types"
 import { postIntercomBodySchema, getAudioQuerySchema } from "../schemas"
 import {
 	getAudioFilePath,
@@ -147,7 +147,7 @@ export const handleGetAudio = async (
 export const handleGetPresence = async () => {
 	const byKey = new Map(getAllPresence().map((e) => [e.domiaKey, e]))
 	const hosted = await getHostedDomias()
-	const presence = await Promise.all(
+	const presence: PresenceEntryResponseType[] = await Promise.all(
 		hosted.map(async ({ domiaKey }) => {
 			const entry = byKey.get(domiaKey) ?? {
 				domiaKey,

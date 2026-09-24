@@ -1,0 +1,23 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cancela [el] temporizador",
+				"para [el] temporizador",
+				"quita [el] temporizador",
+				"cancela [la] cuenta atrás"
+			]
+		}
+	],
+	"keywords": ["cancela temporizador", "para temporizador"],
+	"exampleUtterances": ["cancela el temporizador", "para el temporizador"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "cancela el temporizador" },
+		{ "text": "para el temporizador" }
+	]
+}

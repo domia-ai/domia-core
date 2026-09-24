@@ -60,6 +60,7 @@ export const baseModuleSettings = (
 	reflectionYieldMaxAttempts: DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 	identityEngine: faker.datatype.boolean(),
 	skillsEngine: false,
+	builtinTools: true,
 	metricsSampleResources: true,
 	turnEventsPersist: true,
 	proactivityEngine: DEFAULT_PROACTIVITY_ENGINE,

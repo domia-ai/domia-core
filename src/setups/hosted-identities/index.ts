@@ -3,6 +3,7 @@ import {
 	type DomiaType,
 	getDomia,
 	getHostedDomias,
+	invalidateOwnDomia,
 	registerHostedIdentity,
 	unregisterHostedIdentity,
 	isHostedIdentity,
@@ -12,6 +13,10 @@ import { clearVoiceAdmission } from "@/modules/voice-admission"
 import { resetDynamicEndpointing } from "@/modules/audio-capture"
 import { initialize, DEFAULT_CONFIG_VALUES } from "@/modules/config-engine"
 import { warmupOnBoot } from "@/modules/warmup"
+import {
+	ensureBuiltinProvider,
+	isBuiltinProvider,
+} from "@/modules/skill-engine"
 import { setupCoreBus, teardownCoreBus } from "@/setups/core-bus"
 import { setupSkills, stopSkills } from "@/setups/skills"
 import { setupProactivity, teardownProactivity } from "@/setups/proactivity"
@@ -49,6 +54,15 @@ const bootHostedIdentityLocked = async (
 	const caps = normalizeRuntimeCapabilities(domia.runtimeCapabilities)
 	setupCoreBus({ domia, runtimeCapabilities: caps })
 	registerHostedIdentity(domia.domiaKey)
+	const builtinBefore = domia.skillProviders?.find(isBuiltinProvider)
+	const builtin = ensureBuiltinProvider(domia.id)
+	if (
+		builtinBefore?.id !== builtin.id ||
+		builtinBefore.updatedAt !== builtin.updatedAt
+	) {
+		invalidateOwnDomia(key)
+		domia = (await getDomia(key)) ?? domia
+	}
 	await setupSkills(domia).catch((err: unknown) =>
 		appLogger.error("Skill setup failed (skills disabled)", {
 			err,

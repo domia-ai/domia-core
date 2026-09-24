@@ -1,0 +1,105 @@
+{
+	"version": 1,
+	"kind": "home-assistant",
+	"fastPath": {
+		"expansionRules": {
+			"encender": "(enciende|encienda|prende|prenda|activa|active)",
+			"apagar": "(apaga|apague|desactiva|desactive|desconecta)",
+			"articulo": "(la|el|las|los|mi|mis)"
+		},
+		"intents": [
+			{
+				"tool": "HassTurnOn",
+				"priority": 1,
+				"templates": ["<encender> [<articulo>] {entity}"],
+				"slots": {
+					"entity": {
+						"source": {
+							"kind": "context",
+							"key": "entity:default,media_player"
+						}
+					}
+				},
+				"requiredKeywords": [
+					["enciende", "prende", "activa", "encender", "prender"]
+				]
+			},
+			{
+				"tool": "HassTurnOn",
+				"templates": [
+					"<encender> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}"
+				],
+				"slots": {
+					"area": {
+						"source": {
+							"kind": "context",
+							"key": "area"
+						}
+					}
+				},
+				"requiredKeywords": [
+					["enciende", "prende", "activa", "encender", "prender"]
+				],
+				"argDefaults": {
+					"domain": ["light"]
+				}
+			},
+			{
+				"tool": "HassTurnOff",
+				"priority": 1,
+				"templates": ["<apagar> [<articulo>] {entity}"],
+				"slots": {
+					"entity": {
+						"source": {
+							"kind": "context",
+							"key": "entity:default,media_player"
+						}
+					}
+				},
+				"requiredKeywords": [["apaga", "desactiva", "apagar", "desconecta"]]
+			},
+			{
+				"tool": "HassTurnOff",
+				"templates": [
+					"<apagar> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}"
+				],
+				"slots": {
+					"area": {
+						"source": {
+							"kind": "context",
+							"key": "area"
+						}
+					}
+				},
+				"requiredKeywords": [["apaga", "desactiva", "apagar", "desconecta"]],
+				"argDefaults": {
+					"domain": ["light"]
+				}
+			},
+			{
+				"tool": "HassLightSet",
+				"priority": 1,
+				"templates": [
+					"(pon|ajusta) [<articulo>] {entity} al {level} [por ciento]",
+					"(pon|ajusta) [<articulo>] {entity} a {level} [por ciento]"
+				],
+				"slots": {
+					"entity": {
+						"source": {
+							"kind": "context",
+							"key": "entity:default,media_player"
+						}
+					},
+					"level": {
+						"source": {
+							"kind": "range",
+							"min": 0,
+							"max": 100
+						},
+						"arg": "brightness"
+					}
+				}
+			}
+		]
+	}
+}

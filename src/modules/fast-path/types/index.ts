@@ -1,3 +1,9 @@
+import type { OriginCapabilitiesType } from "@/modules/skill-engine/types"
+import type {
+	ClockTwelveAmType,
+	ClockWordsType,
+} from "@/utils/language-catalogs/types"
+
 export type FastPathAstNodeType =
 	| { kind: "text"; value: string }
 	| { kind: "slot"; name: string }
@@ -14,6 +20,10 @@ export type FastPathSlotValueType = {
 export type CompiledSlotType =
 	| { kind: "values"; values: FastPathSlotValueType[] }
 	| { kind: "range"; min: number; max: number; arg: string }
+	| { kind: "duration"; maxSeconds: number; arg: string }
+	| { kind: "clockTime"; arg: string }
+
+export type FastPathCaptureType = FastPathSlotValueType | number | string
 
 export type CompiledTemplateType = {
 	ast: FastPathAstNodeType[]
@@ -29,6 +39,10 @@ export type CompiledIntentType = {
 	slots: Map<string, CompiledSlotType>
 	requiredKeywords: string[][]
 	argDefaults: Record<string, unknown>
+	priority: number
+	allowBlockedTokens: boolean
+	builtin: boolean
+	available: ((origin: OriginCapabilitiesType) => boolean) | null
 }
 
 export type CompiledFastPathIndexType = {
@@ -52,12 +66,14 @@ export type FastPathMatchType = {
 	literalChars: number
 	slotChars: number
 	coverage: number
+	priority: number
 	template: string
 }
 
 export type FastPathCandidateVerdictType =
 	| { kind: "match"; match: FastPathMatchType }
 	| { kind: "ambiguous" }
+	| { kind: "unavailable" }
 	| { kind: "none" }
 
 export type FastPathMissReasonType =
@@ -67,6 +83,7 @@ export type FastPathMissReasonType =
 	| "blocked_token"
 	| "no_match"
 	| "ambiguous"
+	| "unavailable"
 
 export type FastPathUntimedVerdictType =
 	| { kind: "match"; match: FastPathMatchType }
@@ -82,17 +99,39 @@ export type FastPathParseResultType = {
 	consumed: boolean
 	literalChars: number
 	slotChars: number
-	captures: Map<string, FastPathSlotValueType | number>
+	captures: Map<string, FastPathCaptureType>
 }
 
 export type NumberSetsType = {
 	words: Record<string, number>
 	joiners: string[]
+	durationUnits: Record<string, number>
+	durationPhrases: Record<string, number>
+	unitArticles: string[]
+	clockWords: ClockWordsType
+	clockTwelveAm: ClockTwelveAmType
 }
 
 export type FastPathMatchStateType = {
 	pos: number
 	literalChars: number
 	slotChars: number
-	captures: Map<string, FastPathSlotValueType | number>
+	captures: Map<string, FastPathCaptureType>
 }
+
+export type FastPathMatchOptionsType = {
+	blocked: boolean
+	providersEnabled: boolean
+	origin: OriginCapabilitiesType | null
+}
+
+export type FastPathCandidatesType = {
+	candidates: FastPathMatchType[]
+	skippedUnavailable: number
+}
+
+export type FastPathEligibilityType =
+	| "ok"
+	| "blocked"
+	| "unavailable"
+	| "disabled"

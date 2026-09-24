@@ -1,3 +1,5 @@
+import { DOMIA_BUNDLE_OMIT_KEYS } from "@/modules/config/constants"
+
 export const CONFIG_SCHEMA_HIDDEN_COLUMNS: ReadonlySet<string> = new Set([
 	"id",
 	"domiaId",
@@ -6,8 +8,14 @@ export const CONFIG_SCHEMA_HIDDEN_COLUMNS: ReadonlySet<string> = new Set([
 	"configRevision",
 	"lastSyncAt",
 	"isActive",
-	"name",
 ])
+
+export const CONFIG_SCHEMA_HIDDEN_BY_SECTION: Readonly<
+	Partial<Record<string, readonly string[]>>
+> = {
+	domia: ["name", ...DOMIA_BUNDLE_OMIT_KEYS],
+	mqttLocal: ["type"],
+}
 
 export const CONFIG_SCHEMA_SECRET_FIELDS: ReadonlySet<string> = new Set([
 	"stt.apiKey",

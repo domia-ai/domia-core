@@ -20,6 +20,8 @@ sqlite.pragma("busy_timeout = 5000")
 
 export const dbClient = drizzle(sqlite, { schema })
 
+export const sqliteClient = sqlite
+
 export const closeDb = (): void => {
 	try {
 		sqlite.close()

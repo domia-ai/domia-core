@@ -51,6 +51,7 @@ import {
 	DEFAULT_WARMUP_ON_BOOT,
 	DEFAULT_IS_HOSTED,
 	DEFAULT_SKILLS_ENGINE,
+	DEFAULT_BUILTIN_TOOLS,
 	DEFAULT_METRICS_SAMPLE_RESOURCES,
 	DEFAULT_TURN_EVENTS_PERSIST,
 	DEFAULT_PROACTIVITY_ENGINE,
@@ -286,6 +287,9 @@ export const moduleSettings = sqliteTable("module_settings", {
 	skillsEngine: integer("skills_engine", { mode: "boolean" })
 		.notNull()
 		.default(DEFAULT_SKILLS_ENGINE),
+	builtinTools: integer("builtin_tools", { mode: "boolean" })
+		.notNull()
+		.default(DEFAULT_BUILTIN_TOOLS),
 	metricsSampleResources: integer("metrics_sample_resources", {
 		mode: "boolean",
 	})

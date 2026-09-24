@@ -1,3 +1,5 @@
+import type { SelectSkillProviderType } from "@/db"
+
 import type { SkillConnHandleType } from "../../../types"
 
 export type MaPlayerStateType = "playing" | "paused" | "idle" | "unknown"
@@ -24,11 +26,15 @@ export type MaRosterEntryType = {
 	players: MaPlayerType[]
 	fetchedAt: number
 	handle: SkillConnHandleType | null
+	domiaId: string | null
 	refreshing: boolean
 }
 
 export type MaPlayerRosterType = {
-	attach: (providerId: string, handle: SkillConnHandleType) => void
+	attach: (
+		provider: SelectSkillProviderType,
+		handle: SkillConnHandleType,
+	) => void
 	refresh: (providerId: string, signal?: AbortSignal) => Promise<MaPlayerType[]>
 	snapshot: (providerId: string, ttlMs?: number) => MaPlayerType[]
 	ageMs: (providerId: string) => number | null
@@ -50,23 +56,4 @@ export type MaRosterStatusType = {
 	playing: number
 	nowPlaying: string | null
 	rosterAgeMs: number | null
-}
-
-export type MaFastPathLanguagePackType = {
-	pauseTemplates: string[]
-	pausePlayerTemplates: string[]
-	resumeTemplates: string[]
-	nextTemplates: string[]
-	nextPlayerTemplates: string[]
-	previousTemplates: string[]
-	volumeSetTemplates: string[]
-	volumeUpTemplates: string[]
-	volumeUpPlayerTemplates: string[]
-	volumeDownTemplates: string[]
-	volumeDownPlayerTemplates: string[]
-	muteTemplates: string[]
-	unmuteTemplates: string[]
-	nowPlayingTemplates: string[]
-	expansionRules: Record<string, string>
-	samples: string[]
 }

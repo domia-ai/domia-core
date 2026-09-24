@@ -1,0 +1,48 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(pon|ponme|configura|activa) [un] temporizador de {duration}",
+				"temporizador [de] {duration}",
+				"[una] cuenta atrás de {duration}",
+				"avísame en {duration}"
+			],
+			"slots": {
+				"duration": { "source": { "kind": "duration" }, "arg": "seconds" }
+			}
+		}
+	],
+	"keywords": ["temporizador", "cuenta atrás", "minutos", "segundos"],
+	"exampleUtterances": [
+		"pon un temporizador de cinco minutos",
+		"temporizador de diez minutos"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"timerSet": "Temporizador de {label}.",
+		"timerSetOn": "Temporizador de {label} en {target}.",
+		"timerFailed": "No pude poner ese temporizador.",
+		"timerCancelled": "Temporizador cancelado.",
+		"noActiveTimer": "No hay ningún temporizador en marcha.",
+		"timerRemaining": "Quedan {remaining} del temporizador de {label}.",
+		"timerFinished": "Tu temporizador de {label} ha terminado.",
+		"timerFinishedLate": "Tu temporizador de {label} terminó hace un rato, perdona el retraso.",
+		"localDeviceName": "este dispositivo",
+		"listJoiner": "y"
+	},
+	"samples": [
+		{
+			"text": "pon un temporizador de cinco minutos",
+			"args": { "seconds": 300 }
+		},
+		{
+			"text": "ponme un temporizador de 10 minutos",
+			"args": { "seconds": 600 }
+		},
+		{ "text": "temporizador de media hora", "args": { "seconds": 1800 } }
+	]
+}

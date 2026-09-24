@@ -1,0 +1,59 @@
+{
+	"version": 1,
+	"skills": {
+		"jetson-customize-nvpmodel": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-customize-nvpmodel/SKILL.md",
+			"computedHash": "e2a16eb616b08742753ae6471246a403ceb5d017f2352e9b8b569b45b140c2c0"
+		},
+		"jetson-diagnostic": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-diagnostic/SKILL.md",
+			"computedHash": "052d611c20729a3290b5bac1a420790c3389b72e04d576348c40387cd41b2881"
+		},
+		"jetson-headless-mode": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-headless-mode/SKILL.md",
+			"computedHash": "964a9890cd021984c981ba3bc7ca7ee7902e8490119568add5292424650249bc"
+		},
+		"jetson-inference-mem-tune": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-inference-mem-tune/SKILL.md",
+			"computedHash": "7213ba09a7ac0201d6a024959d2a70b657303c1ca594a17cbeae9a068dc391f8"
+		},
+		"jetson-llm-benchmark": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-llm-benchmark/SKILL.md",
+			"computedHash": "34ed931c3223f3700f70b920772fc289531467305c0e595640d850cdf874c95f"
+		},
+		"jetson-llm-serve": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-llm-serve/SKILL.md",
+			"computedHash": "ed042db66d759433c64f8d8c20d72ce75844c811ca866b788e899e3e74d3220c"
+		},
+		"jetson-memory-audit": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-memory-audit/SKILL.md",
+			"computedHash": "99bd831474911d9d06825e4578aa5dec2bbf3e7ad26083fbb42105ab417e8509"
+		},
+		"jetson-package": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/jetson-package/SKILL.md",
+			"computedHash": "0397f5f2406932078c585b2123af4066d635fb69e54ec7428487291db840ddc5"
+		},
+		"nvidia-skill-finder": {
+			"source": "nvidia/skills",
+			"sourceType": "github",
+			"skillPath": "skills/nvidia-skill-finder/SKILL.md",
+			"computedHash": "0b3ae23dcaa7336232c625617080b5ac869da11e7e92630aac7d0b505d14ba92"
+		}
+	}
+}

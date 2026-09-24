@@ -108,6 +108,7 @@ export const beginInteraction = async (
 		callbacks: {
 			onStage: runtimeOpts.onStage,
 			onTranscript: runtimeOpts.onTranscript,
+			onDelta: runtimeOpts.onDelta,
 			onComplete: runtimeOpts.onComplete,
 			onError: runtimeOpts.onError,
 		},
@@ -156,6 +157,7 @@ export const runInteraction = async (
 		satelliteProtocol,
 		timeoutMs = DEFAULT_TIMEOUT_MS,
 		onStage,
+		onDelta,
 		liveTurn = false,
 		prefetch = false,
 		reflect = false,
@@ -181,6 +183,7 @@ export const runInteraction = async (
 			liveTurn,
 			prefetch,
 			onStage,
+			onDelta,
 		},
 	)
 	if (!handle) {

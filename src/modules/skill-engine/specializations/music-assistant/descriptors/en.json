@@ -1,0 +1,144 @@
+{
+	"version": 1,
+	"kind": "music-assistant",
+	"fastPath": {
+		"expansionRules": {
+			"music": "(music|song|songs|track|playback)",
+			"the": "(the|my|our|this)"
+		},
+		"intents": [
+			{
+				"tool": "playback_pause",
+				"templates": [
+					"(pause|stop) [<the>] <music>",
+					"turn off [<the>] <music>"
+				]
+			},
+			{
+				"tool": "playback_pause",
+				"templates": [
+					"(pause|stop) [<the>] <music> (in|on) [<the>] {playerQueue}"
+				],
+				"slots": {
+					"playerQueue": {
+						"source": { "kind": "context", "key": "playerQueue" }
+					}
+				}
+			},
+			{
+				"tool": "playback_resume",
+				"templates": [
+					"(resume|unpause) [<the>] <music>",
+					"(continue|keep) playing [<the>] <music>"
+				]
+			},
+			{
+				"tool": "playback_next_track",
+				"templates": [
+					"(next|skip) [<the>] (song|track)",
+					"skip [<the>] <music>",
+					"play [<the>] next (song|track)"
+				]
+			},
+			{
+				"tool": "playback_next_track",
+				"templates": [
+					"(next|skip) [<the>] (song|track) (in|on) [<the>] {playerQueue}",
+					"skip [<the>] <music> (in|on) [<the>] {playerQueue}"
+				],
+				"slots": {
+					"playerQueue": {
+						"source": { "kind": "context", "key": "playerQueue" }
+					}
+				}
+			},
+			{
+				"tool": "playback_previous_track",
+				"templates": [
+					"(previous|last) (song|track)",
+					"play [<the>] (previous|last) (song|track)",
+					"go back a (song|track)"
+				]
+			},
+			{
+				"tool": "volume_volume_set",
+				"templates": [
+					"(set|turn) [<the>] (volume|music) to {level} [percent]",
+					"set [<the>] <music> volume to {level} [percent]"
+				],
+				"slots": {
+					"level": {
+						"source": { "kind": "range", "min": 0, "max": 100 },
+						"arg": "level"
+					}
+				}
+			},
+			{
+				"tool": "volume_volume_up",
+				"templates": [
+					"turn up [<the>] (volume|music)",
+					"turn [<the>] (volume|music) up",
+					"louder"
+				]
+			},
+			{
+				"tool": "volume_volume_up",
+				"templates": [
+					"turn up [<the>] (volume|music) (in|on) [<the>] {player}",
+					"turn [<the>] (volume|music) up (in|on) [<the>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				}
+			},
+			{
+				"tool": "volume_volume_down",
+				"templates": [
+					"turn down [<the>] (volume|music)",
+					"turn [<the>] (volume|music) down",
+					"quieter"
+				]
+			},
+			{
+				"tool": "volume_volume_down",
+				"templates": [
+					"turn down [<the>] (volume|music) (in|on) [<the>] {player}",
+					"turn [<the>] (volume|music) down (in|on) [<the>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				}
+			},
+			{
+				"tool": "volume_volume_mute",
+				"templates": [
+					"mute [<the>] (music|speaker|speakers|player)",
+					"mute [<the>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				},
+				"argDefaults": { "muted": true }
+			},
+			{
+				"tool": "volume_volume_mute",
+				"templates": [
+					"unmute [<the>] (music|speaker|speakers|player)",
+					"unmute [<the>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				},
+				"argDefaults": { "muted": false }
+			},
+			{
+				"tool": "music_now_playing",
+				"templates": [
+					"which (song|track) is (this|playing)",
+					"(tell|name) me [<the>] (song|track)",
+					"current (song|track)"
+				]
+			}
+		]
+	}
+}

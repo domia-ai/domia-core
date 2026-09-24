@@ -84,7 +84,7 @@ export const setupMockProviders = async (
 	const music = options.music ? await startMockMusic() : null
 	const plain = options.plain ? await startPlainMcp() : null
 	const realProviders = queryAll<{ id: string }>(
-		"SELECT id FROM skill_provider WHERE is_active = 1 AND id NOT LIKE 'eval-%' AND domia_id = (SELECT id FROM domia WHERE domia_key = ?)",
+		"SELECT id FROM skill_provider WHERE is_active = 1 AND id NOT LIKE 'eval-%' AND protocol != 'builtin' AND domia_id = (SELECT id FROM domia WHERE domia_key = ?)",
 		[env.EVAL_DOMIA_KEY],
 	)
 	const disarmSelfHeal = armSelfHeal(realProviders.map((p) => p.id))

@@ -56,6 +56,14 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "language catalogs, override semantics, spoken time",
 	},
 	{
+		name: "builtin-tools",
+		file: "builtin-tools.ts",
+		battery: "pure",
+		env: { TZ: "UTC" },
+		description:
+			"built-in provider: packs through the fast path (EN+ES), executors, availability, lifecycle with MCP off",
+	},
+	{
 		name: "config-apply",
 		file: "config-apply.ts",
 		battery: "pure",
@@ -115,11 +123,25 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "no provider vocabulary in core modules",
 	},
 	{
+		name: "fast-path-data",
+		file: "fast-path-data.ts",
+		battery: "pure",
+		description:
+			"fast-path packs as data: strict schema, every template parses+lints, slot keys, media lint, prefilters, HA compile budget",
+	},
+	{
 		name: "agent-loop",
 		file: "agent-loop.ts",
 		battery: "pure",
 		description:
 			"agent guards, confirmations, stale tools, provider status (mock MCP)",
+	},
+	{
+		name: "ha-intents-sweep",
+		file: "ha-intents-sweep.ts",
+		battery: "pure",
+		description:
+			"OHF-Voice HA intents corpus (en/es) through the fast path: matched / wrong tool / wrong slots / miss per intent, negatives, template compatibility",
 	},
 	{
 		name: "music-assistant",
@@ -245,6 +267,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "every documented HTTP route answers with the expected status",
 	},
 	{
+		name: "mind-transfer",
+		file: "mind-transfer.ts",
+		battery: "node",
+		description:
+			"versioned mind export/import: secrets stripped, remap to the target identity, merge vs replace, tampered bundles rejected",
+	},
+	{
 		name: "voice-feel-live",
 		file: "voice-feel-live.ts",
 		battery: "node",
@@ -260,11 +289,25 @@ const SUITES: EvalRegistrySuiteType[] = [
 			"a failing engine reload reverts its config section on a live node",
 	},
 	{
+		name: "satellite-token",
+		file: "satellite-token.ts",
+		battery: "pure",
+		description:
+			"scoped satellite tokens: mint/verify, scope binding, expiry, tampering, rotation grace",
+	},
+	{
 		name: "security-mesh",
 		file: "security-mesh.ts",
 		battery: "node",
 		description:
 			"mesh auth, heartbeat signatures, secret rotation, install guards",
+	},
+	{
+		name: "chat-stream",
+		file: "chat-stream.ts",
+		battery: "node",
+		description:
+			"POST /chat/stream AG-UI frame order and per-token TEXT_MESSAGE_CONTENT deltas",
 	},
 	{
 		name: "trace-continuity",
@@ -286,6 +329,14 @@ const SUITES: EvalRegistrySuiteType[] = [
 		env: { EVAL_SUITES: "routing" },
 		requires: ["skills"],
 		description: "intent routing cases against the mock HA",
+	},
+	{
+		name: "skills-flags",
+		file: "skills-flags.ts",
+		battery: "node",
+		requires: ["skills"],
+		description:
+			"builtinTools and skillsEngine toggles over /config: connections follow the flags",
 	},
 	{
 		name: "tools",
@@ -430,6 +481,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "fact sync cursor across peers",
 	},
 	{
+		name: "sync-streams",
+		file: "sync-streams.ts",
+		battery: "node",
+		description:
+			"tool-run, episode, knowledge, voice-feel and evidence streams page on independent cursors",
+	},
+	{
 		name: "nemo-session",
 		file: "nemo-session.ts",
 		battery: "hardware",
@@ -521,7 +579,7 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "mind-dump.ts",
 		battery: "utility",
 		description:
-			"STRICT lossless mind snapshot: dump | verify | restore | counts over 11 tables (remaps domia_id by key; use before/after every db:reset)",
+			"STRICT lossless mind snapshot: dump | verify | restore | counts over the 12 mind-transfer tables (remaps domia_id by key; use before/after every db:reset)",
 	},
 	{
 		name: "node-snapshot",
@@ -540,6 +598,41 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "gen-pauses-corpus.ts",
 		battery: "utility",
 		description: "generate the pauses STT corpus",
+	},
+	{
+		name: "gen-ha-intents",
+		file: "gen-ha-intents.ts",
+		battery: "utility",
+		description:
+			"regenerate evals/fixtures/ha-intents from project-references/intents (HA_INTENTS_DIR)",
+	},
+	{
+		name: "gen-ha-descriptors",
+		file: "gen-ha-descriptors.ts",
+		battery: "utility",
+		description:
+			"regenerate home-assistant/descriptors/{en,es}.json from project-references/intents (HA_INTENTS_DIR) merged with descriptors/base",
+	},
+	{
+		name: "gen-website-data",
+		file: "gen-website-data.ts",
+		battery: "utility",
+		description:
+			"regenerate domia-website/src/data/{fast-path,skills}.json from the fast-path packs, registries and corpus baseline (WEBSITE_DATA_DIR)",
+	},
+	{
+		name: "descriptor-resource",
+		file: "descriptor-resource.ts",
+		battery: "pure",
+		description:
+			"MCP-shipped domia://descriptor: templates compiled, policy stripped, limits, precedence, persistence",
+	},
+	{
+		name: "routines",
+		file: "routines.ts",
+		battery: "pure",
+		description:
+			"user-defined routines: advertised as built-in tools, fast-path phrases, sequential steps, inherited policy, validation (mock HA + MA)",
 	},
 ]
 

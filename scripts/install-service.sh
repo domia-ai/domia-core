@@ -6,7 +6,7 @@ UNIT="${1:-}"
 MODE="${2:-}"
 
 usage() {
-  echo "usage: bash scripts/install-service.sh {domia|nemo|llm|asr} [--user]" >&2
+  echo "usage: bash scripts/install-service.sh {domia|nemo|llm|asr|power} [--user]" >&2
   exit 2
 }
 
@@ -94,11 +94,24 @@ install_llm() {
       "LLM_EXTRA_FLAGS=$LLM_EXTRA_FLAGS" \
       "LLM_CACHE_RAM_MB=$LLM_CACHE_RAM_MB" \
       "LLM_SPEC_TYPE=$LLM_SPEC_TYPE" \
+      "LLM_MEMORY_HIGH=$LLM_MEMORY_HIGH" \
       "LLM_LAUNCHER=$LLM_LAUNCHER" > /tmp/llama-server.service
     sudo cp /tmp/llama-server.service /etc/systemd/system/llama-server.service
     sudo systemctl daemon-reload && sudo systemctl enable --now llama-server
     echo "✅ llama-server service installed (port $LLM_PORT). Logs: journalctl -fu llama-server"
   fi
+}
+
+install_power() {
+  [ "$(uname -s)" = "Linux" ] || { echo "❌ jetson-power is Linux-only"; exit 1; }
+  [ -x /usr/sbin/nvpmodel ] && [ -x /usr/bin/jetson_clocks ] || { echo "❌ nvpmodel / jetson_clocks not found — not a Jetson"; exit 1; }
+  render_template "$ROOT/config/systemd/jetson-power.service.tpl" \
+    "JETSON_POWER_SCRIPT=$ROOT/scripts/jetson-power.sh" \
+    "NVPMODEL_MODE=$NVPMODEL_MODE" > /tmp/jetson-power.service
+  sudo cp /tmp/jetson-power.service /etc/systemd/system/jetson-power.service
+  sudo systemctl daemon-reload && sudo systemctl enable jetson-power >/dev/null && sudo systemctl restart jetson-power
+  echo "✅ jetson-power installed: nvpmodel -m $NVPMODEL_MODE + jetson_clocks at every boot, before llama-server"
+  systemctl status jetson-power --no-pager 2>/dev/null | grep -E "✅|⚠️|❌" | sed "s/^.*jetson-power.sh\[[0-9]*\]: //" || true
 }
 
 install_asr() {
@@ -134,6 +147,8 @@ LLM_CHAT_TEMPLATE="${LLM_CHAT_TEMPLATE:-}"
 LLM_EXTRA_FLAGS="${LLM_EXTRA_FLAGS:-}"
 LLM_CACHE_RAM_MB="${LLM_CACHE_RAM_MB:-256}"
 LLM_SPEC_TYPE="${LLM_SPEC_TYPE:-}"
+LLM_MEMORY_HIGH="${LLM_MEMORY_HIGH:-5G}"
+NVPMODEL_MODE="${NVPMODEL_MODE:-2}"
 
 ASR_GGUF="${ASR_GGUF:-$ROOT/data/models/gguf/qwen3-asr-0.6b-q8.gguf}"
 ASR_MMPROJ="${ASR_MMPROJ:-$ROOT/data/models/gguf/mmproj-qwen3-asr-0.6b-q8.gguf}"
@@ -149,5 +164,6 @@ case "$UNIT" in
     ;;
   llm) install_llm ;;
   asr) install_asr ;;
+  power) install_power ;;
   *) usage ;;
 esac

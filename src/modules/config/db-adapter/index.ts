@@ -1,5 +1,5 @@
 import type { MqttSectionType } from "../types"
-import { and, eq, sql, getTableColumns, type Table } from "drizzle-orm"
+import { and, eq, inArray, sql, getTableColumns, type Table } from "drizzle-orm"
 import {
 	domia,
 	runtimeCapabilities,
@@ -16,6 +16,7 @@ import {
 	capabilityDelegation,
 	type DBClientOrTxType,
 	DEFAULT_TIMESTAMP,
+	SKILL_PROTOCOL_ENUM,
 } from "@/db"
 import { generateUuid } from "@/utils"
 
@@ -206,9 +207,34 @@ const dbAdapter = {
 		const byId = new Map(existing.map((row) => [row.id, row]))
 		const byName = new Map(existing.map((row) => [row.name, row]))
 		const keptIds = new Set<string>()
+		const isBuiltin = (protocol: string | undefined): boolean =>
+			protocol === SKILL_PROTOCOL_ENUM.BUILTIN
 		for (const item of items) {
 			const { id: incomingId, ...rest } = item
-			const prev = (incomingId && byId.get(incomingId)) || byName.get(rest.name)
+			const match =
+				(incomingId && byId.get(incomingId)) || byName.get(rest.name)
+			const prev =
+				match &&
+				isBuiltin(match.protocol) &&
+				rest.protocol !== undefined &&
+				!isBuiltin(rest.protocol)
+					? undefined
+					: match
+			if (prev && isBuiltin(prev.protocol)) {
+				keptIds.add(prev.id)
+				tx.update(skillProvider)
+					.set(
+						stamp(skillProvider, {
+							descriptor: rest.descriptor,
+							toolWhitelist: rest.toolWhitelist,
+							priority: rest.priority ?? prev.priority,
+						}),
+					)
+					.where(eq(skillProvider.id, prev.id))
+					.run()
+				continue
+			}
+			if (isBuiltin(rest.protocol)) continue
 			if (prev) {
 				keptIds.add(prev.id)
 				tx.update(skillProvider)
@@ -221,7 +247,7 @@ const dbAdapter = {
 					.run()
 		}
 		for (const row of existing)
-			if (!keptIds.has(row.id))
+			if (!keptIds.has(row.id) && !isBuiltin(row.protocol))
 				tx.delete(skillProvider).where(eq(skillProvider.id, row.id)).run()
 	},
 
@@ -233,10 +259,27 @@ const dbAdapter = {
 		tx.delete(capabilityDelegation)
 			.where(eq(capabilityDelegation.domiaId, domiaId))
 			.run()
-		if (items.length)
-			tx.insert(capabilityDelegation)
-				.values(items.map((i) => ({ ...i, id: generateUuid(), domiaId })))
-				.run()
+		if (items.length === 0) return
+		const keys = [...new Set(items.map((i) => i.delegateToDomiaKey))]
+		const idByKey = new Map(
+			tx
+				.select({ id: domia.id, domiaKey: domia.domiaKey })
+				.from(domia)
+				.where(inArray(domia.domiaKey, keys))
+				.all()
+				.map((row) => [row.domiaKey, row.id]),
+		)
+		tx.insert(capabilityDelegation)
+			.values(
+				items.map((i) => ({
+					...i,
+					id: generateUuid(),
+					domiaId,
+					delegateToDomiaId:
+						i.delegateToDomiaId ?? idByKey.get(i.delegateToDomiaKey) ?? null,
+				})),
+			)
+			.run()
 	},
 }
 

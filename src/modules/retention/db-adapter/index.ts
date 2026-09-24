@@ -1,7 +1,9 @@
 import {
+	and,
 	sql,
 	lt,
 	gt,
+	ne,
 	inArray,
 	notInArray,
 	desc,
@@ -17,7 +19,15 @@ import {
 	memoryFact,
 	memoryEpisode,
 	turnEvent,
+	toolRun,
+	pendingConfirmationRow,
+	voiceFeelAdjustment,
 	interactionSessionTrace,
+	CONFIRMATION_STATUS_ENUM,
+	DEFAULT_TOOL_RUN_MAX_AGE_MS,
+	DEFAULT_TOOL_RUN_MAX_ROWS_PER_DOMIA,
+	DEFAULT_SETTLED_CONFIRMATION_MAX_AGE_MS,
+	DEFAULT_VOICE_FEEL_ADJUSTMENT_MAX_AGE_MS,
 	DEFAULT_TRACE_MAX_AGE_MS,
 	DEFAULT_TRACE_MAX_ROWS_PER_DOMIA,
 	DEFAULT_TRACE_MAX_ROWS_GLOBAL,
@@ -84,6 +94,20 @@ const pruneGlobalCap = (
 		.limit(cap)
 	return client.delete(table).where(notInArray(idColumn, keep)).run().changes
 }
+
+const pruneSettledConfirmations = (client: DBClientOrTxType): number =>
+	client
+		.delete(pendingConfirmationRow)
+		.where(
+			and(
+				ne(pendingConfirmationRow.status, CONFIRMATION_STATUS_ENUM.PENDING),
+				lt(
+					pendingConfirmationRow.settledAt,
+					sql`datetime('now', ${secondsAgo(DEFAULT_SETTLED_CONFIRMATION_MAX_AGE_MS)})`,
+				),
+			),
+		)
+		.run().changes
 
 const dbAdapter = {
 	pruneStaleRows: (
@@ -184,6 +208,36 @@ const dbAdapter = {
 				client,
 			),
 		)
+		add(
+			toolRun,
+			pruneOlderThan(
+				toolRun,
+				toolRun.createdAt,
+				DEFAULT_TOOL_RUN_MAX_AGE_MS,
+				client,
+			),
+		)
+		add(
+			toolRun,
+			prunePerDomiaCap(
+				toolRun,
+				toolRun.id,
+				toolRun.domiaId,
+				toolRun.createdAt,
+				DEFAULT_TOOL_RUN_MAX_ROWS_PER_DOMIA,
+				client,
+			),
+		)
+		add(
+			voiceFeelAdjustment,
+			pruneOlderThan(
+				voiceFeelAdjustment,
+				voiceFeelAdjustment.createdAt,
+				DEFAULT_VOICE_FEEL_ADJUSTMENT_MAX_AGE_MS,
+				client,
+			),
+		)
+		add(pendingConfirmationRow, pruneSettledConfirmations(client))
 		add(
 			turnEvent,
 			pruneOlderThan(

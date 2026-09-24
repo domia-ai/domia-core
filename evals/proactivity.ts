@@ -11,15 +11,36 @@ import {
 	resolveProactiveTarget,
 	broadcastIdFor,
 } from "@/modules/proactivity/utils"
+import { reconcileClaimed } from "@/modules/proactivity"
+import {
+	claimDue,
+	getScheduleById,
+	insertSchedule,
+	markFired,
+	releaseSchedule,
+} from "@/modules/proactivity/db-adapter"
 import type {
 	ProactiveBudgetType,
 	IdleNudgeInputType,
+	ScheduleReconcileSettingsType,
 } from "@/modules/proactivity/types"
 import type { PresenceEntryType } from "@/modules/core-bus/types"
+import { PROACTIVE_TEMPLATE_KEY_ENUM } from "@/db"
 
 import { makeChecker } from "./lib/assert"
+import { execWrite } from "./lib/db"
 import { env } from "./lib/env"
 import { meshHeaders, sleep } from "./lib/http"
+
+const RECONCILE_DOMIA_ID = "eval-proactivity-domia"
+const RECONCILE_DOMIA_KEY = "eval-proactivity-key"
+const RECONCILE_OWNER = "eval-proactivity"
+const RECONCILE_LEASE_MS = 60_000
+const RECONCILE_BACKOFF_MS = 30_000
+const reconcileSettings: ScheduleReconcileSettingsType = {
+	proactiveDeferMaxMs: 15_000,
+	proactiveCriticalDeferMaxMs: 300_000,
+}
 
 const at = (h: number, m = 0): Date => {
 	const d = new Date(2026, 8, 2, h, m, 0, 0)
@@ -318,10 +339,10 @@ const runPure = (checker: ReturnType<typeof makeChecker>): void => {
 				name: "Pills",
 				text: null,
 				templateKey: "proactiveTimeReached",
-				templateParams: { time: "ocho" },
+				templateParams: { time: "las ocho de la noche" },
 			},
 			"es",
-		) === "Son las ocho.",
+		) === "Las ocho de la noche.",
 	)
 	checker.check(
 		"no text → reminder default (es)",
@@ -375,6 +396,145 @@ const runPure = (checker: ReturnType<typeof makeChecker>): void => {
 		"auto with no satellites → default rail",
 		resolveProactiveTarget(undefined, "auto", null, null) === undefined,
 	)
+}
+
+const purgeReconcileRows = (): void => {
+	execWrite("DELETE FROM proactive_schedule WHERE domia_id = ?", [
+		RECONCILE_DOMIA_ID,
+	])
+	execWrite("DELETE FROM domia WHERE id = ?", [RECONCILE_DOMIA_ID])
+}
+
+const seedSchedule = (
+	name: string,
+	dueAtMs: number,
+	templateKey: string | null,
+): string =>
+	insertSchedule(RECONCILE_DOMIA_ID, {
+		name,
+		text: name,
+		templateKey,
+		dueAt: new Date(dueAtMs).toISOString(),
+		importance: "ambient",
+		targetKind: "local",
+	}).id
+
+const runReconcile = (checker: ReturnType<typeof makeChecker>): void => {
+	console.log(
+		"\n[reconcile] claimed rows on the eval identity (never the house's)",
+	)
+	purgeReconcileRows()
+	execWrite(
+		"INSERT INTO domia (id, name, domia_key, is_active) VALUES (?, 'Eval proactivity', ?, 0)",
+		[RECONCILE_DOMIA_ID, RECONCILE_DOMIA_KEY],
+	)
+	try {
+		const now = new Date()
+		const onTimeId = seedSchedule(
+			"on-time reminder",
+			now.getTime() - 1_000,
+			null,
+		)
+		const lateId = seedSchedule(
+			"late timer",
+			now.getTime() - reconcileSettings.proactiveDeferMaxMs - 5_000,
+			PROACTIVE_TEMPLATE_KEY_ENUM.TIMER_FINISHED,
+		)
+		const missedId = seedSchedule(
+			"missed timer",
+			now.getTime() - reconcileSettings.proactiveCriticalDeferMaxMs - 1_000,
+			PROACTIVE_TEMPLATE_KEY_ENUM.TIMER_FINISHED,
+		)
+		const claimed = new Map(
+			claimDue(
+				RECONCILE_DOMIA_ID,
+				now,
+				RECONCILE_LEASE_MS,
+				RECONCILE_OWNER,
+			).map((row) => [row.id, row]),
+		)
+		checker.check(
+			"claimDue leases the three due rows",
+			claimed.size === 3 &&
+				[...claimed.values()].every((row) => row.status === "leased"),
+			String(claimed.size),
+		)
+		const onTime = claimed.get(onTimeId)
+		const late = claimed.get(lateId)
+		const missed = claimed.get(missedId)
+		const onTimeVerdict =
+			onTime && reconcileClaimed(onTime, reconcileSettings, now)
+		checker.check(
+			"a reminder due a second ago → deliver, not late",
+			onTimeVerdict?.kind === "deliver" && !onTimeVerdict.late,
+			JSON.stringify(onTimeVerdict),
+		)
+		const lateVerdict = late && reconcileClaimed(late, reconcileSettings, now)
+		checker.check(
+			"a timer overdue past deferMax → deliver late",
+			lateVerdict?.kind === "deliver" && lateVerdict.late,
+			JSON.stringify(lateVerdict),
+		)
+		const missedVerdict =
+			missed && reconcileClaimed(missed, reconcileSettings, now)
+		checker.check(
+			"a timer overdue past criticalDeferMax → missed",
+			missedVerdict?.kind === "missed",
+			JSON.stringify(missedVerdict),
+		)
+
+		checker.check(
+			"markFired stamps the leased row",
+			markFired(onTimeId, RECONCILE_OWNER, now),
+		)
+		const afterLease = new Date(now.getTime() + RECONCILE_LEASE_MS + 1_000)
+		const reclaimed = claimDue(
+			RECONCILE_DOMIA_ID,
+			afterLease,
+			RECONCILE_LEASE_MS,
+			RECONCILE_OWNER,
+		).find((row) => row.id === onTimeId)
+		checker.check(
+			"a fired row whose lease lapsed is reclaimed as already-fired (no re-announce)",
+			reclaimed !== undefined &&
+				reconcileClaimed(reclaimed, reconcileSettings, afterLease).kind ===
+					"already-fired",
+			JSON.stringify(reclaimed),
+		)
+		const released = releaseSchedule(
+			onTimeId,
+			RECONCILE_OWNER,
+			retryDecision(0, 3, RECONCILE_BACKOFF_MS, afterLease),
+			"no-delivery",
+		)
+		const afterRelease = getScheduleById(RECONCILE_DOMIA_ID, onTimeId)
+		checker.check(
+			"release re-pends the row past the backoff and keeps the fire evidence",
+			released &&
+				afterRelease?.status === "pending" &&
+				afterRelease.lastFiredAt !== null &&
+				afterRelease.dueAt > afterRelease.lastFiredAt,
+			JSON.stringify(afterRelease),
+		)
+		const retryAt = new Date(
+			afterLease.getTime() + RECONCILE_BACKOFF_MS + 1_000,
+		)
+		const retried = claimDue(
+			RECONCILE_DOMIA_ID,
+			retryAt,
+			RECONCILE_LEASE_MS,
+			RECONCILE_OWNER,
+		).find((row) => row.id === onTimeId)
+		checker.check(
+			"the retried row delivers again (its dueAt moved past the last fire)",
+			retried !== undefined &&
+				reconcileClaimed(retried, reconcileSettings, retryAt).kind ===
+					"deliver",
+			JSON.stringify(retried),
+		)
+	} finally {
+		purgeReconcileRows()
+	}
 }
 
 type ScheduleItemWireType = {
@@ -529,6 +689,7 @@ const runLive = async (
 const main = async (): Promise<void> => {
 	const checker = makeChecker()
 	runPure(checker)
+	runReconcile(checker)
 	await runLive(checker)
 	console.log(
 		`\nproactivity: ${checker.passCount()} passed, ${checker.failCount()} failed`,

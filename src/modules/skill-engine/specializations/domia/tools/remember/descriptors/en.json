@@ -1,0 +1,21 @@
+{
+	"keywords": [
+		"remember that",
+		"memorize",
+		"don't forget that",
+		"keep in mind that"
+	],
+	"exampleUtterances": [
+		"remember that I like green tea",
+		"remember that my sister is called Elena"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"rememberedThat": "Got it, I'll remember that.",
+		"couldNotRemember": "I couldn't keep that as a fact about you."
+	}
+}

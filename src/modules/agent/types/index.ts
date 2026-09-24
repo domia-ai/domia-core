@@ -167,6 +167,26 @@ export type PendingConfirmationType = {
 	summary?: string
 }
 
+export type PendingConfirmationViewType = {
+	scope: string
+	satelliteId: string | null
+	tool: string
+	args: Record<string, unknown>
+	resolvedArgs: Record<string, unknown> | null
+	summary: string | null
+	language: string | null
+	reasked: boolean
+	expiresAt: number
+}
+
+export type ConfirmationDecisionType = "yes" | "no"
+
+export type ConfirmationSettleOutcomeType = {
+	settled: boolean
+	ran?: boolean
+	result?: SkillCallResultType
+}
+
 export type AgentResultType = {
 	reply: string
 	replyStream?: AsyncIterable<string>

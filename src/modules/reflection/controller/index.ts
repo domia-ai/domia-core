@@ -605,6 +605,10 @@ const claimReflection = (interactionId: string): boolean => {
 	return true
 }
 
+export const markReflectionCaptured = (interactionId: string): void => {
+	claimReflection(interactionId)
+}
+
 export const reflectOnInteraction = async (
 	domia: DomiaType,
 	userText: string,

@@ -5,6 +5,7 @@ LLM_SRC_DIR="${LLM_SRC_DIR:-$HOME/src}"
 LLAMA_CPP_DIR="${LLAMA_CPP_DIR:-$LLM_SRC_DIR/llama.cpp}"
 LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-$LLAMA_CPP_DIR/build/bin/llama-server}"
 LLM_BUILD_JOBS="${LLM_BUILD_JOBS:-3}"
+LLM_CUDA_ARCHITECTURES="${LLM_CUDA_ARCHITECTURES:-native}"
 FORCE="${FORCE:-}"
 
 mkdir -p "$LLM_SRC_DIR"
@@ -21,10 +22,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
   echo "🍎 macOS detected — building with Metal"
   cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
 elif [ -x /usr/local/cuda/bin/nvcc ]; then
-  echo "🟩 NVIDIA CUDA detected — building with GGML_CUDA"
+  echo "🟩 NVIDIA CUDA detected — building with GGML_CUDA (arch $LLM_CUDA_ARCHITECTURES; Orin = 87, verify with cuobjdump --list-elf)"
   PATH=/usr/local/cuda/bin:$PATH cmake -B build \
     -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES=native \
+    -DCMAKE_CUDA_ARCHITECTURES="$LLM_CUDA_ARCHITECTURES" \
     -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
     -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
 else

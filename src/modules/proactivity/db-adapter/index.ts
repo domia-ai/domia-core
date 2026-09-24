@@ -56,6 +56,22 @@ export const listSchedule = (
 		.limit(PROACTIVE_SCHEDULE_LIST_LIMIT)
 		.all()
 
+export const nextPendingDueAt = (domiaId: string): number | null => {
+	const row = dbClient
+		.select({ dueAt: proactiveSchedule.dueAt })
+		.from(proactiveSchedule)
+		.where(
+			and(
+				eq(proactiveSchedule.domiaId, domiaId),
+				eq(proactiveSchedule.status, STATUS.PENDING),
+			),
+		)
+		.orderBy(asc(proactiveSchedule.dueAt))
+		.limit(1)
+		.get()
+	return row ? Date.parse(row.dueAt) : null
+}
+
 export const getScheduleById = (
 	domiaId: string,
 	id: string,
@@ -177,11 +193,29 @@ export const renewLease = (
 		)
 		.run().changes > 0
 
+export const markFired = (id: string, owner: string, firedAt: Date): boolean =>
+	dbClient
+		.update(proactiveSchedule)
+		.set({
+			lastFiredAt: firedAt.toISOString(),
+			firedCount: sql`${proactiveSchedule.firedCount} + 1`,
+			updatedAt: firedAt.toISOString(),
+		})
+		.where(
+			and(
+				eq(proactiveSchedule.id, id),
+				eq(proactiveSchedule.status, STATUS.LEASED),
+				eq(proactiveSchedule.leaseOwner, owner),
+			),
+		)
+		.run().changes > 0
+
 export const completeSchedule = (
 	id: string,
 	owner: string,
-	firedAt: Date,
+	completedAt: Date,
 	next: string | null,
+	lastError: string | null = null,
 ): boolean =>
 	dbClient
 		.update(proactiveSchedule)
@@ -191,10 +225,8 @@ export const completeSchedule = (
 			leaseUntil: null,
 			leaseOwner: null,
 			attempts: 0,
-			lastError: null,
-			lastFiredAt: firedAt.toISOString(),
-			firedCount: sql`${proactiveSchedule.firedCount} + 1`,
-			updatedAt: firedAt.toISOString(),
+			lastError,
+			updatedAt: completedAt.toISOString(),
 		})
 		.where(
 			and(
@@ -299,6 +331,7 @@ export const countProactiveAnnouncementsSince = (
 		.where(
 			and(
 				eq(announcement.domiaId, domiaId),
+				eq(announcement.delivered, true),
 				like(announcement.broadcastId, `${PROACTIVE_BROADCAST_PREFIX}%`),
 				gte(announcement.createdAt, since),
 			),
@@ -315,6 +348,7 @@ export const lastProactiveAnnouncementAt = (
 		.where(
 			and(
 				eq(announcement.domiaId, domiaId),
+				eq(announcement.delivered, true),
 				eq(announcement.broadcastId, broadcastId),
 			),
 		)

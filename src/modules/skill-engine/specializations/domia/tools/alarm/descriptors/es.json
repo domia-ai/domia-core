@@ -1,0 +1,117 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(pon|ponme|activa) una alarma (a|para) {clockTime}",
+				"(pon|ponme) una alarma {clockTime}",
+				"despiértame (a|para) {clockTime}",
+				"alarma (a|para) {clockTime}"
+			],
+			"slots": {
+				"clockTime": {
+					"source": {
+						"kind": "clockTime"
+					},
+					"arg": "at"
+				}
+			},
+			"allowBlockedTokens": true
+		},
+		{
+			"templates": [
+				"(pon|ponme|activa) una alarma (a|para) {clockTime} todos los días",
+				"(pon|ponme|activa) una alarma diaria (a|para) {clockTime}",
+				"despiértame (a|para) {clockTime} todos los días",
+				"despiértame todos los días (a|para) {clockTime}"
+			],
+			"slots": {
+				"clockTime": {
+					"source": {
+						"kind": "clockTime"
+					},
+					"arg": "at"
+				}
+			},
+			"argDefaults": {
+				"daily": true
+			},
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["alarma", "despiértame", "despiertame"],
+	"exampleUtterances": [
+		"ponme una alarma a las siete y media",
+		"despiértame a las seis"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"alarmSet": "Alarma a {time}.",
+		"alarmSetDaily": "Alarma diaria a {time}.",
+		"alarmCancelled": "Alarma cancelada.",
+		"noActiveAlarm": "No hay ninguna alarma puesta.",
+		"alarmRing": "Tu alarma: {time}.",
+		"alarmRingLate": "Tu alarma era a {time}, perdona el retraso.",
+		"alarmFailed": "No pude poner esa alarma."
+	},
+	"samples": [
+		{
+			"text": "ponme una alarma a las siete y media",
+			"args": {
+				"at": "07:30"
+			}
+		},
+		{
+			"text": "despiértame a las seis",
+			"args": {
+				"at": "06:00"
+			}
+		},
+		{
+			"text": "alarma a las 8 de la mañana",
+			"args": {
+				"at": "08:00"
+			}
+		},
+		{
+			"text": "pon una alarma a las diez de la noche",
+			"args": {
+				"at": "22:00"
+			}
+		},
+		{
+			"text": "pon una alarma a las siete todos los días",
+			"args": {
+				"at": "07:00",
+				"daily": true
+			}
+		},
+		{
+			"text": "pon una alarma a las doce de la mañana",
+			"args": {
+				"at": "12:00"
+			}
+		},
+		{
+			"text": "pon una alarma a las doce de la noche",
+			"args": {
+				"at": "00:00"
+			}
+		},
+		{
+			"text": "despiértame a las tres de la madrugada",
+			"args": {
+				"at": "03:00"
+			}
+		},
+		{
+			"text": "pon una alarma a las doce del mediodía",
+			"args": {
+				"at": "12:00"
+			}
+		}
+	]
+}

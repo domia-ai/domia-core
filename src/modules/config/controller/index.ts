@@ -1,12 +1,22 @@
 import { existsSync, readdirSync } from "fs"
 import { resolve } from "path"
-import { dbClient, STT_ENGINE_ENUM } from "@/db"
+import { getTableColumns } from "drizzle-orm"
+import {
+	dbClient,
+	domia as domiaTable,
+	STT_ENGINE_ENUM,
+	VOLUME_PERCENT_SCALE,
+} from "@/db"
 import { type DomiaType, getOwnDomia, invalidateOwnDomia } from "@/modules/core"
 import { getEmotionVectorFromEmotionState } from "@/modules/emotion-engine"
 import { getBootStatus } from "@/modules/runtime-control"
 import { getAecStatus } from "@/modules/aec"
 import { setGrpcClientTunables } from "@/modules/grpc-client"
-import { resolveSkillAdapter } from "@/modules/skill-engine"
+import {
+	resolveSkillAdapter,
+	ensureBuiltinProvider,
+	isBuiltinProvider,
+} from "@/modules/skill-engine"
 import { slotStats } from "@/modules/llm-slots"
 import {
 	configEngineLogger,
@@ -15,6 +25,7 @@ import {
 	VALIDATION_ERRORS,
 } from "@/utils"
 import dbAdapter from "../db-adapter"
+import { DOMIA_BUNDLE_OMIT_KEYS } from "../constants"
 import { CONFIG_BUNDLE_VERSION, configBundleSchema } from "../schemas"
 import type {
 	ConfigHealthEntryType,
@@ -40,7 +51,6 @@ const fileInstalled = (path: string | null | undefined): boolean => {
 		return false
 	}
 }
-
 export const configHealth = (domia: DomiaType): ConfigHealthType => {
 	const entries: ConfigHealthEntryType[] = []
 	const caps = domia.runtimeCapabilities
@@ -154,6 +164,7 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			status: "ok",
 		})
 	const skillsOn = domia.moduleSettings?.skillsEngine === true
+	const builtinOn = domia.moduleSettings?.builtinTools === true
 	const providers = (domia.skillProviders ?? []).filter((p) => p.isActive)
 	if (skillsOn && providers.length === 0)
 		entries.push({
@@ -164,15 +175,26 @@ export const configHealth = (domia: DomiaType): ConfigHealthType => {
 			status: "unknown",
 			detail: "Skills engine is on but no providers are configured",
 		})
+	else if (skillsOn && providers.every(isBuiltinProvider))
+		entries.push({
+			stage: "skills",
+			engine: null,
+			configured: null,
+			path: null,
+			status: "ok",
+			detail: "No MCP providers yet — only the built-in tools are loaded",
+		})
 	for (const p of providers) {
 		let status: ConfigHealthEntryType["status"] = "ok"
 		let detail: string | undefined
 		if (!resolveSkillAdapter(p.protocol)) {
 			status = "missing"
 			detail = `Unsupported protocol '${p.protocol}' — no adapter installed`
-		} else if (!skillsOn) {
+		} else if (isBuiltinProvider(p) ? !builtinOn : !skillsOn) {
 			status = "unknown"
-			detail = "Skills engine is off — this provider is not loaded"
+			detail = isBuiltinProvider(p)
+				? "Built-in tools are off — the native provider is not loaded"
+				: "Skills engine is off — this provider is not loaded"
 		} else if (!p.url) {
 			status = "missing"
 			detail = "Missing endpoint URL"
@@ -238,7 +260,7 @@ export const stripDomiaSnapshotSecrets = <T>(snapshot: T): T => {
 
 const bundleSection = (
 	row: object,
-	extraOmit: string[] = [],
+	extraOmit: readonly string[] = [],
 ): Record<string, unknown> =>
 	Object.fromEntries(
 		Object.entries(row).filter(
@@ -248,30 +270,24 @@ const bundleSection = (
 
 const toBundleSection = (
 	row: object | null | undefined,
-	extraOmit: string[] = [],
+	extraOmit: readonly string[] = [],
 ): Record<string, unknown> | null =>
 	row ? bundleSection(row, extraOmit) : null
+
+const DOMIA_COLUMN_KEYS = Object.keys(getTableColumns(domiaTable))
+
+const domiaRow = (row: DomiaType): Record<string, unknown> =>
+	Object.fromEntries(
+		DOMIA_COLUMN_KEYS.map((key) => [
+			key,
+			(row as unknown as Record<string, unknown>)[key],
+		]),
+	)
 
 export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 	({
 		version: CONFIG_BUNDLE_VERSION,
-		domia: {
-			name: domia.name,
-			sessionIdTimeoutMs: domia.sessionIdTimeoutMs,
-			memoryWindowTurns: domia.memoryWindowTurns,
-			memoryMaxAgeMs: domia.memoryMaxAgeMs,
-			maxConcurrentVoiceReplies: domia.maxConcurrentVoiceReplies,
-			maxQueuedVoiceReplies: domia.maxQueuedVoiceReplies,
-			voiceQueueTimeoutMs: domia.voiceQueueTimeoutMs,
-			ownConfigTtlMs: domia.ownConfigTtlMs,
-			warmupOnBoot: domia.warmupOnBoot,
-			modelInstallAllowedHosts: domia.modelInstallAllowedHosts,
-			heartbeatSignatureRequired: domia.heartbeatSignatureRequired,
-			meshSecretGraceMs: domia.meshSecretGraceMs,
-			knowledgeMaxChars: domia.knowledgeMaxChars,
-			benchTurns: domia.benchTurns,
-			benchThresholds: domia.benchThresholds,
-		},
+		domia: bundleSection(domiaRow(domia), DOMIA_BUNDLE_OMIT_KEYS),
 		character: toBundleSection(domia.characterProfile),
 		emotion: domia.emotionState
 			? getEmotionVectorFromEmotionState(domia.emotionState)
@@ -294,6 +310,23 @@ export const serializeConfig = (domia: DomiaType): ConfigSnapshotType =>
 			bundleSection(d),
 		),
 	}) as ConfigSnapshotType
+
+export const clampVolumePercent = (level: number): number =>
+	Math.min(VOLUME_PERCENT_SCALE, Math.max(0, Math.round(level)))
+
+export const setPlaybackVolume = (domia: DomiaType, volume: number): number => {
+	const level = clampVolumePercent(volume)
+	dbClient.transaction((tx) => {
+		dbAdapter.materializePlayback(domia.id, { volume: level }, tx).run()
+		dbAdapter.bumpConfigRevision(domia.id, tx).run()
+	})
+	invalidateOwnDomia(domia.domiaKey)
+	configEngineLogger.info("🔊 playback volume persisted", {
+		domiaId: domia.id,
+		volume: level,
+	})
+	return level
+}
 
 export const persistConfig = async (
 	domia: DomiaType,
@@ -328,8 +361,10 @@ export const persistConfig = async (
 			dbAdapter.materializePlayback(domia.id, bundle.playback, tx).run()
 		if (bundle.mqttLocal)
 			dbAdapter.materializeMqtt(domia.id, "LOCAL", bundle.mqttLocal, tx)
-		if (bundle.skillProviders)
+		if (bundle.skillProviders) {
 			dbAdapter.replaceSkillProviders(domia.id, bundle.skillProviders, tx)
+			ensureBuiltinProvider(domia.id, tx)
+		}
 		if (bundle.delegations)
 			dbAdapter.replaceDelegations(domia.id, bundle.delegations, tx)
 		dbAdapter.bumpConfigRevision(domia.id, tx).run()

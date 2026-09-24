@@ -1,0 +1,56 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(sube|súbele|súbete) tu volumen",
+				"tu volumen más alto",
+				"habla más (alto|fuerte)"
+			],
+			"argDefaults": { "direction": "up" }
+		},
+		{
+			"templates": [
+				"(baja|bájale|bájate) tu volumen",
+				"tu volumen más bajo",
+				"habla más (bajo|bajito|flojo|suave)"
+			],
+			"argDefaults": { "direction": "down" }
+		},
+		{
+			"templates": [
+				"(pon|ajusta|deja) tu volumen (a|al|en) {level} [por ciento]",
+				"tu volumen (a|al|en) {level} [por ciento]",
+				"habla al {level} por ciento"
+			],
+			"slots": {
+				"level": {
+					"source": { "kind": "range", "min": 0, "max": 100 },
+					"arg": "level"
+				}
+			}
+		}
+	],
+	"keywords": ["tu volumen", "habla más alto", "habla más bajo", "tu voz"],
+	"exampleUtterances": ["baja tu volumen", "habla más alto por favor"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"voiceVolumeSet": "Mi volumen está al {level} por ciento.",
+		"voiceVolumeUp": "Hablo más alto. Mi volumen está al {level} por ciento.",
+		"voiceVolumeDown": "Hablo más bajo. Mi volumen está al {level} por ciento.",
+		"voiceVolumeAtMax": "Ya estoy al máximo volumen.",
+		"voiceVolumeAtMin": "Ya hablo lo más bajo que puedo.",
+		"voiceVolumeUnavailable": "No puedo cambiar mi volumen en este dispositivo."
+	},
+	"samples": [
+		{ "text": "baja tu volumen", "args": { "direction": "down" } },
+		{ "text": "sube tu volumen", "args": { "direction": "up" } },
+		{ "text": "habla más alto", "args": { "direction": "up" } },
+		{ "text": "habla más bajo por favor", "args": { "direction": "down" } },
+		{ "text": "pon tu volumen al 40 por ciento", "args": { "level": 40 } },
+		{ "text": "pon tu volumen a cincuenta", "args": { "level": 50 } }
+	]
+}

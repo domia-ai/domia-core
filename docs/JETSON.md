@@ -63,10 +63,10 @@ On **macOS** `make llm-service` installs a launchd user agent (`ai.domia.llm-ser
 
 ## Jetson-specific tuning (already encoded in `templates/jetson.json`)
 
-- **Power mode**: use MAXN_SUPER (`sudo nvpmodel -m 2`) — the doctor checks this.
+- **Power mode and clocks**: `nvpmodel -m 2` (MAXN_SUPER) sets the ceiling; `jetson_clocks` pins CPU/GPU/EMC at that ceiling and stops DVFS ramping. `make jetson-power` applies both now, `make jetson-power-service` installs a one-shot unit that re-applies them at every boot before llama-server (`NVPMODEL_MODE ?= 2`; on AGX Orin MAXN is mode 0). `make status` shows the mode, the GPU clock against its max, the tj/gpu temperatures and whether the kernel logged an ACR firmware failure this boot.
 - **Headless**: `sudo systemctl set-default multi-user.target`. The desktop costs ~1GB of unified memory — enough to push model layers off the GPU.
 - **One resident model**: the template nulls `reflectionModelName` so the reflection pass never loads a second model (8GB cannot hold two — the reload thrash costs 20-30s per turn).
-- **Swap**: add an 8GB swapfile (see doctor output). Memory spikes otherwise OOM-kill services.
+- **Swap**: add an 8GB swapfile (see doctor output). Memory spikes otherwise OOM-kill services. The doctor distinguishes a swapfile from stock zram (compressed RAM cannot absorb a model spill). The units carry the OOM policy: `domia` runs with `OOMScoreAdjust=-500` so the kernel picks a model server before the node process, `llama-server` with `MemoryHigh=5G` (`LLM_MEMORY_HIGH`, a soft cap that reclaims above it — the 4.9 GB RSS runaway of the unbounded prompt cache stays bounded even if a flag regresses) and `OOMScoreAdjust=-100`.
 - **TTS**: VITS (piper `libritts_r-medium`) on CPU with 4 threads and per-sentence streaming on. `pacerEnabled` must stay **off** on this hardware (its batches outrun the 5s runway and cut long replies).
 - **Services**: `make install-services` installs domia, llama-server **and nemo-speech** under systemd (`Restart=always`, domia ordered after llama-server; nemo-speech is a user unit, which the system manager cannot order against) — the appliance survives reboots, crashes and OOM kills. Install every server the config points at: the hub ran `stt.engine=NEMO_SPEECH` with nemo-speech started by hand, and one reboot silently killed all voice input (text `/chat` kept passing, the Voice PE showed a red ring) until the unit existed. `make services` prints which units are enabled.
 - **Memory on 8 GB**: llama-server with the default cache RAM sits near 3.7 GB RSS; `--cache-ram 0` brought it to 2.9 GB, and the launcher/makefile default `LLM_CACHE_RAM_MB=256` keeps it near 3.4 GB without the re-prefill cost (see "llama-server memory on an 8 GB box" below); the per-box flags the hub needs (`-np 2`, q8 KV, `LLM_CTX=8192`) go in `config/llm-server.env` as in the quick start, and a plain `pkill -x llama-server` applies them without sudo. nemo-speech needs ~1–1.5 GB on top; measured after both: ~2 GB available. The native Ollama idles at ~27 MB, so disabling it is optional.
@@ -113,7 +113,7 @@ EVAL_DB=data/db/jetson.db npm run evals -- mind-dump counts
 curl -s -X POST -H 'content-type: application/json' -d '{"text":"What time is it?"}' 'http://127.0.0.1:3100/chat?domiaKey=DOMIA_JETSON'
 ```
 
-Two gotchas: a file copy of the DB must checkpoint the WAL first (`sqlite3 data/db/jetson.db ".backup copy.db"`, never `cp` alone), and any raw `sqlite3` delete runs on a connection without `PRAGMA foreign_keys = ON`, so it can leave orphans the app never creates — prefer the API or `mind-dump`. Chapter S replaces this bridge with a versioned export and `db:reset --preserve-mind`.
+Two gotchas: a file copy of the DB must checkpoint the WAL first (`sqlite3 data/db/jetson.db ".backup copy.db"`, never `cp` alone), and any raw `sqlite3` delete runs on a connection without `PRAGMA foreign_keys = ON`, so it can leave orphans the app never creates — prefer the API or `mind-dump`. The versioned export exists since 2026-09-24: `GET /mind/export` / `POST /mind/import` (module `mind-transfer`, 12 sections, secrets stripped, remap + verify; `evals/mind-dump.ts` is a CLI over it and keeps carrying provider auth for this runbook). `db:reset --preserve-mind` remains a chapter S item.
 
 ## Hardening the hub
 
@@ -146,9 +146,24 @@ Notes:
 - Keep Domia's `llm.contextWindow` (DB) ≤ the server's `LLM_CTX` — the server silently truncates beyond its own limit.
 - `useCompactPrompt` measured **worse** on this setup (total p50 +906ms): llama-server's prefix cache already makes the rich persona prompt free after the first turn, and the compact variant loses the style guidance.
 
-## Physical ceiling
+## Physical ceiling (re-measured 2026-09-22)
 
-At MAXN_SUPER the Orin Nano has 102 GB/s of memory bandwidth → a 3B Q4 model tops out around ~50 tok/s decode no matter the engine. `llama-server` delivers ~20 tok/s in-pipeline; treat bigger claims with suspicion.
+At MAXN_SUPER the Orin Nano has 102 GB/s of memory bandwidth → a 3B Q4 model tops out around ~50 tok/s decode no matter the engine. That bound is real for the **aggregate**: two parallel streams reach it. A **single stream** sits at half of it because at batch 1 the GPU is the limit, not the bus — `tegrastats` during decode shows `GR3D_FREQ 99%` at the pinned 1020 MHz while the CPUs idle at 729 MHz with ~5 % load. The per-token cost is GPU kernel time on a 1024-core part, so clocks, the CPU governor, the KV format and the attention path barely move it. Measured with `make llm-bench` (5 prefill runs of 317 tokens, 5 decode runs of 96 tokens, 2 parallel streams; MAXN_SUPER, GPU at 1020/1020 MHz, tj 59–64 °C, domia and nemo-speech running unless noted):
+
+| Variant (`LLM_EXTRA_FLAGS` unless noted)                       | Prefill tok/s | Decode tok/s (1 stream) | 2 streams aggregate | RSS     |
+| -------------------------------------------------------------- | ------------- | ----------------------- | ------------------- | ------- |
+| baseline `-np 2 -ctk q8_0 -ctv q8_0`, Q4_K_M                   | 770           | 23.6                    | 49.4                | 3.19 GB |
+| same, nemo-speech stopped                                      | 769           | 23.5                    | 49.9                | 3.19 GB |
+| `-np 1 -ctk q8_0 -ctv q8_0`                                    | 765           | 23.6                    | 47.0                | 3.27 GB |
+| `-np 2` (f16 KV)                                               | 785           | 24.0                    | 51.8                | 3.69 GB |
+| `-np 2 -fa off` (f16 KV; q8 KV needs flash attention)          | 715           | 21.9                    | 43.3                | 4.04 GB |
+| `-np 1` (f16 KV)                                               | 793           | 24.0                    | 48.1                | 3.70 GB |
+| `GGML_CUDA_ENABLE_UNIFIED_MEMORY` unset                        | 772           | 23.9                    | 51.3                | 3.25 GB |
+| July build (`build-tuned`, `GGML_CUDA_F16=ON`, arch 87)        | 769           | 22.0                    | 41.8                | 3.25 GB |
+| CPU governor forced to 1.7 GHz by six nice-19 busy loops       | 774           | 19.5                    | —                   | 3.26 GB |
+| **same model as Q4_0** (`LLM_GGUF=…q4_0.gguf`), baseline flags | **840**       | **28.0**                | **58.3**            | 3.16 GB |
+
+Conclusions: keep `-np 2 -ctk q8_0 -ctv q8_0` (f16 KV buys 2 % for 500 MB, flash attention must stay on); the resident STT server costs nothing; `jetson_clocks` is about determinism, not decode speed (the GPU already runs at its cap under load, and stealing CPU from the server hurts more than DVFS does); the current source build beats the older `GGML_CUDA_F16` build; and the one lever that moves a single stream is the **quantization format** — Q4_0's simpler dequantization is 19 % faster to decode and 9 % faster to prefill on this GPU than Q4_K_M. Q4_0 is lossier, and the quality gate rejected it the same day: three `tool-scenarios` rounds per model on the hub (mock HA, `--label q4km-r1..3` / `q4_0-r1..3`) — Q4_K_M gates 14/14 with score 7/9, 7/9, 6/9 and turn medians 1214 / 1154 / 1112 ms; Q4_0 gates 14/14 but score 6/9, 4/9, 6/9 with medians 1096 / 1328 / 1333 ms, missing the anaphora "make it brighter" (no `HassLightSet`) in every round and once the blanket-off. The raw +19 % decode does not reach the pipeline (turns are prefill plus a short output), so **Q4_K_M stays**; the Q4_0 file remains in `data/models/gguf/` on the hub for a re-test with a future champion; `--mmap`/`--mlock` were not tested (the flag syntax changed in current llama.cpp and the box does not swap the model today). Raw results: `evals/bench-results/llm-bench-*.json` on the hub, each with the box state and warnings recorded.
 
 ## STT choice (validated, not assumed)
 
@@ -191,7 +206,9 @@ Benchmarked through the full Domia pipeline on this hardware (see `evals/bench-r
 - **Ollama**: llm p50 1539ms → replaced by llama-server (841ms) — same llama.cpp underneath, less per-request overhead.
 - **llama-server + n-gram speculative decoding**: p50 got 17% _worse_ — conversational replies rarely repeat the prompt, so drafts miss.
 - **NVIDIA TensorRT-Edge-LLM** (the official Jetson runtime): its engine is genuinely faster per parameter (25 tok/s decode on a 4B), but its experimental OpenAI server has no prefix/KV caching (upstream issues #94/#74) — it re-prefills the whole persona prompt every turn and loses end-to-end (llm p50 1819ms). Worth re-benchmarking when those issues land.
-- **MLC / vLLM containers**: no builds published for L4T R39 / CUDA 13 at evaluation time (2026-07).
+- **MLC / vLLM containers**: no builds published for L4T R39 / CUDA 13 at evaluation time (2026-07). NVIDIA's own skills now state that Orin on JetPack 7.2 / L4T r39+ runs upstream vLLM 0.20+ as a container (2026-09) — still not for us: a container, HF checkpoints, Python in the inference path, and `--gpu-memory-utilization` on an 8 GB pool shared with STT and the node. Re-open only if llama-server stops being the champion.
+- **4B candidates on the hub (2026-09-22, `make llm-bench` + three `tool-scenarios` rounds each, mock HA, same day as the 3B control 7/7/6 of 9 at ~1150 ms median):** Qwen3-4B Q4_K_M — decode 18.3 tok/s, prefill 604, RSS 3.85 GB, gates 13/14 in every round (the negation "don't turn on the lights" turns them off), score 7/9, median 1720 ms. Nemotron-3-nano-4B Q4_K_M — prefill 384, decode timings unreported, RSS 4.26 GB, every state query becomes a confirmation prompt, gates 10–11/14, score 3–4/9, median ~2000 ms. Gemma 3 4B-it Q4_K_M — decode 18.4 (min 13.2), prefill 488, RSS 3.94 GB, contradicts the state after an action in every round, gates 13/14, score 4/9, median ~2800 ms. All three fit in memory (1.9–2.3 GB still available) and all three lose on tool quality while adding 0.5–1.6 s per turn; llama3.2:3b stays the champion. The GGUFs remain in `data/models/gguf/` for a re-test after a Domia-side change (grammar/template), not for a re-run as-is.
+- **Building from source is deliberate.** NVIDIA's Jetson skills point agents at the prebuilt `ghcr.io/nvidia-ai-iot/llama_cpp` container and say not to build llama.cpp from source. We build on purpose: current llama.cpp for `--cache-ram`, `--spec-type`, chat-template control and the KV/attention flags below, no Docker in the inference path. `scripts/build-llama-cpp.sh` uses `-DCMAKE_CUDA_ARCHITECTURES=native` (verified with `cuobjdump --list-elf`: 143 sm_87 kernels on the Orin); pass `LLM_CUDA_ARCHITECTURES=87` for a cross build.
 
 ## llama-server memory on an 8 GB box: cap `--cache-ram`, don't disable it (2026-09-11)
 
@@ -214,6 +231,21 @@ After an unclean restart the Orin's GPU can come back without its firmware: the 
 journalctl -k -b | grep -c "ACR bootstrap failed"     # must be 0
 curl -s localhost:11435/completion -d '{"prompt":"word word word ...","n_predict":8}' | jq .timings.prompt_per_second
 ```
+
+## Day-to-day on the hub: status, logs, restart
+
+Domia runs as the `domia` systemd unit (`node build/index.js` under `dotenvx`, `Restart=always`), llama-server as a system unit and nemo-speech as a user unit; the rendered unit files live outside the repo (`/etc/systemd/system/*.service`, `~/.config/systemd/user/nemo-speech.service`) and are generated from `config/systemd/*.tpl` by `make install-services`. From the repo on the hub:
+
+```bash
+make status      # units, /health, providers, satellites (wake words, firmware)
+make logs        # the node log filtered to turns, satellites, providers, warnings (LOG_GREP=pattern to change it)
+make logs-raw    # the whole JSON log, rendered one line per event
+make restart     # kill the main process without sudo; systemd relaunches it; waits for /health
+journalctl -fu llama-server        # LLM server output
+journalctl --user -fu nemo-speech  # STT server output
+```
+
+Log timestamps are UTC. After editing code on the hub: `npm run build && make restart`.
 
 ## The hub at the house (2026-09-09)
 

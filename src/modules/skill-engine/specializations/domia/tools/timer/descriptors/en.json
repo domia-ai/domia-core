@@ -1,0 +1,48 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(set|start) [a] timer for {duration}",
+				"(set|start) [a] {duration} timer",
+				"timer [for] {duration}",
+				"[set] [a] countdown for {duration}",
+				"remind me in {duration}"
+			],
+			"slots": {
+				"duration": { "source": { "kind": "duration" }, "arg": "seconds" }
+			}
+		}
+	],
+	"keywords": ["timer", "countdown", "minutes", "seconds"],
+	"exampleUtterances": [
+		"set a timer for five minutes",
+		"start a ten minute timer"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"timerSet": "Timer set for {label}.",
+		"timerSetOn": "Timer set for {label} on {target}.",
+		"timerFailed": "I couldn't start that timer.",
+		"timerCancelled": "Timer cancelled.",
+		"noActiveTimer": "There's no timer running.",
+		"timerRemaining": "{remaining} left on your {label} timer.",
+		"timerFinished": "Your {label} timer is done.",
+		"timerFinishedLate": "Your {label} timer finished a while ago, sorry for the delay.",
+		"localDeviceName": "this device",
+		"listJoiner": "and"
+	},
+	"samples": [
+		{ "text": "set a timer for five minutes", "args": { "seconds": 300 } },
+		{ "text": "start a 10 minute timer", "args": { "seconds": 600 } },
+		{ "text": "timer for 1 hour and 10 minutes", "args": { "seconds": 4200 } },
+		{ "text": "set a timer for half an hour", "args": { "seconds": 1800 } },
+		{
+			"text": "please set a countdown for 90 seconds",
+			"args": { "seconds": 90 }
+		}
+	]
+}

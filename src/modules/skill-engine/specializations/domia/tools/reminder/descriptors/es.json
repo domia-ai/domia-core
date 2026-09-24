@@ -1,0 +1,32 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cancela [(el|mi)] recordatorio",
+				"cancela [(los|mis)] recordatorios"
+			],
+			"argDefaults": { "action": "cancel" }
+		}
+	],
+	"keywords": ["recuérdame", "recordatorio"],
+	"exampleUtterances": [
+		"recuérdame llamar a mamá en veinte minutos",
+		"recuérdame a las siete tomar las pastillas"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"reminderSet": "Te lo recuerdo: {text}.",
+		"reminderDue": "Recordatorio: {text}",
+		"reminderCancelled": "Recordatorio cancelado.",
+		"noActiveReminder": "No hay ningún recordatorio pendiente.",
+		"reminderNeedsTime": "Dime qué quieres que te recuerde y cuándo.",
+		"announcedOn": "Lo diré en {target}."
+	},
+	"samples": [
+		{ "text": "cancela el recordatorio", "args": { "action": "cancel" } }
+	]
+}

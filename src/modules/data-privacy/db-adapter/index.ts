@@ -1,7 +1,8 @@
-import { eq, getTableName } from "drizzle-orm"
+import { eq, inArray, getTableName } from "drizzle-orm"
 
 import {
 	dbClient,
+	domia,
 	interactionTrace,
 	announcement,
 	memoryFact,
@@ -12,6 +13,10 @@ import {
 	knowledgeEntry,
 	interactionSessionTrace,
 	turnEvent,
+	toolRun,
+	pendingConfirmationRow,
+	proactiveSchedule,
+	routine,
 	type DBClientOrTxType,
 } from "@/db"
 
@@ -26,6 +31,9 @@ const USER_DATA_TABLES = [
 	interactionSessionTrace,
 	turnEvent,
 	announcement,
+	toolRun,
+	proactiveSchedule,
+	routine,
 ] as const
 
 const dbAdapter = {
@@ -57,6 +65,18 @@ const dbAdapter = {
 			const res = client.delete(table).where(eq(table.domiaId, domiaId)).run()
 			deleted[getTableName(table)] = res.changes
 		}
+		deleted[getTableName(pendingConfirmationRow)] = client
+			.delete(pendingConfirmationRow)
+			.where(
+				inArray(
+					pendingConfirmationRow.domiaKey,
+					client
+						.select({ domiaKey: domia.domiaKey })
+						.from(domia)
+						.where(eq(domia.id, domiaId)),
+				),
+			)
+			.run().changes
 		return deleted
 	},
 }

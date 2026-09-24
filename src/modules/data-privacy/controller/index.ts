@@ -2,6 +2,7 @@ import { unlink } from "fs/promises"
 
 import { appLogger } from "@/utils"
 import { forgetServedAudio } from "@/modules/core-bus"
+import { invalidateRoutines } from "@/modules/skill-engine"
 import dbAdapter from "../db-adapter"
 import type { IdentityDataDeletionType } from "../types"
 
@@ -35,6 +36,7 @@ export const deleteIdentityData = async (
 	).filter(Boolean).length
 
 	const deleted = dbAdapter.deleteUserDataForDomia(domiaId)
+	invalidateRoutines(domiaId)
 	const total = Object.values(deleted).reduce((sum, n) => sum + n, 0)
 	appLogger.info("🗑️ identity data erased (GDPR)", {
 		domiaId,

@@ -53,3 +53,5 @@ export const DEFAULT_VOICE_FEEL_RULES: VoiceFeelRuleType[] = [
 		enabled: true,
 	},
 ]
+
+export const DEFAULT_VOICE_FEEL_ADJUSTMENT_MAX_AGE_MS = 180 * 86_400_000

@@ -3,6 +3,7 @@ export {
 	getToolPolicy,
 	getToolMeta,
 	getConnectionsFor,
+	toolAvailableFor,
 	specializationKindOf,
 	claimToolRunSpoken,
 	unclaimToolRunSpoken,
@@ -17,7 +18,11 @@ export {
 	setElicitationPresenter,
 	clearElicitationPresenter,
 	invalidateToolList,
+	setSkillRuntimePort,
+	runtimePort,
+	runtimePortOrNull,
 } from "./hooks"
+export { ensureBuiltinProvider, isBuiltinProvider } from "./providers"
 export {
 	connectProvider,
 	connectAll,
@@ -33,3 +38,4 @@ export {
 	resolveSkillArgs,
 } from "./tools"
 export { callTool } from "./call-tool"
+export { getToolRunsSince, listToolRuns } from "./tool-runs"

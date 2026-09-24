@@ -2,12 +2,14 @@ import type { SelectSkillProviderType } from "@/db"
 import { registerCatalogExtension } from "@/utils"
 
 import type { SkillSpecializationType } from "../types"
+import { domiaSpecialization } from "./domia"
 import { homeAssistantSpecialization } from "./home-assistant"
 import { musicAssistantSpecialization } from "./music-assistant"
 
 const registry: Record<string, SkillSpecializationType> = {
 	[homeAssistantSpecialization.kind]: homeAssistantSpecialization,
 	[musicAssistantSpecialization.kind]: musicAssistantSpecialization,
+	[domiaSpecialization.kind]: domiaSpecialization,
 }
 
 export const registerSpecialization = (
@@ -41,4 +43,17 @@ export const resolveSpecialization = (
 ): SkillSpecializationType | null =>
 	resolveSpecializationByKind(provider.descriptor?.kind)
 
-export { homeAssistantSpecialization, musicAssistantSpecialization }
+export {
+	homeAssistantSpecialization,
+	musicAssistantSpecialization,
+	domiaSpecialization,
+}
+export {
+	routinesOf,
+	activeRoutinesOf,
+	invalidateRoutines,
+	saveRoutine,
+	removeRoutine,
+	routineToolName,
+	routinePolicyOf,
+} from "./domia/routines"

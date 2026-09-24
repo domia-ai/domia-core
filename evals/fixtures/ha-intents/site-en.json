@@ -1,0 +1,1129 @@
+{
+	"meta": {
+		"source": "https://github.com/OHF-Voice/intents",
+		"commit": "f8cdbb0b",
+		"license": "CC-BY-4.0",
+		"generatedBy": "evals/gen-ha-intents.ts"
+	},
+	"language": "en",
+	"floors": [
+		"Upstairs",
+		"Ground Floor",
+		"First Floor",
+		"Second Floor",
+		"Basement"
+	],
+	"areas": [
+		"Guest Room",
+		"Outside",
+		"Kitchen",
+		"Living Room",
+		"Bedroom",
+		"Garage",
+		"Entrance",
+		"Office",
+		"Den",
+		"Lobby",
+		"Hallway",
+		"Loft",
+		"Entryway"
+	],
+	"entities": [
+		{
+			"name": "Bedroom Lamp",
+			"domain": "light",
+			"area": "Bedroom",
+			"floor": "Second Floor",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Bedroom Switch",
+			"domain": "switch",
+			"area": "Bedroom",
+			"floor": "Second Floor",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Kitchen Switch",
+			"domain": "switch",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Kitchen countertop",
+			"domain": "light",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Kitchen ceiling",
+			"domain": "light",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Kitchen cabinets",
+			"domain": "light",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Ceiling Fan",
+			"domain": "fan",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Curtain Left",
+			"domain": "cover",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": "curtain",
+			"state": "open"
+		},
+		{
+			"name": "Shade Left",
+			"domain": "cover",
+			"area": "Guest Room",
+			"floor": "Upstairs",
+			"deviceClass": "shade",
+			"state": "open"
+		},
+		{
+			"name": "Curtain Right",
+			"domain": "cover",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": "curtain",
+			"state": "closed"
+		},
+		{
+			"name": "Bedroom Curtain",
+			"domain": "cover",
+			"area": "Bedroom",
+			"floor": "Second Floor",
+			"deviceClass": "curtain",
+			"state": "closed"
+		},
+		{
+			"name": "Outside Temperature",
+			"domain": "sensor",
+			"area": "Garage",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "42"
+		},
+		{
+			"name": "Living Room Lamp",
+			"domain": "light",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Garage Light",
+			"domain": "light",
+			"area": "Garage",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Play Corner",
+			"domain": "light",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Thermostat",
+			"domain": "climate",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "heat"
+		},
+		{
+			"name": "Office Thermostat",
+			"domain": "climate",
+			"area": "Office",
+			"floor": "Basement",
+			"deviceClass": null,
+			"state": "heat"
+		},
+		{
+			"name": "Front Door",
+			"domain": "lock",
+			"area": "Entrance",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Back Door",
+			"domain": "lock",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "unlocked"
+		},
+		{
+			"name": "Side Door",
+			"domain": "lock",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Sliding Doors",
+			"domain": "lock",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Party Mode",
+			"domain": "scene",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Stealth Mode",
+			"domain": "script",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Phone",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "battery",
+			"state": "normal"
+		},
+		{
+			"name": "CO",
+			"domain": "binary_sensor",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": "carbon_monoxide",
+			"state": "clear"
+		},
+		{
+			"name": "Water Pipes",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "cold",
+			"state": "normal"
+		},
+		{
+			"name": "Pet Door",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "door",
+			"state": "closed"
+		},
+		{
+			"name": "Secondary Garage Door",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "garage_door",
+			"state": "closed"
+		},
+		{
+			"name": "Gas",
+			"domain": "binary_sensor",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": "gas",
+			"state": "clear"
+		},
+		{
+			"name": "Computer",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "heat",
+			"state": "hot"
+		},
+		{
+			"name": "Light",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "light",
+			"state": "no light"
+		},
+		{
+			"name": "Kitchen leak sensor",
+			"domain": "binary_sensor",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": "moisture",
+			"state": "dry"
+		},
+		{
+			"name": "Motion sensor",
+			"domain": "binary_sensor",
+			"area": "Garage",
+			"floor": "First Floor",
+			"deviceClass": "motion",
+			"state": "detected"
+		},
+		{
+			"name": "Occupancy",
+			"domain": "binary_sensor",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": "occupancy",
+			"state": "detected"
+		},
+		{
+			"name": "Shed Door",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "opening",
+			"state": "closed"
+		},
+		{
+			"name": "Mains",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "power",
+			"state": "powered"
+		},
+		{
+			"name": "Pet Feeder",
+			"domain": "binary_sensor",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": "problem",
+			"state": "ok"
+		},
+		{
+			"name": "Washer",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "running",
+			"state": "running"
+		},
+		{
+			"name": "Road",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "safety",
+			"state": "safe"
+		},
+		{
+			"name": "Kitchen Smoke",
+			"domain": "binary_sensor",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": "smoke",
+			"state": "clear"
+		},
+		{
+			"name": "Siren",
+			"domain": "binary_sensor",
+			"area": "Garage",
+			"floor": "First Floor",
+			"deviceClass": "sound",
+			"state": "detected"
+		},
+		{
+			"name": "Cookie Stash",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "tamper",
+			"state": "clear"
+		},
+		{
+			"name": "Shed Window",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Appliance apparent power",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "apparent_power",
+			"state": "2"
+		},
+		{
+			"name": "Kitchen air quality sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "aqi",
+			"state": "50"
+		},
+		{
+			"name": "Outside air sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "atmospheric_pressure",
+			"state": "1000"
+		},
+		{
+			"name": "My Phone",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "battery",
+			"state": "98"
+		},
+		{
+			"name": "Heat pump CO2 sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "carbon_dioxide",
+			"state": "50"
+		},
+		{
+			"name": "Heat pump CO sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "carbon_monoxide",
+			"state": "48"
+		},
+		{
+			"name": "House current draw",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "current",
+			"state": "19"
+		},
+		{
+			"name": "Macrotorrent",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "data_rate",
+			"state": "22.9"
+		},
+		{
+			"name": "Log file",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "data_size",
+			"state": "106"
+		},
+		{
+			"name": "Next birthday",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "date",
+			"state": "2024-04-01"
+		},
+		{
+			"name": "Car mileage",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "distance",
+			"state": "65536"
+		},
+		{
+			"name": "Dishwasher current program",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "duration",
+			"state": "64"
+		},
+		{
+			"name": "Solar production",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "energy",
+			"state": "3.2"
+		},
+		{
+			"name": "Powerwall stored energy",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "energy_storage",
+			"state": "6"
+		},
+		{
+			"name": "Grid AC frequency",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "frequency",
+			"state": "51"
+		},
+		{
+			"name": "Monthly gas consumption",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "gas",
+			"state": "12"
+		},
+		{
+			"name": "Living room humidity",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "humidity",
+			"state": "48"
+		},
+		{
+			"name": "Living room illuminance",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "illuminance",
+			"state": "438"
+		},
+		{
+			"name": "Living room heater irradiance",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "irradiance",
+			"state": "155"
+		},
+		{
+			"name": "Brewery mixer",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "moisture",
+			"state": "83"
+		},
+		{
+			"name": "Price per kW",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "monetary",
+			"state": "1"
+		},
+		{
+			"name": "Heat pump NO2 sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "nitrogen_dioxide",
+			"state": "50"
+		},
+		{
+			"name": "Heat pump NO sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "nitrogen_monoxide",
+			"state": "50"
+		},
+		{
+			"name": "Heat pump N2O sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "nitrous_oxide",
+			"state": "50"
+		},
+		{
+			"name": "Living room ozone sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "ozone",
+			"state": "50"
+		},
+		{
+			"name": "Living room PM1 sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "pm1",
+			"state": "50"
+		},
+		{
+			"name": "Living room PM2.5 sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "pm25",
+			"state": "50"
+		},
+		{
+			"name": "Living room PM10 sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "pm10",
+			"state": "50"
+		},
+		{
+			"name": "Wall plug power factor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "power_factor",
+			"state": "2"
+		},
+		{
+			"name": "Air conditioning power",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "power",
+			"state": "380"
+		},
+		{
+			"name": "Outside rain sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "precipitation",
+			"state": "29"
+		},
+		{
+			"name": "Car tyre pressure",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "pressure",
+			"state": "2.1"
+		},
+		{
+			"name": "Water pump reactive power",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "reactive_power",
+			"state": "22"
+		},
+		{
+			"name": "My phone GSM signal",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "signal_strength",
+			"state": "-43"
+		},
+		{
+			"name": "Sound bar acoustic pressure",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "sound_pressure",
+			"state": "62"
+		},
+		{
+			"name": "Travelling speed",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "speed",
+			"state": "67"
+		},
+		{
+			"name": "Heat pump SO2 sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "sulphur_dioxide",
+			"state": "50"
+		},
+		{
+			"name": "Furnace",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "temperature",
+			"state": "380"
+		},
+		{
+			"name": "Poo poo sensor",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "volatile_organic_compounds",
+			"state": "35"
+		},
+		{
+			"name": "Poo poo sensor 2",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "volatile_organic_compounds_parts",
+			"state": "35"
+		},
+		{
+			"name": "Input voltage",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "voltage",
+			"state": "12"
+		},
+		{
+			"name": "Water pump usage today",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "volume",
+			"state": "1356"
+		},
+		{
+			"name": "Water pump buffer",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "volume_storage",
+			"state": "28"
+		},
+		{
+			"name": "Water pump usage",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "water",
+			"state": "5987"
+		},
+		{
+			"name": "Bed sensor weight",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "weight",
+			"state": "87"
+		},
+		{
+			"name": "Mistral",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": "wind_speed",
+			"state": "33"
+		},
+		{
+			"name": "London",
+			"domain": "weather",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "rainy"
+		},
+		{
+			"name": "Los Angeles",
+			"domain": "weather",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "clear"
+		},
+		{
+			"name": "Joseph",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "home"
+		},
+		{
+			"name": "Ada",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "Work"
+		},
+		{
+			"name": "John",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "not_home"
+		},
+		{
+			"name": "Bob",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "home"
+		},
+		{
+			"name": "Trader Joe[']s",
+			"domain": "todo",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": ""
+		},
+		{
+			"name": "Chores",
+			"domain": "todo",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": ""
+		},
+		{
+			"name": "Main Valve",
+			"domain": "valve",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "open"
+		},
+		{
+			"name": "TV",
+			"domain": "media_player",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "idle"
+		},
+		{
+			"name": "Rover",
+			"domain": "vacuum",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "idle"
+		},
+		{
+			"name": "Clippy",
+			"domain": "lawn_mower",
+			"area": "Outside",
+			"floor": "Ground Floor",
+			"deviceClass": null,
+			"state": "docked"
+		},
+		{
+			"name": "Living Room Thermostat",
+			"domain": "climate",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "68"
+		},
+		{
+			"name": "Living Room Window",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Bedroom Window",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": "window",
+			"state": "closed"
+		},
+		{
+			"name": "Den Window",
+			"domain": "cover",
+			"area": "Den",
+			"floor": null,
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Nursery Window",
+			"domain": "cover",
+			"area": "Bedroom",
+			"floor": "Second Floor",
+			"deviceClass": "window",
+			"state": "closed"
+		},
+		{
+			"name": "Lobby Window",
+			"domain": "cover",
+			"area": "Lobby",
+			"floor": "First Floor",
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Light A",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Light B",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Light C",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Light D",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Light E",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Light F",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Attic Fan",
+			"domain": "fan",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Bathroom Fan",
+			"domain": "fan",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Outlet Switch",
+			"domain": "switch",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Porch Switch",
+			"domain": "switch",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Jane",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "home"
+		},
+		{
+			"name": "Living Room Light",
+			"domain": "light",
+			"area": "Living Room",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Kitchen Light",
+			"domain": "light",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Kitchen Lamp",
+			"domain": "light",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Kitchen Fan",
+			"domain": "fan",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Range Hood",
+			"domain": "fan",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Counter Switch",
+			"domain": "switch",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Disposal Switch",
+			"domain": "switch",
+			"area": "Kitchen",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Hall Lock",
+			"domain": "lock",
+			"area": "Hallway",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Closet Lock",
+			"domain": "lock",
+			"area": "Hallway",
+			"floor": "First Floor",
+			"deviceClass": null,
+			"state": "unlocked"
+		},
+		{
+			"name": "Loft Light",
+			"domain": "light",
+			"area": "Loft",
+			"floor": "Second Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Garage Door",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "open"
+		},
+		{
+			"name": "Patio Door",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Office Sensor",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Hallway Light",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Skylight",
+			"domain": "binary_sensor",
+			"area": "Bedroom",
+			"floor": "Second Floor",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Home",
+			"domain": "weather",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "rainy"
+		},
+		{
+			"name": "Trader Joes",
+			"domain": "todo",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Overhead Light",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Sliding Door",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		}
+	]
+}

@@ -4,6 +4,7 @@ export type HaEntityType = {
 	names: string[]
 	domain: string
 	area: string | null
+	floor: string | null
 	entityId?: string
 	state?: string | null
 	lastChanged?: string | null
@@ -11,9 +12,17 @@ export type HaEntityType = {
 
 export type HaContextSourceType = "ws" | "poll"
 
+export type HaSlotValueType = {
+	phrase: string
+	args: Record<string, unknown>
+}
+
 export type HaContextCacheType = {
 	entities: HaEntityType[]
 	areas: Set<string>
+	areaNames: Map<string, string>
+	floorNames: Map<string, string>
+	slotValuesByKey: Map<string, HaSlotValueType[] | null>
 	fetchedAt: number
 	handle: SkillConnHandleType
 	source?: HaContextSourceType
@@ -36,6 +45,7 @@ export type HaLiveEntityType = {
 	names: string[]
 	domain: string
 	area: string | null
+	floor: string | null
 	lastChanged: string | null
 }
 
@@ -52,6 +62,12 @@ export type HaRegistryEntityType = {
 
 export type HaRegistryAreaType = {
 	areaId: string
+	name: string
+	floorId: string | null
+}
+
+export type HaRegistryFloorType = {
+	floorId: string
 	name: string
 }
 
@@ -87,6 +103,7 @@ export type HaWsSnapshotType = {
 	states: HaStateObjectType[]
 	entityRegistry: HaRegistryEntityType[]
 	areaRegistry: HaRegistryAreaType[]
+	floorRegistry: HaRegistryFloorType[]
 	deviceRegistry: HaRegistryDeviceType[]
 	exposedEntityIds: Set<string> | null
 }
@@ -112,6 +129,8 @@ export type HaDestinationType = {
 	attachedProviderIds: Set<string>
 	entities: Map<string, HaLiveEntityType>
 	areasById: Map<string, string>
+	areaFloorsById: Map<string, string | null>
+	floorsById: Map<string, string>
 	devicesById: Map<string, string | null>
 	registryByEntityId: Map<string, HaRegistryEntityType>
 	exposedEntityIds: Set<string> | null
@@ -126,17 +145,6 @@ export type HaDataPlaneType = "ws" | "poll"
 export type HaDataPlaneConfigType = {
 	dataPlane: HaDataPlaneType
 	wsUrl: string | null
-}
-
-export type HaFastPathLanguagePackType = {
-	turnOnTemplates: string[]
-	turnOnAreaTemplates: string[]
-	turnOnKeywords: string[][]
-	turnOffTemplates: string[]
-	turnOffAreaTemplates: string[]
-	turnOffKeywords: string[][]
-	lightSetTemplates: string[]
-	expansionRules: Record<string, string>
 }
 
 export type PendingCommandType = {

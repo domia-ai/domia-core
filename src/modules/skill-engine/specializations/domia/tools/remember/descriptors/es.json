@@ -1,0 +1,22 @@
+{
+	"keywords": [
+		"recuerda que",
+		"recuerda",
+		"acuérdate",
+		"memoriza",
+		"no olvides que"
+	],
+	"exampleUtterances": [
+		"recuerda que me gusta el té verde",
+		"recuerda que mi hermana se llama Elena"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"rememberedThat": "Listo, lo recordaré.",
+		"couldNotRemember": "No pude guardar eso como un dato sobre ti."
+	}
+}

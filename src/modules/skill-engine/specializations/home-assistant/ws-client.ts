@@ -23,6 +23,7 @@ import type {
 	HaRegistryEntityType,
 	HaRegistryAreaType,
 	HaRegistryDeviceType,
+	HaRegistryFloorType,
 	PendingCommandType,
 } from "./types"
 
@@ -55,7 +56,17 @@ const parseAreaRegistry = (rows: unknown): HaRegistryAreaType[] =>
 		const r = raw as Record<string, unknown>
 		const areaId = asString(r.area_id)
 		const name = asString(r.name)
-		return areaId && name ? [{ areaId, name }] : []
+		return areaId && name
+			? [{ areaId, name, floorId: asString(r.floor_id) }]
+			: []
+	})
+
+const parseFloorRegistry = (rows: unknown): HaRegistryFloorType[] =>
+	(Array.isArray(rows) ? rows : []).flatMap((raw) => {
+		const r = raw as Record<string, unknown>
+		const floorId = asString(r.floor_id)
+		const name = asString(r.name)
+		return floorId && name ? [{ floorId, name }] : []
 	})
 
 const parseDeviceRegistry = (rows: unknown): HaRegistryDeviceType[] =>
@@ -178,6 +189,15 @@ export const createHaWsClient = (
 		const areaRegistry = parseAreaRegistry(
 			await send({ type: "config/area_registry/list" }),
 		)
+		const floorRegistry = await send({ type: "config/floor_registry/list" })
+			.then(parseFloorRegistry)
+			.catch((err: unknown) => {
+				skillEngineLogger.warn(
+					"HA floor registry unavailable — floor slots stay empty",
+					{ err },
+				)
+				return []
+			})
 		const deviceRegistry = parseDeviceRegistry(
 			await send({ type: "config/device_registry/list" }),
 		)
@@ -196,6 +216,7 @@ export const createHaWsClient = (
 			states,
 			entityRegistry,
 			areaRegistry,
+			floorRegistry,
 			deviceRegistry,
 			exposedEntityIds,
 		}

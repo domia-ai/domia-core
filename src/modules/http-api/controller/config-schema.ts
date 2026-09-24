@@ -19,6 +19,7 @@ import {
 } from "@/db"
 
 import {
+	CONFIG_SCHEMA_HIDDEN_BY_SECTION,
 	CONFIG_SCHEMA_HIDDEN_COLUMNS,
 	CONFIG_SCHEMA_SECRET_FIELDS,
 } from "../constants"
@@ -77,11 +78,15 @@ const fieldOf = (
 
 const sectionOf = (id: string, table: Table): ConfigSchemaSectionType => {
 	const columns = getTableColumns(table) as Record<string, Column>
+	const sectionHidden = new Set(CONFIG_SCHEMA_HIDDEN_BY_SECTION[id] ?? [])
 	return {
 		id,
 		table: getTableName(table),
 		fields: Object.entries(columns)
-			.filter(([key]) => !CONFIG_SCHEMA_HIDDEN_COLUMNS.has(key))
+			.filter(
+				([key]) =>
+					!CONFIG_SCHEMA_HIDDEN_COLUMNS.has(key) && !sectionHidden.has(key),
+			)
 			.map(([key, column]) => fieldOf(id, key, column)),
 	}
 }

@@ -1,0 +1,40 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"what's the date [today]",
+				"what is the date [today]",
+				"what's today's date",
+				"what is today's date",
+				"what day is it [today]",
+				"what day is today",
+				"what is today",
+				"today's date",
+				"tell me the date",
+				"tell me today's date"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["date", "what day", "which day", "what's the date"],
+	"exampleUtterances": ["what's the date today", "what day is it"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"currentDate": "Today is {date}."
+	},
+	"samples": [
+		{
+			"text": "what's the date today"
+		},
+		{
+			"text": "what day is it"
+		},
+		{
+			"text": "tell me today's date"
+		}
+	]
+}

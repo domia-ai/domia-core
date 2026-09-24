@@ -1,9 +1,17 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core"
+import {
+	sqliteTable,
+	text,
+	integer,
+	index,
+	unique,
+} from "drizzle-orm/sqlite-core"
 import type {
 	SkillAuthType,
 	SkillToolType,
 	SkillProviderConfigType,
 	DomiaSkillDescriptorType,
+	FastPathSlotType,
+	RoutineStepType,
 } from "../json-types"
 import {
 	CAPABILITY_ENUM_VALUES,
@@ -43,6 +51,10 @@ export const skillProvider = sqliteTable("skill_provider", {
 	descriptor: text("descriptor", {
 		mode: "json",
 	}).$type<DomiaSkillDescriptorType>(),
+	serverDescriptor: text("server_descriptor", {
+		mode: "json",
+	}).$type<DomiaSkillDescriptorType | null>(),
+	serverDescriptorHash: text("server_descriptor_hash"),
 	auth: text("auth", { mode: "json" }).$type<SkillAuthType>(),
 	toolsCache: text("tools_cache", { mode: "json" }).$type<SkillToolType[]>(),
 	toolWhitelist: text("tool_whitelist", { mode: "json" }).$type<string[]>(),
@@ -72,6 +84,8 @@ export const toolRun = sqliteTable(
 		interactionId: text("interaction_id").notNull(),
 		tool: text("tool").notNull(),
 		providerSlug: text("provider_slug"),
+		routineSlug: text("routine_slug"),
+		stepIndex: integer("step_index"),
 		argsHash: text("args_hash").notNull(),
 		riskClass: text("risk_class"),
 		policyDecision: text("policy_decision"),
@@ -85,7 +99,10 @@ export const toolRun = sqliteTable(
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		settledAt: text("settled_at"),
 	},
-	(t) => [index("tool_run_interaction_idx").on(t.interactionId, t.status)],
+	(t) => [
+		index("tool_run_interaction_idx").on(t.interactionId, t.status),
+		index("tool_run_domia_created_idx").on(t.domiaId, t.createdAt),
+	],
 )
 
 export const pendingConfirmationRow = sqliteTable("pending_confirmation", {
@@ -126,3 +143,31 @@ export const capabilityDelegation = sqliteTable("capability_delegation", {
 	createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 	updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 })
+
+export const routine = sqliteTable(
+	"routine",
+	{
+		id: text("id").primaryKey(),
+		domiaId: text("domia_id")
+			.notNull()
+			.references(() => domia.id, { onDelete: "cascade" }),
+		slug: text("slug").notNull(),
+		name: text("name").notNull(),
+		description: text("description").notNull(),
+		isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+		phrases: text("phrases", { mode: "json" })
+			.$type<Record<string, string[]>>()
+			.notNull(),
+		slots: text("slots", { mode: "json" }).$type<Record<
+			string,
+			FastPathSlotType
+		> | null>(),
+		steps: text("steps", { mode: "json" }).$type<RoutineStepType[]>().notNull(),
+		reply: text("reply", { mode: "json" })
+			.$type<Record<string, string>>()
+			.notNull(),
+		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
+		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
+	},
+	(t) => [unique().on(t.domiaId, t.slug)],
+)

@@ -289,10 +289,30 @@ export const connectEsphomeSatellite = (
 				.then((durationMs) => rc.updatePlaybackDuration(generation, durationMs))
 		}
 
+		const pendingReplyDurations = new Map<string, number>()
+		const patchReplyDuration = (
+			generation: number,
+			interactionId: string,
+		): boolean => {
+			const filePath = getAudioFilePath(interactionId)
+			if (!filePath) return false
+			void getWavDurationMs(filePath)
+				.catch((err: unknown) => {
+					logger.warn("wav duration probe failed", { err, filePath })
+					return null
+				})
+				.then((durationMs) => rc.updatePlaybackDuration(generation, durationMs))
+			return true
+		}
+
 		const transport: SatelliteTransportType = {
 			sendReady: () => undefined,
 			onTurnFinished: (interactionId) => {
 				interactionTokens.delete(interactionId)
+				const generation = pendingReplyDurations.get(interactionId)
+				if (generation === undefined) return
+				pendingReplyDurations.delete(interactionId)
+				patchReplyDuration(generation, interactionId)
 			},
 			onTurnStarted: (interactionId) => {
 				interactionTokens.set(interactionId, rc.currentGeneration())
@@ -342,16 +362,8 @@ export const connectEsphomeSatellite = (
 				)
 
 				if (generation === null) return
-				const filePath = getAudioFilePath(interactionId)
-				if (!filePath) return
-				void getWavDurationMs(filePath)
-					.catch((err: unknown) => {
-						logger.warn("wav duration probe failed", { err, filePath })
-						return null
-					})
-					.then((durationMs) =>
-						rc.updatePlaybackDuration(generation, durationMs),
-					)
+				if (!patchReplyDuration(generation, interactionId))
+					pendingReplyDurations.set(interactionId, generation)
 			},
 			announce: (url) => {
 				const generation = rc.enqueuePlayback(

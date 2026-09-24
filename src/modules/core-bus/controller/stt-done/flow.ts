@@ -23,7 +23,6 @@ import {
 	pushInteractionTranscript,
 	completeInteraction,
 	persistTerminal,
-	resolveFastIntent,
 	getInteractionRuntime,
 	setInteractionTarget,
 	stage,
@@ -228,33 +227,6 @@ const handleSttDoneFlow = async (
 			)
 		)
 			return
-	}
-
-	if (originDomiaKey) {
-		const runtime = getInteractionRuntime(interactionId)
-		const fast = resolveFastIntent(transcript, {
-			domia,
-			interactionId,
-			originDomiaKey,
-			satelliteId: runtime?.envelope.satelliteId,
-			transcript,
-		})
-		if (fast) {
-			domiaBusLogger.info(`⚡ fast-intent ${fast.name} → "${fast.confirm}"`, {
-				domiaId,
-				interactionId,
-			})
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
-				reply: fast.confirm,
-				transcript,
-				interactionId,
-				originDomiaKey,
-				responseType: payload.responseType,
-				speechEndAt: payload.speechEndAt,
-				liveVoice: payload.liveVoice,
-			})
-			return
-		}
 	}
 
 	if (originDomiaKey) {

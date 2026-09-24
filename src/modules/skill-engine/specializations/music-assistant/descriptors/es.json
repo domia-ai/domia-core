@@ -1,0 +1,140 @@
+{
+	"version": 1,
+	"kind": "music-assistant",
+	"fastPath": {
+		"expansionRules": {
+			"musica": "(música|canción|tema|reproducción)",
+			"articulo": "(la|el|las|los|mi|mis|esta|este)"
+		},
+		"intents": [
+			{
+				"tool": "playback_pause",
+				"templates": [
+					"(pausa|para|detén) [<articulo>] <musica>",
+					"(apaga|quita) [<articulo>] <musica>"
+				]
+			},
+			{
+				"tool": "playback_pause",
+				"templates": [
+					"(pausa|para|detén) [<articulo>] <musica> (en|de) [<articulo>] {playerQueue}"
+				],
+				"slots": {
+					"playerQueue": {
+						"source": { "kind": "context", "key": "playerQueue" }
+					}
+				}
+			},
+			{
+				"tool": "playback_resume",
+				"templates": [
+					"(reanuda|continúa|sigue) [<articulo>] <musica>",
+					"vuelve a poner [<articulo>] <musica>"
+				]
+			},
+			{
+				"tool": "playback_next_track",
+				"templates": [
+					"(siguiente|próxima|otra) (canción|tema)",
+					"(pon|pasa a) [<articulo>] (siguiente|próxima) (canción|tema)",
+					"salta [<articulo>] (canción|tema)"
+				]
+			},
+			{
+				"tool": "playback_next_track",
+				"templates": [
+					"(siguiente|próxima|otra) (canción|tema) (en|de) [<articulo>] {playerQueue}",
+					"salta [<articulo>] (canción|tema) (en|de) [<articulo>] {playerQueue}"
+				],
+				"slots": {
+					"playerQueue": {
+						"source": { "kind": "context", "key": "playerQueue" }
+					}
+				}
+			},
+			{
+				"tool": "playback_previous_track",
+				"templates": [
+					"(anterior|previa) (canción|tema)",
+					"(pon|vuelve a) [<articulo>] (canción|tema) (anterior|previa)"
+				]
+			},
+			{
+				"tool": "volume_volume_set",
+				"templates": [
+					"(pon|ajusta) [<articulo>] (volumen|música) (a|al) {level} [por ciento]"
+				],
+				"slots": {
+					"level": {
+						"source": { "kind": "range", "min": 0, "max": 100 },
+						"arg": "level"
+					}
+				}
+			},
+			{
+				"tool": "volume_volume_up",
+				"templates": [
+					"sube [<articulo>] (volumen|música)",
+					"súbele [<articulo>] (volumen|música)",
+					"más alto"
+				]
+			},
+			{
+				"tool": "volume_volume_up",
+				"templates": [
+					"sube [<articulo>] (volumen|música) (en|de) [<articulo>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				}
+			},
+			{
+				"tool": "volume_volume_down",
+				"templates": [
+					"baja [<articulo>] (volumen|música)",
+					"bájale [<articulo>] (volumen|música)",
+					"más bajo"
+				]
+			},
+			{
+				"tool": "volume_volume_down",
+				"templates": [
+					"baja [<articulo>] (volumen|música) (en|de) [<articulo>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				}
+			},
+			{
+				"tool": "volume_volume_mute",
+				"templates": [
+					"(silencia|mutea) [<articulo>] (música|bocina|bocinas|altavoz)",
+					"silencia [<articulo>] {player}"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				},
+				"argDefaults": { "muted": true }
+			},
+			{
+				"tool": "volume_volume_mute",
+				"templates": [
+					"(activa|restaura) [<articulo>] (sonido|audio)",
+					"quita el silencio"
+				],
+				"slots": {
+					"player": { "source": { "kind": "context", "key": "player" } }
+				},
+				"argDefaults": { "muted": false }
+			},
+			{
+				"tool": "music_now_playing",
+				"templates": [
+					"(canción|tema) actual",
+					"dime [<articulo>] (canción|tema)",
+					"cuál (canción|tema) es esta"
+				]
+			}
+		]
+	}
+}

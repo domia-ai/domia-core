@@ -1,0 +1,16 @@
+Domia — third-party notices
+
+Home Assistant intents corpus
+  Source:    https://github.com/OHF-Voice/intents (commit f8cdbb0b, 2026-09-19)
+  License:   Creative Commons Attribution 4.0 International (CC-BY-4.0)
+             https://creativecommons.org/licenses/by/4.0/
+  Copyright: The Open Home Foundation and the Home Assistant intents contributors
+  Used in:   src/modules/skill-engine/specializations/home-assistant/descriptors/{en,es}.json —
+             fast-path sentence templates and expansion rules derived from the corpus by
+             evals/gen-ha-descriptors.ts (rewritten to Domia's template grammar);
+             evals/fixtures/ha-intents/** — test sentences, expected slots, entity/area
+             fixtures, sentence templates and expansion rules for en and es, converted
+             from YAML to JSON by evals/gen-ha-intents.ts, filtered to the intents Domia
+             exposes and with slot names mapped to Domia tool arguments;
+             src/utils/language-catalogs/data/es.ts — the Spanish `skipWords` list is the
+             `skip_words` list of sentences/es/_common.yaml plus "oye".

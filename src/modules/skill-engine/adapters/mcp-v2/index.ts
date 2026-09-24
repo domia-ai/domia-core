@@ -30,6 +30,7 @@ import { skillEngineLogger, domiaError, SKILL_ERRORS } from "@/utils"
 import { resolveProtocolMode } from "../../utils/protocol"
 import {
 	buildAuthHeaders,
+	descriptorReaderOf,
 	isAcceptedToolName,
 	renderContent,
 	validateElicitResult,
@@ -275,10 +276,18 @@ const connect = async (
 		}
 	}
 
+	const readDescriptor = descriptorReaderOf(cfg.name, {
+		hasResources: () => client.getServerCapabilities()?.resources !== undefined,
+		listResources: (cursor) =>
+			client.listResources(cursor !== undefined ? { cursor } : undefined),
+		readResource: (uri) => client.readResource({ uri }),
+	})
+
 	return {
 		listTools,
 		callTool,
 		protocolEra: () => client.getProtocolEra() ?? null,
+		readDescriptor,
 		close: () => client.close(),
 	}
 }

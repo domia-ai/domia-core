@@ -6,6 +6,7 @@ import {
 	isLoopbackAddress,
 	isValidMeshToken,
 	rawDataToString,
+	verifySatelliteToken,
 } from "@/utils"
 import {
 	createSatelliteSession,
@@ -14,6 +15,7 @@ import {
 
 import type {
 	SatelliteControlType,
+	SatelliteHelloType,
 	SatelliteDownMessageType,
 	SatelliteGatewayHandleType,
 } from "../types"
@@ -121,6 +123,19 @@ const wsTransport = (
 	}
 }
 
+const helloAuthorized = (
+	remoteLoopback: boolean,
+	hello: SatelliteHelloType,
+): boolean => {
+	if (remoteLoopback) return true
+	if (isValidMeshToken(hello.token)) return true
+	if (!hello.domiaKey || !hello.satelliteId) return false
+	return verifySatelliteToken(hello.token, {
+		domiaKey: hello.domiaKey,
+		satelliteId: hello.satelliteId,
+	})
+}
+
 const isLiveRequest = (url: string | undefined): boolean =>
 	new URL(url ?? "/", "http://satellite").searchParams.get("live") === "1"
 
@@ -147,7 +162,7 @@ export const setupSatelliteGateway = (
 			if (!control) return
 			void (async () => {
 				if (control.type === "hello") {
-					if (!remoteLoopback && !isValidMeshToken(control.token)) {
+					if (!helloAuthorized(remoteLoopback, control)) {
 						satelliteGatewayLogger.warn(
 							"satellite rejected — invalid mesh token",
 							{ satelliteId: control.satelliteId },

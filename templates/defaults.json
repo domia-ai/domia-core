@@ -1,4 +1,5 @@
 {
+	"version": 1,
 	"domia": {
 		"sessionIdTimeoutMs": 300000,
 		"memoryWindowTurns": 8,
@@ -45,7 +46,8 @@
 		"reflectionConcurrency": 2,
 		"reflectionQueueMaxDepth": 12,
 		"identityEngine": true,
-		"skillsEngine": false
+		"skillsEngine": true,
+		"builtinTools": true
 	},
 	"capabilities": {
 		"wakeword": false,

@@ -1,4 +1,5 @@
 export * from "./control"
 export * from "./mesh-auth"
 export * from "./ring"
+export * from "./satellite-token"
 export * from "./types"

@@ -2,6 +2,7 @@ import { RELATION_FAMILIES } from "@/modules/memory/constants"
 import type { RelationFamilyType } from "@/modules/memory/types"
 import type {
 	AnaphoraRewriteType,
+	ClockWordsType,
 	LanguageCatalogExtensionType,
 	LanguageCatalogType,
 	ResolvedLanguageSetsType,
@@ -108,6 +109,32 @@ const mergedDomainWords = (
 		),
 	)
 
+const CLOCK_WORD_KEYS: (keyof ClockWordsType)[] = [
+	"am",
+	"earlyMorning",
+	"pm",
+	"night",
+	"oclock",
+	"prefixes",
+	"halfBefore",
+	"quarterBefore",
+	"minusBefore",
+	"halfAfter",
+	"quarterAfter",
+	"minusAfter",
+]
+
+const mergedClockWords = (
+	own: ClockWordsType | undefined,
+	en: ClockWordsType | undefined,
+): ClockWordsType =>
+	Object.fromEntries(
+		CLOCK_WORD_KEYS.map((key) => [
+			key,
+			mergedWithEn(own?.[key] ?? [], en?.[key] ?? []),
+		]),
+	) as ClockWordsType
+
 const wordBoundaryRe = (words: string[]): RegExp =>
 	new RegExp(`\\b(${words.map(escapeRegex).join("|")})\\b`, "i")
 
@@ -138,9 +165,23 @@ export const languageSetsFor = (
 		numberWords: { ...EN.numberWords, ...catalog.numberWords },
 		numberJoiners: mergedWithEn(catalog.numberJoiners, EN.numberJoiners),
 		percentWords: mergedWithEn(catalog.percentWords, EN.percentWords),
-		timerKeywordsRe: wordBoundaryRe(
-			mergedWithEn(catalog.timerKeywords, EN.timerKeywords),
+		skipWords: mergedWithEn(catalog.skipWords ?? [], EN.skipWords ?? []),
+		durationUnits: {
+			...(EN.durationUnits ?? {}),
+			...(catalog.durationUnits ?? {}),
+		},
+		durationPhrases: {
+			...(EN.durationPhrases ?? {}),
+			...(catalog.durationPhrases ?? {}),
+		},
+		unitArticles: mergedWithEn(
+			catalog.unitArticles ?? [],
+			EN.unitArticles ?? [],
 		),
+		clockWords: mergedClockWords(catalog.clockWords, EN.clockWords),
+		clockTwelveAm: catalog.clockTwelveAm ?? EN.clockTwelveAm ?? "midnight",
+		spokenDate:
+			catalog.spokenDate ?? EN.spokenDate ?? ((d) => d.toDateString()),
 		memoryCommandRe: wordBoundaryRe(
 			mergedWithEn(catalog.memoryCommandKeywords, EN.memoryCommandKeywords),
 		),

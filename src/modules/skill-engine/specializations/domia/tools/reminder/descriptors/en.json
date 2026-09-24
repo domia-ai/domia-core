@@ -1,0 +1,33 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cancel [(the|my)] reminder",
+				"cancel [(the|my)] reminders"
+			],
+			"argDefaults": { "action": "cancel" }
+		}
+	],
+	"keywords": ["remind", "reminder"],
+	"exampleUtterances": [
+		"remind me to call mom in twenty minutes",
+		"remind me at seven to take the pills"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"reminderSet": "I'll remind you: {text}.",
+		"reminderDue": "Reminder: {text}",
+		"reminderCancelled": "Reminder cancelled.",
+		"noActiveReminder": "There's no reminder pending.",
+		"reminderNeedsTime": "Tell me what to remind you of and when.",
+		"announcedOn": "I'll say it on {target}."
+	},
+	"samples": [
+		{ "text": "cancel the reminder", "args": { "action": "cancel" } },
+		{ "text": "cancel my reminders", "args": { "action": "cancel" } }
+	]
+}

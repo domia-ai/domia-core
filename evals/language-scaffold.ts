@@ -39,7 +39,6 @@ const syntheticCatalogFromEn = (): LanguageCatalogType => {
 		requestModals: [...en.requestModals],
 		conjunctions: [...en.conjunctions],
 		additiveCues: [...en.additiveCues],
-		timerKeywords: ["timer", "alarm"],
 		memoryCommandKeywords: ["remember", "forget"],
 		unitWords: { ...en.unitWords },
 		affirmations: ["yar", "aye"],
@@ -129,7 +128,10 @@ const run = (): void => {
 		es.spokenTime(at(16, 52)) === "las cuatro y cincuenta y dos de la tarde" &&
 			es.spokenTime(at(13, 15)) === "la una y cuarto de la tarde" &&
 			es.spokenTime(at(21, 45)) === "las diez menos cuarto de la noche" &&
-			es.spokenTime(at(12, 30)) === "las doce y media de la tarde",
+			es.spokenTime(at(12, 30)) === "las doce y media del mediodía" &&
+			es.spokenTime(at(23, 45)) === "las doce menos cuarto de la noche" &&
+			es.spokenTime(at(0, 30)) === "las doce y media de la madrugada" &&
+			es.spokenTime(at(3, 0)) === "las tres en punto de la madrugada",
 	)
 	c.check(
 		"es date locale renders Spanish month names",
@@ -171,8 +173,8 @@ const run = (): void => {
 		es.numberWords.dos === 2 && es.numberWords.two === 2,
 	)
 	c.check(
-		"timer keywords stay merged for es",
-		es.timerKeywordsRe.test("temporizador") && es.timerKeywordsRe.test("timer"),
+		"duration units stay merged for es",
+		es.durationUnits.minutos === 60 && es.durationUnits.minutes === 60,
 	)
 	c.check(
 		"state-question markers stay merged for es",

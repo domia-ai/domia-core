@@ -1,10 +1,4 @@
-import type {
-	FastPathBlockType,
-	FastPathIntentType,
-	SelectSkillProviderType,
-	SkillToolType,
-	ToolFinalizeMapType,
-} from "@/db"
+import type { SelectSkillProviderType, ToolFinalizeMapType } from "@/db"
 import { getTraceContext, languageSetsFor, skillEngineLogger } from "@/utils"
 
 import type {
@@ -13,11 +7,11 @@ import type {
 	ToolInvocationDescriptionType,
 	ToolTargetInferenceType,
 } from "../../types"
+import { bindFastPathTools } from "../../utils/descriptor-data"
 import { SPEAKABLE_PLACEHOLDER } from "../../utils/finalize-render"
 import {
 	MA_ACTION_VERBS,
 	MA_ALIASES,
-	MA_ARG_LEVEL,
 	MA_ARG_MUTED,
 	MA_ARG_NORMALIZE,
 	MA_ARG_PLAYER,
@@ -25,12 +19,11 @@ import {
 	MA_ARG_QUEUE_ID,
 	MA_CATALOG_EXTENSIONS,
 	MA_EXAMPLE_UTTERANCES,
-	MA_FAST_PATH_LANGUAGES,
+	MA_FAST_PATH_PACKS,
 	MA_KEYWORDS,
 	MA_PARAM_ALLOW,
 	MA_PLACEHOLDER_RE,
 	MA_QUEUE_ARG_TOOLS,
-	MA_SLOT_LEVEL,
 	MA_SLOT_PLAYER,
 	MA_SLOT_PLAYER_QUEUE,
 	MA_SPECIALIZATION_KIND,
@@ -47,13 +40,13 @@ import {
 	MA_TOOL_VOLUME_SET,
 	MA_TOOL_VOLUME_UP,
 	MA_VIRTUAL_TOOLS,
-	MA_VOLUME_MAX,
-	MA_VOLUME_MIN,
 } from "./constants"
+import { isDeviceOwnedName } from "../../utils/media-owners"
 import { implicitPlayer, matchPlayer, queueTargetOf } from "./planner"
 import {
 	forgetSatellitePlayers,
 	genericWordsOf,
+	isPlausiblePlayerName,
 	knownSatellitePlayerName,
 	playerAliasesOf,
 	playerRoster,
@@ -150,80 +143,16 @@ const maFinalizeTemplates = (language: string | null): ToolFinalizeMapType => {
 	}
 }
 
-const maFastPathBlock = (
-	tools: SkillToolType[],
-	language: string | null,
-): FastPathBlockType | undefined => {
-	const available = new Set(tools.map((t) => t.rawName))
-	const pack = forLanguage(MA_FAST_PATH_LANGUAGES, language)
-	const queueSlot = {
-		[MA_SLOT_PLAYER_QUEUE]: {
-			source: { kind: "context", key: MA_SLOT_PLAYER_QUEUE },
-		},
-	} as FastPathIntentType["slots"]
-	const playerSlot = {
-		[MA_SLOT_PLAYER]: { source: { kind: "context", key: MA_SLOT_PLAYER } },
-	} as FastPathIntentType["slots"]
-	const candidates: FastPathIntentType[] = [
-		{ tool: MA_TOOL_PAUSE, templates: pack.pauseTemplates },
-		{
-			tool: MA_TOOL_PAUSE,
-			templates: pack.pausePlayerTemplates,
-			slots: queueSlot,
-		},
-		{ tool: MA_TOOL_RESUME, templates: pack.resumeTemplates },
-		{ tool: MA_TOOL_NEXT, templates: pack.nextTemplates },
-		{
-			tool: MA_TOOL_NEXT,
-			templates: pack.nextPlayerTemplates,
-			slots: queueSlot,
-		},
-		{ tool: MA_TOOL_PREVIOUS, templates: pack.previousTemplates },
-		{
-			tool: MA_TOOL_VOLUME_SET,
-			templates: pack.volumeSetTemplates,
-			slots: {
-				[MA_SLOT_LEVEL]: {
-					source: { kind: "range", min: MA_VOLUME_MIN, max: MA_VOLUME_MAX },
-					arg: MA_ARG_LEVEL,
-				},
-			},
-		},
-		{ tool: MA_TOOL_VOLUME_UP, templates: pack.volumeUpTemplates },
-		{
-			tool: MA_TOOL_VOLUME_UP,
-			templates: pack.volumeUpPlayerTemplates,
-			slots: playerSlot,
-		},
-		{ tool: MA_TOOL_VOLUME_DOWN, templates: pack.volumeDownTemplates },
-		{
-			tool: MA_TOOL_VOLUME_DOWN,
-			templates: pack.volumeDownPlayerTemplates,
-			slots: playerSlot,
-		},
-		{
-			tool: MA_TOOL_VOLUME_MUTE,
-			templates: pack.muteTemplates,
-			slots: playerSlot,
-			argDefaults: { [MA_ARG_MUTED]: true },
-		},
-		{
-			tool: MA_TOOL_VOLUME_MUTE,
-			templates: pack.unmuteTemplates,
-			slots: playerSlot,
-			argDefaults: { [MA_ARG_MUTED]: false },
-		},
-		{ tool: MA_TOOL_NOW_PLAYING, templates: pack.nowPlayingTemplates },
-	]
-	const intents = candidates.filter((intent) => available.has(intent.tool))
-	if (intents.length === 0) return undefined
-	return { intents, expansionRules: pack.expansionRules }
-}
-
 const cleanValue = (key: string, value: unknown): unknown => {
 	const trimmed = typeof value === "string" ? value.trim() : value
 	if (typeof trimmed !== "string") return trimmed
 	if (trimmed.length === 0 || MA_PLACEHOLDER_RE.test(trimmed)) return undefined
+	if (key === MA_ARG_PLAYER && !isPlausiblePlayerName(trimmed)) {
+		skillEngineLogger.warn(
+			`🎵 player "${trimmed}" is not a speaker name — ignoring it`,
+		)
+		return undefined
+	}
 	if (MA_TEXT_ARGS.includes(key)) return trimmed
 	if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed)
 	return trimmed
@@ -248,13 +177,16 @@ export const musicAssistantSpecialization: SkillSpecializationType = {
 			finalize: maFinalizeTemplates(language),
 			genericWords: [...languageSetsFor(language).genericWords],
 		},
-		fastPath: maFastPathBlock(tools, language),
+		fastPath: bindFastPathTools(
+			forLanguage(MA_FAST_PATH_PACKS, language),
+			tools,
+		),
 	}),
 	virtualTools: () => maVirtualTools(),
 	callVirtualTool: callMaVirtualTool,
 	status: (provider) => rosterStatus(provider),
 	onConnected: async (provider, handle) => {
-		playerRoster.attach(provider.id, handle)
+		playerRoster.attach(provider, handle)
 		await playerRoster.refresh(provider.id)
 	},
 	onDisconnected: (provider) => {
@@ -297,6 +229,12 @@ export const musicAssistantSpecialization: SkillSpecializationType = {
 			typeof out[MA_ARG_PLAYER] === "string" ? out[MA_ARG_PLAYER] : null
 		if (!spoken) return out
 		const player = await resolvePlayer(provider, spoken, language ?? null)
+		if (!player && isDeviceOwnedName(provider.domiaId, spoken)) {
+			skillEngineLogger.warn(
+				`🎵 player "${spoken}" is a device of another provider — ignoring it`,
+			)
+			return withoutSpokenPlayer(out)
+		}
 		if (!player) return isVirtual(rawName) ? out : withoutSpokenPlayer(out)
 		skillEngineLogger.info(`🎵 speaker "${spoken}" → "${player.name}"`)
 		const targeted = {

@@ -1,3 +1,4 @@
+import type { OriginCapabilitiesType } from "@/modules/skill-engine/types"
 import type { SkillElicitResultType } from "@/modules/skill-engine"
 import type {
 	DomiaEventBusPayloadMapType,
@@ -378,36 +379,6 @@ export type SatelliteTimerEventType = {
 	isActive: boolean
 }
 
-export type TimerIntentType = {
-	seconds: number
-	label: string
-}
-
-export type FastIntentContextType = {
-	domia: DomiaType
-	interactionId: string
-	originDomiaKey: string
-	satelliteId: string | undefined
-	transcript: string
-}
-
-export type FastIntentType = {
-	name: string
-	match: (
-		text: string,
-		ctx: FastIntentContextType,
-	) => Record<string, unknown> | null
-	handle: (
-		params: Record<string, unknown>,
-		ctx: FastIntentContextType,
-	) => string | null
-}
-
-export type FastIntentResultType = {
-	name: string
-	confirm: string
-}
-
 export type StreamingAudioType = {
 	queue: import("./sentence-buffer").AsyncQueueType<Buffer>
 	sampleRate: number
@@ -420,8 +391,7 @@ export type ActiveTimerType = {
 	satelliteId: string
 	name: string
 	totalSeconds: number
-	startedAt: number
-	handle: ReturnType<typeof setTimeout>
+	secondsLeft: number
 }
 
 export type SatelliteControlType = {
@@ -453,6 +423,13 @@ export type RequestVoiceReplyResult = {
 export type RequestTextReplyResult = {
 	interactionId: string
 	reply: string
+}
+
+export type TextDeltaSinkType = (delta: string) => void
+
+export type TextDeltaEmitterType = {
+	push: (token: string) => void
+	flush: () => void
 }
 
 export type InteractionStatusType =
@@ -501,6 +478,7 @@ export type InteractionRuntimeDeliveryType = {
 export type InteractionRuntimeCallbacksType = {
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
 	onTranscript?: (text: string) => void
+	onDelta?: TextDeltaSinkType
 	onComplete?: (result: InteractionCompletionResultType) => void
 	onError?: (error: string, step?: string) => void
 }
@@ -509,6 +487,7 @@ export type InteractionRuntimeType = {
 	envelope: InteractionEnvelopeType
 	timings: InteractionTimingsType
 	liveVoice?: boolean
+	origin?: OriginCapabilitiesType
 	delivery: InteractionRuntimeDeliveryType
 	callbacks: InteractionRuntimeCallbacksType
 }
@@ -570,6 +549,7 @@ export type RunInteractionOptionsType = {
 	satelliteProtocol?: SatelliteProtocolType
 	timeoutMs?: number
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
+	onDelta?: TextDeltaSinkType
 	liveTurn?: boolean
 	prefetch?: boolean
 	reflect?: boolean
@@ -597,6 +577,7 @@ export type InteractionRuntimeOptionsType = {
 	sink?: StreamingSinkType
 	onStage?: (stage: RequestVoiceReplyStage, elapsedMs: number) => void
 	onTranscript?: (text: string) => void
+	onDelta?: TextDeltaSinkType
 	onComplete?: (result: InteractionCompletionResultType) => void
 	onError?: (error: string, step?: string) => void
 }
@@ -887,11 +868,6 @@ export type DownloadAudioOptionsType = {
 export type StreamAudioFormatType = {
 	sampleRate: number
 	channels: 1 | 2
-}
-
-export type TimerUnitType = {
-	re: RegExp
-	mult: number
 }
 
 export type SpokenPositionOptsType = {

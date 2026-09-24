@@ -1,0 +1,36 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"olvídalo",
+				"déjalo",
+				"nada",
+				"cancela [eso]",
+				"no importa",
+				"da igual"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["olvídalo", "déjalo"],
+	"exampleUtterances": ["olvídalo", "déjalo"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"okayNeverMind": "Vale."
+	},
+	"samples": [
+		{
+			"text": "olvídalo"
+		},
+		{
+			"text": "déjalo"
+		},
+		{
+			"text": "cancela eso"
+		}
+	]
+}

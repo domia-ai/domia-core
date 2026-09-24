@@ -6,6 +6,9 @@ const NON_ALPHANUMERIC = /[^\p{L}\p{N}]+/u
 export const foldText = (text: string): string =>
 	text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").trim()
 
+export const capitalizeFirst = (text: string): string =>
+	text.charAt(0).toUpperCase() + text.slice(1)
+
 const escapeRegex = (text: string): string =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 

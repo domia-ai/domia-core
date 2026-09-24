@@ -21,7 +21,7 @@ import type {
 	PostVoiceResponseType,
 	PostVoiceTimingsType,
 	PostSpeakBodyType,
-	PostSpeakResponseType,
+	SpeakWireResultType,
 	PersistAnnouncementOptsType,
 } from "../types"
 import {
@@ -30,6 +30,7 @@ import {
 	postAnnounceAudioBodySchema,
 	postSpeakBodySchema,
 } from "../schemas"
+import { toSpeakWire } from "../utils/speak-wire"
 import {
 	requestTextReply,
 	requestTextToVoiceReply,
@@ -205,6 +206,7 @@ const persistAnnouncement = async (
 			kind: opts.kind,
 			delivery: opts.delivery,
 			target: opts.result.target,
+			delivered: opts.result.delivered,
 			audioPath,
 		})
 	} catch (err) {
@@ -238,7 +240,7 @@ export const handlePostAnnounceAudio = async (
 		httpServerLogger.info(`📢 /announce-audio transcribe → ${result.target}`, {
 			domiaKey: domia.domiaKey,
 		})
-		return { mode, transcript, ...result }
+		return { mode, transcript, ...toSpeakWire(result) }
 	}
 
 	const result = await announceAudio(domia, wav)
@@ -252,13 +254,13 @@ export const handlePostAnnounceAudio = async (
 	httpServerLogger.info(`📢 /announce-audio voice → ${result.target}`, {
 		domiaKey: domia.domiaKey,
 	})
-	return { mode, ...result }
+	return { mode, ...toSpeakWire(result) }
 }
 
 export const handlePostSpeak = async (
 	domia: DomiaType,
 	body: PostSpeakBodyType,
-): Promise<PostSpeakResponseType | SpeakBroadcastResultType> => {
+): Promise<SpeakWireResultType | SpeakBroadcastResultType> => {
 	const { text, broadcast, active, broadcastId } =
 		postSpeakBodySchema.parse(body)
 	if (broadcast) {
@@ -299,7 +301,7 @@ export const handlePostSpeak = async (
 		httpServerLogger.info(`📢 /speak active → ${result.target}`, {
 			delivered: result.delivered,
 		})
-		return result
+		return toSpeakWire(result)
 	}
 	const result = await speak(domia, text)
 	await persistAnnouncement(domia, {
@@ -313,7 +315,7 @@ export const handlePostSpeak = async (
 		domiaKey: domia.domiaKey,
 		delivered: result.delivered,
 	})
-	return result
+	return toSpeakWire(result)
 }
 
 export const handlePostTurnCancel = (domia: DomiaType) => {

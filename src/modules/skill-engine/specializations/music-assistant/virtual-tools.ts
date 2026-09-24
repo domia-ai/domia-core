@@ -36,6 +36,7 @@ import {
 } from "./planner"
 import {
 	ensureRoster,
+	isPlausiblePlayerName,
 	playerRoster,
 	resolvePlayer,
 	searchLimitOf,
@@ -101,7 +102,8 @@ const failed = (
 
 const spokenPlayer = (args: Record<string, unknown>): string | null => {
 	const value = args[MA_ARG_PLAYER]
-	return typeof value === "string" && value.trim() ? value.trim() : null
+	const trimmed = typeof value === "string" ? value.trim() : ""
+	return trimmed && isPlausiblePlayerName(trimmed) ? trimmed : null
 }
 
 const targetPlayer = async (
@@ -165,7 +167,7 @@ const runMusicPlay = async (
 	const query = typeof rawQuery === "string" ? rawQuery.trim() : ""
 	if (!query) return failed(phrases.musicWhichMusic)
 	const spoken = spokenPlayer(args)
-	playerRoster.attach(provider.id, handle)
+	playerRoster.attach(provider, handle)
 	const [hits] = await Promise.all([
 		searchAll(handle, query, searchLimitOf(provider), signal),
 		ensureRoster(provider, signal),
@@ -225,7 +227,7 @@ const runNowPlaying = async (
 	signal?: AbortSignal,
 ): Promise<SkillCallResultType> => {
 	const phrases = languageSetsFor(language).phrases
-	playerRoster.attach(provider.id, handle)
+	playerRoster.attach(provider, handle)
 	await playerRoster.refresh(provider.id, signal)
 	const spoken = spokenPlayer(args)
 	const player = await targetPlayer(provider, args, language)

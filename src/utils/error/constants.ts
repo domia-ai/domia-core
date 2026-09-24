@@ -265,6 +265,14 @@ export const SKILL_ERRORS = {
 		code: "SKILL/INVALID_PROVIDER_CONFIG",
 		message: "The skill provider configuration is invalid for its transport.",
 	},
+	RUNTIME_PORT_UNSET: {
+		code: "SKILL/RUNTIME_PORT_UNSET",
+		message: "The skill runtime port has not been installed on this node.",
+	},
+	ROUTINE_INVALID: {
+		code: "SKILL/ROUTINE_INVALID",
+		message: "The routine definition is invalid.",
+	},
 } as const
 
 export const AGENT_ERRORS = {
@@ -286,6 +294,33 @@ export const MIND_ERRORS = {
 	TEMPLATE_NOT_FOUND: {
 		code: "MIND/TEMPLATE_NOT_FOUND",
 		message: "The requested mind template does not exist.",
+	},
+} as const
+
+export const MIND_TRANSFER_ERRORS = {
+	IDENTITY_NOT_FOUND: {
+		code: "MIND_TRANSFER/IDENTITY_NOT_FOUND",
+		message: "The Domia identity the transfer targets does not exist.",
+	},
+	BUNDLE_INVALID: {
+		code: "MIND_TRANSFER/BUNDLE_INVALID",
+		message: "The mind bundle is not a valid versioned export.",
+	},
+	BUNDLE_INCONSISTENT: {
+		code: "MIND_TRANSFER/BUNDLE_INCONSISTENT",
+		message: "The mind bundle references rows it does not carry.",
+	},
+	IMPORT_CONFLICT: {
+		code: "MIND_TRANSFER/IMPORT_CONFLICT",
+		message: "The target already holds different content for imported rows.",
+	},
+	IMPORT_VERIFY_FAILED: {
+		code: "MIND_TRANSFER/IMPORT_VERIFY_FAILED",
+		message: "The post-write verification of the mind import failed.",
+	},
+	REPLACE_TARGET_MISSING: {
+		code: "MIND_TRANSFER/REPLACE_TARGET_MISSING",
+		message: "Replace mode needs a single target identity to clear.",
 	},
 } as const
 
@@ -311,6 +346,7 @@ export const ERROR_CODES = {
 	skill: SKILL_ERRORS,
 	agent: AGENT_ERRORS,
 	mind: MIND_ERRORS,
+	"mind-transfer": MIND_TRANSFER_ERRORS,
 	http: HTTP_ERRORS,
 	bench: BENCH_ERRORS,
 } as const

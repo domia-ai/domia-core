@@ -192,6 +192,9 @@ export const announcement = sqliteTable(
 		target: text("target"),
 		audioPath: text("audio_path"),
 		personId: text("person_id"),
+		delivered: integer("delivered", { mode: "boolean" })
+			.notNull()
+			.default(false),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},

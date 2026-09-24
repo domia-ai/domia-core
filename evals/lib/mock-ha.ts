@@ -19,9 +19,12 @@ import type {
 	MockMcpServerType,
 	MockDualEraServerType,
 	MockEntityStateType,
+	MockHaEntityType,
+	MockHaSiteType,
+	HaMcpToolSpecType,
 } from "../types"
 
-const ENTITIES = [
+const DEFAULT_ENTITIES: MockHaEntityType[] = [
 	{
 		names: ["Kitchen Light", "Luz de la Cocina"],
 		domain: "light",
@@ -59,7 +62,8 @@ const ENTITIES = [
 	},
 ]
 
-export const mockEntityNames = (): string[] => ENTITIES.flatMap((e) => e.names)
+export const mockEntityNames = (): string[] =>
+	DEFAULT_ENTITIES.flatMap((e) => e.names)
 
 const defaultBehavior = (): MockHaBehaviorType => ({
 	latencyMs: {},
@@ -79,17 +83,38 @@ const TOOL_DOMAINS: Record<string, string> = {
 	HassLockDoor: "lock",
 }
 
-const advertisedName = (behavior: MockHaBehaviorType, tool: string): string => {
+const HAND_REGISTERED_TOOLS = new Set([
+	"GetLiveContext",
+	"HassTurnOn",
+	"HassTurnOff",
+	"HassLightSet",
+	"HassLockDoor",
+])
+
+const toolDomainsOf = (
+	tools: HaMcpToolSpecType[] | undefined,
+): Record<string, string> => ({
+	...TOOL_DOMAINS,
+	...Object.fromEntries((tools ?? []).map((t) => [t.rawName, t.domain])),
+})
+
+const advertisedName = (
+	behavior: MockHaBehaviorType,
+	tool: string,
+	domains: Record<string, string>,
+): string => {
 	if (!behavior.domainPrefixed) return tool
-	const prefix = TOOL_DOMAINS[tool] ?? "intent"
+	const prefix = domains[tool] ?? "intent"
 	return `${prefix}__${tool}`
 }
 
-const createEntityStates = (): MockEntityStateType[] =>
-	ENTITIES.map(() => ({ on: false, brightness: null }))
+const createEntityStates = (
+	entities: MockHaEntityType[],
+): MockEntityStateType[] =>
+	entities.map(() => ({ on: false, brightness: null }))
 
 const matchesTarget = (
-	entity: (typeof ENTITIES)[number],
+	entity: MockHaEntityType,
 	args: { name?: string; area?: string; domain?: string[] },
 ): boolean => {
 	const name = args.name?.trim().toLowerCase()
@@ -110,26 +135,29 @@ const matchesTarget = (
 }
 
 const applyWrite = (
+	entities: MockHaEntityType[],
 	states: MockEntityStateType[],
 	args: { name?: string; area?: string; domain?: string[] },
 	patch: Partial<MockEntityStateType>,
 ): void => {
-	ENTITIES.forEach((entity, i) => {
+	entities.forEach((entity, i) => {
 		if (matchesTarget(entity, args)) Object.assign(states[i], patch)
 	})
 }
 
 const liveContext = (
+	entities: MockHaEntityType[],
 	gate: MockBehaviorGateType,
 	states: MockEntityStateType[],
 ): string => {
-	const rows = ENTITIES.map((e, i) => {
+	const rows = entities.map((e, i) => {
 		const state = states[i]
 		const brightness =
 			state.on && state.brightness !== null
 				? `\n  brightness: ${state.brightness}`
 				: ""
-		return `- names: ${e.names.join(", ")}\n  domain: ${e.domain}\n  areas: ${e.area}\n  state: ${state.on ? "on" : "off"}${brightness}`
+		const area = e.area ? `\n  areas: ${e.area}` : ""
+		return `- names: ${e.names.join(", ")}\n  domain: ${e.domain}${area}\n  state: ${state.on ? "on" : "off"}${brightness}`
 	})
 	const poison = gate.poisonOf("GetLiveContext")
 	if (poison)
@@ -227,14 +255,35 @@ const withAnnotations = (
 ): { annotations?: Record<string, unknown> } =>
 	behavior.annotations ? { annotations } : {}
 
+const siteToolSchema = (
+	spec: HaMcpToolSpecType,
+): z.ZodObject<Record<string, z.ZodType>> =>
+	z.object(
+		Object.fromEntries(
+			Object.entries(spec.properties).map(([key, prop]) => [
+				key,
+				prop.type === "string"
+					? z.string().optional()
+					: prop.type === "number"
+						? z.number().optional()
+						: z.array(z.string()).optional(),
+			]),
+		),
+	)
+
 const buildMcpServer = (
 	behavior: MockHaBehaviorType,
 	states: MockEntityStateType[],
 	gate: MockBehaviorGateType,
+	entities: MockHaEntityType[],
+	site?: MockHaSiteType,
 ): McpServer => {
+	const domains = toolDomainsOf(site?.tools)
+	const named = (tool: string): string =>
+		advertisedName(behavior, tool, domains)
 	const mcp = new McpServer({ name: "eval-mock-ha", version: "1.0.0" })
 	mcp.registerTool(
-		advertisedName(behavior, "GetLiveContext"),
+		named("GetLiveContext"),
 		{
 			description:
 				"Provides real-time information about the CURRENT state, value, or mode of devices, sensors, entities, or areas.",
@@ -244,10 +293,11 @@ const buildMcpServer = (
 				openWorldHint: false,
 			}),
 		},
-		async () => gated(gate, "GetLiveContext", () => liveContext(gate, states)),
+		async () =>
+			gated(gate, "GetLiveContext", () => liveContext(entities, gate, states)),
 	)
 	mcp.registerTool(
-		advertisedName(behavior, "HassTurnOn"),
+		named("HassTurnOn"),
 		{
 			description:
 				"Turns on/opens/presses a device or entity. Use for requests like 'turn on', 'activate', 'enable'.",
@@ -261,7 +311,7 @@ const buildMcpServer = (
 		},
 		async (args) =>
 			gated(gate, "HassTurnOn", () => {
-				applyWrite(states, args, { on: true })
+				applyWrite(entities, states, args, { on: true })
 				return withPoison(
 					gate,
 					"HassTurnOn",
@@ -270,7 +320,7 @@ const buildMcpServer = (
 			}),
 	)
 	mcp.registerTool(
-		advertisedName(behavior, "HassTurnOff"),
+		named("HassTurnOff"),
 		{
 			description:
 				"Turns off/closes a device or entity. Use for requests like 'turn off', 'deactivate', 'disable'.",
@@ -284,7 +334,7 @@ const buildMcpServer = (
 		},
 		async (args) =>
 			gated(gate, "HassTurnOff", () => {
-				applyWrite(states, args, { on: false })
+				applyWrite(entities, states, args, { on: false })
 				return withPoison(
 					gate,
 					"HassTurnOff",
@@ -293,7 +343,7 @@ const buildMcpServer = (
 			}),
 	)
 	mcp.registerTool(
-		advertisedName(behavior, "HassLightSet"),
+		named("HassLightSet"),
 		{
 			description: "Sets the brightness percentage or color of a light",
 			inputSchema: targetArgs.extend({
@@ -310,7 +360,7 @@ const buildMcpServer = (
 		},
 		async (args) =>
 			gated(gate, "HassLightSet", () => {
-				applyWrite(states, args, {
+				applyWrite(entities, states, args, {
 					on: true,
 					...(args.brightness === undefined
 						? {}
@@ -324,7 +374,7 @@ const buildMcpServer = (
 			}),
 	)
 	mcp.registerTool(
-		advertisedName(behavior, "HassLockDoor"),
+		named("HassLockDoor"),
 		{
 			description: "Locks or unlocks a door lock entity.",
 			inputSchema: targetArgs,
@@ -334,7 +384,7 @@ const buildMcpServer = (
 	)
 	for (const name of syntheticNames(behavior.catalogSize)) {
 		mcp.registerTool(
-			advertisedName(behavior, name),
+			named(name),
 			{
 				description: `Controls the ${name.replace(/^Hass/, "").toLowerCase()} accessory in the home.`,
 				inputSchema: targetArgs,
@@ -343,14 +393,24 @@ const buildMcpServer = (
 				gated(gate, name, () => `${name} done for ${args.name ?? "target"}`),
 		)
 	}
+	for (const spec of site?.tools ?? []) {
+		if (HAND_REGISTERED_TOOLS.has(spec.rawName)) continue
+		mcp.registerTool(
+			named(spec.rawName),
+			{ description: spec.description, inputSchema: siteToolSchema(spec) },
+			async () => gated(gate, spec.rawName, () => `${spec.rawName} done`),
+		)
+	}
 	return mcp
 }
 
 export const startMockHa = async (
 	port = 0,
 	baseBehavior: Partial<MockHaBehaviorType> = {},
+	site?: MockHaSiteType,
 ): Promise<MockHaServerType> => {
-	const states = createEntityStates()
+	const entities = site?.entities ?? DEFAULT_ENTITIES
+	const states = createEntityStates(entities)
 	let behavior = { ...defaultBehavior(), ...baseBehavior }
 	const gate = createBehaviorGate(() => behavior)
 	const server = createServer((req, res) => {
@@ -371,7 +431,7 @@ export const startMockHa = async (
 			return
 		}
 		void (async () => {
-			const mcp = buildMcpServer(behavior, states, gate)
+			const mcp = buildMcpServer(behavior, states, gate, entities, site)
 			const transport = new NodeStreamableHTTPServerTransport({
 				sessionIdGenerator: undefined,
 			})

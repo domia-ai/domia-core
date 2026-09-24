@@ -56,6 +56,7 @@ const argNormalizeSchema = z.record(
 const executionSchema = z
 	.object({
 		coreTools: z.array(z.string()).optional(),
+		hiddenTools: z.array(z.string()).optional(),
 		toolPolicy: z
 			.record(z.string(), z.enum(["allow", "block", "confirm"]))
 			.optional(),
@@ -73,13 +74,32 @@ const fastPathSlotSourceSchema = z.union([
 	z
 		.object({ kind: z.literal("enum"), values: z.array(z.string()).min(1) })
 		.strict(),
+	z
+		.object({
+			kind: z.literal("map"),
+			values: z
+				.array(
+					z
+						.object({ in: z.array(z.string().min(1)).min(1), out: z.unknown() })
+						.strict(),
+				)
+				.min(1),
+		})
+		.strict(),
 	z.object({ kind: z.literal("schemaEnum"), arg: z.string().min(1) }).strict(),
 	z
 		.object({ kind: z.literal("range"), min: z.number(), max: z.number() })
 		.strict(),
+	z
+		.object({
+			kind: z.literal("duration"),
+			maxSeconds: z.number().positive().optional(),
+		})
+		.strict(),
+	z.object({ kind: z.literal("clockTime") }).strict(),
 ])
 
-const fastPathSlotSchema = z
+export const fastPathSlotSchema = z
 	.object({
 		source: fastPathSlotSourceSchema,
 		arg: z.string().optional(),
@@ -93,6 +113,8 @@ const fastPathIntentSchema = z
 		slots: z.record(z.string(), fastPathSlotSchema).optional(),
 		requiredKeywords: z.array(z.array(z.string().min(1)).min(1)).optional(),
 		argDefaults: z.record(z.string(), z.unknown()).optional(),
+		priority: z.number().int().optional(),
+		allowBlockedTokens: z.boolean().optional(),
 	})
 	.strict()
 

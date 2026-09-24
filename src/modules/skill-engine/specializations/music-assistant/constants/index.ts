@@ -1,7 +1,13 @@
-import type { ArgNormalizeMapType, ToolHintOverrideType } from "@/db"
+import type {
+	ArgNormalizeMapType,
+	FastPathBlockType,
+	ToolHintOverrideType,
+} from "@/db"
 import type { LanguageCatalogExtensionType } from "@/utils"
 
-import type { MaFastPathLanguagePackType } from "../types"
+import { loadFastPathPack } from "../../../utils/descriptor-data"
+import enPack from "../descriptors/en.json"
+import esPack from "../descriptors/es.json"
 
 export const MA_SPECIALIZATION_KIND = "music-assistant"
 
@@ -87,6 +93,8 @@ export const MA_VOLUME_MAX = 100
 export const MA_NOW_PLAYING_QUEUE_ITEMS = 3
 
 export const MA_PLACEHOLDER_RE = /^(\[\]|\{\}|null|none|n\/a|undefined)$/i
+export const MA_PLAYER_NAME_MAX_WORDS = 6
+export const MA_PLAYER_NAME_REJECT_RE = /[[\]{}()<>:;|·\n]/
 
 const READ_HINTS: ToolHintOverrideType = {
 	readOnlyHint: true,
@@ -313,178 +321,52 @@ export const MA_CATALOG_EXTENSIONS: Record<
 	},
 }
 
-export const MA_FAST_PATH_LANGUAGES: Record<
-	string,
-	MaFastPathLanguagePackType
-> = {
-	en: {
-		pauseTemplates: [
-			"(pause|stop) [<the>] <music>",
-			"turn off [<the>] <music>",
-		],
-		pausePlayerTemplates: [
-			"(pause|stop) [<the>] <music> (in|on) [<the>] {playerQueue}",
-		],
-		resumeTemplates: [
-			"(resume|unpause) [<the>] <music>",
-			"(continue|keep) playing [<the>] <music>",
-		],
-		nextTemplates: [
-			"(next|skip) [<the>] (song|track)",
-			"skip [<the>] <music>",
-			"play [<the>] next (song|track)",
-		],
-		nextPlayerTemplates: [
-			"(next|skip) [<the>] (song|track) (in|on) [<the>] {playerQueue}",
-			"skip [<the>] <music> (in|on) [<the>] {playerQueue}",
-		],
-		previousTemplates: [
-			"(previous|last) (song|track)",
-			"play [<the>] (previous|last) (song|track)",
-			"go back a (song|track)",
-		],
-		volumeSetTemplates: [
-			"(set|turn) [<the>] (volume|music) to {level} [percent]",
-			"set [<the>] <music> volume to {level} [percent]",
-		],
-		volumeUpTemplates: [
-			"turn up [<the>] (volume|music)",
-			"turn [<the>] (volume|music) up",
-			"louder",
-		],
-		volumeUpPlayerTemplates: [
-			"turn up [<the>] (volume|music) (in|on) [<the>] {player}",
-			"turn [<the>] (volume|music) up (in|on) [<the>] {player}",
-		],
-		volumeDownTemplates: [
-			"turn down [<the>] (volume|music)",
-			"turn [<the>] (volume|music) down",
-			"quieter",
-		],
-		volumeDownPlayerTemplates: [
-			"turn down [<the>] (volume|music) (in|on) [<the>] {player}",
-			"turn [<the>] (volume|music) down (in|on) [<the>] {player}",
-		],
-		muteTemplates: [
-			"mute [<the>] (music|speaker|speakers|player)",
-			"mute [<the>] {player}",
-		],
-		unmuteTemplates: [
-			"unmute [<the>] (music|speaker|speakers|player)",
-			"unmute [<the>] {player}",
-		],
-		nowPlayingTemplates: [
-			"which (song|track) is (this|playing)",
-			"(tell|name) me [<the>] (song|track)",
-			"current (song|track)",
-		],
-		expansionRules: {
-			music: "(music|song|songs|track|playback)",
-			the: "(the|my|our|this)",
-		},
-		samples: [
-			"pause the music",
-			"stop the song",
-			"turn off the music",
-			"pause the music in the kitchen",
-			"resume the music",
-			"keep playing the music",
-			"next song",
-			"skip the song",
-			"next song on the kitchen speaker",
-			"previous song",
-			"set the volume to 40 percent",
-			"turn up the volume",
-			"turn the volume up on the kitchen speaker",
-			"turn the music down",
-			"mute the speakers",
-			"unmute the music",
-			"which song is this",
-			"current song",
-		],
-	},
-	es: {
-		pauseTemplates: [
-			"(pausa|para|detén) [<articulo>] <musica>",
-			"(apaga|quita) [<articulo>] <musica>",
-		],
-		pausePlayerTemplates: [
-			"(pausa|para|detén) [<articulo>] <musica> (en|de) [<articulo>] {playerQueue}",
-		],
-		resumeTemplates: [
-			"(reanuda|continúa|sigue) [<articulo>] <musica>",
-			"vuelve a poner [<articulo>] <musica>",
-		],
-		nextTemplates: [
-			"(siguiente|próxima|otra) (canción|tema)",
-			"(pon|pasa a) [<articulo>] (siguiente|próxima) (canción|tema)",
-			"salta [<articulo>] (canción|tema)",
-		],
-		nextPlayerTemplates: [
-			"(siguiente|próxima|otra) (canción|tema) (en|de) [<articulo>] {playerQueue}",
-			"salta [<articulo>] (canción|tema) (en|de) [<articulo>] {playerQueue}",
-		],
-		previousTemplates: [
-			"(anterior|previa) (canción|tema)",
-			"(pon|vuelve a) [<articulo>] (canción|tema) (anterior|previa)",
-		],
-		volumeSetTemplates: [
-			"(pon|ajusta) [<articulo>] (volumen|música) (a|al) {level} [por ciento]",
-		],
-		volumeUpTemplates: [
-			"sube [<articulo>] (volumen|música)",
-			"súbele [<articulo>] (volumen|música)",
-			"más alto",
-		],
-		volumeUpPlayerTemplates: [
-			"sube [<articulo>] (volumen|música) (en|de) [<articulo>] {player}",
-		],
-		volumeDownTemplates: [
-			"baja [<articulo>] (volumen|música)",
-			"bájale [<articulo>] (volumen|música)",
-			"más bajo",
-		],
-		volumeDownPlayerTemplates: [
-			"baja [<articulo>] (volumen|música) (en|de) [<articulo>] {player}",
-		],
-		muteTemplates: [
-			"(silencia|mutea) [<articulo>] (música|bocina|bocinas|altavoz)",
-			"silencia [<articulo>] {player}",
-		],
-		unmuteTemplates: [
-			"(activa|restaura) [<articulo>] (sonido|audio)",
-			"quita el silencio",
-		],
-		nowPlayingTemplates: [
-			"(canción|tema) actual",
-			"dime [<articulo>] (canción|tema)",
-			"cuál (canción|tema) es esta",
-		],
-		expansionRules: {
-			musica: "(música|canción|tema|reproducción)",
-			articulo: "(la|el|las|los|mi|mis|esta|este)",
-		},
-		samples: [
-			"pausa la música",
-			"para la canción",
-			"apaga la música",
-			"pausa la música en la cocina",
-			"reanuda la música",
-			"vuelve a poner la música",
-			"siguiente canción",
-			"salta la canción",
-			"siguiente canción en la cocina",
-			"canción anterior",
-			"pon el volumen al 40 por ciento",
-			"sube el volumen",
-			"sube el volumen en la cocina",
-			"baja la música",
-			"silencia las bocinas",
-			"quita el silencio",
-			"canción actual",
-			"dime la canción",
-		],
-	},
+export const MA_FAST_PATH_PACKS: Record<string, FastPathBlockType> = {
+	en: loadFastPathPack(enPack),
+	es: loadFastPathPack(esPack),
+}
+
+export const MA_FAST_PATH_SAMPLES: Record<string, string[]> = {
+	en: [
+		"pause the music",
+		"stop the song",
+		"turn off the music",
+		"pause the music in the kitchen",
+		"resume the music",
+		"keep playing the music",
+		"next song",
+		"skip the song",
+		"next song on the kitchen speaker",
+		"previous song",
+		"set the volume to 40 percent",
+		"turn up the volume",
+		"turn the volume up on the kitchen speaker",
+		"turn the music down",
+		"mute the speakers",
+		"unmute the music",
+		"which song is this",
+		"current song",
+	],
+	es: [
+		"pausa la música",
+		"para la canción",
+		"apaga la música",
+		"pausa la música en la cocina",
+		"reanuda la música",
+		"vuelve a poner la música",
+		"siguiente canción",
+		"salta la canción",
+		"siguiente canción en la cocina",
+		"canción anterior",
+		"pon el volumen al 40 por ciento",
+		"sube el volumen",
+		"sube el volumen en la cocina",
+		"baja la música",
+		"silencia las bocinas",
+		"quita el silencio",
+		"canción actual",
+		"dime la canción",
+	],
 }
 
 export const MA_EXAMPLE_UTTERANCES: Record<string, string[]> = {

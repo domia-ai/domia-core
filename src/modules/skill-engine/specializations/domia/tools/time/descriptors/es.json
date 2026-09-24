@@ -1,0 +1,29 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"qué hora es [ahora]",
+				"qué horas son",
+				"qué hora tienes",
+				"dime la hora [actual]",
+				"[la] hora actual",
+				"me (dices|das) la hora"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["hora", "reloj"],
+	"exampleUtterances": ["qué hora es", "dime la hora"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "qué hora es" },
+		{ "text": "¿Qué horas son?" },
+		{ "text": "dime la hora por favor" },
+		{ "text": "¿qué hora es ahora?" },
+		{ "text": "hora actual" }
+	]
+}

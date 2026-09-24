@@ -42,6 +42,3 @@ export const broadcastIdFor = (scheduleId: string): string =>
 
 export const isProactiveBroadcastId = (broadcastId: string): boolean =>
 	broadcastId.startsWith(PROACTIVE_BROADCAST_PREFIX)
-
-export const sqliteTimestamp = (at: number): string =>
-	new Date(at).toISOString().replace("T", " ").replace("Z", "")

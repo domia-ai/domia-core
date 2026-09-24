@@ -1,6 +1,6 @@
 import type { FastifyReply } from "fastify"
 
-import { getDomia, getOwnDomia, getSatellitesForDomia } from "@/modules/core"
+import { getOwnDomia, getSatellitesForDomia } from "@/modules/core"
 import {
 	listScheduleItems,
 	getScheduleItem,
@@ -11,27 +11,7 @@ import {
 import { httpServerLogger } from "@/utils"
 import { postScheduleBodySchema, getScheduleQuerySchema } from "../schemas"
 import { badRequest } from "../utils/http-errors"
-import type { ProactivityIdentityType } from "../types"
-
-const resolveHostedIdentity = async (
-	domiaKey: string | undefined,
-	reply: FastifyReply,
-): Promise<ProactivityIdentityType | null> => {
-	if (!domiaKey) {
-		await reply.code(400).send({ error: "missing domiaKey" })
-		return null
-	}
-	const domia = await getDomia(domiaKey)
-	if (!domia) {
-		await reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
-		return null
-	}
-	if (!domia.isHosted) {
-		await reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
-		return null
-	}
-	return { id: domia.id, domiaKey }
-}
+import { resolveHostedIdentity } from "../utils/hosted-identity"
 
 export const handleGetProactivitySchedule = async (
 	domiaKey: string | undefined,

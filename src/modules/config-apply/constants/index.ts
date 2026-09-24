@@ -1,3 +1,5 @@
+import { DOMIA_BUNDLE_OMIT_KEYS } from "@/modules/config/constants"
+
 import type { ReloadSubsystemType, ReloaderScopeType } from "../types"
 
 export const CONFIG_SECTION_META_FIELDS = [
@@ -31,23 +33,14 @@ export const DOMIA_LIVE_FIELDS = [
 	"benchThresholds",
 ] as const
 
-export const DOMIA_UNTRACKED_FIELDS = [
-	"id",
-	"name",
-	"domiaKey",
-	"isActive",
-	"localIp",
-	"grpcPort",
-	"grpcTls",
-	"lastSeenAt",
-	"peerNodeId",
-	"configRevision",
-	"configReloadDrainMs",
-	"createdAt",
-	"updatedAt",
-] as const
+const DOMIA_LIVE = new Set<string>(DOMIA_LIVE_FIELDS)
 
-export const MODULES_SKILLS_FIELDS = ["skillsEngine"] as const
+export const DOMIA_UNTRACKED_FIELDS: readonly string[] = [
+	...DOMIA_BUNDLE_OMIT_KEYS.filter((key) => !DOMIA_LIVE.has(key)),
+	"name",
+]
+
+export const MODULES_SKILLS_FIELDS = ["skillsEngine", "builtinTools"] as const
 
 export const MODULES_PROACTIVITY_FIELDS = ["proactivityEngine"] as const
 

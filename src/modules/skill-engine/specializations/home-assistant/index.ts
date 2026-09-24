@@ -4,8 +4,6 @@ import type {
 	ToolFinalizeMapType,
 	SkillToolType,
 	ToolHintOverrideType,
-	FastPathBlockType,
-	FastPathIntentType,
 } from "@/db"
 import {
 	skillEngineLogger,
@@ -18,9 +16,15 @@ import { foldText as fold, tokensOf } from "@/utils/text-tokens"
 
 import type { SkillSpecializationType, SkillConnHandleType } from "../../types"
 import { resolveDescriptor } from "../../utils/descriptor"
+import { bindFastPathTools } from "../../utils/descriptor-data"
+import {
+	mediaOwnedNames,
+	setDeviceOwnerNames,
+	clearDeviceOwner,
+} from "../../utils/media-owners"
 import { findToolByBaseName, toolBaseName } from "../../utils/tool-name"
 import { bestByName, stripTokens } from "../../utils/name-match"
-import type { HaEntityType, HaContextCacheType } from "./types"
+import type { HaEntityType, HaContextCacheType, HaSlotValueType } from "./types"
 import {
 	HA_SPECIALIZATION_KIND,
 	HA_ALIASES,
@@ -28,15 +32,24 @@ import {
 	HA_PLACEHOLDER_RE,
 	HA_CONTEXT_TTL_MS,
 	HA_CONTEXT_TOOL,
-	HA_TARGET_ARGS,
+	HA_EXPLICIT_TARGET_ARGS,
+	HA_ARG_DOMAIN,
 	HA_NAME_MATCH_MIN,
 	HA_FULL_COVERAGE_SCORE,
 	HA_SENSITIVE_TOOL_RE,
+	HA_BUILTIN_SHADOWED_TOOLS,
+	HA_FAST_PATH_EXCLUDED_DOMAINS,
 	HA_SENSITIVE_DOMAIN_RE,
 	HA_READ_TOOL_RE,
 	HA_ACTION_VERBS,
 	HA_CATALOG_EXTENSIONS,
-	HA_FAST_PATH_LANGUAGES,
+	HA_FAST_PATH_PACKS,
+	HA_FAST_PATH_AREA_KEY,
+	HA_FAST_PATH_ENTITY_DOMAIN_SEPARATOR,
+	HA_FAST_PATH_ENTITY_KEY,
+	HA_FAST_PATH_ENTITY_KEY_PREFIX,
+	HA_FAST_PATH_FLOOR_KEY,
+	HA_FAST_PATH_NAME_GROUPS,
 	HA_EXAMPLE_UTTERANCES,
 	HA_MDNS_SERVICE_TYPE,
 	HA_MCP_PATH,
@@ -47,6 +60,7 @@ import {
 	snapshotContext,
 	liveEntities,
 	dataPlaneStatus,
+	namesByFolded,
 } from "./data-plane"
 
 const genericWordsFor = (
@@ -58,11 +72,24 @@ const genericWordsFor = (
 	)
 
 const contextCache = new Map<string, HaContextCacheType>()
+const providerDomiaIds = new Map<string, string>()
+
+const registerDeviceNames = (
+	providerId: string,
+	entities: readonly HaEntityType[],
+): void => {
+	const domiaId = providerDomiaIds.get(providerId)
+	if (!domiaId) return
+	setDeviceOwnerNames(
+		domiaId,
+		providerId,
+		entities.flatMap((e) => e.names),
+	)
+}
 
 const parseLiveContext = (text: string): HaEntityType[] => {
 	const entities: HaEntityType[] = []
-	let current: { names: string[]; domain: string; area: string | null } | null =
-		null
+	let current: HaEntityType | null = null
 	for (const raw of text.split("\n")) {
 		const line = raw.trimEnd()
 		const namesMatch = /^- names:\s*(.*)$/.exec(line)
@@ -75,6 +102,7 @@ const parseLiveContext = (text: string): HaEntityType[] => {
 					.filter(Boolean),
 				domain: "",
 				area: null,
+				floor: null,
 			}
 			continue
 		}
@@ -141,29 +169,36 @@ const refreshContext = async (
 		if (parsed && typeof parsed.result === "string") body = parsed.result
 		const entities = parseLiveContext(body)
 		if (entities.length === 0) return
-		const areas = new Set(
-			entities
-				.map((e) => e.area)
-				.filter((a): a is string => !!a)
-				.map((a) => fold(a)),
-		)
+		const areaNames = namesByFolded(entities.map((e) => e.area))
+		registerDeviceNames(providerId, entities)
 		contextCache.set(providerId, {
 			entities,
-			areas,
+			areas: new Set(areaNames.keys()),
+			areaNames,
+			floorNames: new Map(),
+			slotValuesByKey: new Map(),
 			fetchedAt: Date.now(),
 			handle,
 		})
 		skillEngineLogger.info(
-			`🏠 HA context cached: ${entities.length} entities, ${areas.size} areas`,
+			`🏠 HA context cached: ${entities.length} entities, ${areaNames.size} areas`,
 		)
 	} catch (err) {
 		skillEngineLogger.warn("HA context refresh failed", { err })
 	}
 }
 
+const registeredSnapshots = new WeakSet<HaContextCacheType>()
+
 const contextFor = (providerId: string): HaContextCacheType | null => {
 	const live = snapshotContext(providerId)
-	if (live) return live
+	if (live) {
+		if (!registeredSnapshots.has(live)) {
+			registeredSnapshots.add(live)
+			registerDeviceNames(providerId, live.entities)
+		}
+		return live
+	}
 	const cached = contextCache.get(providerId)
 	if (!cached) return null
 	if (Date.now() - cached.fetchedAt > HA_CONTEXT_TTL_MS) {
@@ -243,12 +278,20 @@ const echoesName = (value: string, name: string): boolean => {
 	return valueTokens.length > 0 && valueTokens.every((t) => nameTokens.has(t))
 }
 
-const hasTargetArg = (args: Record<string, unknown>): boolean =>
-	HA_TARGET_ARGS.some((key) => {
+const hasExplicitTargetArg = (args: Record<string, unknown>): boolean =>
+	HA_EXPLICIT_TARGET_ARGS.some((key) => {
 		const value = args[key]
 		if (typeof value === "string") return value.trim().length > 0
 		return Array.isArray(value) && value.length > 0
 	})
+
+const domainArgOf = (args: Record<string, unknown>): string[] => {
+	const value = args[HA_ARG_DOMAIN]
+	const list = Array.isArray(value) ? value : [value]
+	return list.filter(
+		(d): d is string => typeof d === "string" && d.trim().length > 0,
+	)
+}
 
 const phraseInTokens = (tokens: string[], phrase: string): boolean => {
 	const parts = tokensOf(phrase)
@@ -344,11 +387,15 @@ const haToolHints = (
 	return hints
 }
 
-const haToolPolicy = (tools: SkillToolType[]): Record<string, "confirm"> => {
-	const policy: Record<string, "confirm"> = {}
-	for (const t of tools)
-		if (HA_SENSITIVE_TOOL_RE.test(toolBaseName(t.rawName)))
-			policy[t.rawName] = "confirm"
+const haToolPolicy = (
+	tools: SkillToolType[],
+): Record<string, "confirm" | "block"> => {
+	const policy: Record<string, "confirm" | "block"> = {}
+	for (const t of tools) {
+		const base = toolBaseName(t.rawName)
+		if (HA_BUILTIN_SHADOWED_TOOLS.has(base)) policy[t.rawName] = "block"
+		else if (HA_SENSITIVE_TOOL_RE.test(base)) policy[t.rawName] = "confirm"
+	}
 	return policy
 }
 
@@ -372,70 +419,6 @@ const forLanguage = <T>(
 	byLanguage: Record<string, T>,
 	language: string | null,
 ): T => byLanguage[baseLanguage(language)] ?? byLanguage.en
-
-const haFastPathBlock = (
-	tools: SkillToolType[],
-	language: string | null,
-): FastPathBlockType | undefined => {
-	const turnOn = findToolByBaseName(tools, "HassTurnOn")?.rawName
-	const turnOff = findToolByBaseName(tools, "HassTurnOff")?.rawName
-	const lightSet = findToolByBaseName(tools, "HassLightSet")?.rawName
-	const pack = forLanguage(HA_FAST_PATH_LANGUAGES, language)
-	const intents: FastPathIntentType[] = []
-	const entitySlot = {
-		entity: { source: { kind: "context", key: "entity" } },
-	} as FastPathIntentType["slots"]
-	const areaSlot = {
-		area: { source: { kind: "context", key: "area" } },
-	} as FastPathIntentType["slots"]
-	if (turnOn)
-		intents.push({
-			tool: turnOn,
-			templates: pack.turnOnTemplates,
-			slots: entitySlot,
-			requiredKeywords: pack.turnOnKeywords,
-		})
-	if (turnOn && pack.turnOnAreaTemplates.length > 0)
-		intents.push({
-			tool: turnOn,
-			templates: pack.turnOnAreaTemplates,
-			slots: areaSlot,
-			requiredKeywords: pack.turnOnKeywords,
-			argDefaults: { domain: ["light"] },
-		})
-	if (turnOff)
-		intents.push({
-			tool: turnOff,
-			templates: pack.turnOffTemplates,
-			slots: entitySlot,
-			requiredKeywords: pack.turnOffKeywords,
-		})
-	if (turnOff && pack.turnOffAreaTemplates.length > 0)
-		intents.push({
-			tool: turnOff,
-			templates: pack.turnOffAreaTemplates,
-			slots: areaSlot,
-			requiredKeywords: pack.turnOffKeywords,
-			argDefaults: { domain: ["light"] },
-		})
-	if (lightSet)
-		intents.push({
-			tool: lightSet,
-			templates: pack.lightSetTemplates,
-			slots: {
-				...entitySlot,
-				level: {
-					source: { kind: "range", min: 0, max: 100 },
-					arg: "brightness",
-				},
-			},
-		})
-	if (intents.length === 0) return undefined
-	return {
-		intents,
-		expansionRules: pack.expansionRules,
-	}
-}
 
 export const homeAssistantSpecialization: SkillSpecializationType = {
 	kind: HA_SPECIALIZATION_KIND,
@@ -461,7 +444,12 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 			finalize: haFinalizeTemplates(language),
 			genericWords: [...languageSetsFor(language).genericWords],
 		},
-		fastPath: haFastPathBlock(tools, language),
+		fastPath: bindFastPathTools(
+			forLanguage(HA_FAST_PATH_PACKS, language),
+			tools.filter(
+				(t) => !HA_BUILTIN_SHADOWED_TOOLS.has(toolBaseName(t.rawName)),
+			),
+		),
 	}),
 	status: (provider) => dataPlaneStatus(provider.id),
 	discover: async (timeoutMs) =>
@@ -491,9 +479,16 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		}
 	},
 	inferWriteTarget: (provider, _rawName, args, transcript, language) => {
-		if (hasTargetArg(args)) return { kind: "targeted" }
+		if (hasExplicitTargetArg(args)) return { kind: "targeted" }
 		const tokens = tokensOf(transcript)
 		const spoken = domainsSpokenIn(tokens, language)
+		const domainArg = domainArgOf(args)
+		if (domainArg.length > 0 && domainArg.every((d) => spoken.includes(d)))
+			return { kind: "targeted" }
+		if (domainArg.length > 0)
+			skillEngineLogger.warn(
+				`🏠 domain ${JSON.stringify(domainArg)} was not spoken — ignoring it`,
+			)
 		if (spoken.length > 0) {
 			skillEngineLogger.info(
 				`🏠 targetless write → domain ${JSON.stringify(spoken)}`,
@@ -513,21 +508,15 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		return { kind: "untargeted" }
 	},
 	fastPathSlotValues: (provider, key) => {
-		const ctx = contextCache.get(provider.id)
+		const ctx = contextFor(provider.id)
 		if (!ctx) return null
-		if (key === "entity") {
-			const out: { phrase: string; args: Record<string, unknown> }[] = []
-			for (const entity of ctx.entities) {
-				const canonical = entity.names[0]
-				if (!canonical) continue
-				for (const name of entity.names)
-					out.push({ phrase: name, args: { name: canonical } })
-			}
-			return out
-		}
-		if (key === "area")
-			return [...ctx.areas].map((area) => ({ phrase: area, args: { area } }))
-		return null
+		const owned = mediaOwnedNames(provider.domiaId)
+		const cacheKey = `${key}|${owned.version}`
+		const cached = ctx.slotValuesByKey.get(cacheKey)
+		if (cached !== undefined) return cached
+		const values = slotValuesOf(ctx, key, owned.folded)
+		ctx.slotValuesByKey.set(cacheKey, values)
+		return values
 	},
 	invocationRisk: (provider, _rawName, resolvedArgs) => {
 		const domain = resolvedEntityDomain(provider, resolvedArgs)
@@ -547,11 +536,14 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		provider: SelectSkillProviderType,
 		handle: SkillConnHandleType,
 	) => {
+		providerDomiaIds.set(provider.id, provider.domiaId)
 		await refreshContext(provider.id, handle, provider.toolsCache ?? [])
 		attachDataPlane(provider, handle)
 	},
 	onDisconnected: (provider: SelectSkillProviderType) => {
 		detachDataPlane(provider.id)
+		clearDeviceOwner(provider.domiaId, provider.id)
+		providerDomiaIds.delete(provider.id)
 		contextCache.delete(provider.id)
 		contextToolNames.delete(provider.id)
 	},
@@ -706,6 +698,64 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		}
 		return out
 	},
+}
+
+const entityKeyDomains = (key: string): Set<string> | null | undefined => {
+	if (key === HA_FAST_PATH_ENTITY_KEY) return null
+	if (!key.startsWith(HA_FAST_PATH_ENTITY_KEY_PREFIX)) return undefined
+	const spec = key.slice(HA_FAST_PATH_ENTITY_KEY_PREFIX.length)
+	const domains = spec
+		.split(HA_FAST_PATH_ENTITY_DOMAIN_SEPARATOR)
+		.flatMap((d) => HA_FAST_PATH_NAME_GROUPS[d] ?? [d])
+		.map((d) => d.trim())
+		.filter((d) => d.length > 0)
+	return domains.length > 0 ? new Set(domains) : undefined
+}
+
+const ownedByMedia = (entity: HaEntityType, owned: Set<string>): boolean =>
+	owned.size > 0 && entity.names.some((n) => owned.has(fold(n)))
+
+const entitySlotValues = (
+	ctx: HaContextCacheType,
+	domains: Set<string> | null,
+	owned: Set<string>,
+): HaSlotValueType[] | null => {
+	const out: HaSlotValueType[] = []
+	for (const entity of ctx.entities) {
+		const canonical = entity.names[0]
+		if (!canonical) continue
+		if (domains && !domains.has(entity.domain)) continue
+		if (HA_FAST_PATH_EXCLUDED_DOMAINS.has(entity.domain)) continue
+		if (ownedByMedia(entity, owned)) continue
+		for (const name of entity.names)
+			out.push({ phrase: name, args: { name: canonical } })
+	}
+	return out.length > 0 ? out : null
+}
+
+const namedSlotValues = (
+	names: Map<string, string>,
+	arg: string,
+): HaSlotValueType[] | null =>
+	names.size > 0
+		? [...names.values()].map((name) => ({
+				phrase: name,
+				args: { [arg]: name },
+			}))
+		: null
+
+const slotValuesOf = (
+	ctx: HaContextCacheType,
+	key: string,
+	owned: Set<string>,
+): HaSlotValueType[] | null => {
+	if (key === HA_FAST_PATH_AREA_KEY)
+		return namedSlotValues(ctx.areaNames, HA_FAST_PATH_AREA_KEY)
+	if (key === HA_FAST_PATH_FLOOR_KEY)
+		return namedSlotValues(ctx.floorNames, HA_FAST_PATH_FLOOR_KEY)
+	const domains = entityKeyDomains(key)
+	if (domains === undefined) return null
+	return entitySlotValues(ctx, domains, owned)
 }
 
 const finalizeNames = (

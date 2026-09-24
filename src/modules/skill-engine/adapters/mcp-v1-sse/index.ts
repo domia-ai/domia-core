@@ -21,6 +21,7 @@ import { skillEngineLogger } from "@/utils"
 
 import {
 	buildAuthHeaders,
+	descriptorReaderOf,
 	isAcceptedToolName,
 	renderContent,
 	validateElicitResult,
@@ -177,7 +178,14 @@ const connect = async (
 		}
 	}
 
-	return { listTools, callTool, close: () => client.close() }
+	const readDescriptor = descriptorReaderOf(cfg.name, {
+		hasResources: () => client.getServerCapabilities()?.resources !== undefined,
+		listResources: (cursor) =>
+			client.listResources(cursor !== undefined ? { cursor } : undefined),
+		readResource: (uri) => client.readResource({ uri }),
+	})
+
+	return { listTools, callTool, readDescriptor, close: () => client.close() }
 }
 
 export const mcpV1SseAdapter: SkillAdapterType = {

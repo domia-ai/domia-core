@@ -14,3 +14,5 @@ export const TARGETLESS_WRITE_NUDGE =
 
 export const READ_BEFORE_ANSWER_NUDGE =
 	"That was a question about the current state. Do not guess: check it with a read tool, then answer the user."
+
+export const CONFIRMATION_SETTLED_BY_CONSOLE = "console"

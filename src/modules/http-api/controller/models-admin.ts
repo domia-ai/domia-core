@@ -15,13 +15,22 @@ import {
 	wakeVerifierStats,
 } from "@/modules/core-bus"
 import { getEmotionEventsSince } from "@/modules/emotion-engine"
-import { getFactsSince } from "@/modules/memory"
+import {
+	getFactsSince,
+	getEpisodesSince,
+	getKnowledgeSince,
+	getFactEvidenceSince,
+	getUserModelRow,
+} from "@/modules/memory"
+import { getToolRunsSince } from "@/modules/skill-engine"
+import { getVoiceFeelAdjustmentsSince } from "@/modules/voice-feel"
 import { listModels, startInstall, getModelJob } from "@/modules/model-manager"
 import { stripDomiaSnapshotSecrets } from "@/modules/config"
 import type {
 	GetSyncQueryType,
 	GetSyncResponseType,
 	GetInteractionResponseType,
+	SyncCursorType,
 } from "../types"
 import { getSyncQuerySchema } from "../schemas"
 import { httpServerLogger, isDomiaError, MODEL_MANAGER_ERRORS } from "@/utils"
@@ -107,8 +116,24 @@ export const handleGetSync = async (
 	domia: DomiaType,
 	query: GetSyncQueryType,
 ): Promise<GetSyncResponseType> => {
-	const { since, turnSince, turnId, factsSince, factsId, limit } =
-		getSyncQuerySchema.parse(query)
+	const {
+		since,
+		turnSince,
+		turnId,
+		factsSince,
+		factsId,
+		toolSince,
+		toolId,
+		episodeSince,
+		episodeId,
+		voiceFeelSince,
+		voiceFeelId,
+		knowledgeSince,
+		knowledgeId,
+		evidenceSince,
+		evidenceId,
+		limit,
+	} = getSyncQuerySchema.parse(query)
 	const domiaId = domia.id
 
 	const [
@@ -118,6 +143,10 @@ export const handleGetSync = async (
 		facts,
 		announcements,
 		turnEvents,
+		memoryEpisodes,
+		knowledgeEntries,
+		voiceFeelAdjustments,
+		userModelRow,
 	] = await Promise.all([
 		getInteractionsSince(domiaId, since, limit),
 		getSessionsSince(domiaId, since, limit),
@@ -125,7 +154,18 @@ export const handleGetSync = async (
 		getFactsSince(domiaId, factsSince || since, factsId, limit),
 		getAnnouncementsSince(domiaId, since, limit),
 		getTurnEventsSince(domiaId, turnSince, turnId, limit),
+		getEpisodesSince(domiaId, episodeSince, episodeId, limit),
+		getKnowledgeSince(domiaId, knowledgeSince, knowledgeId, limit),
+		getVoiceFeelAdjustmentsSince(domiaId, voiceFeelSince, voiceFeelId, limit),
+		getUserModelRow(domiaId),
 	])
+	const toolRuns = getToolRunsSince(domiaId, toolSince, toolId, limit)
+	const factEvidence = getFactEvidenceSince(
+		domiaId,
+		evidenceSince,
+		evidenceId,
+		limit,
+	)
 
 	const maxTs = (stamps: (string | null)[]): string =>
 		stamps.reduce<string>((m, s) => (s && s > m ? s : m), "")
@@ -143,7 +183,6 @@ export const handleGetSync = async (
 			max: maxTs(emotionEvents.map((r) => r.createdAt)),
 			full: emotionEvents.length >= limit,
 		},
-		{ max: maxTs(facts.map((r) => r.updatedAt)), full: facts.length >= limit },
 		{
 			max: maxTs(announcements.map((r) => r.updatedAt)),
 			full: announcements.length >= limit,
@@ -167,6 +206,19 @@ export const handleGetSync = async (
 		? { since: lastFact.updatedAt, id: lastFact.id }
 		: null
 
+	const cursorOf = <T extends { id: string }>(
+		rows: T[],
+		stampOf: (row: T) => string,
+	): SyncCursorType | null => {
+		const last = rows.at(-1)
+		return last ? { since: stampOf(last), id: last.id } : null
+	}
+
+	const userModel =
+		userModelRow && (since === "" || userModelRow.updatedAt >= since)
+			? userModelRow
+			: null
+
 	return {
 		interactions: interactions.map((row) => ({
 			...row,
@@ -177,8 +229,19 @@ export const handleGetSync = async (
 		facts,
 		announcements,
 		turnEvents,
+		toolRuns,
+		memoryEpisodes,
+		knowledgeEntries,
+		voiceFeelAdjustments,
+		factEvidence,
+		userModel,
 		nextCursor,
 		nextTurnCursor,
 		nextFactsCursor,
+		nextToolCursor: cursorOf(toolRuns, (row) => row.createdAt),
+		nextEpisodeCursor: cursorOf(memoryEpisodes, (row) => row.createdAt),
+		nextVoiceFeelCursor: cursorOf(voiceFeelAdjustments, (row) => row.createdAt),
+		nextKnowledgeCursor: cursorOf(knowledgeEntries, (row) => row.updatedAt),
+		nextEvidenceCursor: cursorOf(factEvidence, (row) => row.createdAt),
 	}
 }

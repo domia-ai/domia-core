@@ -1,0 +1,12 @@
+{
+	"en": {
+		"matchedCorrect": 249,
+		"wrong": 17,
+		"falsePositives": 0
+	},
+	"es": {
+		"matchedCorrect": 209,
+		"wrong": 2,
+		"falsePositives": 0
+	}
+}

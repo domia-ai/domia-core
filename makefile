@@ -1,6 +1,6 @@
-.PHONY: help core ollama mosquitto install-llama run-llama setup-models \
+.PHONY: jetson-power jetson-power-service llm-bench help core ollama mosquitto install-llama run-llama setup-models \
 	mosquitto-logs mosquitto-down mosquitto-user mosquitto-acl mosquitto-acl-off \
-	up stop down install-deps services doctor posture dev \
+	up stop down install-deps services doctor posture status logs logs-raw restart dev \
 	livekit-install livekit-native livekit-docker livekit-logs livekit-down \
 	setup run dev-certs package domia-service install-services install-ollama \
 	llama-cpp llama-cpp-build llm-gguf llm-server nemo-speech nemo-serve nemo-service \
@@ -33,6 +33,9 @@ LLM_CHAT_TEMPLATE ?=
 LLM_CHAT_TEMPLATE_ABS = $(if $(LLM_CHAT_TEMPLATE),$(abspath $(LLM_CHAT_TEMPLATE)),)
 LLM_LAUNCHER = $(abspath scripts/llm-server.sh)
 LLM_BUILD_JOBS ?= 3
+LLM_CUDA_ARCHITECTURES ?= native
+LLM_MEMORY_HIGH ?= 5G
+NVPMODEL_MODE ?= 2
 LLM_LAUNCHD_LABEL = ai.domia.llm-server
 LLM_LAUNCHD_PLIST = $(HOME)/Library/LaunchAgents/$(LLM_LAUNCHD_LABEL).plist
 
@@ -132,6 +135,18 @@ doctor: ##🩺 Check required system binaries (sox, node, docker compose)
 posture: ##🔒 Report the security/ops posture of $(DOMIA_ENV): TLS, mesh secret + rotation, MQTT ACLs, OpenTelemetry
 	@DOMIA_ENV="$(DOMIA_ENV)" bash scripts/doctor.sh posture
 
+status: ##🩺 One-screen state of this node: systemd units (domia, llama-server, nemo-speech), /health, connected satellites and providers
+	@DOMIA_ENV="$(DOMIA_ENV)" bash scripts/doctor.sh status
+
+logs: ##📜 Follow the node log of $(DOMIA_ENV) filtered to turns, satellites and providers (LOG_GREP=pattern to change the filter)
+	@DOMIA_ENV="$(DOMIA_ENV)" LOG_GREP="$(LOG_GREP)" bash scripts/doctor.sh logs
+
+logs-raw: ##📜 Follow the full JSON node log of $(DOMIA_ENV)
+	@DOMIA_ENV="$(DOMIA_ENV)" bash scripts/doctor.sh logs-raw
+
+restart: ##🔁 Restart the domia systemd service without sudo (kills the main process; Restart=always relaunches it) and wait for /health
+	@bash scripts/doctor.sh restart
+
 ##@ Dev
 dev: ##🧪 Start the dev environment (Mosquitto) and show which services still need starting
 	@echo "🧪 Starting dev environment (Mosquitto)..."
@@ -197,7 +212,7 @@ llama-cpp: ##🏗️ Build llama.cpp (llama-server) — Metal/CUDA/CPU auto-dete
 
 llama-cpp-build:
 	@LLM_SRC_DIR="$(LLM_SRC_DIR)" LLAMA_CPP_DIR="$(LLAMA_CPP_DIR)" LLAMA_SERVER_BIN="$(LLAMA_SERVER_BIN)" \
-		LLM_BUILD_JOBS="$(LLM_BUILD_JOBS)" FORCE="$(FORCE)" bash scripts/build-llama-cpp.sh
+		LLM_BUILD_JOBS="$(LLM_BUILD_JOBS)" LLM_CUDA_ARCHITECTURES="$(LLM_CUDA_ARCHITECTURES)" FORCE="$(FORCE)" bash scripts/build-llama-cpp.sh
 
 llm-gguf: ##📥 Stage the 3B GGUF (reuses an Ollama blob when present, else downloads)
 	@LLM_GGUF_DIR="$(LLM_GGUF_DIR)" LLM_GGUF="$(LLM_GGUF)" LLM_OLLAMA_TAG="$(LLM_OLLAMA_TAG)" \
@@ -232,7 +247,7 @@ llm-service: ##🔁 Install llama-server as a service (Linux systemd needs sudo 
 	@LLM_LAUNCHD_LABEL="$(LLM_LAUNCHD_LABEL)" LLM_LAUNCHD_PLIST="$(LLM_LAUNCHD_PLIST)" LLM_LAUNCHER="$(LLM_LAUNCHER)" \
 		LLAMA_SERVER_BIN="$(LLAMA_SERVER_BIN)" LLM_GGUF="$(abspath $(LLM_GGUF))" LLM_PORT="$(LLM_PORT)" LLM_CTX="$(LLM_CTX)" \
 		LLM_CHAT_TEMPLATE="$(LLM_CHAT_TEMPLATE_ABS)" LLM_EXTRA_FLAGS="$(LLM_EXTRA_FLAGS)" LLM_CACHE_RAM_MB="$(LLM_CACHE_RAM_MB)" \
-		LLM_SPEC_TYPE="$(LLM_SPEC_TYPE)" CURDIR="$(CURDIR)" bash scripts/install-service.sh llm
+		LLM_SPEC_TYPE="$(LLM_SPEC_TYPE)" LLM_MEMORY_HIGH="$(LLM_MEMORY_HIGH)" CURDIR="$(CURDIR)" bash scripts/install-service.sh llm
 
 asr-server: ##🎤 Run the GPU ASR server (Qwen3-ASR via llama.cpp) in the foreground on :$(ASR_PORT)
 	@$(MAKE) llama-cpp
@@ -252,6 +267,15 @@ asr-service: ##🔁 Install the GPU ASR server as a systemd service (Linux, need
 
 jetson-doctor: ##🔬 Verify Jetson prerequisites (CUDA toolkit, power mode, memory, swap)
 	@bash scripts/doctor.sh jetson
+
+jetson-power: ##⚡ Apply MAXN power mode + pin clocks now (sudo nvpmodel -m $(NVPMODEL_MODE) && sudo jetson_clocks)
+	@sudo bash scripts/jetson-power.sh $(NVPMODEL_MODE) && bash scripts/doctor.sh status
+
+jetson-power-service: ##🔁 Install the jetson-power boot unit (nvpmodel + jetson_clocks before llama-server; needs sudo)
+	@NVPMODEL_MODE="$(NVPMODEL_MODE)" bash scripts/install-service.sh power
+
+llm-bench: ##🧪 Measure llama-server prefill/decode throughput with the box state recorded (LABEL=name)
+	@bash scripts/llm-bench.sh "$${LABEL:-$$(date +%Y%m%d-%H%M)}" --port $(LLM_PORT)
 
 jetson-setup: ##🚀 Full Jetson LLM stack: doctor → build llama.cpp (CUDA) → model → systemd service
 	@$(MAKE) jetson-doctor

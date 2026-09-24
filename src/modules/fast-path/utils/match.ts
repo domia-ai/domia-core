@@ -1,3 +1,5 @@
+import { FAST_PATH_CLOCK_NIGHT_PM_FROM_HOUR } from "@/db"
+
 import { fold } from "./normalize"
 import type {
 	FastPathAstNodeType,
@@ -104,6 +106,29 @@ const matchNodes = (
 		)
 		return
 	}
+	if (slot.kind === "duration" || slot.kind === "clockTime") {
+		const parsed =
+			slot.kind === "duration"
+				? durationAt(text, pos, slot.maxSeconds)
+				: clockTimeAt(text, pos)
+		if (!parsed) return
+		const captures = new Map(state.captures)
+		captures.set(node.name, parsed.value)
+		matchNodes(
+			text,
+			nodes,
+			nodeIdx + 1,
+			{
+				...state,
+				pos: pos + parsed.chars,
+				slotChars: state.slotChars + parsed.chars,
+				captures,
+			},
+			slots,
+			results,
+		)
+		return
+	}
 	for (const value of slot.values) {
 		if (!text.startsWith(value.folded, pos)) continue
 		const after = pos + value.folded.length
@@ -127,9 +152,199 @@ const matchNodes = (
 	}
 }
 
+const EMPTY_CLOCK_WORDS = {
+	am: [],
+	earlyMorning: [],
+	pm: [],
+	night: [],
+	oclock: [],
+	prefixes: [],
+	halfBefore: [],
+	quarterBefore: [],
+	minusBefore: [],
+	halfAfter: [],
+	quarterAfter: [],
+	minusAfter: [],
+}
+
 let activeNumbers: NumberSetsType = {
 	words: {},
 	joiners: [],
+	durationUnits: {},
+	durationPhrases: {},
+	unitArticles: [],
+	clockWords: EMPTY_CLOCK_WORDS,
+	clockTwelveAm: "midnight",
+}
+
+const tokensFrom = (text: string, pos: number): string[] =>
+	text.slice(pos).split(" ")
+
+const charsOf = (tokens: string[], count: number): number =>
+	tokens.slice(0, count).join(" ").length
+
+const phraseIndexAt = (
+	tokens: string[],
+	index: number,
+	phrases: string[],
+): { tokens: number } | null => {
+	const candidates = phrases
+		.map((p) => fold(p).split(" ").filter(Boolean))
+		.filter((p) => p.length > 0)
+		.sort((a, b) => b.length - a.length)
+	const hit = candidates.find((p) => p.every((t, k) => tokens[index + k] === t))
+	return hit ? { tokens: hit.length } : null
+}
+
+const numberTokensAt = (
+	tokens: string[],
+	index: number,
+): { value: number; tokens: number } | null => {
+	const token = tokens[index]
+	if (!token) return null
+	if (/^\d+$/.test(token)) return { value: Number(token), tokens: 1 }
+	if (activeNumbers.unitArticles.includes(token)) return { value: 1, tokens: 1 }
+	const word = wordNumberAt(tokens.slice(index).join(" "), 0)
+	if (!word) return null
+	const consumed = tokens
+		.slice(index)
+		.join(" ")
+		.slice(0, word.chars)
+		.split(" ").length
+	return { value: word.value, tokens: consumed }
+}
+
+const durationSegmentAt = (
+	tokens: string[],
+	index: number,
+): { seconds: number; tokens: number } | null => {
+	const amount = numberTokensAt(tokens, index)
+	if (!amount) return null
+	const unitToken = tokens[index + amount.tokens] ?? ""
+	if (!Object.hasOwn(activeNumbers.durationUnits, unitToken)) return null
+	return {
+		seconds: amount.value * activeNumbers.durationUnits[unitToken],
+		tokens: amount.tokens + 1,
+	}
+}
+
+const durationAt = (
+	text: string,
+	pos: number,
+	maxSeconds: number,
+): { value: number; chars: number } | null => {
+	const tokens = tokensFrom(text, pos)
+	const phrases = Object.entries(activeNumbers.durationPhrases)
+		.map(([phrase, seconds]) => ({
+			tokens: fold(phrase).split(" ").filter(Boolean),
+			seconds,
+		}))
+		.sort((a, b) => b.tokens.length - a.tokens.length)
+	const phrase = phrases.find((p) => p.tokens.every((t, k) => tokens[k] === t))
+	if (phrase)
+		return phrase.seconds <= maxSeconds
+			? { value: phrase.seconds, chars: charsOf(tokens, phrase.tokens.length) }
+			: null
+	const first = durationSegmentAt(tokens, 0)
+	if (!first) return null
+	let seconds = first.seconds
+	let consumed = first.tokens
+	while (tokens[consumed]) {
+		const joined = activeNumbers.joiners.includes(tokens[consumed]) ? 1 : 0
+		const next = durationSegmentAt(tokens, consumed + joined)
+		if (!next) break
+		seconds += next.seconds
+		consumed += joined + next.tokens
+	}
+	if (seconds <= 0 || seconds > maxSeconds) return null
+	return { value: seconds, chars: charsOf(tokens, consumed) }
+}
+
+const isBareArticle = (token: string): boolean =>
+	activeNumbers.unitArticles.includes(token) &&
+	!Object.hasOwn(activeNumbers.words, token)
+
+const spokenMinutesAt = (
+	tokens: string[],
+	index: number,
+): { value: number; tokens: number } | null => {
+	const joined = activeNumbers.joiners.includes(tokens[index] ?? "") ? 1 : 0
+	const at = index + joined
+	if (isBareArticle(tokens[at] ?? "")) return null
+	const parsed = numberTokensAt(tokens, at)
+	if (!parsed || parsed.value >= 60) return null
+	return { value: parsed.value, tokens: joined + parsed.tokens }
+}
+
+const nightHourOf = (hours: number): number => {
+	if (hours === 12) return 0
+	return hours >= FAST_PATH_CLOCK_NIGHT_PM_FROM_HOUR && hours < 12
+		? hours + 12
+		: hours
+}
+
+const clockTimeAt = (
+	text: string,
+	pos: number,
+): { value: string; chars: number } | null => {
+	const clock = activeNumbers.clockWords
+	const tokens = tokensFrom(text, pos)
+	let index = 0
+	const take = (phrases: string[]): boolean => {
+		const hit = phraseIndexAt(tokens, index, phrases)
+		if (!hit) return false
+		index += hit.tokens
+		return true
+	}
+	take(clock.prefixes)
+	let minutes: number | null = null
+	let previousHour = false
+	if (take(clock.minusBefore)) {
+		minutes = 45
+		previousHour = true
+	} else if (take(clock.halfBefore)) minutes = 30
+	else if (take(clock.quarterBefore)) minutes = 15
+	const hour = numberTokensAt(tokens, index)
+	if (!hour || hour.value < 0 || hour.value > 24) return null
+	if (isBareArticle(tokens[index] ?? "")) return null
+	index += hour.tokens
+	if (minutes === null) {
+		const next = tokens[index] ?? ""
+		if (/^\d{2}$/.test(next) && Number(next) < 60) {
+			minutes = Number(next)
+			index++
+		} else if (take(clock.minusAfter)) {
+			minutes = 45
+			previousHour = true
+		} else if (take(clock.halfAfter)) minutes = 30
+		else if (take(clock.quarterAfter)) minutes = 15
+		else {
+			const spoken = spokenMinutesAt(tokens, index)
+			if (spoken) {
+				minutes = spoken.value
+				index += spoken.tokens
+			} else {
+				take(clock.oclock)
+				minutes = 0
+			}
+		}
+	}
+	const pm = take(clock.pm)
+	const night = pm ? false : take(clock.night)
+	const early = pm || night ? false : take(clock.earlyMorning)
+	const am = pm || night || early ? false : take(clock.am)
+	let hours = previousHour ? (hour.value + 23) % 24 : hour.value
+	if (pm && hours < 12) hours += 12
+	if (night) hours = nightHourOf(hours)
+	if (early && hours === 12) hours = 0
+	if (am && hours === 12 && activeNumbers.clockTwelveAm === "midnight")
+		hours = 0
+	if (hours > 23) return null
+	const pad = (n: number): string => String(n).padStart(2, "0")
+	return {
+		value: `${pad(hours)}:${pad(minutes)}`,
+		chars: charsOf(tokens, index),
+	}
 }
 
 const wordNumberAt = (

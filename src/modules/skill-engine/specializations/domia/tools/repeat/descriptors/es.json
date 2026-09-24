@@ -1,0 +1,30 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"repite [eso]",
+				"repítelo",
+				"qué dijiste",
+				"qué has dicho",
+				"otra vez",
+				"dilo otra vez",
+				"cómo dices",
+				"perdona, qué"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["repite", "otra vez"],
+	"exampleUtterances": ["repite eso", "qué dijiste"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": { "nothingToRepeat": "Todavía no he dicho nada." },
+	"samples": [
+		{ "text": "repite eso" },
+		{ "text": "qué dijiste" },
+		{ "text": "otra vez" }
+	]
+}

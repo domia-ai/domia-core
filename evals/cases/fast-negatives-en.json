@@ -117,5 +117,46 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "fast-neg: politeness prefix must not unlock a status remark",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "for me the kitchen light is too bright",
+				"expect": {
+					"fastPath": false
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: politeness plus explain question stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "please explain how the kitchen light works",
+				"expect": {
+					"fastPath": false,
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: 'i want to know' is a question, not a command",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "i want to know if the kitchen light is on",
+				"expect": {
+					"fastPath": false,
+					"notTools": ["HassTurnOn", "HassTurnOff", "HassLightSet"]
+				}
+			}
+		]
 	}
 ]

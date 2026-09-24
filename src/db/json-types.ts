@@ -92,6 +92,7 @@ export type ArgNormalizeMapType = Record<
 
 export type SkillDescriptorExecutionType = {
 	coreTools?: string[]
+	hiddenTools?: string[]
 	toolPolicy?: Record<string, ToolPolicyType>
 	toolHints?: Record<string, ToolHintOverrideType>
 	paramAllow?: Record<string, string[]>
@@ -101,11 +102,16 @@ export type SkillDescriptorExecutionType = {
 	resilience?: SkillResilienceConfigType
 }
 
+export type FastPathMapValueType = { in: string[]; out: unknown }
+
 export type FastPathSlotSourceType =
 	| { kind: "context"; key: string }
 	| { kind: "enum"; values: string[] }
+	| { kind: "map"; values: FastPathMapValueType[] }
 	| { kind: "schemaEnum"; arg: string }
 	| { kind: "range"; min: number; max: number }
+	| { kind: "duration"; maxSeconds?: number }
+	| { kind: "clockTime" }
 
 export type FastPathSlotType = {
 	source: FastPathSlotSourceType
@@ -118,6 +124,13 @@ export type FastPathIntentType = {
 	slots?: Record<string, FastPathSlotType>
 	requiredKeywords?: string[][]
 	argDefaults?: Record<string, unknown>
+	priority?: number
+	allowBlockedTokens?: boolean
+}
+
+export type RoutineStepType = {
+	tool: string
+	args: Record<string, unknown>
 }
 
 export type FastPathBlockType = {

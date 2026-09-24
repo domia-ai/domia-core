@@ -112,3 +112,30 @@ export type VerifyMeshControlArgsType = {
 	secret?: string
 	now?: number
 }
+
+export type SatelliteTokenPayloadType = {
+	v: 1
+	domiaKey: string
+	satelliteId: string
+	exp: number
+}
+
+export type MintedSatelliteTokenType = {
+	token: string
+	expiresAt: number
+}
+
+export type MintSatelliteTokenArgsType = {
+	domiaKey: string
+	satelliteId: string
+	ttlMs?: number
+	now?: number
+	secret?: string
+}
+
+export type VerifySatelliteTokenArgsType = {
+	domiaKey: string
+	satelliteId: string
+	now?: number
+	secret?: string
+}

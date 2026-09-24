@@ -5,6 +5,8 @@ import {
 	DEFAULT_FAST_PATH_BLOCKLIST_ENABLED,
 	DEFAULT_FAST_PATH_COMPOUND_ENABLED,
 	DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS,
+	FAST_PATH_SKIP_PHRASES_PER_SIDE,
+	FAST_PATH_COMPOUND_MAX_LEADING_STOPWORDS,
 } from "@/db"
 import {
 	languageSetsFor,
@@ -12,34 +14,59 @@ import {
 	type ResolvedLanguageSetsType,
 } from "@/utils"
 import type { DomiaType } from "@/modules/core"
-import { getConnectionsFor } from "@/modules/skill-engine"
+import {
+	getConnectionsFor,
+	type OriginCapabilitiesType,
+} from "@/modules/skill-engine"
 
-import { fold, tokensOf, stripAdditiveCues } from "../utils/normalize"
+import {
+	fold,
+	tokensOf,
+	stripAdditiveCues,
+	stripSkipWords,
+} from "../utils/normalize"
 import { compileIndex, dynamicHashOf } from "../utils/compile"
 import { matchTemplate } from "../utils/match"
 import type {
 	BareEntityMatchType,
 	CompiledFastPathIndexType,
+	CompiledIntentType,
 	FastPathMatchType,
 	FastPathVerdictType,
 	FastPathUntimedVerdictType,
 	FastPathCandidateVerdictType,
-	FastPathSlotValueType,
+	FastPathCandidatesType,
+	FastPathCaptureType,
+	FastPathEligibilityType,
+	FastPathMatchOptionsType,
 	NumberSetsType,
 } from "../types"
 
-const MAX_LEADING_STOPWORDS = 2
+const intentEligible = (
+	intent: CompiledIntentType,
+	options: FastPathMatchOptionsType,
+): FastPathEligibilityType => {
+	if (!options.providersEnabled && !intent.builtin) return "disabled"
+	if (options.blocked && !intent.allowBlockedTokens) return "blocked"
+	if (options.origin && intent.available && !intent.available(options.origin))
+		return "unavailable"
+	return "ok"
+}
 
 const candidatesFor = (
 	index: CompiledFastPathIndexType,
 	text: string,
 	numbers: NumberSetsType,
 	minCoverage: number,
-): FastPathMatchType[] => {
+	options: FastPathMatchOptionsType,
+): FastPathCandidatesType => {
 	const folded = fold(text)
 	const utteranceTokens = new Set(tokensOf(text))
 	const candidates: FastPathMatchType[] = []
+	let skippedUnavailable = 0
 	for (const intent of index.intents) {
+		const eligibility = intentEligible(intent, options)
+		if (eligibility !== "ok" && eligibility !== "unavailable") continue
 		const keywordsOk = intent.requiredKeywords.every((group) =>
 			group.some((k) =>
 				k.includes(" ") ? folded.includes(k) : utteranceTokens.has(k),
@@ -53,11 +80,15 @@ const candidatesFor = (
 			const coverage =
 				folded.length > 0 ? parsed.literalChars / folded.length : 0
 			if (parsed.literalChars === 0 || coverage < minCoverage) continue
+			if (eligibility === "unavailable") {
+				skippedUnavailable++
+				break
+			}
 			const { args, resolvedArgs } = argsOfCapture(
 				parsed.captures,
 				(slotName) => {
 					const slot = intent.slots.get(slotName)
-					return slot?.kind === "range" ? slot.arg : null
+					return slot && slot.kind !== "values" ? slot.arg : null
 				},
 				intent.argDefaults,
 			)
@@ -70,11 +101,12 @@ const candidatesFor = (
 				literalChars: parsed.literalChars,
 				slotChars: parsed.slotChars,
 				coverage,
+				priority: intent.priority,
 				template: template.source,
 			})
 		}
 	}
-	return candidates
+	return { candidates, skippedUnavailable }
 }
 
 const bestMatchFor = (
@@ -82,11 +114,20 @@ const bestMatchFor = (
 	text: string,
 	numbers: NumberSetsType,
 	minCoverage: number,
+	options: FastPathMatchOptionsType,
 ): FastPathCandidateVerdictType => {
-	const candidates = candidatesFor(index, text, numbers, minCoverage)
-	if (candidates.length === 0) return { kind: "none" }
+	const { candidates, skippedUnavailable } = candidatesFor(
+		index,
+		text,
+		numbers,
+		minCoverage,
+		options,
+	)
+	if (candidates.length === 0)
+		return skippedUnavailable > 0 ? { kind: "unavailable" } : { kind: "none" }
 	candidates.sort(
 		(a, b) =>
+			b.priority - a.priority ||
 			b.literalChars - a.literalChars ||
 			a.slotChars - b.slotChars ||
 			a.namespacedName.localeCompare(b.namespacedName),
@@ -95,6 +136,7 @@ const bestMatchFor = (
 	const rival = candidates.find(
 		(c) =>
 			c !== best &&
+			c.priority === best.priority &&
 			c.literalChars === best.literalChars &&
 			c.slotChars === best.slotChars &&
 			(c.namespacedName !== best.namespacedName ||
@@ -131,7 +173,7 @@ const stripLeadingStopwords = (
 	let dropped = 0
 	while (
 		tokens.length > 1 &&
-		dropped < MAX_LEADING_STOPWORDS &&
+		dropped < FAST_PATH_COMPOUND_MAX_LEADING_STOPWORDS &&
 		stopwords.has(tokens[0])
 	) {
 		tokens.shift()
@@ -169,10 +211,11 @@ const matchCompound = (
 	numbers: NumberSetsType,
 	minCoverage: number,
 	maxTargets: number,
+	options: FastPathMatchOptionsType,
 ): FastPathMatchType[] | null => {
 	const segments = splitOnConjunctions(fold(transcript), sets.conjunctions)
 	if (segments.length < 2 || segments.length > maxTargets) return null
-	const first = bestMatchFor(index, segments[0], numbers, minCoverage)
+	const first = bestMatchFor(index, segments[0], numbers, minCoverage, options)
 	if (first.kind !== "match") return null
 	const prefix = literalPrefixOf(segments[0], first.match)
 	if (!prefix) return null
@@ -184,7 +227,9 @@ const matchCompound = (
 			`${prefix} ${segment}`,
 		]
 		const found = attempts
-			.map((attempt) => bestMatchFor(index, attempt, numbers, minCoverage))
+			.map((attempt) =>
+				bestMatchFor(index, attempt, numbers, minCoverage, options),
+			)
 			.find((verdict) => verdict.kind === "match")
 		if (found?.kind !== "match") return null
 		matches.push(found.match)
@@ -245,15 +290,15 @@ const hasBlockedToken = (domia: DomiaType, folded: string): boolean => {
 }
 
 const argsOfCapture = (
-	captures: Map<string, FastPathSlotValueType | number>,
-	rangeArgOf: (slotName: string) => string | null,
+	captures: Map<string, FastPathCaptureType>,
+	scalarArgOf: (slotName: string) => string | null,
 	argDefaults: Record<string, unknown>,
 ): { args: Record<string, unknown>; resolvedArgs: Record<string, unknown> } => {
 	const resolved: Record<string, unknown> = { ...argDefaults }
 	const surface: Record<string, unknown> = { ...argDefaults }
 	for (const [slotName, captured] of captures) {
-		if (typeof captured === "number") {
-			const arg = rangeArgOf(slotName) ?? slotName
+		if (typeof captured === "number" || typeof captured === "string") {
+			const arg = scalarArgOf(slotName) ?? slotName
 			resolved[arg] = captured
 			surface[arg] = captured
 		} else {
@@ -265,21 +310,33 @@ const argsOfCapture = (
 	return { args: surface, resolvedArgs: resolved }
 }
 
+const numberSetsOf = (sets: ResolvedLanguageSetsType): NumberSetsType => ({
+	words: sets.numberWords,
+	joiners: sets.numberJoiners,
+	durationUnits: sets.durationUnits,
+	durationPhrases: sets.durationPhrases,
+	unitArticles: sets.unitArticles,
+	clockWords: sets.clockWords,
+	clockTwelveAm: sets.clockTwelveAm,
+})
+
+const providersEnabledFor = (domia: DomiaType): boolean =>
+	domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED
+
 export const matchBareEntity = (
 	domia: DomiaType,
 	transcript: string,
 ): BareEntityMatchType | null => {
-	const enabled =
-		domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED
-	if (!enabled) return null
+	if (!providersEnabledFor(domia)) return null
 	const index = ensureIndex(domia)
 	if (!index) return null
-	let folded = fold(transcript)
+	const sets = languageSetsFor(domia.characterProfile?.language)
+	const folded = stripSkipWords(
+		fold(transcript),
+		sets.skipWords,
+		FAST_PATH_SKIP_PHRASES_PER_SIDE,
+	).replace(sets.articlePrefixRe, "")
 	if (!folded) return null
-	folded = folded.replace(
-		languageSetsFor(domia.characterProfile?.language).articlePrefixRe,
-		"",
-	)
 	for (const intent of index.intents)
 		for (const slot of intent.slots.values()) {
 			if (slot.kind !== "values") continue
@@ -299,27 +356,36 @@ export const matchBareEntity = (
 export const matchFastPath = (
 	domia: DomiaType,
 	transcript: string,
+	origin: OriginCapabilitiesType | null = null,
 ): FastPathVerdictType => {
 	const started = Date.now()
 	const done = (v: FastPathUntimedVerdictType): FastPathVerdictType => ({
 		...v,
 		fastPathMs: Date.now() - started,
 	})
-	if (!(domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED))
+	const providersEnabled = providersEnabledFor(domia)
+	const index = ensureIndex(domia)
+	if (!index) return done({ kind: "miss", reason: "no_index" })
+	if (!providersEnabled && !index.intents.some((i) => i.builtin))
 		return done({ kind: "miss", reason: "disabled" })
+	const sets = languageSetsFor(domia.characterProfile?.language)
+	const stripped = stripSkipWords(
+		fold(transcript),
+		sets.skipWords,
+		FAST_PATH_SKIP_PHRASES_PER_SIDE,
+	)
+	if (stripped.length === 0) return done({ kind: "miss", reason: "no_match" })
 	const maxChars =
 		domia.llmModelConfig?.fastPathMaxUtteranceChars ??
 		DEFAULT_FAST_PATH_MAX_UTTERANCE_CHARS
-	if (transcript.length > maxChars)
+	if (stripped.length > maxChars)
 		return done({ kind: "miss", reason: "too_long" })
-	const folded = fold(transcript)
-	if (folded.length === 0) return done({ kind: "miss", reason: "no_match" })
-	if (hasBlockedToken(domia, folded))
-		return done({ kind: "miss", reason: "blocked_token" })
-	const index = ensureIndex(domia)
-	if (!index) return done({ kind: "miss", reason: "no_index" })
-	const sets = languageSetsFor(domia.characterProfile?.language)
-	const numbers = { words: sets.numberWords, joiners: sets.numberJoiners }
+	const options: FastPathMatchOptionsType = {
+		blocked: hasBlockedToken(domia, stripped),
+		providersEnabled,
+		origin,
+	}
+	const numbers = numberSetsOf(sets)
 	const minCoverage =
 		domia.llmModelConfig?.fastPathMinCoverage ?? DEFAULT_FAST_PATH_MIN_COVERAGE
 	const compoundEnabled =
@@ -328,11 +394,13 @@ export const matchFastPath = (
 	const maxTargets =
 		domia.llmModelConfig?.fastPathCompoundMaxTargets ??
 		DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS
+	const skipped = { unavailable: 0 }
 	const attempt = (text: string): FastPathUntimedVerdictType | null => {
-		const single = bestMatchFor(index, text, numbers, minCoverage)
+		const single = bestMatchFor(index, text, numbers, minCoverage, options)
 		if (single.kind === "match") return { kind: "match", match: single.match }
 		if (single.kind === "ambiguous")
 			return { kind: "miss", reason: "ambiguous" }
+		if (single.kind === "unavailable") skipped.unavailable++
 		if (!compoundEnabled) return null
 		const matches = matchCompound(
 			index,
@@ -341,15 +409,19 @@ export const matchFastPath = (
 			numbers,
 			minCoverage,
 			maxTargets,
+			options,
 		)
 		return matches ? { kind: "compound", matches } : null
 	}
-	const asSpoken = attempt(transcript)
+	const asSpoken = attempt(stripped)
 	if (asSpoken) return done(asSpoken)
-	const withoutCues = stripAdditiveCues(folded, sets.additiveCues)
-	if (withoutCues !== folded) {
+	const withoutCues = stripAdditiveCues(stripped, sets.additiveCues)
+	if (withoutCues !== stripped) {
 		const additive = attempt(withoutCues)
 		if (additive) return done(additive)
 	}
+	if (skipped.unavailable > 0)
+		return done({ kind: "miss", reason: "unavailable" })
+	if (options.blocked) return done({ kind: "miss", reason: "blocked_token" })
 	return done({ kind: "miss", reason: "no_match" })
 }

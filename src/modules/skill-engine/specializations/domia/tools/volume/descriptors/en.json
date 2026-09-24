@@ -1,0 +1,60 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(turn|set|put) your volume up",
+				"turn up your volume",
+				"your volume up",
+				"(speak|talk) (louder|up)",
+				"raise your (volume|voice)"
+			],
+			"argDefaults": { "direction": "up" }
+		},
+		{
+			"templates": [
+				"(turn|set|put) your volume down",
+				"turn down your volume",
+				"your volume down",
+				"(speak|talk) (quieter|softer|lower|more quietly)",
+				"lower your (volume|voice)"
+			],
+			"argDefaults": { "direction": "down" }
+		},
+		{
+			"templates": [
+				"(set|put|turn) your volume to {level} [percent]",
+				"your volume to {level} [percent]",
+				"(speak|talk) at {level} percent"
+			],
+			"slots": {
+				"level": {
+					"source": { "kind": "range", "min": 0, "max": 100 },
+					"arg": "level"
+				}
+			}
+		}
+	],
+	"keywords": ["your volume", "speak louder", "speak quieter", "your voice"],
+	"exampleUtterances": ["turn your volume down", "speak louder please"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"voiceVolumeSet": "My volume is at {level} percent.",
+		"voiceVolumeUp": "Speaking up. My volume is at {level} percent.",
+		"voiceVolumeDown": "Speaking softer. My volume is at {level} percent.",
+		"voiceVolumeAtMax": "I'm already at full volume.",
+		"voiceVolumeAtMin": "I'm already as quiet as I get.",
+		"voiceVolumeUnavailable": "I can't change my volume on this device."
+	},
+	"samples": [
+		{ "text": "turn your volume down", "args": { "direction": "down" } },
+		{ "text": "turn your volume up", "args": { "direction": "up" } },
+		{ "text": "speak louder", "args": { "direction": "up" } },
+		{ "text": "please talk quieter", "args": { "direction": "down" } },
+		{ "text": "set your volume to 40 percent", "args": { "level": 40 } },
+		{ "text": "put your volume to fifty", "args": { "level": 50 } }
+	]
+}

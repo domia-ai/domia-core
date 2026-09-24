@@ -35,6 +35,7 @@ const personaModulesSchema = z
 		factRecall: z.boolean(),
 		environmentTimeEnabled: z.boolean(),
 		skillsEngine: z.boolean(),
+		builtinTools: z.boolean(),
 	})
 	.partial()
 

@@ -1,5 +1,7 @@
 import {
 	SKILL_TOOL_NAME_SEPARATOR,
+	SKILL_PROTOCOL_ENUM,
+	DEFAULT_FAST_PATH_DURATION_MAX_SECONDS,
 	type FastPathBlockType,
 	type FastPathSlotType,
 	type SkillToolType,
@@ -38,6 +40,7 @@ const compileSlot = (
 	slotName: string,
 	slot: FastPathSlotType,
 	language: string | null,
+	contextMemo: Map<string, CompiledSlotType | null>,
 ): CompiledSlotType | null => {
 	const argName = slot.arg ?? slotName
 	const slotValue = (
@@ -56,26 +59,49 @@ const compileSlot = (
 			max: slot.source.max,
 			arg: argName,
 		}
+	if (slot.source.kind === "duration")
+		return {
+			kind: "duration",
+			maxSeconds:
+				slot.source.maxSeconds ?? DEFAULT_FAST_PATH_DURATION_MAX_SECONDS,
+			arg: argName,
+		}
+	if (slot.source.kind === "clockTime")
+		return { kind: "clockTime", arg: argName }
 	if (slot.source.kind === "enum")
 		return valuesSlot(
 			slot.source.values.map((v) => slotValue(v, { [argName]: v })),
+		)
+	if (slot.source.kind === "map")
+		return valuesSlot(
+			slot.source.values.flatMap((entry) =>
+				entry.in.map((phrase) => slotValue(phrase, { [argName]: entry.out })),
+			),
 		)
 	if (slot.source.kind === "schemaEnum") {
 		const values = schemaEnumValues(tool, slot.source.arg)
 		if (values.length === 0) return null
 		return valuesSlot(values.map((v) => slotValue(v, { [argName]: v })))
 	}
+	const memoKey = `${conn.providerId}|${slot.source.key}|${argName}`
+	const memo = contextMemo.get(memoKey)
+	if (memo !== undefined) return memo
 	const provided = conn.specialization?.fastPathSlotValues?.(
 		conn.provider,
 		slot.source.key,
 		language,
 	)
-	if (!provided || provided.length === 0) return null
-	const values: FastPathSlotValueType[] = provided
-		.map((p) => slotValue(p.phrase, p.args))
-		.filter((p) => p.folded.length > 0)
-		.sort((a, b) => b.folded.length - a.folded.length)
-	return valuesSlot(values)
+	const compiled =
+		!provided || provided.length === 0
+			? null
+			: valuesSlot(
+					provided
+						.map((p) => slotValue(p.phrase, p.args))
+						.filter((p) => p.folded.length > 0)
+						.sort((a, b) => b.folded.length - a.folded.length),
+				)
+	contextMemo.set(memoKey, compiled)
+	return compiled
 }
 
 const numberFormOf = (folded: string): string | null => {
@@ -135,12 +161,17 @@ const fastPathBlockOf = (
 	conn: SkillConnectionType,
 ): FastPathBlockType | null => {
 	const descriptor = conn.provider.descriptor
+	const server = conn.provider.serverDescriptor
 	const locale = conn.language
 		? descriptor?.i18n?.[conn.language]?.fastPath
+		: undefined
+	const serverLocale = conn.language
+		? server?.i18n?.[conn.language]?.fastPath
 		: undefined
 	const generatedRoot = conn.specialization?.descriptorDefaults?.(
 		conn.provider.toolsCache ?? [],
 		conn.language,
+		conn.provider,
 	)
 	const generatedLocale = conn.language
 		? generatedRoot?.i18n?.[conn.language]?.fastPath
@@ -148,6 +179,8 @@ const fastPathBlockOf = (
 	return (
 		locale ??
 		descriptor?.fastPath ??
+		serverLocale ??
+		server?.fastPath ??
 		generatedLocale ??
 		generatedRoot?.fastPath ??
 		null
@@ -166,6 +199,7 @@ export const dynamicHashOf = (
 			conn.providerId,
 			conn.provider.updatedAt,
 			conn.provider.lastSyncAt,
+			conn.provider.serverDescriptorHash,
 			[...conn.allowedTools].sort(),
 		])
 		const keys = new Set<string>()
@@ -193,10 +227,13 @@ export const compileIndex = (
 	language: string | null,
 ): CompiledFastPathIndexType => {
 	const intents: CompiledIntentType[] = []
+	const contextMemo = new Map<string, CompiledSlotType | null>()
 	for (const conn of connections) {
 		const block = fastPathBlockOf(conn)
 		if (!block) continue
 		const rules = block.expansionRules ?? {}
+		const availability = conn.specialization?.toolAvailability
+		const builtin = conn.provider.protocol === SKILL_PROTOCOL_ENUM.BUILTIN
 		for (const intent of block.intents) {
 			if (!conn.allowedTools.has(intent.tool)) continue
 			const namespacedName = `${conn.providerSlug}${SKILL_TOOL_NAME_SEPARATOR}${intent.tool}`
@@ -206,7 +243,14 @@ export const compileIndex = (
 			const slots = new Map<string, CompiledSlotType>()
 			let slotsReady = true
 			for (const [slotName, slot] of Object.entries(intent.slots ?? {})) {
-				const compiled = compileSlot(conn, tool, slotName, slot, language)
+				const compiled = compileSlot(
+					conn,
+					tool,
+					slotName,
+					slot,
+					language,
+					contextMemo,
+				)
 				if (!compiled) {
 					slotsReady = false
 					break
@@ -242,6 +286,12 @@ export const compileIndex = (
 					group.map((k) => fold(k)),
 				),
 				argDefaults: intent.argDefaults ?? {},
+				priority: intent.priority ?? 0,
+				allowBlockedTokens: intent.allowBlockedTokens ?? false,
+				builtin,
+				available: availability
+					? (origin) => availability(conn.provider, intent.tool, origin)
+					: null,
 			})
 		}
 	}

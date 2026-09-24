@@ -23,10 +23,12 @@ import type {
 	SkillCallResultType,
 	SkillCallStatusType,
 	SkillConnectionType,
+	ToolCallContextType,
 } from "../types"
 
 import { connections } from "./state"
 import { declaredToolPolicy } from "./registry"
+import { argsSchemaIssue, coerceArgsToSchema } from "../utils/args-schema"
 
 const runPreCall = async (
 	conn: SkillConnectionType,
@@ -82,7 +84,9 @@ export const callTool = async (
 	args: Record<string, unknown>,
 	signal?: AbortSignal,
 	preResolved = false,
+	context?: ToolCallContextType,
 ): Promise<SkillCallResultType> => {
+	const sequence = context?.sequence ?? 0
 	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
 	const rawName =
@@ -223,14 +227,37 @@ export const callTool = async (
 			}
 		}
 	}
-	resolvedArgs = await runPreCall(conn, rawName, resolvedArgs)
+	const schema = (conn.provider.toolsCache ?? []).find(
+		(t) => t.rawName === rawName,
+	)?.inputSchema
+	const schemaIssue = schema ? argsSchemaIssue(resolvedArgs, schema) : null
+	if (schemaIssue) {
+		skillEngineLogger.warn(
+			"skill callTool rejected — arguments do not fit the tool schema",
+			{
+				tool: namespacedName,
+				issue: schemaIssue,
+			},
+		)
+		return {
+			text: `Arguments for "${rawName}" are invalid: ${schemaIssue}.`,
+			status: "error",
+			isError: true,
+			resolvedArgs,
+		}
+	}
+	resolvedArgs = await runPreCall(
+		conn,
+		rawName,
+		schema ? coerceArgsToSchema(resolvedArgs, schema) : resolvedArgs,
+	)
 	skillEngineLogger.info(`🔧 ${rawName} ${JSON.stringify(resolvedArgs)}`)
 
 	const traceCtx = getTraceContext()
 	const argsHash = hashCanonical(resolvedArgs)
 	const auditMeta = conn.toolMeta.get(rawName)
 	const runId = traceCtx?.interactionId
-		? `${traceCtx.interactionId}:${namespacedName}:${argsHash}:0`
+		? `${traceCtx.interactionId}:${namespacedName}:${argsHash}:${sequence}`
 		: null
 	if (runId && traceCtx?.interactionId) {
 		const claimed = dbAdapter.claimToolRun({
@@ -239,6 +266,8 @@ export const callTool = async (
 			interactionId: traceCtx.interactionId,
 			tool: namespacedName,
 			providerSlug,
+			...(context?.routineSlug ? { routineSlug: context.routineSlug } : {}),
+			...(context?.stepIndex != null ? { stepIndex: context.stepIndex } : {}),
 			argsHash,
 			riskClass: auditMeta?.riskClass ?? null,
 			policyDecision: policy,

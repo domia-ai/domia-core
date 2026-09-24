@@ -1,6 +1,7 @@
 import { dbClient } from "@/db"
 import { getDomia, insertDomia, setDomiaHosted } from "@/modules/core"
 import { refreshDomiaLocalIp } from "@/modules/network-sync"
+import { ensureBuiltinProvider } from "@/modules/skill-engine"
 import { configEngineLogger, domiaError, CORE_ERRORS } from "@/utils"
 
 import { DEFAULT_CONFIG_VALUES } from "../constants"
@@ -126,6 +127,9 @@ export const initialize = async (
 		dbAdapter
 			.insertMqttConfig(getMqttConfigCreateInputFromConfig(domiaId), tx)
 			.run()
+
+		configEngineLogger.debug("Seeding built-in skill provider", { domiaId })
+		ensureBuiltinProvider(domiaId, tx)
 	})
 
 	const finalizedDomia = await getDomia(domiaId, false)

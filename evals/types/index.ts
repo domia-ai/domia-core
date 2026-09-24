@@ -1,3 +1,10 @@
+import type { FastPathBlockType, FastPathSlotType, ToolPolicyType } from "@/db"
+import type { FastPathAstNodeType } from "@/modules/fast-path/types"
+import type {
+	MindIdentityRefType,
+	MindSectionsType,
+} from "@/modules/mind-transfer"
+
 export type EvalSuiteType =
 	| "home-mock"
 	| "home-live"
@@ -564,6 +571,40 @@ export type SyncPageType = {
 	nextFactsCursor: { since: string; id: string } | null
 }
 
+export type SyncStreamCursorType = { since: string; id: string }
+
+export type SyncToolRunType = {
+	id: string
+	createdAt: string
+	routineSlug: string | null
+	stepIndex: number | null
+}
+
+export type SyncEpisodeType = { id: string; createdAt: string }
+
+export type SyncKeysetRowType = { id: string }
+
+export type SyncStreamsPageType = {
+	toolRuns: SyncToolRunType[]
+	memoryEpisodes: SyncEpisodeType[]
+	knowledgeEntries: SyncKeysetRowType[]
+	voiceFeelAdjustments: SyncKeysetRowType[]
+	factEvidence: SyncKeysetRowType[]
+	userModel: Record<string, unknown> | null
+	nextToolCursor: SyncStreamCursorType | null
+	nextEpisodeCursor: SyncStreamCursorType | null
+	nextKnowledgeCursor: SyncStreamCursorType | null
+	nextVoiceFeelCursor: SyncStreamCursorType | null
+	nextEvidenceCursor: SyncStreamCursorType | null
+}
+
+export type SyncKeysetStreamType = {
+	name: string
+	rows: (page: SyncStreamsPageType) => SyncKeysetRowType[]
+	next: (page: SyncStreamsPageType) => SyncStreamCursorType | null
+	params: (cursor: SyncStreamCursorType) => Record<string, string>
+}
+
 export type EsphomeSentEventType = {
 	type: number
 	data?: { name: string; value: string }[]
@@ -807,40 +848,12 @@ export type ConfigApplyProbeCaseType = {
 
 export type MockEntityStateType = { on: boolean; brightness: number | null }
 
-export type MindDumpRowType = Record<string, unknown>
-
-export type DumpTableType = { columns: string[]; rows: unknown[][] }
-
 export type DumpFileType = {
 	version: "mind-dump-2"
 	db: string
 	dumpedAt: string
-	domias: { id: string; domiaKey: string }[]
-	tables: Partial<Record<string, DumpTableType>>
-}
-
-export type MindDumpTableSpecType = {
-	name: string
-	naturalKey: string[]
-	singleton: boolean
-	activeSingleton: boolean
-	upsertByKey: boolean
-}
-
-export type RestoreReportType = {
-	deferred: number
-	inserted: number
-	matched: number
-	updated: number
-	remapped: number
-}
-
-export type VerifyIssueType = { table: string; key: string; reason: string }
-
-export type DomiaMapType = {
-	map: Map<string, string>
-	deferredIds: Set<string>
-	deferredKeys: string[]
+	domias: MindIdentityRefType[]
+	tables: MindSectionsType
 }
 
 export type GrammarProbeCaseType = {
@@ -858,4 +871,472 @@ export type ToolGrammarParserCaseType = {
 	calls?: string[]
 	reply?: string
 	args?: Record<string, unknown>
+}
+
+export type HaIntentScopeType = "action" | "read" | "builtin" | "excluded"
+
+export type HaExpectedArgValueType = string | number | string[]
+
+export type HaExpectedCallType = {
+	tool: string | null
+	args: Record<string, HaExpectedArgValueType>
+}
+
+export type HaSlotComparisonType = {
+	ok: boolean
+	missing: string[]
+	mismatched: string[]
+	extra: string[]
+}
+
+export type HaIntentsMetaType = {
+	source: string
+	commit: string
+	license: string
+	generatedBy: string
+}
+
+export type HaIntentsRowType = {
+	id: string
+	language: string
+	intent: string
+	combination: string
+	text: string
+	scope: HaIntentScopeType
+	contextArea: boolean
+	entityDomain: string | null
+	expect: HaExpectedCallType
+}
+
+export type HaIntentsRowsFileType = {
+	meta: HaIntentsMetaType
+	rows: HaIntentsRowType[]
+}
+
+export type HaIntentsEntityType = {
+	name: string
+	domain: string
+	area: string | null
+	floor: string | null
+	deviceClass: string | null
+	state: string | null
+}
+
+export type HaIntentsSiteType = {
+	language: string
+	floors: string[]
+	areas: string[]
+	entities: HaIntentsEntityType[]
+}
+
+export type HaIntentsSiteFileType = HaIntentsSiteType & {
+	meta: HaIntentsMetaType
+}
+
+export type HaIntentsTemplateBlockType = {
+	intent: string
+	combination: string
+	templates: string[]
+	nameDomains: string | string[] | null
+	inferredDomain: string | null
+	speechToPhrase: boolean
+	contextArea: boolean
+}
+
+export type HaIntentsTemplatesType = {
+	language: string
+	rules: Record<string, string>
+	lists: string[]
+	blocks: HaIntentsTemplateBlockType[]
+}
+
+export type HaIntentsTemplatesFileType = HaIntentsTemplatesType & {
+	meta: HaIntentsMetaType
+}
+
+export type HaIntentsBaselineEntryType = {
+	matchedCorrect: number
+	wrong: number
+	falsePositives: number
+}
+
+export type HaIntentsBaselineType = Record<string, HaIntentsBaselineEntryType>
+
+export type HaMcpPropertyType =
+	| { type: "string" }
+	| { type: "number" }
+	| { type: "array"; items: { type: "string" } }
+
+export type HaMcpToolSpecType = {
+	rawName: string
+	domain: string
+	description: string
+	properties: Record<string, HaMcpPropertyType>
+}
+
+export type MockHaEntityType = {
+	names: string[]
+	domain: string
+	area: string
+}
+
+export type MockHaSiteType = {
+	entities: MockHaEntityType[]
+	tools?: HaMcpToolSpecType[]
+}
+
+export type HaSweepMissCountsType = {
+	noTemplates: number
+	noMatch: number
+	tooLong: number
+	blockedToken: number
+	ambiguous: number
+}
+
+export type HaSweepActionCountsType = {
+	total: number
+	matchedCorrect: number
+	extraArgs: number
+	matchedWrongTool: number
+	matchedWrongSlots: number
+	compound: number
+	houseWide: number
+	miss: HaSweepMissCountsType
+}
+
+export type HaSweepIntentReportType = HaSweepActionCountsType & {
+	scope: HaIntentScopeType
+	falsePositives: number
+	byCombination: Record<string, HaSweepActionCountsType>
+}
+
+export type HaSweepNegativesType = {
+	read: {
+		total: number
+		miss: number
+		matchedRead: number
+		matchedWrite: number
+	}
+	builtin: { total: number; matched: number }
+	excluded: { total: number; matched: number }
+}
+
+export type HaSweepSampleType = {
+	text: string
+	expected: string
+	got: string
+}
+
+export type HaSweepSampleBucketType =
+	| "matchedWrongTool"
+	| "matchedWrongSlots"
+	| "compound"
+	| "houseWide"
+	| "falsePositive"
+
+export type HaSweepTemplateCompatType = {
+	blocks: number
+	speechToPhraseBlocks: number
+	templates: number
+	compatible: number
+	rejected: {
+		wildcard: number
+		permutation: number
+		noLiteral: number
+		slotInOptional: number
+		unknownRule: number
+		bareAlternation: number
+		other: number
+	}
+}
+
+export type HaSweepLanguageReportType = {
+	language: string
+	sentences: Record<HaIntentScopeType, number>
+	actions: HaSweepActionCountsType
+	negatives: HaSweepNegativesType
+	byIntent: Record<string, HaSweepIntentReportType>
+	blockers: Record<string, number>
+	samples: Record<HaSweepSampleBucketType, HaSweepSampleType[]>
+	fastPathMs: { p50: number; p95: number }
+	templates: HaSweepTemplateCompatType
+	slotValues: { entities: number; areas: number }
+}
+
+export type HaSweepRowVerdictType =
+	| { bucket: "matchedCorrect"; extraArgs: boolean }
+	| { bucket: "matchedWrongTool"; got: string }
+	| { bucket: "matchedWrongSlots"; got: string }
+	| { bucket: "compound"; got: string }
+	| { bucket: "houseWide"; got: string }
+	| { bucket: "miss"; reason: keyof HaSweepMissCountsType; blocker?: string }
+	| {
+			bucket: "falsePositive"
+			got: string
+			read: "matchedRead" | "matchedWrite" | null
+	  }
+	| { bucket: "expectedMiss" }
+	| { bucket: "fatal"; reason: string }
+
+export type MockDescriptorMcpServerType = {
+	url: string
+	setDescriptor: (text: string | null) => void
+	close: () => Promise<void>
+}
+
+export type HassilNodeType =
+	| { kind: "text"; value: string }
+	| { kind: "slot"; list: string; arg: string }
+	| { kind: "rule"; name: string }
+	| { kind: "optional"; body: HassilNodeType[] }
+	| { kind: "group"; alternatives: HassilNodeType[][] }
+
+export type HaDescriptorNodeType =
+	| { kind: "text"; value: string }
+	| { kind: "slot"; name: string }
+	| { kind: "rule"; name: string }
+	| { kind: "optional"; body: HaDescriptorNodeType[] }
+	| { kind: "group"; alternatives: HaDescriptorNodeType[][] }
+
+export type HaCorpusListType =
+	| { kind: "range"; min: number; max: number }
+	| { kind: "values"; values: { in: string; out: unknown }[] }
+
+export type HaCorpusSentenceBlockType = {
+	intent: string
+	combination: string
+	index: number
+	sentences: string[]
+	nameDomains: string | string[] | null
+	inferredDomain: string | null
+	speechToPhrase: boolean
+}
+
+export type HaCorpusCombinationType = {
+	slots: string[]
+	contextArea: boolean
+	nameDomains: string[]
+}
+
+export type HaDescriptorTemplateDropReasonType =
+	| "noLiteral"
+	| "parseError"
+	| "lintError"
+	| "unknownList"
+	| "unknownRule"
+	| "permutationTooLarge"
+	| "expansionTooLarge"
+	| "slotGlued"
+	| "noTargetSlot"
+	| "duplicate"
+
+export type HaDescriptorBlockSkipReasonType =
+	| "speechToPhrase"
+	| "contextArea"
+	| "houseWide"
+	| "mediaOnly"
+	| "noSentences"
+
+export type HaDescriptorIntentReportType = {
+	blocksKept: number
+	blocksSkipped: Record<HaDescriptorBlockSkipReasonType, number>
+	templatesKept: number
+	templatesRewritten: number
+	templatesDropped: Record<HaDescriptorTemplateDropReasonType, number>
+	droppedSamples: string[]
+}
+
+export type HaDescriptorLanguageReportType = {
+	language: string
+	intents: number
+	templates: number
+	baseTemplates: number
+	baseDuplicates: string[]
+	rules: number
+	ruleCollisions: string[]
+	byIntent: Record<string, HaDescriptorIntentReportType>
+}
+
+export type HaDescriptorDraftType = {
+	tool: string
+	slots: Record<string, FastPathSlotType>
+	argDefaults: Record<string, unknown> | null
+	priority: number
+	templates: { source: string; astKey: string }[]
+}
+
+export type FastPathDataPackType = {
+	kind: string
+	file: string
+	block: FastPathBlockType
+}
+
+export type FastPathSyntheticEntityType = {
+	name: string
+	domain: string
+	area: string
+	floor: string
+}
+
+export type WebsiteDataMetaType = {
+	source: string
+	capturedAt: string
+	generator: string
+}
+
+export type WebsiteFastPathTemplateType = {
+	source: string
+	ast: FastPathAstNodeType[]
+	prefilter: string
+}
+
+export type WebsiteFastPathSlotValueType = {
+	phrase: string
+	args: Record<string, unknown>
+}
+
+export type WebsiteFastPathSlotType = {
+	kind: "context" | "values" | "range" | "duration" | "clockTime"
+	arg: string
+	key?: string
+	values?: WebsiteFastPathSlotValueType[]
+	min?: number
+	max?: number
+	maxSeconds?: number
+}
+
+export type WebsiteFastPathIntentType = {
+	tool: string
+	provider: string
+	templates: WebsiteFastPathTemplateType[]
+	slots: Record<string, WebsiteFastPathSlotType>
+	requiredKeywords: string[][]
+	argDefaults: Record<string, unknown>
+	priority: number
+	allowBlockedTokens?: boolean
+}
+
+export type WebsiteFastPathPackType = {
+	skipWords: string[]
+	skipPhrasesPerSide: number
+	maxUtteranceChars: number
+	blockers: string[]
+	minCoverage: number
+	intents: WebsiteFastPathIntentType[]
+}
+
+export type WebsiteFastPathLanguageStatsType = {
+	intents: number
+	templates: number
+	corpusActionRows: number
+	corpusMatched: number
+	corpusWrong: number
+}
+
+export type WebsiteFastPathPresetType = {
+	id: string
+	language: string
+	text: string
+}
+
+export type WebsiteFastPathDemoAreaType = {
+	id: string
+	names: Record<string, string>
+}
+
+export type WebsiteFastPathDemoEntityType = {
+	id: string
+	domain: string
+	area: string
+	names: Record<string, string>
+}
+
+export type WebsiteFastPathFileType = {
+	meta: WebsiteDataMetaType
+	stats: {
+		languages: Record<string, WebsiteFastPathLanguageStatsType>
+		falsePositives: number
+		matchMsP50: number
+		matchMsP95: number
+	}
+	excludedDomains: string[]
+	nameGroups: Record<string, string[]>
+	languages: Record<string, WebsiteFastPathPackType>
+	presets: WebsiteFastPathPresetType[]
+	demoHome: {
+		areas: WebsiteFastPathDemoAreaType[]
+		entities: WebsiteFastPathDemoEntityType[]
+	}
+}
+
+export type WebsiteSkillToolType = {
+	id: string
+	fastPath: boolean
+	hidden: boolean
+	policy: ToolPolicyType
+}
+
+export type WebsiteSkillGroupIdType =
+	| "builtin"
+	| "homeAssistant"
+	| "musicAssistant"
+	| "mcp"
+	| "routines"
+
+export type WebsiteSkillGroupType = {
+	id: WebsiteSkillGroupIdType
+	alwaysOn: boolean
+	defaultOn: boolean
+	tools: WebsiteSkillToolType[]
+}
+
+export type WebsiteSkillExampleIdType =
+	| "timer"
+	| "lights"
+	| "music"
+	| "goodNight"
+	| "descriptor"
+
+export type WebsiteSkillExampleType = {
+	id: WebsiteSkillExampleIdType
+	group: WebsiteSkillGroupIdType
+	tool: string
+	fastPath: boolean
+}
+
+export type WebsiteSkillsFileType = {
+	meta: WebsiteDataMetaType
+	groups: WebsiteSkillGroupType[]
+	examples: WebsiteSkillExampleType[]
+	routineMaxSteps: number
+	descriptorResource: string
+	strippedPolicyFields: string[]
+	descriptorLimits: {
+		maxBytes: number
+		maxTemplates: number
+		maxTemplateChars: number
+	}
+	defaults: {
+		fastPathEnabled: boolean
+		skillsEngine: boolean
+		builtinTools: boolean
+	}
+}
+
+export type WebsiteCorpusBaselineType = Record<
+	string,
+	{ matchedCorrect: number; wrong: number; falsePositives: number }
+>
+
+export type WebsiteCorpusSweepType = {
+	languages: {
+		language: string
+		sentences: { action: number }
+		fastPathMs: { p50: number; p95: number }
+	}[]
+}
+
+export type WebsiteSourcedPackType = {
+	provider: string
+	block: FastPathBlockType
 }

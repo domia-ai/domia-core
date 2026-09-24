@@ -14,6 +14,8 @@ Environment="LLM_EXTRA_FLAGS=${LLM_EXTRA_FLAGS}"
 Environment=LLM_CACHE_RAM_MB=${LLM_CACHE_RAM_MB}
 Environment=LLM_SPEC_TYPE=${LLM_SPEC_TYPE}
 ExecStart=${LLM_LAUNCHER}
+MemoryHigh=${LLM_MEMORY_HIGH}
+OOMScoreAdjust=-100
 Restart=always
 RestartSec=5
 

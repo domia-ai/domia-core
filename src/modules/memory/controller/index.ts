@@ -20,6 +20,7 @@ import {
 	DEFAULT_MEMORY_RECALL_INCLUDE_EXPIRED,
 	type FactKindEnumType,
 	type SelectMemoryFactType,
+	type SelectFactEvidenceType,
 } from "@/db"
 import dbAdapter from "../db-adapter"
 import { factSchema } from "../schemas"
@@ -40,7 +41,12 @@ import {
 	SINGLE_VALUED_RELATIONS,
 	RELATION_ALLOWLIST_RE,
 } from "../constants"
-import type { FactRecallRowType, FactValidityType, RawFactType } from "../types"
+import type {
+	FactRecallRowType,
+	FactValidityType,
+	RawFactType,
+	UpsertFactsResultType,
+} from "../types"
 
 const PREFERENCE_RE =
 	/prefer|like|love|enjoy|favou?rite|hate|dislike|want|drinks?|eats?|plays?|listens?|watch(es)?|reads?|wears?|collects?|supports?/i
@@ -325,6 +331,43 @@ export const getFactsSince = (
 	limit: number,
 ) => dbAdapter.getFactsSince(domiaId, since, sinceId, limit)
 
+export const getLastEpisodes = (domiaId: string, limit: number) =>
+	dbAdapter.getLastEpisodes(domiaId, limit)
+
+export const getEpisodesSince = (
+	domiaId: string,
+	since: string,
+	sinceId: string,
+	limit: number,
+) => dbAdapter.getEpisodesSince(domiaId, since, sinceId, limit)
+
+export const getKnowledgeSince = (
+	domiaId: string,
+	since: string,
+	sinceId: string,
+	limit: number,
+) => dbAdapter.getKnowledgeSince(domiaId, since, sinceId, limit)
+
+export const getUserModelRow = (domiaId: string) =>
+	dbAdapter.getUserModel(domiaId)
+
+export const listFactEvidence = async (
+	domiaId: string,
+	factId: string,
+	limit: number,
+): Promise<SelectFactEvidenceType[] | null> => {
+	const owned = await dbAdapter.getOwnedFact(domiaId, factId)
+	if (!owned) return null
+	return dbAdapter.getFactEvidenceForFact(domiaId, factId, limit)
+}
+
+export const getFactEvidenceSince = (
+	domiaId: string,
+	since: string,
+	sinceId: string,
+	limit: number,
+) => dbAdapter.getFactEvidenceSince(domiaId, since, sinceId, limit)
+
 export const getLastFactAt = async (domiaId: string) => {
 	const row = await dbAdapter.getLastFactAt(domiaId)
 	return row?.updatedAt ?? null
@@ -494,8 +537,9 @@ export const upsertFacts = async (
 	domia: DomiaType,
 	facts: RawFactType[],
 	sourceInteractionId?: string,
-): Promise<void> => {
-	if (!facts.length) return
+): Promise<UpsertFactsResultType> => {
+	if (!facts.length)
+		return { stored: 0, corroborated: 0, removed: 0, rejected: [] }
 	const stopwords = languageSetsFor(domia.characterProfile?.language).stopwords
 	const deletes: {
 		subject: string
@@ -639,6 +683,29 @@ export const upsertFacts = async (
 				`${f.op === "delete" ? "-" : ""}${f.subject} ${f.relation} ${f.value}`,
 		),
 	})
+	return { stored, corroborated, removed, rejected }
+}
+
+export const expireFactsMatching = async (
+	domia: DomiaType,
+	what: string,
+): Promise<number> => {
+	const stopwords = languageSetsFor(domia.characterProfile?.language).stopwords
+	const needle = tokensOf(what, { stopwords })
+	if (needle.length === 0) return 0
+	const rows = await dbAdapter.getFactsForDomia(domia.id)
+	const matching = rows.filter((row) => {
+		if (isFactExpired(row)) return false
+		const haystack = new Set(tokensOf(`${row.relation} ${row.value}`))
+		return needle.every((token) => haystack.has(token))
+	})
+	for (const row of matching) await dbAdapter.expireFact(row.id)
+	memoryLogger.info("🧠 facts expired on request", {
+		domiaId: domia.id,
+		what,
+		expired: matching.length,
+	})
+	return matching.length
 }
 
 export const auditStoredFacts = async (

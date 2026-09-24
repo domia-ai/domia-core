@@ -1,0 +1,118 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"(set|start) an alarm (for|at) {clockTime}",
+				"wake me up with an alarm (for|at) {clockTime}",
+				"wake me [up] (at|for) {clockTime}",
+				"alarm (for|at) {clockTime}",
+				"set an alarm {clockTime}"
+			],
+			"slots": {
+				"clockTime": {
+					"source": {
+						"kind": "clockTime"
+					},
+					"arg": "at"
+				}
+			}
+		},
+		{
+			"templates": [
+				"(set|start) an alarm (for|at) {clockTime} every day",
+				"(set|start) an alarm every day at {clockTime}",
+				"(set|start) a daily alarm (for|at) {clockTime}",
+				"wake me [up] (at|for) {clockTime} every day",
+				"wake me [up] every day at {clockTime}"
+			],
+			"slots": {
+				"clockTime": {
+					"source": {
+						"kind": "clockTime"
+					},
+					"arg": "at"
+				}
+			},
+			"argDefaults": {
+				"daily": true
+			}
+		}
+	],
+	"keywords": ["alarm", "wake me"],
+	"exampleUtterances": [
+		"set an alarm for seven thirty",
+		"wake me up at six tomorrow"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"alarmSet": "Alarm set for {time}.",
+		"alarmSetDaily": "Daily alarm set for {time}.",
+		"alarmCancelled": "Alarm cancelled.",
+		"noActiveAlarm": "There's no alarm set.",
+		"alarmRing": "It's {time}. Your alarm.",
+		"alarmRingLate": "Your alarm was set for {time}, sorry I'm late.",
+		"alarmFailed": "I couldn't set that alarm."
+	},
+	"samples": [
+		{
+			"text": "set an alarm for 7 30 am",
+			"args": {
+				"at": "07:30"
+			}
+		},
+		{
+			"text": "wake me up at seven",
+			"args": {
+				"at": "07:00"
+			}
+		},
+		{
+			"text": "wake me at half past six",
+			"args": {
+				"at": "06:30"
+			}
+		},
+		{
+			"text": "alarm at 6 45 pm",
+			"args": {
+				"at": "18:45"
+			}
+		},
+		{
+			"text": "set an alarm at nine tonight",
+			"args": {
+				"at": "21:00"
+			}
+		},
+		{
+			"text": "set an alarm for 7 30 every day",
+			"args": {
+				"at": "07:30",
+				"daily": true
+			}
+		},
+		{
+			"text": "wake me up every day at six",
+			"args": {
+				"at": "06:00",
+				"daily": true
+			}
+		},
+		{
+			"text": "set an alarm for twelve am",
+			"args": {
+				"at": "00:00"
+			}
+		},
+		{
+			"text": "set an alarm for 12 in the morning",
+			"args": {
+				"at": "00:00"
+			}
+		}
+	]
+}

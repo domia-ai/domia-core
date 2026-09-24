@@ -7,9 +7,16 @@ import {
 	DEFAULT_CONFIRMATION_TTL_MS,
 	DEFAULT_CONFIRMATION_EXPIRED_GRACE_MS,
 	CONFIRMATION_STATUS_ENUM,
+	DEFAULT_TIMESTAMP,
 } from "@/db"
+import { getDomia } from "@/modules/core"
+import { CONFIRMATION_SETTLED_BY_CONSOLE } from "../constants"
+import { runConfirmedTool } from "./run-confirmed-tool"
 import type {
 	PendingConfirmationType,
+	PendingConfirmationViewType,
+	ConfirmationDecisionType,
+	ConfirmationSettleOutcomeType,
 	ConfirmationSettleStatusType,
 } from "../types"
 
@@ -72,7 +79,7 @@ const persistSettle = (
 		.update(pendingConfirmationRow)
 		.set({
 			status,
-			settledAt: new Date().toISOString(),
+			settledAt: DEFAULT_TIMESTAMP,
 			settledBy: settledBy ?? null,
 		})
 		.where(
@@ -144,27 +151,18 @@ export const peekExpiredConfirmation = (
 	return null
 }
 
-export const takePendingConfirmation = (
-	scope: string,
-): PendingConfirmationType | null => {
-	const e = liveEntry(scope)
-	if (e) store.delete(scope)
-	return e
-}
-
 export const claimConfirmation = (
 	scope: string,
 	status: ConfirmationSettleStatusType,
 	settledBy?: string,
 ): boolean => {
-	store.delete(scope)
 	try {
-		return (
+		const claimed =
 			dbClient
 				.update(pendingConfirmationRow)
 				.set({
 					status,
-					settledAt: new Date().toISOString(),
+					settledAt: DEFAULT_TIMESTAMP,
 					settledBy: settledBy ?? null,
 				})
 				.where(
@@ -174,7 +172,8 @@ export const claimConfirmation = (
 					),
 				)
 				.run().changes > 0
-		)
+		store.delete(scope)
+		return claimed
 	} catch (err) {
 		agentLogger.warn("pending confirmation claim failed", {
 			scope,
@@ -192,6 +191,56 @@ export const settleConfirmation = (
 ): void => {
 	store.delete(scope)
 	persistSettle(scope, status, settledBy)
+}
+
+const satelliteIdOfScope = (scope: string): string | null => {
+	const suffix = scope.slice(scope.lastIndexOf(":") + 1)
+	return suffix === "local" ? null : suffix
+}
+
+export const listPendingConfirmations = (
+	domiaKey: string,
+): PendingConfirmationViewType[] =>
+	[...store.keys()]
+		.filter((scope) => domiaKeyOfScope(scope) === domiaKey)
+		.flatMap((scope) => {
+			const entry = liveEntry(scope)
+			if (!entry) return []
+			return [
+				{
+					scope,
+					satelliteId: satelliteIdOfScope(scope),
+					tool: entry.tool,
+					args: entry.args,
+					resolvedArgs: entry.resolvedArgs ?? null,
+					summary: entry.summary ?? null,
+					language: entry.language,
+					reasked: entry.reasked === true,
+					expiresAt: entry.expiresAt,
+				},
+			]
+		})
+
+export const settlePendingConfirmation = async (
+	scope: string,
+	decision: ConfirmationDecisionType,
+): Promise<ConfirmationSettleOutcomeType> => {
+	const taken = liveEntry(scope)
+	if (!taken) return { settled: false }
+	const identity = await getDomia(domiaKeyOfScope(scope))
+	if (!identity) return { settled: false }
+	const status =
+		decision === "yes"
+			? CONFIRMATION_STATUS_ENUM.APPROVED
+			: CONFIRMATION_STATUS_ENUM.DENIED
+	if (!claimConfirmation(scope, status, CONFIRMATION_SETTLED_BY_CONSOLE))
+		return { settled: false }
+	if (decision === "no") return { settled: true, ran: false }
+	const result = await runConfirmedTool(identity.id, taken)
+	agentLogger.info(`🔒 confirmation ${scope} approved → ${taken.tool}`, {
+		status: result.status,
+	})
+	return { settled: true, ran: true, result }
 }
 
 export const markConfirmationReasked = (scope: string): void => {

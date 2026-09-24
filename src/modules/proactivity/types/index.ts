@@ -5,7 +5,9 @@ import type {
 	PROACTIVE_TARGET_KIND_ENUM_VALUES,
 	InsertProactiveScheduleType,
 	SelectProactiveScheduleType,
+	SelectModuleSettingsType,
 } from "@/db"
+import type { DomiaType } from "@/modules/core"
 
 export type ProactiveImportanceType =
 	(typeof PROACTIVE_IMPORTANCE_ENUM_VALUES)[number]
@@ -101,6 +103,8 @@ export type ProactiveEngineHandleType = {
 	domiaKey: string
 	domiaId: string
 	timer: ReturnType<typeof setInterval>
+	wake: ReturnType<typeof setTimeout> | null
+	wakeAt: number | null
 	tickMs: number
 	inFlight: boolean
 	cancelled: boolean
@@ -158,3 +162,24 @@ export type ProactivityStatusType = {
 }
 
 export type ScheduleItemType = SelectProactiveScheduleType
+
+export type ScheduleDeliveredEventType = {
+	domia: DomiaType
+	item: ScheduleItemType
+	target: string
+	satelliteId: string | null
+}
+
+export type ScheduleDeliveredListenerType = (
+	event: ScheduleDeliveredEventType,
+) => void
+
+export type ScheduleReconcileSettingsType = Pick<
+	SelectModuleSettingsType,
+	"proactiveDeferMaxMs" | "proactiveCriticalDeferMaxMs"
+>
+
+export type ScheduleReconcileVerdictType =
+	| { kind: "deliver"; late: boolean }
+	| { kind: "already-fired" }
+	| { kind: "missed" }

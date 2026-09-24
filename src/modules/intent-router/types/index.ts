@@ -2,6 +2,8 @@ export type IntentDecisionType = {
 	needsSkill: boolean
 	reason:
 		| "always-agent"
+		| "builtin-keyword"
+		| "no-routable-tools"
 		| "fast-router"
 		| "no-local-llm"
 		| "classified"

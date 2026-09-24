@@ -87,6 +87,18 @@ export const pushInteractionTranscript = (
 		safeCallback("onTranscript", () => rt.callbacks.onTranscript?.(transcript))
 }
 
+export const hasInteractionDeltaSink = (interactionId: string): boolean =>
+	runtimes.get(interactionId)?.callbacks.onDelta !== undefined
+
+export const pushInteractionDelta = (
+	interactionId: string,
+	delta: string,
+): void => {
+	const rt = runtimes.get(interactionId)
+	if (!rt || !delta) return
+	safeCallback("onDelta", () => rt.callbacks.onDelta?.(delta))
+}
+
 export const pushInteractionReply = (
 	interactionId: string,
 	reply: string,

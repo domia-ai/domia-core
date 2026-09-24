@@ -11,11 +11,14 @@ import {
 	takeReplyQueueWait,
 	resourceCols,
 	getInteractionRuntime,
+	hasInteractionDeltaSink,
+	pushInteractionDelta,
+	createTextDeltaEmitter,
 } from "../../utils"
 import { updateInteraction, pipelineElapsed } from "@/modules/session-manager"
 import { DEFAULT_LLM_STREAM_IDLE_MS } from "@/db"
 import { reflectOnInteraction } from "@/modules/reflection"
-import { runLLM } from "@/modules/llm-engine"
+import { runLLM, type LlmUsageType } from "@/modules/llm-engine"
 import { deliverReply } from "../llm-done"
 import type {
 	CoreBusContextType,
@@ -68,15 +71,46 @@ export const tryLocalFullStreamVoice = async (
 	)
 }
 
+const generateReplyText = async (
+	ctx: CoreBusContextType,
+	session: SttFlowSessionType,
+): Promise<string> => {
+	const { domia, features } = ctx
+	const onUsage = (u: LlmUsageType): void =>
+		recordLlmUsage(session.interactionId, u)
+	const runStream = features.llm?.adapter.runStream
+	if (!runStream || !hasInteractionDeltaSink(session.interactionId))
+		return await runLLM(domia, session.promptContext, onUsage)
+
+	const emitter = createTextDeltaEmitter((delta) =>
+		pushInteractionDelta(session.interactionId, delta),
+	)
+	const tokens = withIdleTimeout(
+		runStream(
+			domia,
+			session.promptContext,
+			() => isTurnAborted(domia.id, session.interactionId),
+			onUsage,
+		),
+		domia.llmModelConfig?.llmStreamIdleMs ?? DEFAULT_LLM_STREAM_IDLE_MS,
+		"llm",
+	)
+	let collected = ""
+	for await (const token of tokens) {
+		collected += token
+		emitter.push(token)
+	}
+	emitter.flush()
+	return collected
+}
+
 export const runLocalSyncLlm = async (
 	ctx: CoreBusContextType,
 	session: SttFlowSessionType,
 ): Promise<void> => {
 	const startTime = Date.now()
 	const { reply: rawReply } = ensureReplyOrFallback(
-		await runLLM(ctx.domia, session.promptContext, (u) =>
-			recordLlmUsage(session.interactionId, u),
-		),
+		await generateReplyText(ctx, session),
 		ctx.domia.characterProfile?.language,
 	)
 	const reply = finalizeExpressedEmotion(ctx.domia, rawReply)

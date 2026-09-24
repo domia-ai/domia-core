@@ -14,6 +14,7 @@ import type {
 	SelectCapabilityDelegationType,
 } from "@/db"
 import type { EmotionType } from "@/modules/emotion-engine"
+import type { DOMIA_BUNDLE_OMIT_KEYS } from "../constants"
 
 export type ConfigHealthEntryType = {
 	stage: string
@@ -30,23 +31,11 @@ export type ConfigHealthType = {
 	llmSlots?: Record<string, number>
 }
 
-export type ConfigDomiaSectionType = Pick<
+export type DomiaBundleOmitKeyType = (typeof DOMIA_BUNDLE_OMIT_KEYS)[number]
+
+export type ConfigDomiaSectionType = Omit<
 	SelectDomiaType,
-	| "name"
-	| "sessionIdTimeoutMs"
-	| "memoryWindowTurns"
-	| "memoryMaxAgeMs"
-	| "maxConcurrentVoiceReplies"
-	| "maxQueuedVoiceReplies"
-	| "voiceQueueTimeoutMs"
-	| "ownConfigTtlMs"
-	| "warmupOnBoot"
-	| "modelInstallAllowedHosts"
-	| "heartbeatSignatureRequired"
-	| "meshSecretGraceMs"
-	| "knowledgeMaxChars"
-	| "benchTurns"
-	| "benchThresholds"
+	DomiaBundleOmitKeyType
 >
 
 export type SectionMetaKeyType =

@@ -1,0 +1,32 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"how much time is left [on the timer]",
+				"how much time is left on my timer",
+				"how long [is left] on the timer",
+				"how long is left on my timer",
+				"time left [on the timer]",
+				"how much is left on the timer",
+				"timer status",
+				"check [(the|my)] timer"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["time left", "timer status"],
+	"exampleUtterances": [
+		"how much time is left on the timer",
+		"how long on the timer"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "how much time is left" },
+		{ "text": "how long is left on the timer" },
+		{ "text": "time left on the timer" }
+	]
+}

@@ -1,0 +1,106 @@
+{
+	"version": 1,
+	"kind": "home-assistant",
+	"fastPath": {
+		"expansionRules": {
+			"turnon": "(turn on|switch on)",
+			"turnoff": "(turn off|switch off)",
+			"the": "(the|my|our)"
+		},
+		"intents": [
+			{
+				"tool": "HassTurnOn",
+				"priority": 1,
+				"templates": ["<turnon> [<the>] {entity}", "turn [<the>] {entity} on"],
+				"slots": {
+					"entity": {
+						"source": {
+							"kind": "context",
+							"key": "entity:default,media_player"
+						}
+					}
+				},
+				"requiredKeywords": [["on"]]
+			},
+			{
+				"tool": "HassTurnOn",
+				"templates": [
+					"<turnon> [<the>] lights in [<the>] {area}",
+					"<turnon> [<the>] {area} lights"
+				],
+				"slots": {
+					"area": {
+						"source": {
+							"kind": "context",
+							"key": "area"
+						}
+					}
+				},
+				"requiredKeywords": [["on"]],
+				"argDefaults": {
+					"domain": ["light"]
+				}
+			},
+			{
+				"tool": "HassTurnOff",
+				"priority": 1,
+				"templates": [
+					"<turnoff> [<the>] {entity}",
+					"turn [<the>] {entity} off"
+				],
+				"slots": {
+					"entity": {
+						"source": {
+							"kind": "context",
+							"key": "entity:default,media_player"
+						}
+					}
+				},
+				"requiredKeywords": [["off"]]
+			},
+			{
+				"tool": "HassTurnOff",
+				"templates": [
+					"<turnoff> [<the>] lights in [<the>] {area}",
+					"<turnoff> [<the>] {area} lights"
+				],
+				"slots": {
+					"area": {
+						"source": {
+							"kind": "context",
+							"key": "area"
+						}
+					}
+				},
+				"requiredKeywords": [["off"]],
+				"argDefaults": {
+					"domain": ["light"]
+				}
+			},
+			{
+				"tool": "HassLightSet",
+				"priority": 1,
+				"templates": [
+					"(set|dim|brighten) [<the>] {entity} to {level} [percent] [brightness]",
+					"set [<the>] {entity} brightness to {level} [percent]"
+				],
+				"slots": {
+					"entity": {
+						"source": {
+							"kind": "context",
+							"key": "entity:default,media_player"
+						}
+					},
+					"level": {
+						"source": {
+							"kind": "range",
+							"min": 0,
+							"max": 100
+						},
+						"arg": "brightness"
+					}
+				}
+			}
+		]
+	}
+}

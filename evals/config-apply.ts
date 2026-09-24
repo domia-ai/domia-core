@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import { getTableColumns } from "drizzle-orm"
 
 import {
@@ -50,7 +53,12 @@ import type { StubReloaderType } from "@/test-utils/types"
 
 import { makeChecker } from "./lib/assert"
 import { configSchema } from "@/modules/http-api"
-import { CONFIG_SCHEMA_HIDDEN_COLUMNS } from "@/modules/http-api/constants"
+import {
+	CONFIG_SCHEMA_HIDDEN_BY_SECTION,
+	CONFIG_SCHEMA_HIDDEN_COLUMNS,
+	CONFIG_SCHEMA_SECRET_FIELDS,
+} from "@/modules/http-api/constants"
+import { configBundleSchema } from "@/modules/config"
 
 type SectionSpecType = {
 	section: string
@@ -128,6 +136,105 @@ const sections: SectionSpecType[] = [
 		],
 	},
 ]
+
+const sectionHidden = (sectionId: string): ReadonlySet<string> =>
+	new Set(CONFIG_SCHEMA_HIDDEN_BY_SECTION[sectionId] ?? [])
+
+const shapeKeys = (schema: unknown): Set<string> => {
+	let node = schema as {
+		unwrap?: () => unknown
+		shape?: Record<string, unknown>
+	}
+	while (!node.shape && typeof node.unwrap === "function")
+		node = node.unwrap() as typeof node
+	return new Set(Object.keys(node.shape ?? {}))
+}
+
+const checkConfigSurfaceParity = (
+	checker: ReturnType<typeof makeChecker>,
+): void => {
+	const schema = configSchema()
+	const snapshot = serializeConfig(getDomia({})) as unknown as Record<
+		string,
+		Record<string, unknown> | null
+	>
+	const bundleShape = shapeKeys(configBundleSchema)
+	for (const section of schema.sections) {
+		const served = snapshot[section.id]
+		checker.check(
+			`GET /config serves the ${section.id} section`,
+			served !== null,
+			section.id,
+		)
+		if (served === null) continue
+		const configKeys = new Set(Object.keys(served))
+		const schemaKeys = section.fields
+			.map((f) => f.key)
+			.filter((key) => !CONFIG_SCHEMA_SECRET_FIELDS.has(`${section.id}.${key}`))
+		const notServed = schemaKeys.filter((key) => !configKeys.has(key))
+		checker.check(
+			`every ${section.id} schema field is served by GET /config`,
+			notServed.length === 0,
+			notServed.join(","),
+		)
+		checker.check(
+			`POST /config declares the ${section.id} section`,
+			bundleShape.has(section.id),
+		)
+		const accepted = shapeKeys(
+			(configBundleSchema.shape as Record<string, unknown>)[section.id],
+		)
+		const rejected = [...configKeys].filter((key) => !accepted.has(key))
+		checker.check(
+			`every ${section.id} key from GET /config is accepted by POST /config`,
+			rejected.length === 0,
+			rejected.join(","),
+		)
+	}
+	const fieldsOf = (id: string): string[] =>
+		schema.sections.find((s) => s.id === id)?.fields.map((f) => f.key) ?? []
+	checker.check(
+		"config schema hides the identity name on the domia section",
+		!fieldsOf("domia").includes("name"),
+		fieldsOf("domia").join(","),
+	)
+	checker.check(
+		"config schema exposes the preset name on the stt section",
+		fieldsOf("stt").includes("name"),
+		fieldsOf("stt").join(","),
+	)
+}
+
+const checkContractManifest = (
+	checker: ReturnType<typeof makeChecker>,
+): void => {
+	const path = resolve(process.cwd(), "contract/contract.json")
+	const raw = ((): string | null => {
+		try {
+			return readFileSync(path, "utf8")
+		} catch {
+			return null
+		}
+	})()
+	checker.check("contract manifest is generated", raw !== null, path)
+	if (raw === null) return
+	const manifest = JSON.parse(raw) as {
+		configDomiaKeys?: string[]
+		tables?: Record<string, string[] | undefined>
+	}
+	const served = Object.keys(serializeConfig(getDomia({})).domia)
+	checker.check(
+		"contract manifest configDomiaKeys match serializeConfig",
+		JSON.stringify(manifest.configDomiaKeys) === JSON.stringify(served),
+		`manifest=${manifest.configDomiaKeys?.join(",") ?? "missing"} served=${served.join(",")}`,
+	)
+	const announcementColumns = manifest.tables?.announcement ?? []
+	checker.check(
+		"contract manifest carries announcement.delivered",
+		announcementColumns.includes("delivered"),
+		announcementColumns.join(","),
+	)
+}
 
 const PROP_BY_SECTION = new Map(
 	CONFIG_SECTION_PROPS.map(({ section, prop }) => [section, prop]),
@@ -483,9 +590,13 @@ const main = async (): Promise<void> => {
 	)
 	for (const spec of sections) {
 		const exposed = schemaFields.get(spec.section) ?? new Set<string>()
+		const hidden = sectionHidden(spec.section)
 		const missing = spec.columns.filter(
 			(c) =>
-				!meta.has(c) && !CONFIG_SCHEMA_HIDDEN_COLUMNS.has(c) && !exposed.has(c),
+				!meta.has(c) &&
+				!CONFIG_SCHEMA_HIDDEN_COLUMNS.has(c) &&
+				!hidden.has(c) &&
+				!exposed.has(c),
 		)
 		checker.check(
 			`config schema exposes every ${spec.section} column`,
@@ -515,6 +626,10 @@ const main = async (): Promise<void> => {
 			.find((sec) => sec.id === "tts")
 			?.fields.find((f) => f.key === "engine")?.enumValues?.length ?? 0) >= 6,
 	)
+
+	console.log("\n[config surface] schema ⊆ GET /config ⊆ POST /config")
+	checkConfigSurfaceParity(checker)
+	checkContractManifest(checker)
 
 	console.log("\n[runtime] failed reload revert + reconciliation")
 	await checkFailedReloadReverts(checker)

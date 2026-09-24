@@ -126,6 +126,7 @@ export type {
 	ToolResultErrorCodeType,
 	ToolTraceEntryType,
 	SkillDescriptorLocaleType,
+	SkillDescriptorRoutingType,
 	DomiaSkillDescriptorType,
 	ToolPolicyType,
 	ToolAnnotationsType,
@@ -134,6 +135,7 @@ export type {
 	FastPathSlotType,
 	FastPathIntentType,
 	FastPathBlockType,
+	RoutineStepType,
 	BenchThresholdsType,
 	ArgNormalizeMapType,
 } from "./json-types"
@@ -149,6 +151,9 @@ export type SelectSkillProviderType = InferSelectModel<
 export type InsertSkillProviderType = InferInsertModel<
 	typeof schema.skillProvider
 >
+
+export type SelectRoutineType = InferSelectModel<typeof schema.routine>
+export type InsertRoutineType = InferInsertModel<typeof schema.routine>
 
 export type SelectToolRunType = InferSelectModel<typeof schema.toolRun>
 export type InsertToolRunType = InferInsertModel<typeof schema.toolRun>
@@ -188,17 +193,27 @@ export type InsertCapabilityDelegationType = InferInsertModel<
 export type SelectMemoryFactType = InferSelectModel<typeof schema.memoryFact>
 export type InsertMemoryFactType = InferInsertModel<typeof schema.memoryFact>
 
+export type SelectFactEvidenceType = InferSelectModel<
+	typeof schema.factEvidence
+>
 export type InsertFactEvidenceType = InferInsertModel<
 	typeof schema.factEvidence
 >
 
+export type SelectKnowledgeEntryType = InferSelectModel<
+	typeof schema.knowledgeEntry
+>
 export type InsertKnowledgeEntryType = InferInsertModel<
 	typeof schema.knowledgeEntry
 >
 
+export type SelectMemoryEpisodeType = InferSelectModel<
+	typeof schema.memoryEpisode
+>
 export type InsertMemoryEpisodeType = InferInsertModel<
 	typeof schema.memoryEpisode
 >
+export type SelectUserModelType = InferSelectModel<typeof schema.userModel>
 export type InsertUserModelType = InferInsertModel<typeof schema.userModel>
 
 export type InsertAnnouncementType = InferInsertModel<

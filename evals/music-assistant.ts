@@ -15,7 +15,7 @@ import {
 } from "@/modules/skill-engine"
 import {
 	MA_DEFAULT_TOOL_WHITELIST,
-	MA_FAST_PATH_LANGUAGES,
+	MA_FAST_PATH_SAMPLES,
 	MA_SPECIALIZATION_KIND,
 	MA_TOOL_MUSIC_PLAY,
 	MA_TOOL_NOW_PLAYING,
@@ -375,9 +375,9 @@ const checkDescriptorInvariants = (): void => {
 		"'vuelve a poner la música' still resumes (es)",
 		resumeClaims("vuelve a poner la música"),
 	)
-	for (const [language, pack] of Object.entries(MA_FAST_PATH_LANGUAGES)) {
+	for (const [language, samples] of Object.entries(MA_FAST_PATH_SAMPLES)) {
 		const blockers = languageSetsFor(language).fastPathBlockers
-		const blocked = pack.samples.filter((sample) => {
+		const blocked = samples.filter((sample) => {
 			const tokens = new Set(sample.toLowerCase().split(/\s+/))
 			return blockers.some((b) =>
 				b.includes(" ") ? sample.toLowerCase().includes(b) : tokens.has(b),
@@ -407,7 +407,7 @@ const checkArgResolution = async (): Promise<void> => {
 		JSON.stringify(numeric),
 	)
 	playerRoster.attach(
-		provider.id,
+		provider,
 		rosterHandle([
 			{ player_id: "eval_only", name: "Eval Only", state: "idle" },
 		]),
@@ -647,6 +647,20 @@ const checkLiveMock = async (): Promise<void> => {
 		`used=${noMusic.toolNamesUsed.join(",")} reply="${noMusic.reply}" entries=${JSON.stringify(resultEntries(noMusic))}`,
 	)
 
+	await mock.reset()
+	const contextLine =
+		"[Recently: playback_pause ok · 7s ago · Main Lights ok · 17s ago]"
+	const leakedPlayer = await runTurn("play Radiohead", MA_TOOL_MUSIC_PLAY, {
+		query: "Radiohead",
+		player: contextLine,
+	})
+	checker.check(
+		"a player argument that is not a speaker name is dropped, never spoken",
+		!leakedPlayer.reply.includes("Recently") &&
+			resultEntries(leakedPlayer)[0]?.status !== "failed",
+		`used=${leakedPlayer.toolNamesUsed.join(",")} reply="${leakedPlayer.reply}"`,
+	)
+
 	await disconnectProviders([cfg.id])
 	await mock.close()
 }
@@ -694,7 +708,7 @@ const checkTransportVolume = async (): Promise<void> => {
 		config: { volumeStepPercent: 10 },
 	} as unknown as SelectSkillProviderType
 	playerRoster.attach(
-		provider.id,
+		provider,
 		rosterHandle([
 			{
 				player_id: "eval_office",

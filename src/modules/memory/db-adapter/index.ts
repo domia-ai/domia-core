@@ -27,6 +27,7 @@ import {
 	type InsertKnowledgeEntryType,
 	type InsertMemoryEpisodeType,
 	type InsertUserModelType,
+	type SelectFactEvidenceType,
 	MS_TIMESTAMP,
 	DEFAULT_TIMESTAMP,
 	FACT_SOURCE_KIND_ENUM,
@@ -34,6 +35,13 @@ import {
 import type { FactValidityType } from "../types"
 
 const CLOSED_AT = sql`coalesce(${memoryFact.validUntil}, ${MS_TIMESTAMP})`
+
+const FACT_EVIDENCE_COLUMNS = {
+	id: factEvidence.id,
+	factId: factEvidence.factId,
+	sourceInteractionId: factEvidence.sourceInteractionId,
+	createdAt: factEvidence.createdAt,
+}
 
 const ACTIVE_FACT = and(
 	isNull(memoryFact.supersededAt),
@@ -147,6 +155,15 @@ const dbAdapter = {
 			.update(memoryFact)
 			.set({ supersededAt: MS_TIMESTAMP, updatedAt: MS_TIMESTAMP })
 			.where(eq(memoryFact.id, id)),
+	expireFact: (id: string, client: DBClientOrTxType = dbClient) =>
+		client
+			.update(memoryFact)
+			.set({
+				supersededAt: MS_TIMESTAMP,
+				validUntil: CLOSED_AT,
+				updatedAt: MS_TIMESTAMP,
+			})
+			.where(and(eq(memoryFact.id, id), isNull(memoryFact.supersededAt))),
 	supersedeActiveFacts: (
 		domiaId: string,
 		subject: string,
@@ -310,6 +327,105 @@ const dbAdapter = {
 			orderBy: desc(memoryEpisode.createdAt),
 			limit,
 		}),
+	getEpisodesSince: (
+		domiaId: string,
+		since: string,
+		sinceId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.memoryEpisode.findMany({
+			where: and(
+				eq(memoryEpisode.domiaId, domiaId),
+				sinceId
+					? or(
+							gt(memoryEpisode.createdAt, since),
+							and(
+								eq(memoryEpisode.createdAt, since),
+								gt(memoryEpisode.id, sinceId),
+							),
+						)
+					: gte(memoryEpisode.createdAt, since),
+			),
+			orderBy: [asc(memoryEpisode.createdAt), asc(memoryEpisode.id)],
+			limit,
+		}),
+	getKnowledgeSince: (
+		domiaId: string,
+		since: string,
+		sinceId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.knowledgeEntry.findMany({
+			where: and(
+				eq(knowledgeEntry.domiaId, domiaId),
+				sinceId
+					? or(
+							gt(knowledgeEntry.updatedAt, since),
+							and(
+								eq(knowledgeEntry.updatedAt, since),
+								gt(knowledgeEntry.id, sinceId),
+							),
+						)
+					: gte(knowledgeEntry.updatedAt, since),
+			),
+			orderBy: [asc(knowledgeEntry.updatedAt), asc(knowledgeEntry.id)],
+			limit,
+		}),
+	getOwnedFact: (
+		domiaId: string,
+		factId: string,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.memoryFact.findFirst({
+			where: and(eq(memoryFact.id, factId), eq(memoryFact.domiaId, domiaId)),
+			columns: { id: true },
+		}),
+	getFactEvidenceForFact: (
+		domiaId: string,
+		factId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	): SelectFactEvidenceType[] =>
+		client
+			.select(FACT_EVIDENCE_COLUMNS)
+			.from(factEvidence)
+			.innerJoin(memoryFact, eq(memoryFact.id, factEvidence.factId))
+			.where(
+				and(eq(memoryFact.domiaId, domiaId), eq(factEvidence.factId, factId)),
+			)
+			.orderBy(desc(factEvidence.createdAt), desc(factEvidence.id))
+			.limit(limit)
+			.all(),
+	getFactEvidenceSince: (
+		domiaId: string,
+		since: string,
+		sinceId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	): SelectFactEvidenceType[] =>
+		client
+			.select(FACT_EVIDENCE_COLUMNS)
+			.from(factEvidence)
+			.innerJoin(memoryFact, eq(memoryFact.id, factEvidence.factId))
+			.where(
+				and(
+					eq(memoryFact.domiaId, domiaId),
+					sinceId
+						? or(
+								gt(factEvidence.createdAt, since),
+								and(
+									eq(factEvidence.createdAt, since),
+									gt(factEvidence.id, sinceId),
+								),
+							)
+						: gte(factEvidence.createdAt, since),
+				),
+			)
+			.orderBy(asc(factEvidence.createdAt), asc(factEvidence.id))
+			.limit(limit)
+			.all(),
 	getUserModel: (domiaId: string, client: DBClientOrTxType = dbClient) =>
 		client.query.userModel.findFirst({
 			where: eq(userModel.domiaId, domiaId),

@@ -1,0 +1,145 @@
+[
+	{
+		"name": "builtin: the time is answered without the LLM",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "what time is it",
+				"expect": {
+					"fastPath": true,
+					"tool": "time"
+				}
+			}
+		]
+	},
+	{
+		"name": "builtin: a timer is set then cancelled",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "set a timer for one minute",
+				"expect": {
+					"fastPath": true,
+					"tool": "timer",
+					"argsSubset": {
+						"seconds": 60
+					}
+				}
+			},
+			{
+				"text": "cancel the timer",
+				"expect": {
+					"fastPath": true,
+					"tool": "timer_cancel"
+				}
+			}
+		]
+	},
+	{
+		"name": "builtin: never mind is dismissed",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "never mind",
+				"expect": {
+					"fastPath": true,
+					"tool": "cancel"
+				}
+			}
+		]
+	},
+	{
+		"name": "builtin: an alarm is set for a clock time then cancelled",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "set an alarm for seven thirty in the morning",
+				"expect": {
+					"fastPath": true,
+					"tool": "alarm",
+					"argsSubset": {
+						"at": "07:30"
+					}
+				}
+			},
+			{
+				"text": "cancel the alarm",
+				"expect": {
+					"fastPath": true,
+					"tool": "alarm_cancel"
+				}
+			}
+		]
+	},
+	{
+		"name": "builtin: a daily alarm carries the daily flag",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "wake me up every day at six",
+				"expect": {
+					"fastPath": true,
+					"tool": "alarm",
+					"argsSubset": {
+						"at": "06:00",
+						"daily": true
+					}
+				}
+			},
+			{
+				"text": "cancel my alarm",
+				"expect": {
+					"fastPath": true,
+					"tool": "alarm_cancel"
+				}
+			}
+		]
+	},
+	{
+		"name": "builtin: the voice volume is nudged then restored on the local device",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "turn your volume down",
+				"expect": {
+					"fastPath": true,
+					"tool": "volume",
+					"argsSubset": {
+						"direction": "down"
+					}
+				}
+			},
+			{
+				"text": "set your volume to 100 percent",
+				"expect": {
+					"fastPath": true,
+					"tool": "volume",
+					"argsSubset": {
+						"level": 100
+					}
+				}
+			}
+		]
+	},
+	{
+		"name": "builtin: volume is not fast-pathed from a satellite without native volume",
+		"suite": "tools",
+		"language": "en",
+		"turns": [
+			{
+				"text": "turn your volume down",
+				"satelliteId": "eval-wyoming-sat",
+				"expect": {
+					"fastPath": false,
+					"notTools": ["domia__volume"]
+				}
+			}
+		]
+	}
+]

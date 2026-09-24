@@ -22,7 +22,7 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ["evals/**/*.ts"],
+		files: ["evals/**/*.ts", "scripts/**/*.ts"],
 		languageOptions: {
 			globals: globals.node,
 			parserOptions: {
@@ -62,7 +62,12 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ["src/utils/logger/**/*.ts", "src/cli/**/*.ts", "evals/**/*.ts"],
+		files: [
+			"src/utils/logger/**/*.ts",
+			"src/cli/**/*.ts",
+			"evals/**/*.ts",
+			"scripts/**/*.ts",
+		],
 		rules: { "no-console": "off" },
 	},
 	{

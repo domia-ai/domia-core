@@ -1,9 +1,17 @@
-import type { SelectSkillProviderType } from "@/db"
+import {
+	DEFAULT_SKILL_MAX_LIST_PAGES,
+	SKILL_DESCRIPTOR_RESOURCE_URI,
+	type SelectSkillProviderType,
+	type SkillToolType,
+} from "@/db"
 import { skillEngineLogger } from "@/utils"
 
 import { skillElicitResultSchema } from "../../schemas"
+import { ingestServerDescriptorText } from "../../utils/server-descriptor"
 import type {
 	McpContentPartType,
+	ServerDescriptorReadType,
+	ServerDescriptorSourceType,
 	SkillElicitResultType,
 	SkillRenderedContentType,
 	ValidatedElicitResultType,
@@ -124,3 +132,58 @@ export const validateElicitResult = (
 	})
 	return { action: "decline" }
 }
+
+const resourceTextOf = (content: unknown): string | null =>
+	content !== null &&
+	typeof content === "object" &&
+	"text" in content &&
+	typeof content.text === "string"
+		? content.text
+		: null
+
+const findDescriptorUri = async (
+	source: ServerDescriptorSourceType,
+): Promise<string | null> => {
+	const seen = new Set<string>()
+	let cursor: string | undefined
+	for (let page = 0; page < DEFAULT_SKILL_MAX_LIST_PAGES; page++) {
+		const listed = await source.listResources(cursor)
+		if (listed.resources.some((r) => r.uri === SKILL_DESCRIPTOR_RESOURCE_URI))
+			return SKILL_DESCRIPTOR_RESOURCE_URI
+		const next = listed.nextCursor
+		if (next === undefined || seen.has(next)) return null
+		seen.add(next)
+		cursor = next
+	}
+	return null
+}
+
+export const descriptorReaderOf =
+	(provider: string, source: ServerDescriptorSourceType) =>
+	async (knownTools?: SkillToolType[]): Promise<ServerDescriptorReadType> => {
+		try {
+			if (!source.hasResources()) return { status: "absent" }
+			const uri = await findDescriptorUri(source)
+			if (!uri) return { status: "absent" }
+			const read = await source.readResource(uri)
+			const text = read.contents.map(resourceTextOf).find((t) => t !== null)
+			if (text === undefined) {
+				skillEngineLogger.warn("server descriptor resource has no text", {
+					provider,
+					uri,
+				})
+				return { status: "invalid" }
+			}
+			const ingested = ingestServerDescriptorText(text, {
+				provider,
+				knownTools,
+			})
+			return ingested ? { status: "ok", ...ingested } : { status: "invalid" }
+		} catch (error) {
+			skillEngineLogger.warn("server descriptor read failed", {
+				provider,
+				message: error instanceof Error ? error.message : String(error),
+			})
+			return { status: "invalid" }
+		}
+	}

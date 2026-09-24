@@ -170,7 +170,7 @@ const restore = async (): Promise<void> => {
 		const wakeWords = sat.desiredWakeWords
 		if (Array.isArray(wakeWords) && wakeWords.length > 0)
 			await request(
-				"POST",
+				"PATCH",
 				`/satellites/${String(sat.satelliteId)}/wake-words`,
 				{
 					wakeWords,

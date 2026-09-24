@@ -1,4 +1,5 @@
 export * from "./pending-confirmation"
+export * from "./run-confirmed-tool"
 export * from "./confirm-summary"
 export * from "./guards"
 export * from "./structured-decision"

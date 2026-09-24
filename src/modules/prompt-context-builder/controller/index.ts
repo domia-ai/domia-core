@@ -75,6 +75,7 @@ export const personaContextFromDomia = (
 					factRecall: ms.factRecall,
 					environmentTimeEnabled: ms.environmentTimeEnabled,
 					skillsEngine: ms.skillsEngine,
+					builtinTools: ms.builtinTools,
 				}
 			: null,
 		useCompactPrompt: domia.llmModelConfig?.useCompactPrompt ?? false,
@@ -358,7 +359,10 @@ export const buildPromptFromPersona = (
 
 	sections.push(["TRANSPARENCY", renderTransparency(name)])
 
-	if (moduleSettings?.skillsEngine === false) {
+	if (
+		moduleSettings?.skillsEngine === false &&
+		moduleSettings.builtinTools === false
+	) {
 		sections.push([
 			"NO TOOLS CONNECTED",
 			`Right now you have no tools connected: you cannot perform real-world actions or check the state of anything outside this conversation. If asked to do something or to check something, say you can't do that right now. Never answer "sure", never report a state you cannot check, never pretend an action happened.`,

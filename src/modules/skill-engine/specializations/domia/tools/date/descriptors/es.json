@@ -1,0 +1,35 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"qué día es [hoy]",
+				"qué fecha es [hoy]",
+				"a qué (día|fecha) estamos",
+				"dime la fecha [de hoy]",
+				"[la] fecha de hoy"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["fecha", "qué día", "que día", "qué fecha"],
+	"exampleUtterances": ["qué día es hoy", "dime la fecha"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"currentDate": "Hoy es {date}."
+	},
+	"samples": [
+		{
+			"text": "qué día es hoy"
+		},
+		{
+			"text": "¿a qué fecha estamos?"
+		},
+		{
+			"text": "dime la fecha"
+		}
+	]
+}

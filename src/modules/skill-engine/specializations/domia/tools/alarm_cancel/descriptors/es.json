@@ -1,0 +1,23 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cancela [(la|mi)] alarma",
+				"cancela [(las|mis)] alarmas",
+				"(quita|apaga|borra|desactiva) [(la|mi)] alarma"
+			]
+		}
+	],
+	"keywords": ["cancela la alarma", "quita la alarma"],
+	"exampleUtterances": ["cancela la alarma", "quita mi alarma"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "cancela la alarma" },
+		{ "text": "cancela alarma" },
+		{ "text": "quita la alarma" }
+	]
+}

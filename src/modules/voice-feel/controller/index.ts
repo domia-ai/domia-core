@@ -142,3 +142,11 @@ export const markVoiceFeelApplied = async (
 export const markVoiceFeelReverted = async (id: string): Promise<void> => {
 	await dbAdapter.markReverted(id, sqliteTimestamp(Date.now()))
 }
+
+export const getVoiceFeelAdjustmentsSince = (
+	domiaId: string,
+	since: string,
+	sinceId: string,
+	limit: number,
+): Promise<SelectVoiceFeelAdjustmentType[]> =>
+	dbAdapter.listSince(domiaId, since, sinceId, limit)

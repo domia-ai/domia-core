@@ -6,21 +6,37 @@ import {
 	memoryFact,
 	announcement,
 	turnEvent,
+	type SelectRoutineType,
+	type SelectToolRunType,
+	type SelectMemoryEpisodeType,
+	type SelectKnowledgeEntryType,
+	type SelectUserModelType,
+	type SelectFactEvidenceType,
+	type SelectVoiceFeelAdjustmentType,
 } from "@/db"
 import {
 	postChatBodySchema,
 	postVoiceBodySchema,
 	postSpeakBodySchema,
 	postImportMindBodySchema,
+	postImportMindBundleBodySchema,
+	getMindExportQuerySchema,
 	postKnowledgeBodySchema,
 	getSyncQuerySchema,
 	getAudioQuerySchema,
 	postBenchRunBodySchema,
 	postMeshRotateBodySchema,
 	voiceFeelIdParamsSchema,
+	postSatelliteTokenBodySchema,
+	postFastPathTryBodySchema,
+	getMemoryEpisodesQuerySchema,
+	getFactEvidenceQuerySchema,
+	getToolRunsQuerySchema,
+	postConfirmationSettleBodySchema,
 } from "../schemas"
-import type { MeshSecretPostureType } from "@/utils"
-import type { SpeakResultType } from "@/modules/core-bus"
+import type { PendingConfirmationViewType } from "@/modules/agent"
+import type { MeshSecretPostureType, MintedSatelliteTokenType } from "@/utils"
+import type { PresenceEntryType, SpeakResultType } from "@/modules/core-bus"
 import type { ConfigSnapshotType } from "@/modules/config"
 import type {
 	ConfigApplyResultType,
@@ -28,6 +44,7 @@ import type {
 } from "@/modules/config-apply"
 import type { SkillProviderStatusType } from "@/modules/skill-engine"
 import type { VoiceFeelAdjustmentViewType } from "@/modules/voice-feel"
+import type { FastPathVerdictType } from "@/modules/fast-path"
 
 export type GetConfigResponseType = {
 	config: ConfigSnapshotType
@@ -42,12 +59,31 @@ export type PostConfigResponseType = {
 
 export type GetSkillsResponseType = {
 	skillsEngine: boolean
+	builtinTools: boolean
 	providers: SkillProviderStatusType[]
 }
 
-export type ProactivityIdentityType = {
+export type GetSkillDescriptorSchemaResponseType = {
+	schema: Record<string, unknown>
+	resourceUri: string
+	serverAllowed: string[]
+	stripped: string[]
+	rejected: string[]
+	limits: Record<string, number>
+}
+
+export type GetRoutinesResponseType = {
+	routines: SelectRoutineType[]
+}
+
+export type PostRoutineResponseType = {
+	routine: SelectRoutineType
+	created: boolean
+}
+
+export type DeleteRoutineResponseType = {
+	deleted: true
 	id: string
-	domiaKey: string
 }
 
 export type PersistAnnouncementOptsType = {
@@ -56,6 +92,11 @@ export type PersistAnnouncementOptsType = {
 	kind: "text" | "audio"
 	delivery: "original" | "domia-voice"
 	result: SpeakResultType
+}
+
+export type PresenceEntryResponseType = PresenceEntryType & {
+	canIntercom: boolean
+	canBroadcast: boolean
 }
 
 export type AgUiEventType = {
@@ -102,6 +143,8 @@ export type GetInteractionResponseType = {
 	interaction: typeof interactionTrace.$inferSelect
 }
 
+export type SyncCursorType = { since: string; id: string }
+
 export type GetSyncResponseType = {
 	interactions: (typeof interactionTrace.$inferSelect)[]
 	sessions: (typeof interactionSessionTrace.$inferSelect)[]
@@ -109,9 +152,83 @@ export type GetSyncResponseType = {
 	facts: (typeof memoryFact.$inferSelect)[]
 	announcements: (typeof announcement.$inferSelect)[]
 	turnEvents: (typeof turnEvent.$inferSelect)[]
+	toolRuns: SelectToolRunType[]
+	memoryEpisodes: SelectMemoryEpisodeType[]
+	knowledgeEntries: SelectKnowledgeEntryType[]
+	voiceFeelAdjustments: SelectVoiceFeelAdjustmentType[]
+	factEvidence: SelectFactEvidenceType[]
+	userModel: SelectUserModelType | null
 	nextCursor: string
-	nextTurnCursor: { since: string; id: string } | null
-	nextFactsCursor: { since: string; id: string } | null
+	nextTurnCursor: SyncCursorType | null
+	nextFactsCursor: SyncCursorType | null
+	nextToolCursor: SyncCursorType | null
+	nextEpisodeCursor: SyncCursorType | null
+	nextVoiceFeelCursor: SyncCursorType | null
+	nextKnowledgeCursor: SyncCursorType | null
+	nextEvidenceCursor: SyncCursorType | null
+}
+
+export type GetMemoryEpisodesQueryType = z.input<
+	typeof getMemoryEpisodesQuerySchema
+>
+
+export type GetMemoryEpisodesRouteType = {
+	Querystring: GetMemoryEpisodesQueryType
+}
+
+export type GetMemoryEpisodesResponseType = {
+	episodes: SelectMemoryEpisodeType[]
+}
+
+export type GetUserModelResponseType = {
+	userModel: SelectUserModelType | null
+}
+
+export type GetFactEvidenceQueryType = z.input<
+	typeof getFactEvidenceQuerySchema
+>
+
+export type GetFactEvidenceRouteType = {
+	Params: { factId: string }
+	Querystring: GetFactEvidenceQueryType
+}
+
+export type GetFactEvidenceResponseType = {
+	factId: string
+	evidence: SelectFactEvidenceType[]
+}
+
+export type GetToolRunsQueryType = z.input<typeof getToolRunsQuerySchema>
+
+export type GetToolRunsRouteType = {
+	Querystring: GetToolRunsQueryType
+}
+
+export type GetToolRunsResponseType = {
+	toolRuns: SelectToolRunType[]
+}
+
+export type GetConfirmationsResponseType = {
+	confirmations: PendingConfirmationViewType[]
+}
+
+export type PostConfirmationSettleBodyType = z.infer<
+	typeof postConfirmationSettleBodySchema
+>
+
+export type PostConfirmationSettleRouteType = {
+	Params: { scope: string }
+	Body: PostConfirmationSettleBodyType
+	Querystring: { domiaKey?: string }
+}
+
+export type PostConfirmationSettleResponseType = {
+	scope: string
+	decision: PostConfirmationSettleBodyType["decision"]
+	settled: boolean
+	ran: boolean
+	status: string | null
+	text: string | null
 }
 
 export type PostVoiceBodyType = z.infer<typeof postVoiceBodySchema>
@@ -138,9 +255,11 @@ export type PostVoiceRouteType = {
 
 export type PostSpeakBodyType = z.infer<typeof postSpeakBodySchema>
 
-export type PostSpeakResponseType = {
+export type SpeakWireResultType = {
 	delivered: boolean
-	target: "satellite" | "local" | "none"
+	target: SpeakResultType["target"]
+	reason?: SpeakResultType["reason"]
+	audioId?: string
 }
 
 export type PostSpeakRouteType = {
@@ -153,8 +272,14 @@ export type PostKnowledgeBodyType = z.infer<
 
 export type PostImportMindBodyType = z.infer<typeof postImportMindBodySchema>
 
+export type PostImportMindBundleBodyType = z.infer<
+	typeof postImportMindBundleBodySchema
+>
+
+export type GetMindExportQueryType = z.infer<typeof getMindExportQuerySchema>
+
 export type PostImportMindRouteType = {
-	Body: PostImportMindBodyType
+	Body: PostImportMindBodyType | PostImportMindBundleBodyType
 }
 
 export type TemplateIdParamsType = {
@@ -210,4 +335,16 @@ export type VoiceFeelIdRouteType = {
 export type VoiceFeelMutationResponseType = {
 	adjustment: VoiceFeelAdjustmentViewType
 	apply: ConfigApplyResultType
+}
+
+export type PostSatelliteTokenBodyType = z.infer<
+	typeof postSatelliteTokenBodySchema
+>
+
+export type PostSatelliteTokenResponseType = MintedSatelliteTokenType
+
+export type PostFastPathTryBodyType = z.infer<typeof postFastPathTryBodySchema>
+
+export type PostFastPathTryResponseType = {
+	verdict: FastPathVerdictType
 }

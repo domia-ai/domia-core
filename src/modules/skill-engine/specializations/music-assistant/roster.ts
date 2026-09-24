@@ -4,9 +4,16 @@ import { skillEngineLogger, getTraceContext } from "@/utils"
 import dbAdapter from "../../db-adapter"
 import { resolveDescriptor } from "../../utils/descriptor"
 import {
+	addMediaOwnerName,
+	clearMediaOwner,
+	setMediaOwnerNames,
+} from "../../utils/media-owners"
+import {
 	DEFAULT_MA_ROSTER_TTL_MS,
 	DEFAULT_MA_SEARCH_LIMIT,
 	DEFAULT_MA_VOLUME_STEP_PERCENT,
+	MA_PLAYER_NAME_MAX_WORDS,
+	MA_PLAYER_NAME_REJECT_RE,
 	MA_TOOL_LIST_PLAYERS,
 } from "./constants"
 import {
@@ -32,6 +39,7 @@ export const createPlayerRoster = (): MaPlayerRosterType => {
 			players: [],
 			fetchedAt: 0,
 			handle: null,
+			domiaId: null,
 			refreshing: false,
 		}
 		entries.set(providerId, fresh)
@@ -53,6 +61,11 @@ export const createPlayerRoster = (): MaPlayerRosterType => {
 			if (players.length === 0) return entry.players
 			entry.players = players
 			entry.fetchedAt = Date.now()
+			if (entry.domiaId)
+				setMediaOwnerNames(entry.domiaId, providerId, [
+					...players.map((p) => p.name),
+					...dbAdapter.satelliteMediaPlayerNames(entry.domiaId),
+				])
 			skillEngineLogger.info(`🎵 player roster: ${players.length} player(s)`, {
 				providerId,
 			})
@@ -69,8 +82,10 @@ export const createPlayerRoster = (): MaPlayerRosterType => {
 	}
 
 	return {
-		attach: (providerId, handle) => {
-			entryFor(providerId).handle = handle
+		attach: (provider, handle) => {
+			const entry = entryFor(provider.id)
+			entry.handle = handle
+			entry.domiaId = provider.domiaId
 		},
 		refresh,
 		snapshot: (providerId, ttlMs) => {
@@ -89,6 +104,8 @@ export const createPlayerRoster = (): MaPlayerRosterType => {
 			return Date.now() - entry.fetchedAt
 		},
 		clear: (providerId) => {
+			const entry = entries.get(providerId)
+			if (entry?.domiaId) clearMediaOwner(entry.domiaId, providerId)
 			entries.delete(providerId)
 		},
 	}
@@ -106,6 +123,10 @@ const numberSetting = (
 		? value
 		: fallback
 }
+
+export const isPlausiblePlayerName = (value: string): boolean =>
+	!MA_PLAYER_NAME_REJECT_RE.test(value) &&
+	value.split(/\s+/).length <= MA_PLAYER_NAME_MAX_WORDS
 
 export const playerAliasesOf = (
 	provider: SelectSkillProviderType,
@@ -162,6 +183,7 @@ export const satellitePlayerName = async (
 		)
 		const name = row?.mediaPlayerName ?? null
 		satellitePlayers.set(satellitePlayerKey(provider, satelliteId), name)
+		if (name) addMediaOwnerName(provider.domiaId, provider.id, name)
 		return name
 	} catch (err) {
 		skillEngineLogger.warn("satellite media player lookup failed", {

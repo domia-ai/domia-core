@@ -92,6 +92,7 @@ const entityFromState = (
 		(registry?.deviceId
 			? (dest.devicesById.get(registry.deviceId) ?? null)
 			: null)
+	const floorId = areaId ? (dest.areaFloorsById.get(areaId) ?? null) : null
 	const derivedName = entityId.split(".")[1]?.replace(/_/g, " ") ?? null
 	const names = [
 		...new Set(
@@ -111,6 +112,7 @@ const entityFromState = (
 		names: names.length > 0 ? names : [entityId],
 		domain: domainOf(entityId),
 		area: areaId ? (dest.areasById.get(areaId) ?? null) : null,
+		floor: floorId ? (dest.floorsById.get(floorId) ?? null) : null,
 		lastChanged:
 			typeof state?.last_changed === "string" ? state.last_changed : null,
 	}
@@ -132,6 +134,12 @@ const applySnapshot = (
 		snapshot.entityRegistry.map((r) => [r.entityId, r]),
 	)
 	dest.areasById = new Map(snapshot.areaRegistry.map((a) => [a.areaId, a.name]))
+	dest.areaFloorsById = new Map(
+		snapshot.areaRegistry.map((a) => [a.areaId, a.floorId]),
+	)
+	dest.floorsById = new Map(
+		snapshot.floorRegistry.map((f) => [f.floorId, f.name]),
+	)
 	dest.devicesById = new Map(
 		snapshot.deviceRegistry.map((d) => [d.deviceId, d.areaId]),
 	)
@@ -218,6 +226,8 @@ const createDestination = (
 		attachedProviderIds: new Set(),
 		entities: new Map(),
 		areasById: new Map(),
+		areaFloorsById: new Map(),
+		floorsById: new Map(),
 		devicesById: new Map(),
 		registryByEntityId: new Map(),
 		exposedEntityIds: null,
@@ -305,6 +315,15 @@ export const detachDataPlane = (providerId: string): void => {
 	skillEngineLogger.info("🏠 HA ws closed (last provider detached)")
 }
 
+export const namesByFolded = (
+	names: (string | null)[],
+): Map<string, string> => {
+	const out = new Map<string, string>()
+	for (const name of names)
+		if (name && !out.has(fold(name))) out.set(fold(name), name)
+	return out
+}
+
 const rebuildSnapshot = (
 	dest: HaDestinationType,
 	handle: SkillConnHandleType,
@@ -313,17 +332,23 @@ const rebuildSnapshot = (
 		names: e.names,
 		domain: e.domain,
 		area: e.area,
+		floor: e.floor,
 		entityId: e.entityId,
 		state: e.state,
 		lastChanged: e.lastChanged,
 	}))
-	const areas = new Set(
-		entities
-			.map((e) => e.area)
-			.filter((a): a is string => !!a)
-			.map(fold),
-	)
-	return { entities, areas, fetchedAt: Date.now(), handle, source: "ws" }
+	const areaNames = namesByFolded(entities.map((e) => e.area))
+	const floorNames = namesByFolded(entities.map((e) => e.floor))
+	return {
+		entities,
+		areas: new Set(areaNames.keys()),
+		areaNames,
+		floorNames,
+		slotValuesByKey: new Map(),
+		fetchedAt: Date.now(),
+		handle,
+		source: "ws",
+	}
 }
 
 export const snapshotContext = (

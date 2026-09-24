@@ -21,6 +21,9 @@ import {
 	DEFAULT_CONFIRMATION_TTL_MS,
 	PROACTIVE_VERB_ENUM,
 	PROACTIVE_IMPORTANCE_ENUM,
+	PROACTIVE_TEMPLATE_KEY_ENUM,
+	PROACTIVE_MISSED_ERROR,
+	PROACTIVE_WAKE_MAX_MS,
 	type SelectModuleSettingsType,
 } from "@/db"
 import {
@@ -28,6 +31,7 @@ import {
 	sleep,
 	generateUuid,
 	parseDbTimestamp,
+	sqliteTimestamp,
 	languageSetsFor,
 	runWithTraceContext,
 	ensureTraceId,
@@ -40,10 +44,12 @@ import {
 import {
 	claimDue,
 	renewLease,
+	markFired,
 	completeSchedule,
 	deferSchedule,
 	releaseSchedule,
 	listSchedule,
+	nextPendingDueAt,
 	getScheduleById,
 	insertSchedule,
 	cancelSchedule,
@@ -59,7 +65,6 @@ import {
 	nextDueAt,
 	retryDecision,
 	broadcastIdFor,
-	sqliteTimestamp,
 	renderScheduleText,
 	idleNudgeText,
 	resolveProactiveTarget,
@@ -73,13 +78,77 @@ import type {
 	CreateScheduleInputType,
 	ProactiveScheduleStatusType,
 	ScheduleItemType,
+	ScheduleDeliveredListenerType,
+	ScheduleReconcileSettingsType,
+	ScheduleReconcileVerdictType,
 } from "../types"
 
 const engines = new Map<string, ProactiveEngineHandleType>()
 const activity = new Map<string, ProactiveActivityType>()
 const leaseOwner = `${hostname()}:${process.pid}:${generateUuid().slice(0, 8)}`
 const VOICE_SOURCES = new Set(["local", "satellite"])
+const deliveredListeners = new Set<ScheduleDeliveredListenerType>()
 let activityListener: (() => void) | null = null
+
+export const onScheduleDelivered = (
+	listener: ScheduleDeliveredListenerType,
+): (() => void) => {
+	deliveredListeners.add(listener)
+	return () => {
+		deliveredListeners.delete(listener)
+	}
+}
+
+const LATE_TEMPLATE_KEY: Record<string, string> = {
+	[PROACTIVE_TEMPLATE_KEY_ENUM.TIMER_FINISHED]:
+		PROACTIVE_TEMPLATE_KEY_ENUM.TIMER_FINISHED_LATE,
+	[PROACTIVE_TEMPLATE_KEY_ENUM.ALARM_RING]:
+		PROACTIVE_TEMPLATE_KEY_ENUM.ALARM_RING_LATE,
+}
+
+const isTimerRow = (item: ScheduleItemType): boolean =>
+	item.templateKey !== null && item.templateKey in LATE_TEMPLATE_KEY
+
+export const reconcileClaimed = (
+	item: ScheduleItemType,
+	settings: ScheduleReconcileSettingsType,
+	now: Date,
+): ScheduleReconcileVerdictType => {
+	const dueAtMs = Date.parse(item.dueAt)
+	if (item.lastFiredAt && Date.parse(item.lastFiredAt) >= dueAtMs)
+		return { kind: "already-fired" }
+	const overdueMs = now.getTime() - dueAtMs
+	if (isTimerRow(item) && overdueMs > settings.proactiveCriticalDeferMaxMs)
+		return { kind: "missed" }
+	return {
+		kind: "deliver",
+		late: isTimerRow(item) && overdueMs > settings.proactiveDeferMaxMs,
+	}
+}
+
+const resolveDeliveryTarget = (
+	domia: DomiaType,
+	item: ScheduleItemType,
+): SpeakTargetType | undefined => {
+	const presence = getPresence(domia.domiaKey)
+	const last = activity.get(domia.domiaKey) ?? null
+	const preferred = resolveProactiveTarget(
+		presence,
+		item.targetKind,
+		item.targetSatelliteId,
+		last,
+	)
+	if (preferred?.kind !== "satellite") return preferred
+	const connected = presence?.satellites.some(
+		(s) => s.satelliteId === preferred.satelliteId && s.connected,
+	)
+	if (connected) return preferred
+	logger.info(
+		`🔔 scheduled item "${item.name}" target satellite offline — falling back`,
+		{ scheduleId: item.id, satelliteId: preferred.satelliteId },
+	)
+	return resolveProactiveTarget(presence, "auto", null, last)
+}
 
 const ensureActivityListener = (): void => {
 	if (activityListener) return
@@ -148,6 +217,7 @@ const persistProactiveAnnouncement = async (
 	broadcastId: string,
 	text: string,
 	target: string,
+	delivered: boolean,
 	personId: string | null,
 	audioId?: string,
 ): Promise<void> => {
@@ -162,6 +232,7 @@ const persistProactiveAnnouncement = async (
 			target,
 			audioPath: null,
 			personId,
+			delivered,
 		})
 	} catch (err) {
 		logger.warn("proactive announcement not recorded", {
@@ -195,6 +266,7 @@ const deliverScheduled = async (
 	settings: SelectModuleSettingsType,
 	item: ScheduleItemType,
 	handle: ProactiveEngineHandleType,
+	late: boolean,
 ): Promise<ProactiveGateReasonType> => {
 	const now = new Date()
 	const inQuietHours = isWithinQuietHours(
@@ -240,13 +312,13 @@ const deliverScheduled = async (
 	}
 
 	const language = domia.characterProfile?.language ?? null
-	const text = renderScheduleText(item, language)
-	const target = resolveProactiveTarget(
-		getPresence(domia.domiaKey),
-		item.targetKind,
-		item.targetSatelliteId,
-		activity.get(domia.domiaKey) ?? null,
+	const text = renderScheduleText(
+		late && item.templateKey
+			? { ...item, templateKey: LATE_TEMPLATE_KEY[item.templateKey] }
+			: item,
+		language,
 	)
+	const target = resolveDeliveryTarget(domia, item)
 	const wantsConfirmation = !!item.actionTool
 	const scope = confirmationScope(
 		domia.domiaKey,
@@ -274,9 +346,22 @@ const deliverScheduled = async (
 	await chimeIfLocal(domia, settings, target)
 	const converse =
 		wantsConfirmation || item.verb === PROACTIVE_VERB_ENUM.CONVERSE
+	if (!markFired(item.id, leaseOwner, new Date())) {
+		if (wantsConfirmation) settleConfirmation(scope, "superseded")
+		return "lease-lost"
+	}
 	const outcome = converse
 		? await speakAndListen(domia, spoken, target)
 		: await speak(domia, spoken, target, { politeness: "polite" })
+	await persistProactiveAnnouncement(
+		domia,
+		broadcastIdFor(item.id),
+		spoken,
+		outcome.target,
+		outcome.delivered,
+		item.personId,
+		outcome.audioId,
+	)
 	if (!outcome.delivered) {
 		if (wantsConfirmation) settleConfirmation(scope, "superseded")
 		const reason: ProactiveGateReasonType =
@@ -284,14 +369,6 @@ const deliverScheduled = async (
 		failAttempt(item, settings, reason)
 		return reason
 	}
-	await persistProactiveAnnouncement(
-		domia,
-		broadcastIdFor(item.id),
-		spoken,
-		outcome.target,
-		item.personId,
-		outcome.audioId,
-	)
 	const next = nextDueAt(item, now)
 	if (!completeSchedule(item.id, leaseOwner, now, next))
 		logger.warn(`🔔 scheduled item "${item.name}" completion not persisted`, {
@@ -301,6 +378,49 @@ const deliverScheduled = async (
 	logger.info(
 		`🔔 scheduled item "${item.name}" delivered → ${outcome.target}${next ? ` (next ${next})` : ""}`,
 		{ scheduleId: item.id, domiaKey: domia.domiaKey, converse },
+	)
+	for (const listener of deliveredListeners)
+		try {
+			listener({
+				domia,
+				item,
+				target: outcome.target,
+				satelliteId: target?.kind === "satellite" ? target.satelliteId : null,
+			})
+		} catch (err) {
+			logger.warn("🔔 schedule delivered listener failed", {
+				scheduleId: item.id,
+				err,
+			})
+		}
+	return "ok"
+}
+
+const settleThrownDelivery = (
+	domia: DomiaType,
+	settings: SelectModuleSettingsType,
+	item: ScheduleItemType,
+	err: unknown,
+): ProactiveGateReasonType => {
+	const now = new Date()
+	const row = getScheduleById(domia.id, item.id)
+	const fired =
+		row !== undefined &&
+		reconcileClaimed(row, settings, now).kind === "already-fired"
+	if (!fired) {
+		failAttempt(item, settings, "no-delivery")
+		return "no-delivery"
+	}
+	completeSchedule(
+		item.id,
+		leaseOwner,
+		now,
+		nextDueAt(item, now),
+		err instanceof Error ? err.message : String(err),
+	)
+	logger.warn(
+		`🔔 scheduled item "${item.name}" already announced before the failure — completed without retry`,
+		{ scheduleId: item.id, domiaKey: domia.domiaKey },
 	)
 	return "ok"
 }
@@ -325,8 +445,40 @@ const runSchedule = async (
 			handle.lastOutcome = `${item.name}: lease-lost`
 			continue
 		}
+		const now = new Date()
+		const verdict = reconcileClaimed(item, settings, now)
+		if (verdict.kind === "already-fired") {
+			completeSchedule(item.id, leaseOwner, now, nextDueAt(item, now))
+			logger.info(
+				`🔔 scheduled item "${item.name}" already announced — completed without repeating`,
+				{ scheduleId: item.id, domiaKey: domia.domiaKey },
+			)
+			handle.lastOutcome = `${item.name}: already-fired`
+			continue
+		}
+		if (verdict.kind === "missed") {
+			completeSchedule(
+				item.id,
+				leaseOwner,
+				now,
+				nextDueAt(item, now),
+				PROACTIVE_MISSED_ERROR,
+			)
+			logger.warn(
+				`🔔 scheduled item "${item.name}" missed — overdue past the critical window`,
+				{ scheduleId: item.id, domiaKey: domia.domiaKey, dueAt: item.dueAt },
+			)
+			handle.lastOutcome = `${item.name}: missed`
+			continue
+		}
 		try {
-			const outcome = await deliverScheduled(domia, settings, item, handle)
+			const outcome = await deliverScheduled(
+				domia,
+				settings,
+				item,
+				handle,
+				verdict.late,
+			)
 			handle.lastOutcome = `${item.name}: ${outcome}`
 		} catch (err) {
 			logger.warn("🔔 proactive delivery threw", {
@@ -334,8 +486,8 @@ const runSchedule = async (
 				domiaKey: domia.domiaKey,
 				err,
 			})
-			failAttempt(item, settings, "no-delivery")
-			handle.lastOutcome = `${item.name}: no-delivery`
+			const settled = settleThrownDelivery(domia, settings, item, err)
+			handle.lastOutcome = `${item.name}: ${settled}`
 		}
 	}
 }
@@ -375,6 +527,15 @@ const runIdleNudge = async (
 	const text = idleNudgeText(domia.characterProfile?.language)
 	await chimeIfLocal(domia, settings, target)
 	const outcome = await speakAndListen(domia, text, target)
+	await persistProactiveAnnouncement(
+		domia,
+		PROACTIVE_NUDGE_BROADCAST_ID,
+		text,
+		outcome.target,
+		outcome.delivered,
+		null,
+		outcome.audioId,
+	)
 	if (!outcome.delivered) {
 		handle.lastOutcome = `nudge: ${outcome.reason ?? "no-delivery"}`
 		logger.info(`🔔 idle nudge not delivered (${outcome.reason ?? "none"})`, {
@@ -385,14 +546,6 @@ const runIdleNudge = async (
 	handle.nudgedForActivityAt = last.at
 	handle.lastNudgeAt = now
 	handle.lastOutcome = `nudge: ${outcome.target}`
-	await persistProactiveAnnouncement(
-		domia,
-		PROACTIVE_NUDGE_BROADCAST_ID,
-		text,
-		outcome.target,
-		null,
-		outcome.audioId,
-	)
 	logger.info(
 		`🔔 idle nudge delivered → ${outcome.target} after ${Math.round((decision.idleForMs ?? 0) / 1000)}s idle`,
 		{ domiaKey: domia.domiaKey, listening: outcome.listening },
@@ -406,7 +559,7 @@ const tick = async (handle: ProactiveEngineHandleType): Promise<void> => {
 	try {
 		const domia = await safeOwnDomia(handle.domiaKey, "proactivity tick")
 		const settings = domia?.moduleSettings
-		if (!domia || !settings?.proactivityEngine) return
+		if (!domia || !settings) return
 		const nextTickMs = Math.max(1_000, settings.proactiveTickMs)
 		if (nextTickMs !== handle.tickMs) {
 			clearInterval(handle.timer)
@@ -422,9 +575,11 @@ const tick = async (handle: ProactiveEngineHandleType): Promise<void> => {
 			{ traceId: ensureTraceId(), originDomiaKey: domia.domiaKey },
 			async () => {
 				await runSchedule(domia, settings, handle)
-				await runIdleNudge(domia, settings, handle)
+				if (settings.proactivityEngine)
+					await runIdleNudge(domia, settings, handle)
 			},
 		)
+		armNextWake(handle)
 	} catch (err) {
 		logger.warn("proactivity tick failed", { domiaKey: handle.domiaKey, err })
 	} finally {
@@ -435,12 +590,7 @@ const tick = async (handle: ProactiveEngineHandleType): Promise<void> => {
 export const startProactivity = (domia: DomiaType): boolean => {
 	stopProactivity(domia.domiaKey)
 	const settings = domia.moduleSettings
-	if (!settings?.proactivityEngine) {
-		logger.info("🔔 proactivity disabled — dormant", {
-			domiaKey: domia.domiaKey,
-		})
-		return false
-	}
+	if (!settings) return false
 	ensureActivityListener()
 	const tickMs = Math.max(1_000, settings.proactiveTickMs)
 	const lastNudge = lastProactiveAnnouncementAt(
@@ -452,6 +602,8 @@ export const startProactivity = (domia: DomiaType): boolean => {
 		domiaKey: domia.domiaKey,
 		domiaId: domia.id,
 		timer: setInterval(() => void tick(handle), tickMs),
+		wake: null,
+		wakeAt: null,
 		tickMs,
 		inFlight: false,
 		cancelled: false,
@@ -462,12 +614,40 @@ export const startProactivity = (domia: DomiaType): boolean => {
 	}
 	handle.timer.unref()
 	engines.set(domia.domiaKey, handle)
-	logger.info("🔔 proactivity armed", {
-		domiaKey: domia.domiaKey,
-		tickMs,
-		idleNudge: settings.proactiveIdleNudgeEnabled,
-	})
-	return true
+	armNextWake(handle)
+	logger.info(
+		settings.proactivityEngine
+			? "🔔 proactivity armed"
+			: "🔔 proactivity schedule armed — initiative off",
+		{
+			domiaKey: domia.domiaKey,
+			tickMs,
+			idleNudge:
+				settings.proactivityEngine && settings.proactiveIdleNudgeEnabled,
+		},
+	)
+	return settings.proactivityEngine
+}
+
+const armNextWake = (handle: ProactiveEngineHandleType): void => {
+	if (handle.cancelled) return
+	const next = nextPendingDueAt(handle.domiaId)
+	if (next !== null) wakeScheduleAt(handle.domiaKey, next)
+}
+
+export const wakeScheduleAt = (domiaKey: string, atMs: number): void => {
+	const handle = engines.get(domiaKey)
+	if (!handle) return
+	if (handle.wakeAt !== null && handle.wakeAt <= atMs) return
+	if (handle.wake) clearTimeout(handle.wake)
+	const delay = Math.min(Math.max(0, atMs - Date.now()), PROACTIVE_WAKE_MAX_MS)
+	handle.wakeAt = atMs
+	handle.wake = setTimeout(() => {
+		handle.wake = null
+		handle.wakeAt = null
+		void tick(handle)
+	}, delay)
+	handle.wake.unref()
 }
 
 export const stopProactivity = (domiaKey: string): void => {
@@ -475,6 +655,7 @@ export const stopProactivity = (domiaKey: string): void => {
 	if (!handle) return
 	handle.cancelled = true
 	clearInterval(handle.timer)
+	if (handle.wake) clearTimeout(handle.wake)
 	engines.delete(domiaKey)
 	if (engines.size === 0 && activityListener) {
 		activityListener()

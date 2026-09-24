@@ -24,6 +24,8 @@ export const baseSkillProvider = (
 		description: faker.lorem.sentence(),
 		config: null,
 		descriptor: null,
+		serverDescriptor: null,
+		serverDescriptorHash: null,
 		auth: null,
 		toolsCache: null,
 		toolWhitelist: null,

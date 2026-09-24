@@ -32,8 +32,9 @@ import {
 	summarizeConfirmAction,
 } from "@/modules/agent"
 
-import { skillsEnabled } from "./skill-routing"
+import { hasSkillConnections } from "./skill-routing"
 import { getInteractionRuntime } from "./interaction-runtime"
+import { originOfInteraction } from "./origin-capabilities"
 import {
 	lastActedEntity,
 	setClarifiedEntity,
@@ -169,7 +170,11 @@ const executeMatch = async (
 		trace = {
 			kind: "result",
 			tool: match.namespacedName,
-			status: ok ? "ok" : "failed",
+			status: ok
+				? "ok"
+				: res.status === "timeout" || res.status === "cancelled"
+					? res.status
+					: "failed",
 			durationMs: Date.now() - toolStart,
 			summaryForLlm: res.text,
 			args: match.args,
@@ -211,9 +216,13 @@ export const attemptFastPathRoute = async (
 	originDomiaKey: string,
 ): Promise<boolean> => {
 	const { domia } = ctx
-	if (!skillsEnabled(ctx)) return false
+	if (!hasSkillConnections(domia)) return false
 	const effectiveTranscript = await resolveAnaphora(domia, transcript)
-	const verdict = matchFastPath(domia, effectiveTranscript)
+	const verdict = matchFastPath(
+		domia,
+		effectiveTranscript,
+		originOfInteraction(ctx, interactionId),
+	)
 	if (verdict.kind === "miss") {
 		if (verdict.reason === "no_match") {
 			const bare = matchBareEntity(domia, effectiveTranscript)

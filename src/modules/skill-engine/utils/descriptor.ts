@@ -16,7 +16,10 @@ import { domiaSkillDescriptorSchema } from "../schemas"
 import { resolveSpecializationByKind } from "../specializations"
 import type { ResolvedSkillDescriptorType } from "../types"
 
-const cache = new Map<string, ResolvedSkillDescriptorType>()
+const cache = new Map<
+	string,
+	{ key: string; resolved: ResolvedSkillDescriptorType }
+>()
 const warned = new Set<string>()
 
 const mergeAliases = (
@@ -57,63 +60,106 @@ const mergeArgNormalize = (
 	return out
 }
 
-const parseDescriptor = (
+const parseDescriptorValue = (
 	provider: SelectSkillProviderType,
+	value: DomiaSkillDescriptorType | null | undefined,
+	origin: "db" | "server",
 ): DomiaSkillDescriptorType | null => {
-	if (!provider.descriptor) return null
-	const result = domiaSkillDescriptorSchema.safeParse(provider.descriptor)
+	if (!value) return null
+	const result = domiaSkillDescriptorSchema.safeParse(value)
 	if (result.success) return result.data
-	if (!warned.has(provider.id)) {
-		warned.add(provider.id)
+	const warnKey = `${provider.id}|${origin}`
+	if (!warned.has(warnKey)) {
+		warned.add(warnKey)
 		skillEngineLogger.warn("invalid skill descriptor — ignoring", {
 			provider: provider.name,
+			origin,
 			issues: result.error.issues.map((i) => i.message),
 		})
 	}
 	return null
 }
 
+const parseDescriptor = (
+	provider: SelectSkillProviderType,
+): DomiaSkillDescriptorType | null =>
+	parseDescriptorValue(provider, provider.descriptor, "db")
+
+const parseServerDescriptor = (
+	provider: SelectSkillProviderType,
+): DomiaSkillDescriptorType | null =>
+	parseDescriptorValue(provider, provider.serverDescriptor, "server")
+
 export const resolveDescriptor = (
 	provider: SelectSkillProviderType,
 	language: string | null,
 ): ResolvedSkillDescriptorType => {
-	const cacheKey = `${provider.id}|${provider.updatedAt}|${provider.lastSyncAt ?? ""}|${language ?? ""}`
-	const cached = cache.get(cacheKey)
-	if (cached) return cached
+	const slot = `${provider.id}|${language ?? ""}`
+	const cacheKey = `${provider.updatedAt}|${provider.lastSyncAt ?? ""}|${provider.serverDescriptorHash ?? ""}`
+	const cached = cache.get(slot)
+	if (cached?.key === cacheKey) return cached.resolved
 
 	const descriptor = parseDescriptor(provider)
+	const server = parseServerDescriptor(provider)
 	const spec = resolveSpecializationByKind(descriptor?.kind)
 	const defaults = spec?.descriptorDefaults?.(
 		provider.toolsCache ?? [],
 		language,
+		provider,
 	)
 	const locale: SkillDescriptorLocaleType | undefined = language
-		? (descriptor?.i18n?.[language] ?? defaults?.i18n?.[language])
+		? (descriptor?.i18n?.[language] ??
+			server?.i18n?.[language] ??
+			defaults?.i18n?.[language])
 		: undefined
 
 	const dRoot = descriptor?.routing
 	const dExec = descriptor?.execution
+	const sRoot = server?.routing
+	const sExec = server?.execution
 	const fRoot = defaults?.routing
 	const fExec = defaults?.execution
 
 	const resolved: ResolvedSkillDescriptorType = {
 		kind: descriptor?.kind ?? null,
-		description: descriptor?.description ?? defaults?.description ?? null,
-		aliases: mergeAliases(fRoot?.aliases, dRoot?.aliases, locale?.aliases),
+		description:
+			descriptor?.description ??
+			server?.description ??
+			defaults?.description ??
+			null,
+		aliases: mergeAliases(
+			fRoot?.aliases,
+			sRoot?.aliases,
+			dRoot?.aliases,
+			locale?.aliases,
+		),
 		exampleUtterances: concatUnique(
 			fRoot?.exampleUtterances,
+			sRoot?.exampleUtterances,
 			dRoot?.exampleUtterances,
 			locale?.exampleUtterances,
 		),
-		keywords: concatUnique(fRoot?.keywords, dRoot?.keywords, locale?.keywords),
+		keywords: concatUnique(
+			fRoot?.keywords,
+			sRoot?.keywords,
+			dRoot?.keywords,
+			locale?.keywords,
+		),
 		coreTools: concatUnique(fExec?.coreTools, dExec?.coreTools),
+		hiddenTools: concatUnique(fExec?.hiddenTools, dExec?.hiddenTools),
 		toolPolicy: { ...fExec?.toolPolicy, ...dExec?.toolPolicy },
 		toolHints: { ...fExec?.toolHints, ...dExec?.toolHints },
 		paramAllow: { ...fExec?.paramAllow, ...dExec?.paramAllow },
 		argNormalize: mergeArgNormalize(fExec?.argNormalize, dExec?.argNormalize),
-		finalize: mergeFinalize(fExec?.finalize, dExec?.finalize, locale?.finalize),
+		finalize: mergeFinalize(
+			fExec?.finalize,
+			sExec?.finalize,
+			dExec?.finalize,
+			locale?.finalize,
+		),
 		genericWords: concatUnique(
 			fExec?.genericWords,
+			sExec?.genericWords,
 			dExec?.genericWords,
 			locale?.genericWords,
 		),
@@ -144,6 +190,6 @@ export const resolveDescriptor = (
 				DEFAULT_SKILL_SERVE_STALE_TOOLS,
 		},
 	}
-	cache.set(cacheKey, resolved)
+	cache.set(slot, { key: cacheKey, resolved })
 	return resolved
 }

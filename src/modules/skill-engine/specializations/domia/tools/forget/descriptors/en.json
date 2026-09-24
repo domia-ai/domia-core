@@ -1,0 +1,22 @@
+{
+	"keywords": [
+		"forget what",
+		"forget about",
+		"forget everything",
+		"erase what you know"
+	],
+	"exampleUtterances": [
+		"forget what I told you about my job",
+		"forget everything about coffee"
+	],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"phrases": {
+		"forgotThat": "Done, I've forgotten that.",
+		"nothingToForget": "I don't have anything remembered about {what}."
+	},
+	"confirmSummary": "forget everything about {what}"
+}

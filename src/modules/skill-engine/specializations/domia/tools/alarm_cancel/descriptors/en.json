@@ -1,0 +1,23 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cancel [(the|my)] alarm",
+				"cancel [(the|my)] alarms",
+				"(turn off|stop|remove|delete) [(the|my)] alarm"
+			]
+		}
+	],
+	"keywords": ["cancel alarm", "turn off alarm"],
+	"exampleUtterances": ["cancel the alarm", "turn off my alarm"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "cancel the alarm" },
+		{ "text": "cancel my alarm" },
+		{ "text": "turn off the alarm" }
+	]
+}

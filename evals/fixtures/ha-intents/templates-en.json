@@ -1,0 +1,4299 @@
+{
+	"meta": {
+		"source": "https://github.com/OHF-Voice/intents",
+		"commit": "f8cdbb0b",
+		"license": "CC-BY-4.0",
+		"generatedBy": "evals/gen-ha-intents.ts"
+	},
+	"language": "en",
+	"rules": {
+		"all": "(all [[of] (the|my|our)]|every [single]|each [and every])",
+		"any": "(any|some) [of <the>]",
+		"are": "<is>",
+		"are_all": "[<are>] <all>",
+		"are_any": "[<are>] <any>",
+		"clean": "(vacuum|clean)",
+		"close": "(close|shut|lower) [(up|down)]",
+		"everywhere": "(everywhere|all over|[(in|on|at|of|across|around|throughout)] (the|my|our) [(entire|whole)] (home|house|apartment|flat)|[(in|on|at|of|across|around|throughout)] (all [[of] (the|my|our)]|every [single]|each [and every]) (room|area|floor)[s])",
+		"here": "([in] here|[in] (this|the|my|our) (room|area|space))",
+		"home": "(home|house|apartment|flat)",
+		"how_is": "(how is|how's|hows)",
+		"how_many": "how many [of <the>]",
+		"in": "(in|on|at|of|across|around|throughout)",
+		"is": "(is|are) [(there|the|my|our)]",
+		"light": "(light|lights|lighting|lamp|lamps)",
+		"lockable": "[<the>] (lock|door|window|gate|garage door|shutter)[s]",
+		"media": "(music|movie|[tv] show[s]|media [player[s]]|<track>)",
+		"numeric_value_set": "(set|change|turn [(up|down)]|increase|decrease|make)",
+		"open": "(open|raise|lift) [up]",
+		"set": "(set|make|change|turn)",
+		"temp": "(temp|temperature)",
+		"the": "(the|my|our)",
+		"timer_cancel": "(cancel|stop)",
+		"timer_remove": "(remove|take)",
+		"timer_set": "(start|set|create)",
+		"track": "(song|track|item)",
+		"turn": "(turn|switch|change|bring)",
+		"what_is": "(what's|whats|what is|tell me)",
+		"where_is": "(where's|wheres|where is)",
+		"which": "(which|what) [of <the>]"
+	},
+	"lists": [
+		"brightness",
+		"brightness_level",
+		"bs_occupancy_states",
+		"bs_open_states",
+		"color",
+		"color_temperature",
+		"color_temperature_names",
+		"cover_classes",
+		"cover_states",
+		"fan_mode",
+		"fan_speed",
+		"lock_states",
+		"media_class",
+		"message",
+		"on_off_states",
+		"position",
+		"search_query",
+		"shopping_list_item",
+		"temperature",
+		"timer_command",
+		"timer_half",
+		"timer_hours",
+		"timer_minutes",
+		"timer_name",
+		"timer_seconds",
+		"todo_list_item",
+		"volume",
+		"volume_step",
+		"volume_step_down",
+		"volume_step_up",
+		"zone"
+	],
+	"blocks": [
+		{
+			"intent": "HassBroadcast",
+			"combination": "message_only",
+			"templates": ["(broadcast|announce) [everywhere] [that] {message}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelAllTimers",
+			"combination": "area_only",
+			"templates": [
+				"<timer_cancel> all [[of ](the|my)] {area} timers",
+				"<timer_cancel> all [[of ](the|my)] timers in [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelAllTimers",
+			"combination": "default",
+			"templates": ["<timer_cancel> all [[of ](the|my)] timers"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelTimer",
+			"combination": "area_only",
+			"templates": [
+				"<timer_cancel> [the|my] timer in [<the>] {area}",
+				"<timer_cancel> [the|my] {area} timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelTimer",
+			"combination": "default",
+			"templates": ["<timer_cancel> [the|my] timer"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelTimer",
+			"combination": "hours_only",
+			"templates": [
+				"<timer_cancel> [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"<timer_cancel> [the|my] timer for {timer_hours:start_hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"<timer_cancel> [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"<timer_cancel> [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelTimer",
+			"combination": "name_only",
+			"templates": [
+				"<timer_cancel> [the|my] {timer_name:name} timer",
+				"<timer_cancel> [the|my] timer (named|called|for) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassCancelTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"<timer_cancel> [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"<timer_cancel> [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateGetTemperature",
+			"combination": "area_only",
+			"templates": [
+				"(<what_is>|<how_is>) [the] [current] <temp> <in> [<the>] {area}",
+				"(<what_is>|<how_is>) [<the>] {area} [current] <temp>",
+				"how (hot|cold|warm|cool) is [it <in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateGetTemperature",
+			"combination": "area_only",
+			"templates": ["what is [the] temperature in [the] {area}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateGetTemperature",
+			"combination": "default",
+			"templates": [
+				"(<what_is>|<how_is>) [the] [current] <temp> [<here>]",
+				"how (hot|cold|warm|cool) is it [<here>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassClimateGetTemperature",
+			"combination": "default",
+			"templates": ["what is [the] <temp>", "how (hot|cold|warm|cool) is it"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassClimateGetTemperature",
+			"combination": "name_only",
+			"templates": [
+				"(<what_is>|<how_is>) [the] [current] <temp> [of] [<the>] {name}",
+				"(<what_is>|<how_is>) [<the>] {name} [current] <temp>",
+				"how (hot|cold|warm|cool) is [<the>] {name}"
+			],
+			"nameDomains": ["climate"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateGetTemperature",
+			"combination": "name_only",
+			"templates": ["what is [the] temperature of [the] {name}"],
+			"nameDomains": ["climate"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetFanMode",
+			"combination": "area_fan_mode",
+			"templates": [
+				"<set> [the] fan mode <in> [<the>] {area} to {fan_mode}",
+				"<set> [<the>] {area} fan mode to {fan_mode}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetFanMode",
+			"combination": "fan_mode_only",
+			"templates": ["<set> [the] fan mode [<here>] to {fan_mode}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassClimateSetFanMode",
+			"combination": "fan_mode_only",
+			"templates": ["set [the] fan mode to {fan_mode}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassClimateSetFanMode",
+			"combination": "floor_fan_mode",
+			"templates": [
+				"<set> [the] fan mode (of|on) [<the>] {floor} [floor] to {fan_mode}",
+				"<set> [<the>] {floor} [floor] fan mode to {fan_mode}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetFanMode",
+			"combination": "name_fan_mode",
+			"templates": [
+				"<set> [the] fan [mode] (of|on) [<the>] {name} to {fan_mode}",
+				"<set> [<the>] {name} fan [mode] to {fan_mode}",
+				"put [<the>] {name} fan [mode] (on|in) {fan_mode}"
+			],
+			"nameDomains": ["climate"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetTemperature",
+			"combination": "area_temperature",
+			"templates": [
+				"(<numeric_value_set>|adjust) [the] <temp> in [<the>] {area} to {temperature}[([ ]°)|( degree[s])]",
+				"(<numeric_value_set>|adjust) [<the>] {area} <temp> to {temperature}[([ ]°)|( degree[s])]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetTemperature",
+			"combination": "floor_temperature",
+			"templates": [
+				"(<numeric_value_set>|adjust) [the] <temp> (of|on) [<the>] {floor} [floor] to {temperature}[([ ]°)|( degree[s])]",
+				"(<numeric_value_set>|adjust) [<the>] {floor} [floor] <temp> to {temperature}[([ ]°)|( degree[s])]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetTemperature",
+			"combination": "name_temperature",
+			"templates": [
+				"(<numeric_value_set>|adjust) [the] <temp> of [<the>] {name} to {temperature}[([ ]°)|( degree[s])]",
+				"(<numeric_value_set>|adjust) [<the>] {name} [<temp>] to {temperature}[([ ]°)|( degree[s])]"
+			],
+			"nameDomains": ["climate"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassClimateSetTemperature",
+			"combination": "temperature_only",
+			"templates": [
+				"(<numeric_value_set>|adjust) [the] <temp> to {temperature}[([ ]°)|( degree[s])]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "area_hours",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] {area} timer",
+				"decrease [the|my] {area} timer by {timer_hours:hours}( |-)hour[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] timer in [<the>] {area}",
+				"decrease [the|my] timer in [<the>] {area} by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "area_hours_minutes",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {area} timer",
+				"decrease [the|my] {area} timer by {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer in [<the>] {area}",
+				"decrease [the|my] timer in [<the>] {area} by {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "area_hours_seconds",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {area} timer",
+				"decrease [the|my] {area} timer by {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer in [<the>] {area}",
+				"decrease [the|my] timer in [<the>] {area} by {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "area_minutes",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {area} timer",
+				"decrease [the|my] {area} timer by {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer in [<the>] {area}",
+				"decrease [the|my] timer in [<the>] {area} by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "area_minutes_seconds",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {area} timer",
+				"decrease [the|my] {area} timer by {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer in [<the>] {area}",
+				"decrease [the|my] timer in [<the>] {area} by {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "area_seconds",
+			"templates": [
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {area} timer",
+				"decrease [the|my] {area} timer by {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer in [<the>] {area}",
+				"decrease [the|my] timer in [<the>] {area} by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "hours_minutes",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_hours:hours} and [a] {timer_half:minutes} hour[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_hours:hours} and [a] {timer_half:minutes} hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "hours_only",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "hours_seconds",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "hours_start_hours",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"decrease [the|my] {timer_hours:start_hours}( |-)hour[s] timer by {timer_hours:hours}( |-)hour[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] timer for {timer_hours:start_hours}( |-)hour[s]",
+				"decrease [the|my] timer for {timer_hours:start_hours}( |-)hour[s] by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "hours_start_minutes",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"decrease [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer by {timer_hours:hours}( |-)hour[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]",
+				"decrease [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s] by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "hours_start_seconds",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"decrease [the|my] {timer_seconds:start_seconds}( |-)second[s] timer by {timer_hours:hours}( |-)hour[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]",
+				"decrease [the|my] timer for {timer_seconds:start_seconds}( |-)second[s] by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_half:minutes} an hour[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_half:minutes} an hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "minutes_seconds",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_minutes:minutes} and [a] {timer_half:seconds} minute[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_minutes:minutes} and [a] {timer_half:seconds} minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "minutes_start_hours",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"decrease [the|my] {timer_hours:start_hours}( |-)hour[s] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer for {timer_hours:start_hours}( |-)hour[s]",
+				"decrease [the|my] timer for {timer_hours:start_hours}( |-)hour[s] by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "minutes_start_minutes",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"decrease [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]",
+				"decrease [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s] by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "minutes_start_seconds",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"decrease [the|my] {timer_seconds:start_seconds}( |-)second[s] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]",
+				"decrease [the|my] timer for {timer_seconds:start_seconds}( |-)second[s] by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "name_hours",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] {timer_name:name} timer",
+				"decrease [the|my] {timer_name:name} timer by {timer_hours:hours}( |-)hour[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] (from|off) [the|my] timer (named|called|for) {timer_name:name}",
+				"decrease [the|my] timer (named|called|for) {timer_name:name} by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "name_hours_minutes",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {timer_name:name} timer",
+				"decrease [the|my] {timer_name:name} timer by {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer (named|called|for) {timer_name:name}",
+				"decrease [the|my] timer (named|called|for) {timer_name:name} by {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "name_hours_seconds",
+			"templates": [
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {timer_name:name} timer",
+				"decrease [the|my] {timer_name:name} timer by {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer (named|called|for) {timer_name:name}",
+				"decrease [the|my] timer (named|called|for) {timer_name:name} by {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "name_minutes",
+			"templates": [
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] {timer_name:name} timer",
+				"decrease [the|my] {timer_name:name} timer by {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_remove> {timer_minutes:minutes}( |-)minute[s] (from|off) [the|my] timer (named|called|for) {timer_name:name}",
+				"decrease [the|my] timer (named|called|for) {timer_name:name} by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "name_seconds",
+			"templates": [
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {timer_name:name} timer",
+				"decrease [the|my] {timer_name:name} timer by {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer (named|called|for) {timer_name:name}",
+				"decrease [the|my] timer (named|called|for) {timer_name:name} by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_half:seconds} a minute[s] (from|off) [the|my] timer",
+				"decrease [the|my] timer by {timer_half:seconds} a minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "seconds_start_hours",
+			"templates": [
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"decrease [the|my] {timer_hours:start_hours}( |-)hour[s] timer by {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer for {timer_hours:start_hours}( |-)hour[s]",
+				"decrease [the|my] timer for {timer_hours:start_hours}( |-)hour[s] by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "seconds_start_minutes",
+			"templates": [
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"decrease [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer by {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]",
+				"decrease [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s] by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassDecreaseTimer",
+			"combination": "seconds_start_seconds",
+			"templates": [
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"decrease [the|my] {timer_seconds:start_seconds}( |-)second[s] timer by {timer_seconds:seconds}( |-)second[s]",
+				"<timer_remove> {timer_seconds:seconds}( |-)second[s] (from|off) [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]",
+				"decrease [the|my] timer for {timer_seconds:start_seconds}( |-)second[s] by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassFanSetSpeed",
+			"combination": "area_only",
+			"templates": [
+				"[<set>] [<the>] {area} fan[s] [speed] [to] {fan_speed:percentage}[%| percent]",
+				"[<set>] [the] speed [of] [<the>] {area} fan[s] [to] {fan_speed:percentage}[%| percent]",
+				"[<set>] [the] speed [of] fan[s] (in|on) [<the>] {area} [to] {fan_speed:percentage}[%| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassFanSetSpeed",
+			"combination": "default",
+			"templates": [
+				"[<set>] fan[s] [speed] [<here>] [to] {fan_speed:percentage}[%| percent]",
+				"[<set>] [the] speed [of [the]] fan[s] [<here>] [to] {fan_speed:percentage}[%| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassFanSetSpeed",
+			"combination": "default",
+			"templates": ["set fan[s] [speed] to {fan_speed:percentage}[ percent]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassFanSetSpeed",
+			"combination": "floor_only",
+			"templates": [
+				"[<set>] [<the>] {floor} [floor] fan[s] [speed] [to] {fan_speed:percentage}[%| percent]",
+				"[<set>] [the] speed [of] [<the>] {floor} [floor] fan[s] [to] {fan_speed:percentage}[%| percent]",
+				"[<set>] [the] speed [of] fan[s] (in|on) [<the>] {floor} [floor] [to] {fan_speed:percentage}[%| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassFanSetSpeed",
+			"combination": "name_only",
+			"templates": [
+				"[<set>] [<the>] {name} [speed] [to] {fan_speed:percentage}[%| percent]",
+				"[<set>] [the] speed [of] [<the>] {name} [to] {fan_speed:percentage}[%| percent]"
+			],
+			"nameDomains": ["fan"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassFanSetSpeed",
+			"combination": "name_only",
+			"templates": [
+				"set [the] {name} [speed] to {fan_speed:percentage}[ percent]"
+			],
+			"nameDomains": ["fan"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetCurrentDate",
+			"combination": "default",
+			"templates": [
+				"<what_is> (todays|today's|the current) date",
+				"<what_is> the date [today]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetCurrentTime",
+			"combination": "default",
+			"templates": [
+				"<what_is> the [current] time",
+				"what time is it [[right] now]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state",
+			"templates": [
+				"<are_any> {cover_classes:device_class} {cover_states:state}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state",
+			"templates": [
+				"<are_all> {cover_classes:device_class} {cover_states:state}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state",
+			"templates": [
+				"<which> {cover_classes:device_class} <is> {cover_states:state}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state",
+			"templates": [
+				"<how_many> {cover_classes:device_class} <is> {cover_states:state}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_area",
+			"templates": [
+				"<are_any> {area} {cover_classes:device_class} {cover_states:state}",
+				"<are_any> {cover_classes:device_class} {cover_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_area",
+			"templates": [
+				"<are_all> {area} {cover_classes:device_class} {cover_states:state}",
+				"<are_all> {cover_classes:device_class} {cover_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_area",
+			"templates": [
+				"<which> {area} {cover_classes:device_class} <is> {cover_states:state}",
+				"<which> {cover_classes:device_class} <is> {cover_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_area",
+			"templates": [
+				"<how_many> {area} {cover_classes:device_class} <is> {cover_states:state}",
+				"<how_many> {cover_classes:device_class} <is> {cover_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_floor",
+			"templates": [
+				"<are_any> {floor} {cover_classes:device_class} {cover_states:state}",
+				"<are_any> {cover_classes:device_class} {cover_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_floor",
+			"templates": [
+				"<are_all> {floor} {cover_classes:device_class} {cover_states:state}",
+				"<are_all> {cover_classes:device_class} {cover_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_floor",
+			"templates": [
+				"<which> {floor} {cover_classes:device_class} <is> {cover_states:state}",
+				"<which> {cover_classes:device_class} <is> {cover_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "device_class_state_floor",
+			"templates": [
+				"<how_many> {floor} {cover_classes:device_class} <is> {cover_states:state}",
+				"<how_many> {cover_classes:device_class} <is> {cover_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_any> <light> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_all> <light> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<which> <light> <is> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<how_many> <light> <is> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_any> fan[s] {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_all> fan[s] {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<which> fan[s] <is> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<how_many> fan[s] <is> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_any> switch[es] {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_all> switch[es] {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<which> switch[es] <is> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<how_many> switch[es] <is> {on_off_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_any> <lockable> {lock_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<are_all> <lockable> {lock_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<which> <lockable> <is> {lock_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["<how_many> <lockable> <is> {lock_states:state}"],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": [
+				"is (anyone|anybody|someone|somebody) [<in>] [<the>] {zone:state}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "person",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["is (everyone|everybody) [<in>] [<the>] {zone:state}"],
+			"nameDomains": null,
+			"inferredDomain": "person",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": ["who is [<in>] [<the>] {zone:state}"],
+			"nameDomains": null,
+			"inferredDomain": "person",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state",
+			"templates": [
+				"how many (people|persons) are [<in>] [<the>] {zone:state}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "person",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_any> {area} <light> {on_off_states:state}",
+				"<are_any> <light> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_all> {area} <light> {on_off_states:state}",
+				"<are_all> <light> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<which> {area} <light> <is> {on_off_states:state}",
+				"<which> <light> <is> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<how_many> {area} <light> <is> {on_off_states:state}",
+				"<how_many> <light> <is> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_any> {area} fan[s] {on_off_states:state}",
+				"<are_any> fan[s] {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_all> {area} fan[s] {on_off_states:state}",
+				"<are_all> fan[s] {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<which> {area} fan[s] <is> {on_off_states:state}",
+				"<which> fan[s] <is> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<how_many> {area} fan[s] <is> {on_off_states:state}",
+				"<how_many> fan[s] <is> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_any> {area} switch[es] {on_off_states:state}",
+				"<are_any> switch[es] {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_all> {area} switch[es] {on_off_states:state}",
+				"<are_all> switch[es] {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<which> {area} switch[es] <is> {on_off_states:state}",
+				"<which> switch[es] <is> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<how_many> {area} switch[es] <is> {on_off_states:state}",
+				"<how_many> switch[es] <is> {on_off_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_any> {area} <lockable> {lock_states:state}",
+				"<are_any> <lockable> {lock_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<are_all> {area} <lockable> {lock_states:state}",
+				"<are_all> <lockable> {lock_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<which> {area} <lockable> <is> {lock_states:state}",
+				"<which> <lockable> <is> {lock_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_area",
+			"templates": [
+				"<how_many> {area} <lockable> <is> {lock_states:state}",
+				"<how_many> <lockable> <is> {lock_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_any> {floor} <light> {on_off_states:state}",
+				"<are_any> <light> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_all> {floor} <light> {on_off_states:state}",
+				"<are_all> <light> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<which> {floor} <light> <is> {on_off_states:state}",
+				"<which> <light> <is> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<how_many> {floor} <light> <is> {on_off_states:state}",
+				"<how_many> <light> <is> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_any> {floor} fan[s] {on_off_states:state}",
+				"<are_any> fan[s] {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_all> {floor} fan[s] {on_off_states:state}",
+				"<are_all> fan[s] {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<which> {floor} fan[s] <is> {on_off_states:state}",
+				"<which> fan[s] <is> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<how_many> {floor} fan[s] <is> {on_off_states:state}",
+				"<how_many> fan[s] <is> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_any> {floor} switch[es] {on_off_states:state}",
+				"<are_any> switch[es] {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_all> {floor} switch[es] {on_off_states:state}",
+				"<are_all> switch[es] {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<which> {floor} switch[es] <is> {on_off_states:state}",
+				"<which> switch[es] <is> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<how_many> {floor} switch[es] <is> {on_off_states:state}",
+				"<how_many> switch[es] <is> {on_off_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "switch",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_any> {floor} <lockable> {lock_states:state}",
+				"<are_any> <lockable> {lock_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<are_all> {floor} <lockable> {lock_states:state}",
+				"<are_all> <lockable> {lock_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<which> {floor} <lockable> <is> {lock_states:state}",
+				"<which> <lockable> <is> {lock_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "domain_state_floor",
+			"templates": [
+				"<how_many> {floor} <lockable> <is> {lock_states:state}",
+				"<how_many> <lockable> <is> {lock_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "lock",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_only",
+			"templates": [
+				"(do you know|tell me|<what_is>) [the [current] (state|value) of] [<the>] {name}",
+				"<how_is> [<the>] {name}"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_only",
+			"templates": [
+				"what is [the] {name}",
+				"what is the value of [the] {name}",
+				"tell me [the] {name}"
+			],
+			"nameDomains": ["sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["<is> [<the>] {name} {on_off_states:state}"],
+			"nameDomains": "on_off",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["<is> [<the>] {name} {cover_states:state}"],
+			"nameDomains": "open_closed",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["<is> [<the>] {name} {lock_states:state}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["<is> [<the>] {name} {bs_open_states:state}"],
+			"nameDomains": ["binary_sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["<is> [<the>] {name} {bs_occupancy_states:state}"],
+			"nameDomains": ["binary_sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["is [the] {name} {on_off_states:state}"],
+			"nameDomains": ["light", "switch", "fan"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["is [the] {name} {cover_states:state}"],
+			"nameDomains": ["cover", "valve"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state",
+			"templates": ["is [the] {name} {lock_states:state}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_area",
+			"templates": [
+				"<is> [<the>] {name} {cover_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_area",
+			"templates": [
+				"<is> [<the>] {name} {lock_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_area",
+			"templates": [
+				"<is> [<the>] {name} {bs_open_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": ["binary_sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_area",
+			"templates": [
+				"<is> [<the>] {name} {bs_occupancy_states:state} [<in>] [<the>] {area}"
+			],
+			"nameDomains": ["binary_sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_floor",
+			"templates": [
+				"<is> [<the>] {name} {cover_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_floor",
+			"templates": [
+				"<is> [<the>] {name} {lock_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_floor",
+			"templates": [
+				"<is> [<the>] {name} {bs_open_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": ["binary_sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_state_floor",
+			"templates": [
+				"<is> [<the>] {name} {bs_occupancy_states:state} [<in>] [<the>] {floor}"
+			],
+			"nameDomains": ["binary_sensor"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_where",
+			"templates": [
+				"<where_is> [<the>] {name}",
+				"where can I find [<the>] {name}"
+			],
+			"nameDomains": ["person"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetState",
+			"combination": "name_zone",
+			"templates": ["<is> [<the>] {name} [<in>] [<the>] {zone:state}"],
+			"nameDomains": ["person"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetWeather",
+			"combination": "default",
+			"templates": ["<what_is> [the] weather [like]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassGetWeather",
+			"combination": "name_only",
+			"templates": [
+				"<what_is> [the] weather [like] (for|in|at) [<the>] {name}",
+				"<what_is> [the] weather (for|in|at) [<the>] {name} [like]",
+				"<what_is> [<the>] {name} weather [like]"
+			],
+			"nameDomains": ["weather"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "area_hours",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] {area} timer",
+				"increase [the|my] {area} timer by {timer_hours:hours}( |-)hour[s]",
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] timer in [<the>] {area}",
+				"increase [the|my] timer in [<the>] {area} by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "area_minutes",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] {area} timer",
+				"increase [the|my] {area} timer by {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] timer in [<the>] {area}",
+				"increase [the|my] timer in [<the>] {area} by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "area_seconds",
+			"templates": [
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] {area} timer",
+				"increase [the|my] {area} timer by {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] timer in [<the>] {area}",
+				"increase [the|my] timer in [<the>] {area} by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "hours_minutes",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_hours:hours} and [a] {timer_half:minutes} hour[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_hours:hours} and [a] {timer_half:minutes} hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "hours_only",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "hours_start_hours",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"increase [the|my] {timer_hours:start_hours}( |-)hour[s] timer by {timer_hours:hours}( |-)hour[s]",
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] timer for {timer_hours:start_hours}( |-)hour[s]",
+				"increase [the|my] timer for {timer_hours:start_hours}( |-)hour[s] by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "hours_start_minutes",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"increase [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer by {timer_hours:hours}( |-)hour[s]",
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]",
+				"increase [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s] by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "hours_start_seconds",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"increase [the|my] {timer_seconds:start_seconds}( |-)second[s] timer by {timer_hours:hours}( |-)hour[s]",
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]",
+				"increase [the|my] timer for {timer_seconds:start_seconds}( |-)second[s] by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_half:minutes} an hour[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_half:minutes} an hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "minutes_seconds",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_minutes:minutes} and [a] {timer_half:seconds} minute[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_minutes:minutes} and [a] {timer_half:seconds} minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "minutes_start_hours",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"increase [the|my] {timer_hours:start_hours}( |-)hour[s] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] timer for {timer_hours:start_hours}( |-)hour[s]",
+				"increase [the|my] timer for {timer_hours:start_hours}( |-)hour[s] by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "minutes_start_minutes",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"increase [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]",
+				"increase [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s] by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "minutes_start_seconds",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"increase [the|my] {timer_seconds:start_seconds}( |-)second[s] timer by {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]",
+				"increase [the|my] timer for {timer_seconds:start_seconds}( |-)second[s] by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "name_hours",
+			"templates": [
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] {timer_name:name} timer",
+				"increase [the|my] {timer_name:name} timer by {timer_hours:hours}( |-)hour[s]",
+				"add {timer_hours:hours}( |-)hour[s] to [the|my] timer (named|called|for) {timer_name:name}",
+				"increase [the|my] timer (named|called|for) {timer_name:name} by {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "name_minutes",
+			"templates": [
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] {timer_name:name} timer",
+				"increase [the|my] {timer_name:name} timer by {timer_minutes:minutes}( |-)minute[s]",
+				"add {timer_minutes:minutes}( |-)minute[s] to [the|my] timer (named|called|for) {timer_name:name}",
+				"increase [the|my] timer (named|called|for) {timer_name:name} by {timer_minutes:minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "name_seconds",
+			"templates": [
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] {timer_name:name} timer",
+				"increase [the|my] {timer_name:name} timer by {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] timer (named|called|for) {timer_name:name}",
+				"increase [the|my] timer (named|called|for) {timer_name:name} by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_half:seconds} a minute[s] to [the|my] timer",
+				"increase [the|my] timer by {timer_half:seconds} a minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "seconds_start_hours",
+			"templates": [
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"increase [the|my] {timer_hours:start_hours}( |-)hour[s] timer by {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] timer for {timer_hours:start_hours}( |-)hour[s]",
+				"increase [the|my] timer for {timer_hours:start_hours}( |-)hour[s] by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "seconds_start_minutes",
+			"templates": [
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"increase [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer by {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]",
+				"increase [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s] by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassIncreaseTimer",
+			"combination": "seconds_start_seconds",
+			"templates": [
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"increase [the|my] {timer_seconds:start_seconds}( |-)second[s] timer by {timer_seconds:seconds}( |-)second[s]",
+				"add {timer_seconds:seconds}( |-)second[s] to [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]",
+				"increase [the|my] timer for {timer_seconds:start_seconds}( |-)second[s] by {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLawnMowerDock",
+			"combination": "default",
+			"templates": [
+				"(stop|cancel) mowing [[<the> ]lawn]",
+				"stop [<the>] mower",
+				"dock [<the>] [lawn] mower",
+				"return [<the>] [lawn] mower [to [the] (base|dock)]",
+				"return to [the] (base|dock)"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLawnMowerDock",
+			"combination": "name_only",
+			"templates": [
+				"(stop|dock) [<the>] {name} [mower]",
+				"return [<the>] {name} [mower] [to (base|dock)]"
+			],
+			"nameDomains": ["lawn_mower"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLawnMowerStartMowing",
+			"combination": "default",
+			"templates": ["(start mowing|mow) [[<the> ]lawn]", "start [<the>] mower"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLawnMowerStartMowing",
+			"combination": "name_only",
+			"templates": ["start [<the>] {name} [mower]"],
+			"nameDomains": ["lawn_mower"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "area_brightness",
+			"templates": [
+				"[<numeric_value_set>] [the] brightness in [<the>] {area} to {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [the] brightness of [<the>] {area} to {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [<the>] {area} brightness [to] {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [<the>] {area} [to] {brightness}[([ ]%)| percent] brightness",
+				"[<numeric_value_set>] [<the>] {area} [to] {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [(<all>|<the>)] <light> [<in>] [<the>] {area} to {brightness}[([ ]%)| percent] [brightness]",
+				"[<numeric_value_set>] [the] brightness in [<the>] {area} to [the] {brightness_level:brightness}",
+				"[<numeric_value_set>] [the] brightness of [<the>] {area} to [the] {brightness_level:brightness}",
+				"[<numeric_value_set>] [<the>] {area} brightness to [the] {brightness_level:brightness}",
+				"[<numeric_value_set>] [<the>] {area} [to] [the] {brightness_level:brightness} brightness"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "area_brightness",
+			"templates": [
+				"set [the] {area} brightness to {brightness}[ percent]",
+				"set [the] brightness in [the] {area} to {brightness}[ percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "area_color",
+			"templates": [
+				"[<set>] [[the] color of] [<the>] {area} [to] {color}",
+				"[<set>] [<the>] {area} [color] [to] {color}",
+				"[<set>] [[the] color of] [(<all>|<the>)] <light> [<in>] [<the>] {area} [to] {color}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "area_temperature",
+			"templates": [
+				"[<numeric_value_set>] [the] color temperature <in> [<the>] {area} to {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [the] color temperature <in> [<the>] {area} to {color_temperature_names:temperature}",
+				"[<numeric_value_set>] [<the>] {area} color temperature [to] {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [<the>] {area} color temperature [to] {color_temperature_names:temperature}",
+				"[<numeric_value_set>] [the] [color] temperature of [(<all>|<the>)] <light> [<in>] [<the>] {area} to {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [the] [color] temperature of [(<all>|<the>)] <light> [<in>] [<the>] {area} to {color_temperature_names:temperature}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "brightness_only",
+			"templates": [
+				"[<numeric_value_set>] [the] brightness to {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [the] brightness ([in] here;to {brightness}[([ ]%)| percent])",
+				"[<numeric_value_set>] [the] brightness to [the] {brightness_level:brightness}",
+				"[<numeric_value_set>] [the] brightness ([in] here;to [the] {brightness_level:brightness})"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "brightness_only",
+			"templates": [
+				"set [the] brightness to {brightness}[ percent]",
+				"set [the] brightness to {brightness}%"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "color_only",
+			"templates": [
+				"[<set>] [[the] color of] [(<all>|<the>)] <light> [to] {color}",
+				"[<set>] [[the] color of] [(<all>|<the>)] <light> ([in] here;[to] {color})"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "floor_brightness",
+			"templates": [
+				"[<numeric_value_set>] [<the>] {floor} [floor] brightness [to] {brightness}[([ ]%)| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "floor_brightness",
+			"templates": ["set [the] {floor} brightness to {brightness}[ percent]"],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "floor_color",
+			"templates": ["[<set>] [<the>] {floor} [floor] [color] [to] {color}"],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "floor_temperature",
+			"templates": [
+				"[<numeric_value_set>] [<the>] {floor} [floor] color temperature [to] {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [<the>] {floor} [floor] color temperature [to] {color_temperature_names:temperature}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "name_brightness",
+			"templates": [
+				"[<numeric_value_set>] [<the>] {name} brightness [to] {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [the] brightness [of] [<the>] {name} [to] {brightness}[([ ]%)| percent]",
+				"[<numeric_value_set>] [<the>] {name} [to] {brightness}[([ ]%)| percent] [brightness]",
+				"[<numeric_value_set>] [<the>] {name} brightness to [the] {brightness_level:brightness}",
+				"[<numeric_value_set>] [the] brightness of [<the>] {name} to [the] {brightness_level:brightness}",
+				"[<numeric_value_set>] [<the>] {name} [to] [the] {brightness_level:brightness} brightness"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "name_brightness",
+			"templates": [
+				"(set|change) [the] {name} brightness to {brightness}[ percent]"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "name_color",
+			"templates": [
+				"[<set>] [<the>] {name} [color] [to] {color}",
+				"[<set>] [[the] color of] [<the>] {name} to {color}"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "name_temperature",
+			"templates": [
+				"[<numeric_value_set>] [<the>] {name} [color] temperature [to] {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [<the>] {name} [color] temperature [to] {color_temperature_names:temperature}",
+				"[<numeric_value_set>] [the] [color] temperature [of] [<the>] {name} [to] {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [the] [color] temperature [of] [<the>] {name} [to] {color_temperature_names:temperature}"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassLightSet",
+			"combination": "temperature_only",
+			"templates": [
+				"[<numeric_value_set>] [the] color temperature to {color_temperature:temperature}[[ ](k|kelvin)]",
+				"[<numeric_value_set>] [the] color temperature to {color_temperature_names:temperature}",
+				"[<numeric_value_set>] [the] color temperature ([in] here;to {color_temperature:temperature}[[ ](k|kelvin)])",
+				"[<numeric_value_set>] [the] color temperature ([in] here;to {color_temperature_names:temperature})"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassListAddItem",
+			"combination": "name_item",
+			"templates": [
+				"add {todo_list_item:item} to [my|the] {name} [list]",
+				"put {todo_list_item:item} (on|in) [my|the] {name} [list]"
+			],
+			"nameDomains": ["todo"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassListCompleteItem",
+			"combination": "name_item",
+			"templates": [
+				"(check|complete) (off;{todo_list_item:item}) (from|on|in) [my|the] {name} [list]",
+				"(check|complete) {todo_list_item:item} (off|from|on|in) [my|the] {name} [list]"
+			],
+			"nameDomains": ["todo"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassListRemoveItem",
+			"combination": "name_item",
+			"templates": [
+				"(delete|remove) {todo_list_item:item} (off|from|on|in) [my|the] {name} [list]"
+			],
+			"nameDomains": ["todo"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaNext",
+			"combination": "area_only",
+			"templates": [
+				"next [track|item] [in] [<the>] {area}",
+				"(skip [(to [the] next [(song|track)]|([the] (song|track)|this [(song|track)]) )];[in] [<the>] {area})"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaNext",
+			"combination": "default",
+			"templates": [
+				"next [<track>]",
+				"skip [this] [<track>]",
+				"skip the <track>",
+				"skip to [the] next [<track>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaNext",
+			"combination": "default",
+			"templates": [
+				"next <track>",
+				"skip [this|the] <track>",
+				"skip to [the] next <track>"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaNext",
+			"combination": "name_only",
+			"templates": [
+				"next [track|item] [on|for] [<the>] {name}",
+				"(skip [(to [the] next [(song|track)]|([the] (song|track)|this [(song|track)]) )];[on] [<the>] {name})"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaPause",
+			"combination": "area_only",
+			"templates": [
+				"pause [[the|my] (music|[tv] show[s]|media [player[s]])] [in] [<the>] {area}",
+				"pause [<the>] {area} (music|[tv] show[s]|media [player[s]])"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaPause",
+			"combination": "default",
+			"templates": [
+				"pause [[<the>] <media>]",
+				"stop [playing] [[<the>] <media>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPause",
+			"combination": "default",
+			"templates": ["pause [<the>] <media>", "stop [playing] [<the>] <media>"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPause",
+			"combination": "name_only",
+			"templates": ["(pause;[<the>] {name})"],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaPlayerMute",
+			"combination": "default",
+			"templates": ["mute [[<the>] <media>] [<here>]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPlayerMute",
+			"combination": "default",
+			"templates": ["mute [<the>] <media>"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPlayerMute",
+			"combination": "name_only",
+			"templates": [
+				"mute [<the>] {name}",
+				"mute ([the] (music|media [player[s]])) on [<the>] {name}"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaPlayerUnmute",
+			"combination": "default",
+			"templates": ["unmute [[<the>] <media>] [<here>]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPlayerUnmute",
+			"combination": "default",
+			"templates": ["unmute [<the>] <media>"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPlayerUnmute",
+			"combination": "name_only",
+			"templates": [
+				"unmute [<the>] {name}",
+				"unmute ([the] (music|media [player[s]])) on [<the>] {name}"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaPrevious",
+			"combination": "area_only",
+			"templates": [
+				"previous (track|item) [in] [<the>] {area}",
+				"go back [to the (previous|last) (song|track)] [in] [<the>] {area}",
+				"(replay [the (previous|last) (song|track)] [again];[in] [<the>] {area})",
+				"(play [the] (previous|last) [(song|track) ][again];[in] [<the>] {area})"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaPrevious",
+			"combination": "default",
+			"templates": [
+				"previous <track>",
+				"go back [to the (previous|last) <track>]",
+				"replay [the (previous|last) <track>] [again]",
+				"play [the] (previous|last) [<track>] [again]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPrevious",
+			"combination": "default",
+			"templates": [
+				"previous <track>",
+				"go back to the (previous|last) <track>",
+				"replay the (previous|last) <track> [again]",
+				"play [the] (previous|last) <track> [again]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaPrevious",
+			"combination": "name_only",
+			"templates": [
+				"previous (track|item) [on|for] [<the>] {name}",
+				"(go back [to the (previous|last) (song|track)];[on] [<the>] {name})",
+				"replay [the (previous|last) (song|track)] on [<the>] {name}",
+				"[<the>] {name} (play|replay) [the] (previous|last) [(song|track)] [again]"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "area_media_class",
+			"templates": [
+				"play [the] {media_class} {search_query} in [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "area_only",
+			"templates": ["play {search_query} in [<the>] {area}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "default",
+			"templates": ["play {search_query}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "media_class_only",
+			"templates": [
+				"play [the] {media_class} {search_query}",
+				"play {search_query} {media_class}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "name_area",
+			"templates": ["play {search_query} on [<the>] {name} in [<the>] {area}"],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "name_area_media_class",
+			"templates": [
+				"play [the] {media_class} {search_query} on [<the>] {name} in [<the>] {area}"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "name_media_class",
+			"templates": [
+				"play [the] {media_class} {search_query} on [<the>] {name}"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaSearchAndPlay",
+			"combination": "name_only",
+			"templates": ["play {search_query} on [<the>] {name}"],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaUnpause",
+			"combination": "area_only",
+			"templates": [
+				"(unpause|resume) [[the|my] (music|[tv] show[s]|media [player[s]])] [in] [<the>] {area}",
+				"(unpause|resume) [<the>] {area} (music|[tv] show[s]|media [player[s]])"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassMediaUnpause",
+			"combination": "default",
+			"templates": ["(unpause|resume) [[<the>] <media>]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaUnpause",
+			"combination": "default",
+			"templates": ["(unpause|resume) [<the>] <media>"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassMediaUnpause",
+			"combination": "name_only",
+			"templates": ["((unpause|resume);[<the>] {name})"],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassNevermind",
+			"combination": "default",
+			"templates": ["nevermind", "never mind"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassPauseTimer",
+			"combination": "area_only",
+			"templates": [
+				"pause [the|my] timer in [<the>] {area}",
+				"pause [the|my] {area} timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassPauseTimer",
+			"combination": "default",
+			"templates": ["pause [the|my] timer"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassPauseTimer",
+			"combination": "hours_only",
+			"templates": [
+				"pause [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"pause [the|my] timer for {timer_hours:start_hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassPauseTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"pause [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"pause [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassPauseTimer",
+			"combination": "name_only",
+			"templates": [
+				"pause [the|my] {timer_name:name} timer",
+				"pause [the|my] timer (named|called|for) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassPauseTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"pause [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"pause [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassRespond",
+			"combination": "default",
+			"templates": ["(hello|hi) [home assistant]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassRespond",
+			"combination": "default",
+			"templates": ["are you always (listening|recording)"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassRespond",
+			"combination": "default",
+			"templates": ["where does (my|the) data go [to]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassRespond",
+			"combination": "default",
+			"templates": ["what can I (say|ask)"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassRespond",
+			"combination": "default",
+			"templates": ["who (made|created) you"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetPosition",
+			"combination": "area_device_class",
+			"templates": [
+				"(<numeric_value_set>|<open>|<close>) [<the>] {cover_classes:device_class} [position] (to {position}[([ ]%)| percent];<in> [<the>] {area})",
+				"(<numeric_value_set>|<open>|<close>) [<the>] {area} {cover_classes:device_class} [position] to {position}[([ ]%)| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetPosition",
+			"combination": "device_class",
+			"templates": [
+				"(<numeric_value_set>) [<the>] {cover_classes:device_class} [position] [<here>] to {position}[([ ]%)| percent]",
+				"(<open>|<close>) [<the>] {cover_classes:device_class} [<here>] to {position}[([ ]%)| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassSetPosition",
+			"combination": "name_only",
+			"templates": [
+				"(<numeric_value_set>|<open>|<close>) [<the>] {name} [position] to {position}[([ ]%)| percent]"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetPosition",
+			"combination": "name_only",
+			"templates": [
+				"set [the] {name} [position] to {position}[ percent]",
+				"open [the] {name} to {position}[ percent]",
+				"close [the] {name} to {position}[ percent]"
+			],
+			"nameDomains": ["cover", "valve"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetVolume",
+			"combination": "area_only",
+			"templates": [
+				"<numeric_value_set> [<the>] {area} volume to {volume:volume_level}[([ ]%)| percent]",
+				"turn [<the>] {area} [volume] (up|down) to {volume:volume_level}[([ ]%)| percent]",
+				"turn [volume] (up|down) to {volume:volume_level}[([ ]%)| percent] [in] [<the>] {area}",
+				"(<numeric_value_set> the volume to {volume:volume_level}[([ ]%)| percent];[in] [<the>] {area})",
+				"<numeric_value_set> the volume [in] [<the>] {area} to {volume:volume_level}[([ ]%)| percent]",
+				"(turn (the volume;(up|down)) to {volume:volume_level}[([ ]%)| percent];[in] [<the>] {area})"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetVolume",
+			"combination": "default",
+			"templates": [
+				"<numeric_value_set> volume to {volume:volume_level}[([ ]%)| percent]",
+				"turn volume (up|down) to {volume:volume_level}[([ ]%)| percent]",
+				"<numeric_value_set> the volume to {volume:volume_level}[([ ]%)| percent]",
+				"turn (the volume;(up|down)) to {volume:volume_level}[([ ]%)| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassSetVolume",
+			"combination": "name_only",
+			"templates": [
+				"<numeric_value_set> [<the>] {name} volume to {volume:volume_level}[([ ]%)| percent]",
+				"turn [<the>] {name} [volume] (up|down) to {volume:volume_level}[([ ]%)| percent]",
+				"(<numeric_value_set> the volume to {volume:volume_level}[([ ]%)| percent];[on] [<the>] {name})",
+				"(turn (the volume;(up|down)) to {volume:volume_level}[([ ]%)| percent];[on] [<the>] {name})"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetVolumeRelative",
+			"combination": "area_only",
+			"templates": [
+				"([<the>] {area};volume {volume_step})",
+				"[turn [the]] volume {volume_step} (in|on) [<the>] {area}",
+				"turn {volume_step} [the] volume (in|on) [<the>] {area}",
+				"{volume_step} [the] volume (in|on) [<the>] {area}",
+				"[turn] {volume_step} [<the>] {area} volume",
+				"([<the>] {area};volume up) [by] {volume_step_up:volume_step}[%| percent]",
+				"[turn [the]] volume up ((in|on) [<the>] {area};[by] {volume_step_up:volume_step}[%| percent])",
+				"increase [the] volume ((in|on) [<the>] {area};[by] {volume_step_up:volume_step}[%| percent])",
+				"turn up [<the>] {area} volume [by] {volume_step_up:volume_step}[%| percent]",
+				"increase [<the>] {area} volume [by] {volume_step_up:volume_step}[%| percent]",
+				"([<the>] {area};volume down) [by] {volume_step_down:volume_step}[%| percent]",
+				"[turn [the]] volume down ((in|on) [<the>] {area};[by] {volume_step_down:volume_step}[%| percent])",
+				"decrease [the] volume ((in|on) [<the>] {area};[by] {volume_step_down:volume_step}[%| percent])",
+				"turn down [<the>] {area} volume [by] {volume_step_down:volume_step}[%| percent]",
+				"decrease [<the>] {area} volume [by] {volume_step_down:volume_step}[%| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetVolumeRelative",
+			"combination": "default",
+			"templates": [
+				"[turn [the]] volume {volume_step}",
+				"turn {volume_step} [the] volume",
+				"{volume_step} [the] volume",
+				"[turn [the]] volume up [by] {volume_step_up:volume_step}[%| percent]",
+				"turn up [the] volume [by] {volume_step_up:volume_step}[%| percent]",
+				"increase [the] volume [by] {volume_step_up:volume_step}[%| percent]",
+				"[turn [the]] volume down [by] {volume_step_down:volume_step}[%| percent]",
+				"turn down [the] volume [by] {volume_step_down:volume_step}[%| percent]",
+				"decrease [the] volume [by] {volume_step_down:volume_step}[%| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassSetVolumeRelative",
+			"combination": "floor_only",
+			"templates": [
+				"([<the>] {floor} [floor];volume {volume_step})",
+				"[turn [the]] volume {volume_step} (in|on) [<the>] {floor} [floor]",
+				"turn {volume_step} [the] volume (in|on) [<the>] {floor} [floor]",
+				"{volume_step} [the] volume (in|on) [<the>] {floor} [floor]",
+				"[turn] {volume_step} [<the>] {floor} [floor] volume",
+				"([<the>] {floor} [floor];volume up) [by] {volume_step_up:volume_step}[%| percent]",
+				"[turn [the]] volume up ((in|on) [<the>] {floor} [floor];[by] {volume_step_up:volume_step}[%| percent])",
+				"increase [the] volume ((in|on) [<the>] {floor} [floor];[by] {volume_step_up:volume_step}[%| percent])",
+				"turn up [<the>] {floor} [floor] volume [by] {volume_step_up:volume_step}[%| percent]",
+				"increase [<the>] {floor} [floor] volume [by] {volume_step_up:volume_step}[%| percent]",
+				"([<the>] {floor} [floor];volume down) [by] {volume_step_down:volume_step}[%| percent]",
+				"[turn [the]] volume down ((in|on) [<the>] {floor} [floor];[by] {volume_step_down:volume_step}[%| percent])",
+				"decrease [the] volume ((in|on) [<the>] {floor} [floor];[by] {volume_step_down:volume_step}[%| percent])",
+				"turn down [<the>] {floor} [floor] volume [by] {volume_step_down:volume_step}[%| percent]",
+				"decrease [<the>] {floor} [floor] volume [by] {volume_step_down:volume_step}[%| percent]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassSetVolumeRelative",
+			"combination": "name_only",
+			"templates": [
+				"([<the>] {name};volume {volume_step})",
+				"{volume_step} [the] volume [on|for] [<the>] {name}",
+				"{volume_step} [<the>] {name} volume",
+				"turn {volume_step} [<the>] {name} volume",
+				"([<the>] {name};volume up) [by] {volume_step_up:volume_step}[%| percent]",
+				"increase [the] volume ([on|for] [<the>] {name};[by] {volume_step_up:volume_step}[%| percent])",
+				"increase [<the>] {name} volume [by] {volume_step_up:volume_step}[%| percent]",
+				"turn up [<the>] {name} volume [by] {volume_step_up:volume_step}[%| percent]",
+				"([<the>] {name};volume down) [by] {volume_step_down:volume_step}[%| percent]",
+				"decrease [the] volume ([on|for] [<the>] {name};[by] {volume_step_down:volume_step}[%| percent])",
+				"decrease [<the>] {name} volume [by] {volume_step_down:volume_step}[%| percent]",
+				"turn down [<the>] {name} volume [by] {volume_step_down:volume_step}[%| percent]"
+			],
+			"nameDomains": ["media_player"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassShoppingListAddItem",
+			"combination": "item_only",
+			"templates": [
+				"add {shopping_list_item:item} to [my|the] [shopping] list",
+				"put {shopping_list_item:item} (on|in) [my|the] [shopping] list"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassShoppingListCompleteItem",
+			"combination": "item_only",
+			"templates": [
+				"(check|complete|delete|remove) (off;{shopping_list_item:item}) (from|on|in) [my|the] [shopping] list",
+				"(check|complete|delete|remove) {shopping_list_item:item} (off|from|on|in) [my|the] [shopping] list"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_hours",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_hours:hours}( |-)hour[s]",
+				"(in|after) {timer_hours:hours}( |-)hour[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_hours_minutes",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"(in|after) {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_hours_minutes_seconds",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"(in|after) {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_hours_seconds",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"(in|after) {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_minutes",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_minutes:minutes}( |-)minute[s]",
+				"(in|after) {timer_minutes:minutes}( |-)minute[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_minutes_seconds",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"(in|after) {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "command_seconds",
+			"templates": [
+				"{timer_command:conversation_command} (in|after) {timer_seconds:seconds}( |-)second[s]",
+				"(in|after) {timer_seconds:seconds}( |-)second[s] {timer_command:conversation_command}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "hours_minutes",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] timer",
+				"{timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] timer",
+				"timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours} and [a] {timer_half:minutes} hour[s]",
+				"timer for {timer_hours:hours} and [a] {timer_half:minutes} hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "hours_minutes_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer",
+				"{timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer",
+				"timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "hours_only",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s]",
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] timer",
+				"{timer_hours:hours}( |-)hour[s] timer",
+				"timer for {timer_hours:hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "hours_only",
+			"templates": [
+				"set a timer for {timer_hours:hours} hour[s]",
+				"timer for {timer_hours:hours} hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "hours_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] timer",
+				"{timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] timer",
+				"timer for {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_set> [a|an|the|my] {timer_minutes:minutes}( |-)minute[s] timer",
+				"{timer_minutes:minutes}( |-)minute[s] timer",
+				"timer for {timer_minutes:minutes}( |-)minute[s]",
+				"<timer_set> [a|an|the|my] timer for {timer_half:minutes} an hour[s]",
+				"timer for {timer_half:minutes} an hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"set a timer for {timer_minutes:minutes} minute[s]",
+				"timer for {timer_minutes:minutes} minute[s]",
+				"set a timer for {timer_half:minutes} an hour",
+				"timer for {timer_half:minutes} an hour"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "minutes_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_set> [a|an|the|my] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer",
+				"{timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer",
+				"timer for {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"<timer_set> [a|an|the|my] timer for {timer_minutes:minutes} and [a] {timer_half:seconds} minute[s]",
+				"timer for {timer_minutes:minutes} and [a] {timer_half:seconds} minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_hours",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_hours:hours}( |-)hour[s]",
+				"{timer_hours:hours}( |-)hour[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_hours:hours}( |-)hour[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_hours_minutes",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]",
+				"{timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_hours_minutes_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"{timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_hours_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"{timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_hours:hours}( |-)hour[s] [and] {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_minutes",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_minutes:minutes}( |-)minute[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_minutes:minutes}( |-)minute[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_minutes:minutes}( |-)minute[s]",
+				"{timer_minutes:minutes}( |-)minute[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_minutes:minutes}( |-)minute[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_minutes_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]",
+				"{timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "name_seconds",
+			"templates": [
+				"<timer_set> [a|an|the|my] {timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer for {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}",
+				"<timer_set> [a|an|the|my] timer (named|called) {timer_name:name} for {timer_seconds:seconds}( |-)second[s]",
+				"{timer_seconds:seconds}( |-)second[s] timer (named|called|for) {timer_name:name}",
+				"timer for {timer_seconds:seconds}( |-)second[s] (named|called) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"<timer_set> [a|an|the|my] timer for {timer_seconds:seconds}( |-)second[s]",
+				"<timer_set> [a|an|the|my] {timer_seconds:seconds}( |-)second[s] timer",
+				"{timer_seconds:seconds}( |-)second[s] timer",
+				"timer for {timer_seconds:seconds}( |-)second[s]",
+				"<timer_set> [a|an|the|my] timer for {timer_half:seconds} a minute[s]",
+				"timer for {timer_half:seconds} a minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassStartTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"set a timer for {timer_seconds:seconds} second[s]",
+				"timer for {timer_seconds:seconds} second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTimerStatus",
+			"combination": "area_only",
+			"templates": [
+				"[how much] time [is] left on [the|my] timer[s] in [<the>] {area}",
+				"how long [is] left on [the|my] timer[s] in [<the>] {area}",
+				"status of [the|my] timer[s] in [<the>] {area}",
+				"[how much] time [is] left on [the|my] {area} timer[s]",
+				"how long [is] left on [the|my] {area} timer[s]",
+				"status of [the|my] {area} timer[s]",
+				"{area} timer[s] status"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTimerStatus",
+			"combination": "default",
+			"templates": [
+				"timer[s] status",
+				"[how much] time [is] left on [the|my] timer[s]",
+				"how long [is] left on [the|my] timer[s]",
+				"status of [the|my] timer[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTimerStatus",
+			"combination": "hours_only",
+			"templates": [
+				"{timer_hours:start_hours}( |-)hour[s] timer status",
+				"[how much] time [is] left on [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"status of [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"how long [is] left on [the|my] {timer_hours:start_hours}( |-)hour[s] timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTimerStatus",
+			"combination": "minutes_only",
+			"templates": [
+				"{timer_minutes:start_minutes}( |-)minute[s] timer status",
+				"[how much] time [is] left on [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"status of [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"how long [is] left on [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTimerStatus",
+			"combination": "name_only",
+			"templates": [
+				"{timer_name:name} timer status",
+				"[how much] time [is] left on [the|my] {timer_name:name} timer",
+				"status of [the|my] {timer_name:name} timer[s]",
+				"how long [is] left on [the|my] {timer_name:name} timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTimerStatus",
+			"combination": "seconds_only",
+			"templates": [
+				"{timer_seconds:start_seconds}( |-)second[s] timer status",
+				"[how much] time [is] left on [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"status of [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"how long [is] left on [the|my] {timer_seconds:start_seconds}( |-)second[s] timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "area_device_class_cover",
+			"templates": [
+				"<close> [<the>] {cover_classes:device_class} <in> [<the>] {area}",
+				"<close> [<the>] {area} {cover_classes:device_class}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "area_domain",
+			"templates": [
+				"[<the>] {area} <light> (off|out)",
+				"<light> (off|out) [<in>] [<the>] {area}",
+				"<turn> (off|out) [<all>] [<the>] {area} <light>",
+				"<turn> (off|out) [(<all>|<the>)] <light> <in> [<the>] {area}",
+				"<turn> [<all>] [<the>] {area} <light> (off|out)",
+				"<turn> [(<all>|<the>)] <light> <in> [<the>] {area} (off|out)",
+				"<turn> [(<all>|<the>)] <light> (off|out) <in> [<the>] {area}",
+				"deactivate [<all>] [<the>] {area} <light>",
+				"deactivate [(<all>|<the>)] <light> <in> [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "area_domain",
+			"templates": [
+				"<turn> off [(<all>|<the>)] fan[s] <in> [<the>] {area}",
+				"<turn> off [<the>] {area} fan[s]",
+				"[<turn>] [<all>] [<the>] {area} fan[s] off",
+				"[<turn>] [(<all>|<the>)] fan[s] <in> [<the>] {area} off",
+				"deactivate [<all>] [<the>] {area} fan[s]",
+				"deactivate [(<all>|<the>)] fan[s] <in> [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "area_domain",
+			"templates": [
+				"turn off [the] lights in [the] {area}",
+				"turn off [the] {area} lights",
+				"[the] {area} lights off"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "area_domain",
+			"templates": [
+				"turn off [the] fans in [the] {area}",
+				"turn off [the] {area} fans"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "device_class_cover",
+			"templates": ["<close> [<the>] {cover_classes:device_class} [<here>]"],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "domain_all",
+			"templates": [
+				"<turn> <all> <light> (off|out) [<everywhere>]",
+				"<turn> [<the>] <light> (off|out) <everywhere>",
+				"<turn> (off|out) <all> <light> [<everywhere>]",
+				"<turn> (off|out) [<the>] <light> <everywhere>",
+				"<turn> (off|out) [<all>] [<the>] <home> <light> <everywhere>",
+				"deactivate <all> <light> [<everywhere>]",
+				"deactivate [<the>] <light> <everywhere>",
+				"get every <light> (off|out) [<everywhere>]",
+				"make sure <all> <light> <is> (off|out)"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "domain_only",
+			"templates": [
+				"<turn> [(<all>|<the>)] <light> ((off|out);<here>)",
+				"<turn> (off|out) [(<all>|<the>)] <light> <here>",
+				"deactivate [(<all>|<the>)] <light> <here>",
+				"[<all>] [<the>] <light> (off|out) <here>",
+				"<turn> [<the>] <light> ((off|out);[<here>])",
+				"<turn> (off|out) [<the>] <light> [<here>]",
+				"deactivate [<the>] <light> [<here>]",
+				"<light> (off|out) [<here>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "domain_only",
+			"templates": [
+				"<turn> off [(<all>|<the>)] fan[s] [<here>]",
+				"<turn> [(<all>|<the>)] fan[s] (off;[<here>])",
+				"deactivate [(<all>|<the>)] fan[s] [<here>]",
+				"[(<all>|<the>)] fan[s] off [<here>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "domain_only",
+			"templates": [
+				"turn off [the] lights",
+				"turn [the] lights off",
+				"lights off"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "floor_device_class_cover",
+			"templates": [
+				"<close> [<all>] [<the>] {cover_classes:device_class} <in> [<the>] {floor} [floor]",
+				"<close> [<all>] [<the>] {floor} [floor] {cover_classes:device_class}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "floor_domain",
+			"templates": [
+				"[<the>] {floor} [floor] <light> (off|out)",
+				"<light> (off|out) <in> [<the>] {floor} [floor]",
+				"<turn> (off|out) [<all>] [<the>] {floor} [floor] <light>",
+				"<turn> (off|out) [<all>] [<the>] <light> <in> [<the>] {floor} [floor]",
+				"<turn> [<all>] [<the>] {floor} [floor] <light> (off|out)",
+				"<turn> (off|out) [<all>] [<the>] <light> {floor}",
+				"deactivate [<all>] [<the>] {floor} [floor] <light>",
+				"deactivate [<all>] [<the>] <light> {floor}",
+				"deactivate [<all>] [<the>] <light> <in> [<the>] {floor} [floor]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "floor_domain",
+			"templates": [
+				"turn off [the] lights on [the] {floor}",
+				"turn off [the] {floor} lights"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_area",
+			"templates": [
+				"<turn> off [<the>] {area} [<the>] {name}",
+				"<turn> off [<the>] {name} <in> [<the>] {area}",
+				"[<turn>] [<the>] {area} [<the>] {name} [to] off",
+				"[<turn>] [<the>] {name} <in> [<the>] {area} [to] off",
+				"deactivate [<the>] {area} [<the>] {name}",
+				"deactivate [<the>] {name} <in> [<the>] {area}"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_area",
+			"templates": [
+				"<turn> off [<the>] {area} [<the>] {name} <light>",
+				"<turn> off [<the>] {name} <light> <in> [<the>] {area}",
+				"[<turn>] [<the>] {area} [<the>] {name} <light> [to] off",
+				"[<turn>] [<the>] {name} <light> <in> [<the>] {area} [to] off",
+				"deactivate [<the>] {area} [<the>] {name} <light>",
+				"deactivate [<the>] {name} <light> <in> [<the>] {area}"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_area",
+			"templates": ["<close> [<the>] {name} <in> [<the>] {area}"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_area",
+			"templates": ["<close> [<the>] {name} <in> [<the>] {area}"],
+			"nameDomains": ["valve"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_area",
+			"templates": ["unlock [<the>] {name} <in> [<the>] {area}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_floor",
+			"templates": [
+				"<turn> off [<the>] {name} <in> [<the>] {floor} [floor]",
+				"[<turn>] [<the>] {name} <in> [<the>] {floor} [floor] [to] off",
+				"deactivate [<the>] {name} <in> [<the>] {floor} [floor]"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_floor",
+			"templates": [
+				"<turn> off [<the>] {name} <light> <in> [<the>] {floor} [floor]",
+				"[<turn>] [<the>] {name} <light> <in> [<the>] {floor} [floor] [to] off",
+				"deactivate [<the>] {name} <light> <in> [<the>] {floor} [floor]"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_floor",
+			"templates": ["<close> [<the>] {name} <in> [<the>] {floor} [floor]"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_floor",
+			"templates": ["<close> [<the>] {name} <in> [<the>] {floor} [floor]"],
+			"nameDomains": ["valve"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": [
+				"<turn> off [<the>] {name}",
+				"[<turn>] [<the>] {name} [to] off",
+				"deactivate [<the>] {name}"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": [
+				"<turn> off [<the>] {name} <light>",
+				"[<turn>] [<the>] {name} <light> [to] off",
+				"deactivate [<the>] {name} <light>"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": ["<close> [<the>] {name}"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": ["<close> [<the>] {name}"],
+			"nameDomains": ["valve"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": ["unlock [<the>] {name}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": [
+				"turn off [the] {name}",
+				"switch off [the] {name}",
+				"deactivate [the] {name}",
+				"[the] {name} off"
+			],
+			"nameDomains": [
+				"light",
+				"switch",
+				"fan",
+				"media_player",
+				"input_boolean"
+			],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": ["close [the] {name}"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOff",
+			"combination": "name_only",
+			"templates": ["unlock [the] {name}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "area_device_class_cover",
+			"templates": [
+				"<open> [<the>] {cover_classes:device_class} <in> [<the>] {area}",
+				"<open> [<the>] {area} {cover_classes:device_class}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "area_domain",
+			"templates": [
+				"(light up|illuminate) [<the>] {area}",
+				"[<the>] {area} <light> on",
+				"<light> on [in] [<the>] {area}",
+				"<turn> on [<all>] [<the>] {area} <light>",
+				"<turn> on [(<all>|<the>)] <light> <in> [<the>] {area}",
+				"<turn> [<all>] [<the>] {area} <light> on",
+				"<turn> [(<all>|<the>)] <light> <in> [<the>] {area} on",
+				"<turn> [(<all>|<the>)] <light> on <in> [<the>] {area}",
+				"activate [<all>] [<the>] {area} <light>",
+				"activate [(<all>|<the>)] <light> <in> [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "area_domain",
+			"templates": [
+				"<turn> on [(<all>|<the>)] fan[s] <in> [<the>] {area}",
+				"<turn> on [<the>] {area} fan[s]",
+				"[<turn>] [<all>] [<the>] {area} fan[s] on",
+				"[<turn>] [(<all>|<the>)] fan[s] <in> [<the>] {area} on",
+				"activate [<all>] [<the>] {area} fan[s]",
+				"activate [(<all>|<the>)] fan[s] <in> [<the>] {area}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "area_domain",
+			"templates": [
+				"turn on [the] lights in [the] {area}",
+				"turn on [the] {area} lights",
+				"[the] {area} lights on"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "area_domain",
+			"templates": [
+				"turn on [the] fans in [the] {area}",
+				"turn on [the] {area} fans"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "device_class_cover",
+			"templates": ["<open> [<the>] {cover_classes:device_class} [<here>]"],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "domain_only",
+			"templates": [
+				"<turn> [(<all>|<the>)] <light> (on;<here>)",
+				"<turn> on [(<all>|<the>)] <light> <here>",
+				"activate [(<all>|<the>)] <light> <here>",
+				"[(<all>|<the>)] <light> on <here>",
+				"<turn> [<the>] <light> (on;[<here>])",
+				"<turn> on [<the>] <light> [<here>]",
+				"activate [<the>] <light> [<here>]",
+				"<light> on [<here>]",
+				"light (it|<here>) up",
+				"light up [<here>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "domain_only",
+			"templates": [
+				"<turn> on [(<all>|<the>)] fan[s] [<here>]",
+				"<turn> [(<all>|<the>)] fan[s] (on;[<here>])",
+				"activate [(<all>|<the>)] fan[s] [<here>]",
+				"[(<all>|<the>)] fan[s] on [<here>]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "fan",
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "domain_only",
+			"templates": [
+				"turn on [the] lights",
+				"turn [the] lights on",
+				"lights on"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": true
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "floor_device_class_cover",
+			"templates": [
+				"<open> [<all>] [<the>] {cover_classes:device_class} <in> [<the>] {floor} [floor]",
+				"<open> [<all>] [<the>] {floor} [floor] {cover_classes:device_class}"
+			],
+			"nameDomains": null,
+			"inferredDomain": "cover",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "floor_domain",
+			"templates": [
+				"(light up|illuminate) [<the>] {floor} [floor]",
+				"[<the>] {floor} [floor] <light> on",
+				"<turn> on [<all>] [<the>] {floor} [floor] <light>",
+				"<turn> on [<all>] [<the>] <light> <in> [<the>] {floor} [floor]",
+				"<turn> on [<all>] [<the>] <light> {floor}",
+				"<turn> [<all>] [<the>] {floor} [floor] <light> on",
+				"activate [<all>] [<the>] {floor} [floor] <light>",
+				"activate [<all>] [<the>] <light> {floor}",
+				"activate [<all>] [<the>] <light> <in> [<the>] {floor} [floor]"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "floor_domain",
+			"templates": [
+				"turn on [the] lights on [the] {floor}",
+				"turn on [the] {floor} lights"
+			],
+			"nameDomains": null,
+			"inferredDomain": "light",
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_area",
+			"templates": [
+				"<turn> on [<the>] {area} [<the>] {name}",
+				"<turn> on [<the>] {name} <in> [<the>] {area}",
+				"[<turn>] [<the>] {area} [<the>] {name} [to] on",
+				"[<turn>] [<the>] {name} <in> [<the>] {area} [to] on",
+				"activate [<the>] {area} [<the>] {name}",
+				"activate [<the>] {name} <in> [<the>] {area}"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_area",
+			"templates": [
+				"<turn> on [<the>] {area} [<the>] {name} <light>",
+				"<turn> on [<the>] {name} <light> <in> [<the>] {area}",
+				"[<turn>] [<the>] {area} [<the>] {name} <light> [to] on",
+				"[<turn>] [<the>] {name} <light> <in> [<the>] {area} [to] on",
+				"activate [<the>] {area} [<the>] {name} <light>",
+				"activate [<the>] {name} <light> <in> [<the>] {area}",
+				"light up [<the>] {area} [<the>] {name} <light>",
+				"light up [<the>] {name} <light> <in> [<the>] {area}"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_area",
+			"templates": ["<open> [<the>] {name} <in> [<the>] {area}"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_area",
+			"templates": ["<open> [<the>] {name} <in> [<the>] {area}"],
+			"nameDomains": ["valve"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_area",
+			"templates": ["lock [<the>] {name} <in> [<the>] {area}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_area",
+			"templates": [
+				"turn on [the] {name} in [the] {area}",
+				"switch on [the] {name} in [the] {area}"
+			],
+			"nameDomains": [
+				"light",
+				"switch",
+				"fan",
+				"media_player",
+				"input_boolean"
+			],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_floor",
+			"templates": [
+				"<turn> on [<the>] {name} <in> [<the>] {floor} [floor]",
+				"[<turn>] [<the>] {name} <in> [<the>] {floor} [floor] [to] on",
+				"activate [<the>] {name} <in> [<the>] {floor} [floor]"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_floor",
+			"templates": [
+				"<turn> on [<the>] {name} <light> <in> [<the>] {floor} [floor]",
+				"[<turn>] [<the>] {name} <light> <in> [<the>] {floor} [floor] [to] on",
+				"activate [<the>] {name} <light> <in> [<the>] {floor} [floor]",
+				"light up [<the>] {name} <light> <in> [<the>] {floor} [floor]"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_floor",
+			"templates": ["<open> [<the>] {name} <in> [<the>] {floor} [floor]"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_floor",
+			"templates": ["<open> [<the>] {name} <in> [<the>] {floor} [floor]"],
+			"nameDomains": ["valve"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": [
+				"<turn> on [<the>] {name}",
+				"[<turn>] [<the>] {name} [to] on",
+				"activate [<the>] {name}",
+				"[<the>] {name}"
+			],
+			"nameDomains": "default",
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": [
+				"<turn> on [<the>] {name} <light>",
+				"[<turn>] [<the>] {name} <light> [to] on",
+				"activate [<the>] {name} <light>",
+				"light up [<the>] {name} <light>"
+			],
+			"nameDomains": ["light"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": ["<open> [<the>] {name}"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": ["<open> [<the>] {name}"],
+			"nameDomains": ["valve"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": ["lock [<the>] {name}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": [
+				"turn on [the] {name}",
+				"switch on [the] {name}",
+				"activate [the] {name}",
+				"[the] {name} on"
+			],
+			"nameDomains": [
+				"light",
+				"switch",
+				"fan",
+				"media_player",
+				"input_boolean"
+			],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": ["open [the] {name}"],
+			"nameDomains": ["cover"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_only",
+			"templates": ["lock [the] {name}"],
+			"nameDomains": ["lock"],
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_scene",
+			"templates": [
+				"[activate] [<the>] {name} [scene]",
+				"[<the>] {name} on",
+				"<turn> ([<the>] {name} [scene];on)",
+				"(change|transition) to [<the>] {name} [scene]",
+				"(change|transition) to scene [<the>] {name}"
+			],
+			"nameDomains": ["scene"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassTurnOn",
+			"combination": "name_script",
+			"templates": [
+				"[(activate|run|start|<turn>)] [<the>] {name} [script] [on]"
+			],
+			"nameDomains": ["script"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassUnpauseTimer",
+			"combination": "area_only",
+			"templates": [
+				"(resume|continue) [the|my] timer in [<the>] {area}",
+				"(resume|continue) [the|my] {area} timer"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassUnpauseTimer",
+			"combination": "default",
+			"templates": ["(resume|continue) [the|my] timer"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": true,
+			"contextArea": false
+		},
+		{
+			"intent": "HassUnpauseTimer",
+			"combination": "hours_only",
+			"templates": [
+				"(resume|continue) [the|my] {timer_hours:start_hours}( |-)hour[s] timer",
+				"(resume|continue) [the|my] timer for {timer_hours:start_hours}( |-)hour[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassUnpauseTimer",
+			"combination": "minutes_only",
+			"templates": [
+				"(resume|continue) [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer",
+				"(resume|continue) [the|my] timer for {timer_minutes:start_minutes}( |-)minute[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassUnpauseTimer",
+			"combination": "name_only",
+			"templates": [
+				"(resume|continue) [the|my] {timer_name:name} timer",
+				"(resume|continue) [the|my] timer (named|called|for) {timer_name:name}"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassUnpauseTimer",
+			"combination": "seconds_only",
+			"templates": [
+				"(resume|continue) [the|my] {timer_seconds:start_seconds}( |-)second[s] timer",
+				"(resume|continue) [the|my] timer for {timer_seconds:start_seconds}( |-)second[s]"
+			],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassVacuumCleanArea",
+			"combination": "area_only",
+			"templates": ["<clean> [<the>] {area}"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassVacuumCleanArea",
+			"combination": "context_area",
+			"templates": ["<clean> <here>"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": true
+		},
+		{
+			"intent": "HassVacuumCleanArea",
+			"combination": "name_area",
+			"templates": [
+				"<clean> [<the>] {area} with [<the>] {name}",
+				"start [<the>] {name} <in> [<the>] {area}"
+			],
+			"nameDomains": ["vacuum"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassVacuumReturnToBase",
+			"combination": "name_only",
+			"templates": ["return [<the>] {name} [to base]"],
+			"nameDomains": ["vacuum"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassVacuumStart",
+			"combination": "floor_only",
+			"templates": ["<clean> [<the>] {floor} [floor]"],
+			"nameDomains": null,
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		},
+		{
+			"intent": "HassVacuumStart",
+			"combination": "name_only",
+			"templates": ["start [<the>] {name}"],
+			"nameDomains": ["vacuum"],
+			"inferredDomain": null,
+			"speechToPhrase": false,
+			"contextArea": false
+		}
+	]
+}

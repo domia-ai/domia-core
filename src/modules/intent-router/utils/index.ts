@@ -149,8 +149,8 @@ export const keyphraseHit = (
 			.split(/[_\-.\s]+/)
 			.filter((w) => w.length >= KEYPHRASE_MIN_LEN)
 		if (
-			words.length > 0 &&
-			words.every((w) => new RegExp(`\\b${escapeRegExp(w)}`).test(t))
+			words.length >= 2 &&
+			words.every((w) => new RegExp(`\\b${escapeRegExp(w)}\\b`).test(t))
 		)
 			return tool.name
 	}

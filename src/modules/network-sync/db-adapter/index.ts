@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm"
+import { eq, and, isNull } from "drizzle-orm"
 
 import { networkSyncLogger } from "@/utils"
 import {
@@ -125,6 +125,21 @@ const dbAdapter = {
 			.run()
 		return res.changes
 	},
+	linkDelegationsToDomia: (
+		targetId: string,
+		targetKey: string,
+		client: DBClientOrTxType = dbClient,
+	): number =>
+		client
+			.update(capabilityDelegation)
+			.set({ delegateToDomiaId: targetId })
+			.where(
+				and(
+					eq(capabilityDelegation.delegateToDomiaKey, targetKey),
+					isNull(capabilityDelegation.delegateToDomiaId),
+				),
+			)
+			.run().changes,
 	upsertDomia: (data: InsertDomiaType, client: DBClientOrTxType = dbClient) =>
 		client
 			.insert(domia)

@@ -110,6 +110,12 @@ export const upsertDomiaFromNetwork = (domia: DomiaType): void => {
 				tx,
 			)
 			.run()
+		const linked = dbAdapter.linkDelegationsToDomia(domiaId, domiaKey, tx)
+		if (linked > 0)
+			networkSyncLogger.info(
+				`🔗 linked ${linked} delegation(s) to the discovered peer`,
+				logParams,
+			)
 		if (strandedSatellites.length > 0) {
 			networkSyncLogger.info(
 				`🛰️ re-parented ${strandedSatellites.length} satellite binding(s) across peer re-registration`,

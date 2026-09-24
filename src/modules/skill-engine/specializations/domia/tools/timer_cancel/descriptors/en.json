@@ -1,0 +1,24 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cancel [(the|my)] timer",
+				"stop [(the|my)] timer",
+				"cancel [(the|my)] countdown",
+				"cancel [(the|my)] timers"
+			]
+		}
+	],
+	"keywords": ["cancel timer", "stop timer"],
+	"exampleUtterances": ["cancel the timer", "stop my timer"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "cancel the timer" },
+		{ "text": "stop my timer" },
+		{ "text": "cancel timer" }
+	]
+}

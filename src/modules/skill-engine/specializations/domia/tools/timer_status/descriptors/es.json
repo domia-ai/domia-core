@@ -1,0 +1,27 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"cuánto [tiempo] falta [del temporizador]",
+				"cuánto [tiempo] queda [del temporizador]",
+				"cuánto le queda al temporizador",
+				"estado del temporizador"
+			]
+		}
+	],
+	"keywords": ["cuánto falta", "cuánto queda"],
+	"exampleUtterances": ["cuánto tiempo falta", "cuánto queda del temporizador"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{
+			"text": "cuánto falta"
+		},
+		{
+			"text": "cuánto tiempo queda del temporizador"
+		}
+	]
+}

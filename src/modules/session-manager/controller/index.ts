@@ -292,7 +292,10 @@ export const getOrCreateSessionForDomia = async (domia: DomiaType) => {
 	const lastUsedAt = existingSession?.lastUsedAt
 		? new Date(existingSession.lastUsedAt + "Z").getTime()
 		: null
-	const expired = lastUsedAt !== null ? now - lastUsedAt > timeoutMs : true
+	const expired =
+		lastUsedAt === null ||
+		now - lastUsedAt > timeoutMs ||
+		!afterConversationReset(domiaId, existingSession?.lastUsedAt)
 	if (existingSession && !expired) {
 		await dbAdapter.updateInteractionSessionTrace(existingSession)
 
@@ -461,16 +464,49 @@ export const getInteractionById = async (
 	return rows
 }
 
+const conversationResetAt = new Map<string, number>()
+
+const sqlTimestampMs = (value: string | null | undefined): number =>
+	value ? Date.parse(value + "Z") : NaN
+
+const afterConversationReset = (
+	domiaId: string,
+	createdAt: string | null | undefined,
+): boolean => {
+	const resetAt = conversationResetAt.get(domiaId)
+	if (resetAt === undefined) return true
+	const ts = sqlTimestampMs(createdAt)
+	return Number.isNaN(ts) || ts >= resetAt
+}
+
+export const resetConversation = async (domia: DomiaType): Promise<void> => {
+	const resetAt = Date.now()
+	conversationResetAt.set(domia.id, resetAt)
+	const session = await dbAdapter.getExistingInteractionSessionTrace(domia.id)
+	const endsSession =
+		session !== undefined &&
+		!afterConversationReset(domia.id, session.lastUsedAt)
+	memoryLogger.info("🧹 conversation reset", {
+		domiaKey: domia.domiaKey,
+		resetAt: new Date(resetAt).toISOString(),
+		sessionId: session?.sessionId ?? null,
+		sessionLastUsedAt: session?.lastUsedAt ?? null,
+		endsSession,
+	})
+	if (session && endsSession) void summarizeSession(domia, session.sessionId)
+}
+
 const withinMaxAge = (
 	row: SelectInteractionTraceType,
 	now: number,
 	maxAgeMs: number,
 ): boolean => {
-	const ts = row.createdAt ? Date.parse(row.createdAt + "Z") : NaN
+	const ts = sqlTimestampMs(row.createdAt)
 	return !Number.isNaN(ts) && now - ts <= maxAgeMs
 }
 
 const mapRowsToMoods = (
+	domiaId: string,
 	rows: SelectInteractionTraceType[],
 	maxAgeMs: number,
 	limit: number,
@@ -478,6 +514,7 @@ const mapRowsToMoods = (
 	const now = Date.now()
 	return rows
 		.filter((row) => withinMaxAge(row, now, maxAgeMs))
+		.filter((row) => afterConversationReset(domiaId, row.createdAt))
 		.map((row) => row.userEmotionSnapshot)
 		.filter(
 			(s): s is { primary: string; intensity?: number; note?: string } =>
@@ -491,6 +528,7 @@ const mapRowsToMoods = (
 }
 
 const mapRowsToTurns = (
+	domiaId: string,
 	rows: SelectInteractionTraceType[],
 	maxAgeMs: number,
 	limit: number,
@@ -500,6 +538,7 @@ const mapRowsToTurns = (
 	const eligible = rows
 		.filter((row) => row.id !== excludeInteractionId)
 		.filter((row) => withinMaxAge(row, now, maxAgeMs))
+		.filter((row) => afterConversationReset(domiaId, row.createdAt))
 		.map((row) => ({
 			userText: row.inputRaw ?? row.sttResult ?? null,
 			domiaText:
@@ -524,7 +563,7 @@ export const getRecentUserMoods = async (
 			domia.id,
 			limit * 3,
 		)
-		return mapRowsToMoods(rows, domia.memoryMaxAgeMs, limit)
+		return mapRowsToMoods(domia.id, rows, domia.memoryMaxAgeMs, limit)
 	} catch {
 		return []
 	}
@@ -542,6 +581,7 @@ export const getRecentTurns = async (
 			limit * 3,
 		)
 		return mapRowsToTurns(
+			domia.id,
 			rows,
 			domia.memoryMaxAgeMs,
 			limit,
@@ -567,9 +607,15 @@ export const getRecentTurnsAndMoods = async (
 		return {
 			recentTurns:
 				turnsLimit > 0
-					? mapRowsToTurns(rows, maxAgeMs, turnsLimit, excludeInteractionId)
+					? mapRowsToTurns(
+							domia.id,
+							rows,
+							maxAgeMs,
+							turnsLimit,
+							excludeInteractionId,
+						)
 					: [],
-			userMoodTrend: mapRowsToMoods(rows, maxAgeMs, moodLimit),
+			userMoodTrend: mapRowsToMoods(domia.id, rows, maxAgeMs, moodLimit),
 		}
 	} catch {
 		return { recentTurns: [], userMoodTrend: [] }

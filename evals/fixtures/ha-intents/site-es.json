@@ -1,0 +1,504 @@
+{
+	"meta": {
+		"source": "https://github.com/OHF-Voice/intents",
+		"commit": "f8cdbb0b",
+		"license": "CC-BY-4.0",
+		"generatedBy": "evals/gen-ha-intents.ts"
+	},
+	"language": "es",
+	"floors": ["Planta baja", "Primera planta"],
+	"areas": [
+		"Cocina",
+		"Salón",
+		"Dormitorio",
+		"Estudio",
+		"Recibidor",
+		"Pasillo",
+		"Altillo",
+		"Garaje",
+		"Entrada",
+		"Oficina"
+	],
+	"entities": [
+		{
+			"name": "Termostato cocina",
+			"domain": "climate",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "heat"
+		},
+		{
+			"name": "Termostato salón",
+			"domain": "climate",
+			"area": "Salón",
+			"floor": "Primera planta",
+			"deviceClass": null,
+			"state": "heat"
+		},
+		{
+			"name": "Termostato oficina",
+			"domain": "climate",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Ventilador de techo",
+			"domain": "fan",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Ventana Salón",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Ventana Dormitorio",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": "window",
+			"state": "closed"
+		},
+		{
+			"name": "Ventana Estudio",
+			"domain": "cover",
+			"area": "Estudio",
+			"floor": null,
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Ventana Cuna",
+			"domain": "cover",
+			"area": "Dormitorio",
+			"floor": "Primera Planta",
+			"deviceClass": "window",
+			"state": "closed"
+		},
+		{
+			"name": "Ventana Recibidor",
+			"domain": "cover",
+			"area": "Recibidor",
+			"floor": "Planta Baja",
+			"deviceClass": "window",
+			"state": "open"
+		},
+		{
+			"name": "Luz A",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz B",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz C",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz D",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz E",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz F",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Ventilador Ático",
+			"domain": "fan",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Ventilador Techo",
+			"domain": "fan",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Ventilador Baño",
+			"domain": "fan",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Interruptor Enchufe",
+			"domain": "switch",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Interruptor Porche",
+			"domain": "switch",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Puerta Delantera",
+			"domain": "lock",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Puerta Trasera",
+			"domain": "lock",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "unlocked"
+		},
+		{
+			"name": "Ada",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "casa"
+		},
+		{
+			"name": "Juan",
+			"domain": "person",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "not_home"
+		},
+		{
+			"name": "Luz Salón",
+			"domain": "light",
+			"area": "Salón",
+			"floor": "Primera planta",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz Cocina",
+			"domain": "light",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Lámpara Cocina",
+			"domain": "light",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Ventilador Cocina",
+			"domain": "fan",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Campana Extractora",
+			"domain": "fan",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Interruptor Encimera",
+			"domain": "switch",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Interruptor Triturador",
+			"domain": "switch",
+			"area": "Cocina",
+			"floor": "Planta baja",
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Cerradura Pasillo",
+			"domain": "lock",
+			"area": "Pasillo",
+			"floor": "Planta Baja",
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Cerradura Armario",
+			"domain": "lock",
+			"area": "Pasillo",
+			"floor": "Planta Baja",
+			"deviceClass": null,
+			"state": "unlocked"
+		},
+		{
+			"name": "Luz Altillo",
+			"domain": "light",
+			"area": "Altillo",
+			"floor": "Primera Planta",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Temperatura Exterior",
+			"domain": "sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "42"
+		},
+		{
+			"name": "Puerta Garaje",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "open"
+		},
+		{
+			"name": "Puerta Principal",
+			"domain": "lock",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "locked"
+		},
+		{
+			"name": "Ventana Patio",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Sensor Oficina",
+			"domain": "binary_sensor",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Luz Pasillo",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "off"
+		},
+		{
+			"name": "Tragaluz",
+			"domain": "binary_sensor",
+			"area": "Dormitorio",
+			"floor": "Primera Planta",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Sensor Movimiento",
+			"domain": "binary_sensor",
+			"area": "Oficina",
+			"floor": "Primera Planta",
+			"deviceClass": null,
+			"state": "on"
+		},
+		{
+			"name": "Casa",
+			"domain": "weather",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "rainy"
+		},
+		{
+			"name": "Madrid",
+			"domain": "weather",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "rainy"
+		},
+		{
+			"name": "Ávila",
+			"domain": "weather",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "clear"
+		},
+		{
+			"name": "Lámpara de la mesilla",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Mercadona",
+			"domain": "todo",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Tareas",
+			"domain": "todo",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "TV",
+			"domain": "media_player",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Reproductor del salón",
+			"domain": "media_player",
+			"area": "Salón",
+			"floor": "Primera planta",
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Cortina dormitorio",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Llave de paso",
+			"domain": "valve",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Rincón de juego",
+			"domain": "light",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Aire acondicionado",
+			"domain": "climate",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Cortina izquierda",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Puerta corredera",
+			"domain": "cover",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Modo fiesta",
+			"domain": "scene",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Modo sigiloso",
+			"domain": "script",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": null
+		},
+		{
+			"name": "Aspiradora",
+			"domain": "vacuum",
+			"area": null,
+			"floor": null,
+			"deviceClass": null,
+			"state": "idle"
+		},
+		{
+			"name": "Aspiradora salón",
+			"domain": "vacuum",
+			"area": "Salón",
+			"floor": "Primera planta",
+			"deviceClass": null,
+			"state": "cleaning"
+		}
+	]
+}

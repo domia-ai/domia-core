@@ -1,6 +1,14 @@
 import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import { domiaBusLogger, getTraceContext } from "@/utils"
-import { recordLlmUsage, skillsEnabled, shortlistedToolsOf } from "../../utils"
+import { containsCue, foldText } from "@/utils/text-tokens"
+import type { IntentDecisionType } from "@/modules/intent-router"
+import {
+	recordLlmUsage,
+	hasSkillConnections,
+	shortlistedToolsOf,
+	originOfInteraction,
+	toolManifestOf,
+} from "../../utils"
 import { updateInteraction } from "@/modules/session-manager"
 import { AGENT_DECISION_MODE_ENUM } from "@/db"
 import {
@@ -15,8 +23,11 @@ import {
 	type AgentInferenceType,
 	type AgentStreamInferenceType,
 } from "@/modules/agent"
-import { classifyNeedsSkill } from "@/modules/intent-router"
-import { buildToolManifest } from "@/modules/skill-engine"
+import {
+	classifyNeedsSkill,
+	personalQuestionHit,
+	routingBlockerHit,
+} from "@/modules/intent-router"
 import {
 	delegateInferenceWithTools,
 	type DeliverEventTarget,
@@ -35,7 +46,7 @@ export const attemptLocalSkillsRoute = async (
 	turnSignal: AbortSignal | undefined,
 ): Promise<boolean> => {
 	const { domia, features } = ctx
-	if (!skillsEnabled(ctx)) return false
+	if (!hasSkillConnections(ctx.domia)) return false
 	if (payload.prestartedTokens) {
 		const stale = payload.prestartedTokens as AsyncGenerator<string>
 		domiaBusLogger.info(
@@ -47,28 +58,43 @@ export const attemptLocalSkillsRoute = async (
 		payload.prestartedFirstUnitText = undefined
 		payload.prestartedFirstUnitPcm = undefined
 	}
-	const tools = await shortlistedToolsOf(domia, session.transcript)
-	if (tools.length === 0 || !features.llm?.adapter.runWithTools) return false
-	const intentStart = Date.now()
-	const hints =
-		domia.llmModelConfig?.descriptorRoutingEnabled === true
-			? (() => {
-					const manifest = buildToolManifest(domia)
-					return {
-						exampleUtterances: manifest.exampleUtterances,
-						keywords: manifest.keywords,
-					}
-				})()
-			: undefined
-	const decision = await classifyNeedsSkill(
+	const tools = await shortlistedToolsOf(
 		domia,
 		session.transcript,
-		tools.map((t) => ({
-			name: t.rawName,
-			description: t.description,
-		})),
-		{ canRunLlm: true, hints },
+		originOfInteraction(ctx, session.interactionId),
 	)
+	if (tools.length === 0 || !features.llm?.adapter.runWithTools) return false
+	const intentStart = Date.now()
+	const manifest = toolManifestOf(domia)
+	const hints =
+		domia.llmModelConfig?.descriptorRoutingEnabled === true
+			? {
+					exampleUtterances: manifest.exampleUtterances,
+					keywords: manifest.keywords,
+				}
+			: undefined
+	const folded = foldText(session.transcript)
+	const language = domia.characterProfile?.language ?? null
+	const builtinHit =
+		personalQuestionHit(session.transcript, language) === null &&
+		routingBlockerHit(session.transcript, language) === null &&
+		manifest.builtinKeywords.some((k) => containsCue(folded, k))
+	const routable = tools.filter(
+		(t) => !manifest.builtinNames.has(t.namespacedName),
+	)
+	const decision: IntentDecisionType = builtinHit
+		? { needsSkill: true, reason: "builtin-keyword" }
+		: routable.length === 0
+			? { needsSkill: false, reason: "no-routable-tools" }
+			: await classifyNeedsSkill(
+					domia,
+					session.transcript,
+					routable.map((t) => ({
+						name: t.rawName,
+						description: t.description,
+					})),
+					{ canRunLlm: true, hints },
+				)
 	const intentDecision = `${decision.needsSkill ? "skill" : "chat"} (${decision.reason})`
 	const intentMs = Date.now() - intentStart
 	domiaBusLogger.info(`🧭 intent: ${intentDecision} ${intentMs}ms`, {
@@ -138,8 +164,12 @@ export const attemptDelegatedSkillsRoute = async (
 	turnSignal: AbortSignal | undefined,
 ): Promise<boolean> => {
 	const { domia } = ctx
-	if (!skillsEnabled(ctx)) return false
-	const tools = await shortlistedToolsOf(domia, session.transcript)
+	if (!hasSkillConnections(ctx.domia)) return false
+	const tools = await shortlistedToolsOf(
+		domia,
+		session.transcript,
+		originOfInteraction(ctx, session.interactionId),
+	)
 	if (tools.length === 0) return false
 	const target = targets[0]
 	domiaBusLogger.info("🛰️ delegating agent inference to peer", {

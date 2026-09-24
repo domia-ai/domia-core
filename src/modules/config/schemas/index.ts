@@ -16,6 +16,8 @@ import {
 	capabilityDelegation,
 } from "@/db"
 
+import { DOMIA_BUNDLE_OMIT_MASK } from "../constants"
+
 export const CONFIG_BUNDLE_VERSION = 1
 
 const META = {
@@ -27,23 +29,25 @@ const META = {
 
 const META_ACTIVE = { ...META, isActive: true } as const
 
+const SERVER_OWNED_PROVIDER_KEYS = new Set([
+	"serverDescriptor",
+	"serverDescriptorHash",
+])
+
+const stripServerOwnedKeys = (value: unknown): unknown =>
+	value !== null && typeof value === "object" && !Array.isArray(value)
+		? Object.fromEntries(
+				Object.entries(value).filter(
+					([key]) => !SERVER_OWNED_PROVIDER_KEYS.has(key),
+				),
+			)
+		: value
+
 export const configBundleSchema = z
 	.object({
 		version: z.number().int().positive().optional(),
 		domia: createUpdateSchema(domia)
-			.omit({
-				id: true,
-				domiaKey: true,
-				createdAt: true,
-				updatedAt: true,
-				localIp: true,
-				grpcPort: true,
-				grpcTls: true,
-				isActive: true,
-				isHosted: true,
-				configRevision: true,
-				configReloadDrainMs: true,
-			})
+			.omit(DOMIA_BUNDLE_OMIT_MASK)
 			.strict()
 			.nullish(),
 		character: createUpdateSchema(characterProfile)
@@ -80,10 +84,17 @@ export const configBundleSchema = z
 			.nullish(),
 		skillProviders: z
 			.array(
-				createInsertSchema(skillProvider)
-					.omit(META_ACTIVE)
-					.extend({ id: z.string().optional() })
-					.strict(),
+				z.preprocess(
+					stripServerOwnedKeys,
+					createInsertSchema(skillProvider)
+						.omit({
+							...META_ACTIVE,
+							serverDescriptor: true,
+							serverDescriptorHash: true,
+						})
+						.extend({ id: z.string().optional() })
+						.strict(),
+				),
 			)
 			.nullish(),
 		delegations: z

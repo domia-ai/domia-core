@@ -16,19 +16,15 @@ import { SKILL_TOOL_NAME_SEPARATOR, type ToolTraceEntryType } from "@/db"
 import {
 	peekPendingConfirmation,
 	peekExpiredConfirmation,
-	takePendingConfirmation,
 	settleConfirmation,
 	claimConfirmation,
 	markConfirmationReasked,
 	confirmationScope,
 	isAffirmative,
 	isNegative,
+	runConfirmedTool,
 } from "@/modules/agent"
-import {
-	callTool,
-	resolveToolFinalize,
-	renderFinalizeText,
-} from "@/modules/skill-engine"
+import { resolveToolFinalize, renderFinalizeText } from "@/modules/skill-engine"
 import type { CoreBusContextType, SttDonePayloadType } from "../../types"
 
 export const handlePendingConfirmation = async (
@@ -108,8 +104,7 @@ export const handlePendingConfirmation = async (
 			})
 		const affirmative = isAffirmative(transcript, pending.language)
 		const negative = isNegative(transcript, pending.language)
-		const taken =
-			affirmative !== negative ? takePendingConfirmation(confirmScope) : null
+		const taken = affirmative !== negative ? pending : null
 		const claimed = taken
 			? claimConfirmation(confirmScope, affirmative ? "approved" : "denied")
 			: false
@@ -133,15 +128,7 @@ export const handlePendingConfirmation = async (
 			let trace: Extract<ToolTraceEntryType, { kind: "result" }>
 			const toolStart = Date.now()
 			try {
-				const res = taken.resolvedArgs
-					? await callTool(
-							domia.id,
-							taken.tool,
-							taken.resolvedArgs,
-							undefined,
-							true,
-						)
-					: await callTool(domia.id, taken.tool, taken.args)
+				const res = await runConfirmedTool(domia.id, taken)
 				const ok = res.status === "ok" && !res.isError
 				const rule = resolveToolFinalize(domia.id, taken.tool)
 				const template = ok ? rule?.done : rule?.error

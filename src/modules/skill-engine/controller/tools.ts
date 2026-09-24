@@ -23,7 +23,8 @@ import type {
 
 import { connections } from "./state"
 import { buildToolMeta } from "./registry"
-import { fireOnDisconnected } from "./connections"
+import { fireOnDisconnected, syncServerDescriptor } from "./connections"
+import { isBuiltinProvider } from "./providers"
 
 export const resolveToolFinalize = (
 	domiaId: string,
@@ -103,18 +104,21 @@ const advertisedRawTools = (
 
 const toolStatuses = (
 	conn: SkillConnectionType | undefined,
-): SkillToolStatusType[] =>
-	conn
-		? [...conn.toolMeta.values()].map((m) => ({
-				rawName: m.rawName,
-				riskClass: m.riskClass,
-				policy: m.policy,
-				policySource: m.policySource,
-				retryable: m.idempotent,
-				openWorld: m.openWorld,
-				hintSources: m.hintSources,
-			}))
-		: []
+): SkillToolStatusType[] => {
+	if (!conn) return []
+	const hidden = new Set(conn.descriptor.hiddenTools)
+	return [...conn.toolMeta.values()].map((m) => ({
+		rawName: m.rawName,
+		namespacedName: `${conn.providerSlug}${SKILL_TOOL_NAME_SEPARATOR}${m.rawName}`,
+		riskClass: m.riskClass,
+		policy: m.policy,
+		policySource: m.policySource,
+		retryable: m.idempotent,
+		openWorld: m.openWorld,
+		hidden: hidden.has(m.rawName) || hidden.has(toolBaseName(m.rawName)),
+		hintSources: m.hintSources,
+	}))
+}
 
 export const nextToolsRefreshMs = (domia: DomiaType): number => {
 	const candidates = (domia.skillProviders ?? [])
@@ -159,7 +163,12 @@ export const listTools = async (
 	domia: DomiaType,
 	opts: ListToolsOptionsType = {},
 ): Promise<SkillToolType[]> => {
-	const providers = (domia.skillProviders ?? []).filter((s) => s.isActive)
+	const providers = (domia.skillProviders ?? [])
+		.filter(
+			(s) =>
+				s.isActive && (!opts.providerIds || opts.providerIds.includes(s.id)),
+		)
+		.sort((a, b) => Number(isBuiltinProvider(a)) - Number(isBuiltinProvider(b)))
 	const language = domia.characterProfile?.language ?? null
 	const result: SkillToolType[] = []
 	const staleTools = (cfg: SelectSkillProviderType): SkillToolType[] => {
@@ -199,7 +208,16 @@ export const listTools = async (
 			const syncedAt = now()
 			dbAdapter.cacheTools(cfg.id, tools, syncedAt).run()
 			conn.toolsFreshUntil = toolsFreshUntil(cfg.toolsRefreshMs, listed.ttlMs)
-			conn.provider = { ...cfg, toolsCache: tools, lastSyncAt: syncedAt }
+			conn.provider = await syncServerDescriptor(
+				{
+					...cfg,
+					serverDescriptor: conn.provider.serverDescriptor,
+					serverDescriptorHash: conn.provider.serverDescriptorHash,
+					toolsCache: tools,
+					lastSyncAt: syncedAt,
+				},
+				conn.handle,
+			)
 			conn.descriptor = resolveDescriptor(conn.provider, conn.language)
 			conn.toolMeta = buildToolMeta(tools, conn.descriptor, cfg.trustTier)
 			result.push(...tools)

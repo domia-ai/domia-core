@@ -1,6 +1,9 @@
+import type { FastPathBlockType } from "@/db"
 import type { LanguageCatalogExtensionType } from "@/utils"
 
-import type { HaFastPathLanguagePackType } from "../types"
+import { loadFastPathPack } from "../../../utils/descriptor-data"
+import enPack from "../descriptors/en.json"
+import esPack from "../descriptors/es.json"
 
 export const HA_SPECIALIZATION_KIND = "home-assistant"
 
@@ -32,19 +35,26 @@ export const HA_FULL_COVERAGE_SCORE = 0.75
 export const HA_CORE_RE =
 	/turn.?on|turn.?off|light.?set|set.?temp|climate|cover|hass(turnon|turnoff|lightset)/i
 export const HA_PLACEHOLDER_RE = /^(\[\]|\{\}|null|none|n\/a|undefined)$/i
+export const HA_FAST_PATH_EXCLUDED_DOMAINS = new Set([
+	"lock",
+	"alarm_control_panel",
+	"siren",
+])
+
+export const HA_BUILTIN_SHADOWED_TOOLS = new Set([
+	"GetDateTime",
+	"HassCancelAllTimers",
+	"HassBroadcast",
+])
+
 export const HA_SENSITIVE_TOOL_RE =
 	/lock|unlock|cover|garage|alarm|siren|broadcast/i
 export const HA_SENSITIVE_DOMAIN_RE = /^(lock|alarm_control_panel|cover|siren)$/
 export const HA_READ_TOOL_RE =
 	/getlivecontext|getstate|get_state|getdatetime|get_date_time|gettime|query|status/i
 
-export const HA_TARGET_ARGS = [
-	"name",
-	"area",
-	"floor",
-	"domain",
-	"device_class",
-]
+export const HA_EXPLICIT_TARGET_ARGS = ["name", "area", "floor", "device_class"]
+export const HA_ARG_DOMAIN = "domain"
 
 export const HA_ALIASES: Record<string, string[]> = {
 	brighter: ["brightness", "light", "bright"],
@@ -149,57 +159,23 @@ export const HA_CATALOG_EXTENSIONS: Record<
 	},
 }
 
-export const HA_FAST_PATH_LANGUAGES: Record<
-	string,
-	HaFastPathLanguagePackType
-> = {
-	en: {
-		turnOnTemplates: ["<turnon> [<the>] {entity}", "turn [<the>] {entity} on"],
-		turnOnAreaTemplates: [
-			"<turnon> [<the>] lights in [<the>] {area}",
-			"<turnon> [<the>] {area} lights",
-		],
-		turnOnKeywords: [["on"]],
-		turnOffTemplates: [
-			"<turnoff> [<the>] {entity}",
-			"turn [<the>] {entity} off",
-		],
-		turnOffAreaTemplates: [
-			"<turnoff> [<the>] lights in [<the>] {area}",
-			"<turnoff> [<the>] {area} lights",
-		],
-		turnOffKeywords: [["off"]],
-		lightSetTemplates: [
-			"(set|dim|brighten) [<the>] {entity} to {level} [percent] [brightness]",
-			"set [<the>] {entity} brightness to {level} [percent]",
-		],
-		expansionRules: {
-			turnon: "(turn on|switch on)",
-			turnoff: "(turn off|switch off)",
-			the: "(the|my|our)",
-		},
-	},
-	es: {
-		turnOnTemplates: ["<encender> [<articulo>] {entity}"],
-		turnOnAreaTemplates: [
-			"<encender> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}",
-		],
-		turnOnKeywords: [["enciende", "prende", "activa", "encender", "prender"]],
-		turnOffTemplates: ["<apagar> [<articulo>] {entity}"],
-		turnOffAreaTemplates: [
-			"<apagar> [<articulo>] luces (de|del|de la|en) [<articulo>] {area}",
-		],
-		turnOffKeywords: [["apaga", "desactiva", "apagar", "desconecta"]],
-		lightSetTemplates: [
-			"(pon|ajusta) [<articulo>] {entity} al {level} [por ciento]",
-			"(pon|ajusta) [<articulo>] {entity} a {level} [por ciento]",
-		],
-		expansionRules: {
-			encender: "(enciende|encienda|prende|prenda|activa|active)",
-			apagar: "(apaga|apague|desactiva|desactive|desconecta)",
-			articulo: "(la|el|las|los|mi|mis)",
-		},
-	},
+export const HA_FAST_PATH_PACKS: Record<string, FastPathBlockType> = {
+	en: loadFastPathPack(enPack),
+	es: loadFastPathPack(esPack),
+}
+
+export const HA_FAST_PATH_ENTITY_KEY = "entity"
+export const HA_FAST_PATH_AREA_KEY = "area"
+export const HA_FAST_PATH_FLOOR_KEY = "floor"
+export const HA_FAST_PATH_SLOT_KEYS = [
+	HA_FAST_PATH_ENTITY_KEY,
+	HA_FAST_PATH_AREA_KEY,
+	HA_FAST_PATH_FLOOR_KEY,
+]
+export const HA_FAST_PATH_ENTITY_KEY_PREFIX = `${HA_FAST_PATH_ENTITY_KEY}:`
+export const HA_FAST_PATH_ENTITY_DOMAIN_SEPARATOR = ","
+export const HA_FAST_PATH_NAME_GROUPS: Record<string, string[]> = {
+	default: ["light", "switch", "fan", "input_boolean", "climate"],
 }
 
 export const HA_EXAMPLE_UTTERANCES: Record<string, string[]> = {

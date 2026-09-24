@@ -102,6 +102,8 @@ const providerCfg = (url: string): SelectSkillProviderType => ({
 			},
 		},
 	},
+	serverDescriptor: null,
+	serverDescriptorHash: null,
 	auth: null,
 	toolsCache: TOOLS_CACHE,
 	toolWhitelist: null,
@@ -711,13 +713,14 @@ const checkTargetlessWrites = async (): Promise<void> => {
 	const turnOff = `${HA_SLUG}__HassTurnOff`
 	const runTargetless = async (
 		transcript: string,
+		args: Record<string, unknown> = {},
 	): Promise<Awaited<ReturnType<typeof runAgentTurn>>> =>
 		runAgentTurn(
 			domia,
 			transcript,
 			await listTools({ ...domia, skillProviders: [haCfg] }),
 			scripted([
-				{ kind: "tool_calls", calls: [{ name: turnOff, arguments: {} }] },
+				{ kind: "tool_calls", calls: [{ name: turnOff, arguments: args }] },
 				{ kind: "reply", text: "(follow-up)" },
 			]),
 			{},
@@ -756,6 +759,51 @@ const checkTargetlessWrites = async (): Promise<void> => {
 			noTarget.reply === "(follow-up)" &&
 			resultTools(noTarget).length === 0,
 		`used=${noTarget.toolNamesUsed.join(",")} reply="${noTarget.reply}"`,
+	)
+
+	const inventedDomain = await runTargetless(
+		"Set music level two hundred percent",
+		{ domain: ["light"] },
+	)
+	checker.check(
+		"a domain the user never spoke is replaced by the one they did speak",
+		inventedDomain.toolNamesUsed.join(",") === turnOff &&
+			JSON.stringify(argsOfFirstCall(inventedDomain).domain) ===
+				JSON.stringify(["media_player"]),
+		`used=${inventedDomain.toolNamesUsed.join(",")} args=${JSON.stringify(argsOfFirstCall(inventedDomain))}`,
+	)
+
+	const inventedOnly = await runTargetless("Set the level to two hundred", {
+		domain: ["light"],
+	})
+	checker.check(
+		"a domain the user never spoke with nothing else to go on is refused",
+		inventedOnly.toolNamesUsed.length === 0 &&
+			inventedOnly.reply === "(follow-up)" &&
+			resultTools(inventedOnly).length === 0,
+		`used=${inventedOnly.toolNamesUsed.join(",")} reply="${inventedOnly.reply}"`,
+	)
+
+	const spokenDomain = await runTargetless("Turn off the lights", {
+		domain: ["light"],
+	})
+	checker.check(
+		"a domain the user did speak stays the target",
+		spokenDomain.toolNamesUsed.join(",") === turnOff &&
+			JSON.stringify(argsOfFirstCall(spokenDomain).domain) ===
+				JSON.stringify(["light"]),
+		`used=${spokenDomain.toolNamesUsed.join(",")} args=${JSON.stringify(argsOfFirstCall(spokenDomain))}`,
+	)
+
+	const widenedDomain = await runTargetless("Turn off the lights", {
+		domain: ["light", "switch"],
+	})
+	checker.check(
+		"a domain list wider than what was spoken narrows to the spoken domain",
+		widenedDomain.toolNamesUsed.join(",") === turnOff &&
+			JSON.stringify(argsOfFirstCall(widenedDomain).domain) ===
+				JSON.stringify(["light"]),
+		`used=${widenedDomain.toolNamesUsed.join(",")} args=${JSON.stringify(argsOfFirstCall(widenedDomain))}`,
 	)
 
 	await disconnectProviders([haCfg.id])

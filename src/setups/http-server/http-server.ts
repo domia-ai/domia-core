@@ -10,6 +10,7 @@ import {
 	httpsServerOptions,
 	setMeshAuthTunables,
 	domiaError,
+	isDomiaError,
 	CORE_ERRORS,
 } from "@/utils"
 import { env } from "@/config"
@@ -54,6 +55,9 @@ import {
 	handlePostProactivitySchedule,
 	handleDeleteProactivitySchedule,
 	handleGetProactivityStatus,
+	handleGetRoutines,
+	handlePostRoutine,
+	handleDeleteRoutine,
 	handleGetVoiceFeel,
 	handlePostVoiceFeelApply,
 	handlePostVoiceFeelRevert,
@@ -64,6 +68,7 @@ import {
 	handlePostModelInstall,
 	handleGetModelJob,
 	handleImportMind,
+	handleGetMindExport,
 	handleGetTemplates,
 	handleActivateTemplate,
 	handleGetIdentities,
@@ -73,10 +78,13 @@ import {
 	handleGetSatellites,
 	handleGetSkills,
 	handleDiscoverSkills,
+	handleGetSkillDescriptorSchema,
+	handlePostFastPathTry,
 	handlePostSatellite,
 	handleDeleteSatellite,
 	handleSetSatelliteWakeWords,
 	handleGetSatelliteLivekitToken,
+	handlePostSatelliteToken,
 	handleDeleteIdentityData,
 	handleResetConversation,
 	handleSetSatelliteNumber,
@@ -88,6 +96,12 @@ import {
 	handleListSatelliteTimers,
 	handleTestSatelliteSpeaker,
 	handleGetSync,
+	handleGetMemoryEpisodes,
+	handleGetUserModel,
+	handleGetFactEvidence,
+	handleGetToolRuns,
+	handleGetConfirmations,
+	handleSettleConfirmation,
 	handlePostMeshRotate,
 	isAuthExemptRequest,
 	type PostChatRouteType,
@@ -99,11 +113,19 @@ import {
 	type PostImportMindRouteType,
 	type TemplateIdRouteType,
 	type VoiceFeelIdRouteType,
+	type GetMemoryEpisodesRouteType,
+	type GetFactEvidenceRouteType,
+	type GetToolRunsRouteType,
+	type PostConfirmationSettleRouteType,
 } from "@/modules/http-api"
 
 const HTTP_SERVER_HOST = env.HTTP_SERVER_HOST
 const HTTP_SERVER_PORT = Number(env.HTTP_SERVER_PORT)
 const HTTP_BODY_LIMIT_BYTES = 32 * 1024 * 1024
+const IDENTITY_NOT_FOUND_CODES = new Set<string>([
+	CORE_ERRORS.IDENTITY_NOT_HOSTED.code,
+	CORE_ERRORS.IDENTITY_NOT_RESOLVABLE.code,
+])
 
 const liveDomia = async (
 	fallback: DomiaType,
@@ -154,6 +176,13 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		logger: false,
 		bodyLimit: HTTP_BODY_LIMIT_BYTES,
 		https,
+	})
+
+	fastify.setErrorHandler((error, _request, reply) => {
+		if (isDomiaError(error) && IDENTITY_NOT_FOUND_CODES.has(error.code))
+			return reply.code(404).send({ error: error.message })
+		httpServerLogger.error("❌ unhandled http error", { err: error })
+		return reply.code(500).send({ error: "internal error" })
 	})
 
 	fastify.addHook("onRequest", (request, reply, done) => {
@@ -244,6 +273,14 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 		handleGetMind(await liveDomia(domia, queryDomiaKey(request.query))),
 	)
 
+	fastify.get("/mind/export", async (request, reply) =>
+		handleGetMindExport(
+			await liveDomia(domia, queryDomiaKey(request.query)),
+			request.query,
+			reply,
+		),
+	)
+
 	fastify.get("/config", async (request) =>
 		handleGetConfig(await liveDomia(domia, queryDomiaKey(request.query))),
 	)
@@ -287,6 +324,40 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 			handleDeleteKnowledge(
 				await liveDomia(domia, queryDomiaKey(request.query)),
 				request.params.id,
+			),
+	)
+
+	fastify.get<GetMemoryEpisodesRouteType>(
+		"/memory/episodes",
+		async (request, reply) => handleGetMemoryEpisodes(request.query, reply),
+	)
+
+	fastify.get("/memory/user-model", async (request, reply) =>
+		handleGetUserModel(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.get<GetFactEvidenceRouteType>(
+		"/memory/facts/:factId/evidence",
+		async (request, reply) =>
+			handleGetFactEvidence(request.params.factId, request.query, reply),
+	)
+
+	fastify.get<GetToolRunsRouteType>("/tool-runs", async (request, reply) =>
+		handleGetToolRuns(request.query, reply),
+	)
+
+	fastify.get("/confirmations", async (request, reply) =>
+		handleGetConfirmations(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.post<PostConfirmationSettleRouteType>(
+		"/confirmations/:scope/settle",
+		async (request, reply) =>
+			handleSettleConfirmation(
+				queryDomiaKey(request.query),
+				request.params.scope,
+				request.body,
+				reply,
 			),
 	)
 
@@ -379,8 +450,34 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 
 	fastify.get("/skills/discover", async () => handleDiscoverSkills())
 
+	fastify.get("/skills/descriptor-schema", () =>
+		handleGetSkillDescriptorSchema(),
+	)
+
+	fastify.post("/skills/fast-path/try", async (request, reply) =>
+		handlePostFastPathTry(queryDomiaKey(request.query), request.body, reply),
+	)
+
 	fastify.get("/skills", async (request, reply) =>
 		handleGetSkills(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.get("/routines", async (request, reply) =>
+		handleGetRoutines(queryDomiaKey(request.query), reply),
+	)
+
+	fastify.post("/routines", async (request, reply) =>
+		handlePostRoutine(queryDomiaKey(request.query), request.body, reply),
+	)
+
+	fastify.delete<{ Params: { id: string } }>(
+		"/routines/:id",
+		async (request, reply) =>
+			handleDeleteRoutine(
+				queryDomiaKey(request.query),
+				request.params.id,
+				reply,
+			),
 	)
 
 	fastify.delete("/identity-data", async (request, reply) =>
@@ -419,6 +516,10 @@ export const setupHttpServer = async ({ domia }: { domia: DomiaType }) => {
 				request.params.satelliteId,
 				reply,
 			),
+	)
+
+	fastify.post("/satellite/token", async (request, reply) =>
+		handlePostSatelliteToken(request.body, reply),
 	)
 
 	fastify.patch<{ Params: { satelliteId: string } }>(

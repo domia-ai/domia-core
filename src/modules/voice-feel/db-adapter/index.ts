@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from "drizzle-orm"
+import { and, asc, desc, eq, gt, gte, or } from "drizzle-orm"
 
 import {
 	dbClient,
@@ -49,6 +49,32 @@ const dbAdapter = {
 		client.query.voiceFeelAdjustment.findMany({
 			where: eq(voiceFeelAdjustment.domiaId, domiaId),
 			orderBy: desc(voiceFeelAdjustment.createdAt),
+			limit,
+		}),
+	listSince: (
+		domiaId: string,
+		since: string,
+		sinceId: string,
+		limit: number,
+		client: DBClientOrTxType = dbClient,
+	) =>
+		client.query.voiceFeelAdjustment.findMany({
+			where: and(
+				eq(voiceFeelAdjustment.domiaId, domiaId),
+				sinceId
+					? or(
+							gt(voiceFeelAdjustment.createdAt, since),
+							and(
+								eq(voiceFeelAdjustment.createdAt, since),
+								gt(voiceFeelAdjustment.id, sinceId),
+							),
+						)
+					: gte(voiceFeelAdjustment.createdAt, since),
+			),
+			orderBy: [
+				asc(voiceFeelAdjustment.createdAt),
+				asc(voiceFeelAdjustment.id),
+			],
 			limit,
 		}),
 	findById: (

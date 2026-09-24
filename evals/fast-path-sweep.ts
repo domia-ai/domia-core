@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto"
-import { writeFileSync, mkdirSync } from "fs"
+import { readFileSync, writeFileSync, mkdirSync } from "fs"
 import { join } from "path"
 
 import type { DomiaType } from "@/modules/core"
@@ -8,12 +8,56 @@ import { connectProvider, disconnectProviders } from "@/modules/skill-engine"
 import { matchFastPath, invalidateFastPathIndex } from "@/modules/fast-path"
 import { baseLlmModelConfig } from "@/test-utils/mocks/llm-model-config"
 
-import { startMockHa, startMockMusic, makeChecker, stringOrEmpty } from "./lib"
+import {
+	HA_MCP_TOOLS,
+	evalCaseFileSchema,
+	haToolsCacheOf,
+	makeChecker,
+	percentile,
+	startMockHa,
+	startMockMusic,
+	stringOrEmpty,
+} from "./lib"
+import type { MockHaEntityType } from "./types"
 
 const checker = makeChecker()
 const BENCH_DIR = join(process.cwd(), "evals", "bench-results")
 
 const DOMIA_ID = randomUUID()
+const CASES_DIR = join(process.cwd(), "evals", "cases")
+const FIXTURES_DIR = join(process.cwd(), "evals", "fixtures")
+const HA_MEDIA_TOOL_RE = /Media|Volume/
+
+const SWEEP_ENTITIES: MockHaEntityType[] = [
+	{
+		names: ["Kitchen Light", "Luz de la Cocina"],
+		domain: "light",
+		area: "Kitchen",
+	},
+	{
+		names: ["Bedroom Light", "Luz del Dormitorio"],
+		domain: "light",
+		area: "Bedroom",
+	},
+	{
+		names: ["Living Room Light", "Luz de la Sala"],
+		domain: "light",
+		area: "Living Room",
+	},
+	{
+		names: ["Office Lights", "Luz de la Oficina"],
+		domain: "light",
+		area: "Office",
+	},
+	{ names: ["Exterior Sconces"], domain: "light", area: "Exterior" },
+	{ names: ["BeyondTV"], domain: "media_player", area: "Living Room" },
+	{
+		names: ["Kitchen Speaker", "Kitchen"],
+		domain: "media_player",
+		area: "Kitchen",
+	},
+	{ names: ["Front Door"], domain: "lock", area: "Entryway" },
+]
 
 const POSITIVES: {
 	text: string
@@ -73,6 +117,11 @@ const POSITIVES: {
 	},
 	{
 		text: "turn on luz de la cocina",
+		tool: "HassTurnOn",
+		args: { name: "Kitchen Light" },
+	},
+	{
+		text: "Luz de la Cocina on",
 		tool: "HassTurnOn",
 		args: { name: "Kitchen Light" },
 	},
@@ -188,7 +237,7 @@ const NEGATIVES: { text: string; class: string }[] = [
 	},
 	{ text: "the movie turn on the bedroom light was great", class: "ramble" },
 	{ text: "Turn on the garage light", class: "unknown-entity" },
-	{ text: "turn off the office lamp", class: "unknown-entity" },
+	{ text: "turn off the garage lamp", class: "unknown-entity" },
 	{ text: "set the porch light to 50 percent", class: "unknown-entity" },
 	{ text: "Kitchen light", class: "bare-name" },
 	{ text: "the bedroom light", class: "bare-name" },
@@ -209,7 +258,6 @@ const NEGATIVES: { text: string; class: string }[] = [
 	{ text: "I love the light of the sunset", class: "chat" },
 	{ text: "a house full of lights sounds cozy", class: "chat" },
 	{ text: "how are you today", class: "chat" },
-	{ text: "Luz de la Cocina on", class: "spanglish-fragment" },
 	{ text: "who turned on the kitchen light", class: "question" },
 	{
 		text: "could you maybe turn on the kitchen light sometime",
@@ -352,6 +400,110 @@ const NEGATIVES_ES: { text: string; class: string }[] = [
 	{ text: "cómo estás hoy", class: "chat" },
 ]
 
+const HA_MEDIA_KEEPS: { text: string; tool: string; name: string }[] = [
+	{ text: "turn off the BeyondTV", tool: "HassTurnOff", name: "BeyondTV" },
+	{
+		text: "turn off the kitchen speaker",
+		tool: "HassTurnOff",
+		name: "Kitchen Speaker",
+	},
+]
+
+const HA_MEDIA_NEGATIVES: string[] = ["turn off the kitchen speaker"]
+
+const SKIP_WORD_POSITIVES: {
+	text: string
+	tool: string
+	args: Record<string, unknown>
+}[] = [
+	{
+		text: "please turn on the kitchen light",
+		tool: "HassTurnOn",
+		args: { name: "Kitchen Light" },
+	},
+	{
+		text: "could you turn off the bedroom light",
+		tool: "HassTurnOff",
+		args: { name: "Bedroom Light" },
+	},
+	{
+		text: "turn on the kitchen light please",
+		tool: "HassTurnOn",
+		args: { name: "Kitchen Light" },
+	},
+	{
+		text: "can you set the kitchen light to 40 percent for me",
+		tool: "HassLightSet",
+		args: { name: "Kitchen Light", brightness: 40 },
+	},
+]
+
+const SKIP_WORD_NEGATIVES: string[] = [
+	"for me the kitchen light is too bright",
+	"please explain how the kitchen light works",
+	"i want to know if the kitchen light is on",
+]
+
+const SKIP_WORD_POSITIVES_ES: {
+	text: string
+	tool: string
+	args: Record<string, unknown>
+}[] = [
+	{
+		text: "por favor enciende la luz de la cocina",
+		tool: "HassTurnOn",
+		args: { name: "Kitchen Light" },
+	},
+	{
+		text: "apaga la luz del dormitorio por favor",
+		tool: "HassTurnOff",
+		args: { name: "Bedroom Light" },
+	},
+	{
+		text: "podrías apagar la luz de la cocina",
+		tool: "HassTurnOff",
+		args: { name: "Kitchen Light" },
+	},
+	{
+		text: "puedes encender la luz de la sala",
+		tool: "HassTurnOn",
+		args: { name: "Living Room Light" },
+	},
+	{
+		text: "me puedes prender la luz del dormitorio",
+		tool: "HassTurnOn",
+		args: { name: "Bedroom Light" },
+	},
+]
+
+const SKIP_WORD_NEGATIVES_ES: string[] = [
+	"por favor dime si la luz de la cocina está encendida",
+	"gracias por encender la luz de la cocina",
+]
+
+const chatExpectedTexts = (language: string): string[] => {
+	const files = [
+		join(CASES_DIR, "chat-negatives.json"),
+		join(CASES_DIR, "fast-negatives-en.json"),
+		join(CASES_DIR, "routing-en.json"),
+		join(FIXTURES_DIR, "routing-es.json"),
+	]
+	const out: string[] = []
+	for (const file of files) {
+		const cases = evalCaseFileSchema.parse(
+			JSON.parse(readFileSync(file, "utf8")),
+		)
+		const allTurnsAreChat = !file.includes("routing")
+		for (const c of cases) {
+			if (c.language !== language) continue
+			for (const turn of c.turns)
+				if (allTurnsAreChat || turn.expect.routed === "chat")
+					out.push(turn.text)
+		}
+	}
+	return [...new Set(out)]
+}
+
 const haProvider = (url: string): SelectSkillProviderType => ({
 	id: randomUUID(),
 	name: "home-assistant",
@@ -363,39 +515,10 @@ const haProvider = (url: string): SelectSkillProviderType => ({
 	description: null,
 	config: null,
 	descriptor: { version: 1, kind: "home-assistant" },
+	serverDescriptor: null,
+	serverDescriptorHash: null,
 	auth: null,
-	toolsCache: [
-		{
-			provider: "home-assistant",
-			rawName: "HassTurnOn",
-			namespacedName: "home-assistant__HassTurnOn",
-			inputSchema: {
-				type: "object",
-				properties: { name: { type: "string" } },
-			},
-		},
-		{
-			provider: "home-assistant",
-			rawName: "HassTurnOff",
-			namespacedName: "home-assistant__HassTurnOff",
-			inputSchema: {
-				type: "object",
-				properties: { name: { type: "string" } },
-			},
-		},
-		{
-			provider: "home-assistant",
-			rawName: "HassLightSet",
-			namespacedName: "home-assistant__HassLightSet",
-			inputSchema: {
-				type: "object",
-				properties: {
-					name: { type: "string" },
-					brightness: { type: "number" },
-				},
-			},
-		},
-	],
+	toolsCache: haToolsCacheOf(HA_MCP_TOOLS),
 	toolWhitelist: null,
 	lastSyncAt: null,
 	maxResultChars: 4000,
@@ -515,20 +638,86 @@ const domiaAt = (minCoverage: number): DomiaType =>
 		},
 	}) as unknown as DomiaType
 
-const waitForContextFor = async (
+const waitUntil = async (
 	domia: DomiaType,
 	probeText: string,
+	expected: "match" | "miss",
 ): Promise<void> => {
 	for (let i = 0; i < 40; i++) {
 		invalidateFastPathIndex(DOMIA_ID)
 		const probe = matchFastPath(domia, probeText)
-		if (probe.kind === "match") return
+		if (probe.kind === expected) return
 		await new Promise((r) => setTimeout(r, 250))
 	}
 }
 
+const waitForContextFor = (
+	domia: DomiaType,
+	probeText: string,
+): Promise<void> => waitUntil(domia, probeText, "match")
+
+const timings: number[] = []
+
+const timedMatch = (
+	domia: DomiaType,
+	text: string,
+): ReturnType<typeof matchFastPath> => {
+	const v = matchFastPath(domia, text)
+	timings.push(v.fastPathMs)
+	return v
+}
+
+const checkSkipWords = (
+	domia: DomiaType,
+	label: string,
+	positives: { text: string; tool: string; args: Record<string, unknown> }[],
+	negatives: string[],
+): void => {
+	for (const pos of positives) {
+		const v = timedMatch(domia, pos.text)
+		const ok =
+			v.kind === "match" &&
+			v.match.tool === pos.tool &&
+			Object.entries(pos.args).every(
+				([k, val]) => v.match.resolvedArgs[k] === val,
+			)
+		checker.check(
+			`${label} skip words: "${pos.text}" → ${pos.tool}`,
+			ok,
+			`kind=${v.kind} ${v.kind === "match" ? `${v.match.tool} ${JSON.stringify(v.match.resolvedArgs)}` : v.kind === "miss" ? v.reason : ""}`,
+		)
+	}
+	for (const neg of negatives) {
+		const v = timedMatch(domia, neg)
+		checker.check(
+			`${label} skip words never unlock chat: "${neg}"`,
+			v.kind === "miss",
+			`kind=${v.kind} ${v.kind === "match" ? v.match.tool : ""}`,
+		)
+	}
+}
+
+const checkChatRatchet = (domia: DomiaType, language: string): void => {
+	const texts = chatExpectedTexts(language)
+	const hits = texts.flatMap((text) => {
+		const v = timedMatch(domia, text)
+		return v.kind === "miss"
+			? []
+			: [`"${text}" → ${v.kind === "match" ? v.match.tool : "compound"}`]
+	})
+	checker.check(
+		`${language} chat ratchet: ${texts.length} chat-expected turns never fast-path`,
+		hits.length === 0,
+		hits.slice(0, 5).join(" | "),
+	)
+}
+
 const main = async (): Promise<void> => {
-	const mock = await startMockHa(0)
+	const mock = await startMockHa(
+		0,
+		{},
+		{ entities: SWEEP_ENTITIES, tools: HA_MCP_TOOLS },
+	)
 	const cfg = haProvider(mock.url)
 	const connected = await connectProvider(cfg, "home-assistant", "en")
 	checker.check("HA provider connects", connected)
@@ -638,6 +827,18 @@ const main = async (): Promise<void> => {
 		templatesHit.size >= 4,
 		`templates hit: ${[...templatesHit].join(" · ")}`,
 	)
+	for (const keep of HA_MEDIA_KEEPS) {
+		const v = timedMatch(domia, keep.text)
+		checker.check(
+			`without music assistant a media_player is a device: "${keep.text}" → ${keep.tool}`,
+			v.kind === "match" &&
+				v.match.tool === keep.tool &&
+				!HA_MEDIA_TOOL_RE.test(v.match.tool) &&
+				stringOrEmpty(v.match.resolvedArgs.name) === keep.name,
+			`kind=${v.kind} ${v.kind === "match" ? `${v.match.tool} ${JSON.stringify(v.match.resolvedArgs)}` : ""}`,
+		)
+	}
+	checkSkipWords(domia, "en", SKIP_WORD_POSITIVES, SKIP_WORD_NEGATIVES)
 
 	const music = await startMockMusic()
 	const musicCfg = musicProvider(music.url)
@@ -648,6 +849,28 @@ const main = async (): Promise<void> => {
 	)
 	await waitForContextFor(domiaAt(0.1), "mute the kitchen")
 	const bothDomia = domiaAt(0.1)
+	for (const neg of HA_MEDIA_NEGATIVES) await waitUntil(bothDomia, neg, "miss")
+	for (const neg of HA_MEDIA_NEGATIVES) {
+		const v = timedMatch(bothDomia, neg)
+		checker.check(
+			`with music assistant its player is not an HA device: "${neg}" takes no HA template`,
+			v.kind !== "compound" &&
+				(v.kind === "miss" || v.match.providerSlug !== "home-assistant"),
+			`kind=${v.kind} ${v.kind === "match" ? `${v.match.tool} ${JSON.stringify(v.match.resolvedArgs)}` : ""}`,
+		)
+	}
+	{
+		const tv = HA_MEDIA_KEEPS[0]
+		const v = timedMatch(bothDomia, tv.text)
+		checker.check(
+			`with music assistant the TV stays an HA device: "${tv.text}" → ${tv.tool}`,
+			v.kind === "match" &&
+				v.match.tool === tv.tool &&
+				stringOrEmpty(v.match.resolvedArgs.name) === tv.name,
+			`kind=${v.kind} ${v.kind === "match" ? `${v.match.tool} ${JSON.stringify(v.match.resolvedArgs)}` : ""}`,
+		)
+	}
+	checkChatRatchet(bothDomia, "en")
 	for (const pos of MUSIC_POSITIVES) {
 		const v = matchFastPath(bothDomia, pos.text)
 		checker.check(
@@ -685,7 +908,6 @@ const main = async (): Promise<void> => {
 		)
 	}
 	await disconnectProviders([musicCfg.id])
-	await music.close()
 	invalidateFastPathIndex(DOMIA_ID)
 
 	const esProvider = haProvider(mock.url)
@@ -697,6 +919,13 @@ const main = async (): Promise<void> => {
 		characterProfile: { language: "es" },
 	} as unknown as DomiaType
 	await waitForContextFor(domiaEsBase, "Enciende la luz de la cocina")
+	const musicEsCfg = musicProvider(music.url)
+	const musicEsConnected = await connectProvider(musicEsCfg, "music", "es")
+	checker.check(
+		"music provider connects alongside home-assistant (es)",
+		musicEsConnected,
+	)
+	await waitUntil(domiaEsBase, "apaga el kitchen speaker", "miss")
 	const gridEs: typeof grid = []
 	for (let t = 0; t <= 0.6; t += 0.05) {
 		const threshold = Math.round(t * 100) / 100
@@ -783,6 +1012,10 @@ const main = async (): Promise<void> => {
 			`kind=${v.kind} ${v.kind === "match" ? JSON.stringify(v.match.resolvedArgs) : ""}`,
 		)
 	}
+	checkSkipWords(domiaEs, "es", SKIP_WORD_POSITIVES_ES, SKIP_WORD_NEGATIVES_ES)
+	checkChatRatchet(domiaEs, "es")
+	await disconnectProviders([musicEsCfg.id])
+	await music.close()
 
 	mkdirSync(BENCH_DIR, { recursive: true })
 	const artifact = {
@@ -797,6 +1030,11 @@ const main = async (): Promise<void> => {
 			...row,
 			fpSample: fpClasses.slice(0, 3),
 		})),
+		fastPathMs: {
+			n: timings.length,
+			p50: percentile(timings, 50),
+			p95: percentile(timings, 95),
+		},
 	}
 	writeFileSync(
 		join(BENCH_DIR, "fast-path-sweep.json"),
@@ -805,7 +1043,7 @@ const main = async (): Promise<void> => {
 	const md = [
 		"# Fast-path threshold sweep (offline, mock-HA entities)",
 		"",
-		`Run: ${artifact.timestamp} — EN ${POSITIVES.length}+/${NEGATIVES.length}- · ES ${POSITIVES_ES.length}+/${NEGATIVES_ES.length}-`,
+		`Run: ${artifact.timestamp} — EN ${POSITIVES.length}+/${NEGATIVES.length}- · ES ${POSITIVES_ES.length}+/${NEGATIVES_ES.length}- · fastPathMs p50 ${artifact.fastPathMs.p50} / p95 ${artifact.fastPathMs.p95} (n=${artifact.fastPathMs.n})`,
 		"",
 		"## EN",
 		"| coverage ≥ | false positives | false negatives | ambiguous |",

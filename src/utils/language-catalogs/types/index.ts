@@ -2,6 +2,25 @@ import type { RelationFamilyType } from "@/modules/memory/types"
 
 export type SpokenTimeRendererType = (date: Date) => string
 
+export type SpokenDateRendererType = (date: Date) => string
+
+export type ClockTwelveAmType = "midnight" | "noon"
+
+export type ClockWordsType = {
+	am: string[]
+	earlyMorning: string[]
+	pm: string[]
+	night: string[]
+	oclock: string[]
+	prefixes: string[]
+	halfBefore: string[]
+	quarterBefore: string[]
+	minusBefore: string[]
+	halfAfter: string[]
+	quarterAfter: string[]
+	minusAfter: string[]
+}
+
 export type LanguageCatalogType = {
 	displayName: string
 	locale: string
@@ -18,7 +37,13 @@ export type LanguageCatalogType = {
 	additiveCues: string[]
 	allCues?: string[]
 	domainWords?: Record<string, string[]>
-	timerKeywords: string[]
+	skipWords?: string[]
+	durationUnits?: Record<string, number>
+	durationPhrases?: Record<string, number>
+	unitArticles?: string[]
+	clockWords?: ClockWordsType
+	clockTwelveAm?: ClockTwelveAmType
+	spokenDate?: SpokenDateRendererType
 	memoryCommandKeywords: string[]
 	unitWords: { hour: string; minute: string; second: string; plural: string }
 	affirmations: string[]
@@ -75,7 +100,13 @@ export type ResolvedLanguageSetsType = {
 	additiveCues: string[]
 	allCues: string[]
 	domainWords: Record<string, string[]>
-	timerKeywordsRe: RegExp
+	skipWords: string[]
+	durationUnits: Record<string, number>
+	durationPhrases: Record<string, number>
+	unitArticles: string[]
+	clockWords: ClockWordsType
+	clockTwelveAm: ClockTwelveAmType
+	spokenDate: SpokenDateRendererType
 	memoryCommandRe: RegExp
 	unitWords: { hour: string; minute: string; second: string; plural: string }
 	affirmations: Set<string>

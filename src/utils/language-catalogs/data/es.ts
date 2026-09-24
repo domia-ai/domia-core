@@ -1,4 +1,8 @@
-import type { LanguageCatalogType, SpokenTimeRendererType } from "../types"
+import type {
+	LanguageCatalogType,
+	SpokenDateRendererType,
+	SpokenTimeRendererType,
+} from "../types"
 
 const ES_HOUR_WORDS = [
 	"doce",
@@ -63,8 +67,16 @@ const esHourPhrase = (hour24: number): string => {
 	return hour24 % 12 === 1 ? `la ${word}` : `las ${word}`
 }
 
+const ES_PERIODS = [
+	{ until: 6, label: "de la madrugada" },
+	{ until: 12, label: "de la mañana" },
+	{ until: 13, label: "del mediodía" },
+	{ until: 20, label: "de la tarde" },
+	{ until: 24, label: "de la noche" },
+]
+
 const esPeriod = (hour24: number): string =>
-	hour24 < 12 ? "de la mañana" : hour24 < 20 ? "de la tarde" : "de la noche"
+	ES_PERIODS.find((p) => hour24 < p.until)?.label ?? ES_PERIODS[0].label
 
 const esSpokenTime: SpokenTimeRendererType = (d) => {
 	const hour = d.getHours()
@@ -72,18 +84,24 @@ const esSpokenTime: SpokenTimeRendererType = (d) => {
 	if (minutes === 0) return `${esHourPhrase(hour)} en punto ${esPeriod(hour)}`
 	if (minutes === 15) return `${esHourPhrase(hour)} y cuarto ${esPeriod(hour)}`
 	if (minutes === 30) return `${esHourPhrase(hour)} y media ${esPeriod(hour)}`
-	if (minutes === 45) {
-		const next = (hour + 1) % 24
-		return `${esHourPhrase(next)} menos cuarto ${esPeriod(next)}`
-	}
+	if (minutes === 45)
+		return `${esHourPhrase((hour + 1) % 24)} menos cuarto ${esPeriod(hour)}`
 	return `${esHourPhrase(hour)} y ${esMinuteWords(minutes)} ${esPeriod(hour)}`
 }
+
+const esSpokenDate: SpokenDateRendererType = (d) =>
+	new Intl.DateTimeFormat("es", {
+		weekday: "long",
+		day: "numeric",
+		month: "long",
+	}).format(d)
 
 export const ES: LanguageCatalogType = {
 	displayName: "Spanish",
 	locale: "es",
 	latinScript: true,
 	spokenTime: esSpokenTime,
+	spokenDate: esSpokenDate,
 	articles: ["la", "el", "las", "los", "mi", "mis", "una", "un"],
 	stopwords: [
 		"el",
@@ -237,7 +255,57 @@ export const ES: LanguageCatalogType = {
 		climate: ["termostato", "termostatos", "calefacción", "aire"],
 		lock: ["cerradura", "cerraduras", "cerrojo", "cerrojos"],
 	},
-	timerKeywords: ["temporizador", "alarma", "cronometro"],
+	skipWords: [
+		"por favor",
+		"porfa",
+		"gracias",
+		"podrías",
+		"podría",
+		"puedes",
+		"podés",
+		"me podrías",
+		"me podría",
+		"me puedes",
+		"me podés",
+		"te importaría",
+		"te importa",
+		"le importa",
+		"le importaría",
+		"te animas a",
+		"te animás a",
+		"oye",
+	],
+	durationUnits: {
+		hora: 3600,
+		horas: 3600,
+		minuto: 60,
+		minutos: 60,
+		min: 60,
+		segundo: 1,
+		segundos: 1,
+	},
+	durationPhrases: {
+		"media hora": 1800,
+		"hora y media": 5400,
+		"una hora y media": 5400,
+		"un cuarto de hora": 900,
+	},
+	unitArticles: ["un", "una"],
+	clockTwelveAm: "noon",
+	clockWords: {
+		am: ["de la mañana", "am"],
+		earlyMorning: ["de la madrugada"],
+		pm: ["de la tarde", "del mediodía", "del día", "pm"],
+		night: ["de la noche"],
+		oclock: ["en punto"],
+		prefixes: ["a las", "a la", "las", "la"],
+		halfBefore: [],
+		quarterBefore: [],
+		minusBefore: [],
+		halfAfter: ["y media", "treinta"],
+		quarterAfter: ["y cuarto", "quince"],
+		minusAfter: ["menos cuarto"],
+	},
 	memoryCommandKeywords: [
 		"recuerda",
 		"recuérdalo",
@@ -573,6 +641,9 @@ export const ES: LanguageCatalogType = {
 		"supón",
 		"supon",
 		"si",
+		"historia",
+		"cuento",
+		"poema",
 	],
 	phrases: {
 		done: "Listo.",
@@ -595,7 +666,9 @@ export const ES: LanguageCatalogType = {
 		fallbackGeneric: "Perdón, algo salió mal. Inténtalo de nuevo.",
 		proactiveReminder: "Recordatorio: {text}",
 		proactiveIdleNudge: "¿Sigues ahí? Dime si necesitas algo.",
-		proactiveTimeReached: "Son las {time}.",
+		proactiveTimeReached: "{time}.",
+		currentTime: "{time}.",
+		notAvailableHere: "No puedo hacer eso desde este dispositivo.",
 		formerly: "(antes)",
 		warmup: "Cuando quieras.",
 	},

@@ -1,7 +1,6 @@
 import { AccessToken } from "livekit-server-sdk"
 
 import {
-	getDomia,
 	getSatellitesForDomia,
 	invalidateOwnDomia,
 	setSatelliteDesiredWakeWords,
@@ -15,6 +14,7 @@ import {
 import { SATELLITE_PROTOCOL_ENUM } from "@/db"
 import { generateUuid } from "@/utils"
 import {
+	postSatelliteTokenBodySchema,
 	postSatelliteWakeWordsBodySchema,
 	postSatelliteNumberBodySchema,
 	postSatelliteVolumeBodySchema,
@@ -23,6 +23,7 @@ import {
 	patchSatelliteSettingsBodySchema,
 } from "../schemas"
 import { badRequest } from "../utils/http-errors"
+import { resolveHostedIdentity } from "../utils/hosted-identity"
 import {
 	renderAnnouncementUrl,
 	getSatelliteControl,
@@ -32,8 +33,9 @@ import {
 	getPresence,
 } from "@/modules/core-bus"
 import { reloadSubsystem } from "@/modules/config-apply"
-import { httpServerLogger } from "@/utils"
+import { httpServerLogger, mintSatelliteToken } from "@/utils"
 import type { FastifyReply } from "fastify"
+import type { PostSatelliteTokenResponseType } from "../types"
 
 const SATELLITE_TEST_PHRASE =
 	"Hi, this is a test from Domia. If you can hear me, your speaker is working."
@@ -43,17 +45,9 @@ const withSatellite = async <T>(
 	reply: FastifyReply,
 	handler: (domia: DomiaType, domiaKey: string) => Promise<T>,
 ) => {
-	if (!domiaKey) {
-		return reply.code(400).send({ error: "missing domiaKey" })
-	}
-	const domia = await getDomia(domiaKey)
-	if (!domia) {
-		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
-	}
-	if (!domia.isHosted) {
-		return reply.code(409).send({ error: `not a hosted identity: ${domiaKey}` })
-	}
-	return handler(domia, domiaKey)
+	const domia = await resolveHostedIdentity(domiaKey, reply)
+	if (!domia) return
+	return handler(domia, domia.domiaKey)
 }
 
 export const handleGetSatelliteLivekitToken = async (
@@ -91,6 +85,28 @@ export const handleGetSatelliteLivekitToken = async (
 			token: await accessToken.toJwt(),
 		}
 	})
+
+export const handlePostSatelliteToken = async (
+	body: unknown,
+	reply: FastifyReply,
+) => {
+	const parsed = postSatelliteTokenBodySchema.safeParse(body)
+	if (!parsed.success)
+		return badRequest(reply, parsed.error, "Invalid satellite token body")
+	const { domiaKey, satelliteId } = parsed.data
+	return withSatellite(domiaKey, reply, () => {
+		const response: PostSatelliteTokenResponseType = mintSatelliteToken({
+			domiaKey,
+			satelliteId,
+		})
+		httpServerLogger.info("🛰️ POST /satellite/token", {
+			domiaKey,
+			satelliteId,
+			expiresAt: new Date(response.expiresAt).toISOString(),
+		})
+		return Promise.resolve(response)
+	})
+}
 
 export const handleSetSatelliteWakeWords = async (
 	domiaKey: string | undefined,
@@ -234,12 +250,14 @@ export const handleStartSatelliteTimer = async (
 			error: `satellite ${satelliteId} does not support timers or is offline`,
 		})
 	}
-	const timer = startSatelliteTimer(
+	const timer = await startSatelliteTimer(
 		domiaKey,
 		satelliteId,
 		parsed.data.name ?? "Timer",
 		parsed.data.seconds,
 	)
+	if (!timer)
+		return reply.code(404).send({ error: `unknown identity: ${domiaKey}` })
 	return { started: true, timerId: timer.timerId }
 }
 
@@ -252,7 +270,7 @@ export const handleCancelSatelliteTimer = async (
 	if (!domiaKey) {
 		return reply.code(400).send({ error: "missing domiaKey" })
 	}
-	const cancelled = cancelSatelliteTimer(timerId)
+	const cancelled = await cancelSatelliteTimer(domiaKey, timerId)
 	if (!cancelled) {
 		return reply.code(404).send({ error: `no active timer ${timerId}` })
 	}
@@ -267,15 +285,14 @@ export const handleListSatelliteTimers = async (
 	if (!domiaKey) {
 		return reply.code(400).send({ error: "missing domiaKey" })
 	}
-	const active = listSatelliteTimers(domiaKey, satelliteId).map((t) => ({
-		timerId: t.timerId,
-		name: t.name,
-		totalSeconds: t.totalSeconds,
-		secondsLeft: Math.max(
-			0,
-			t.totalSeconds - Math.round((Date.now() - t.startedAt) / 1000),
-		),
-	}))
+	const active = (await listSatelliteTimers(domiaKey, satelliteId)).map(
+		(t) => ({
+			timerId: t.timerId,
+			name: t.name,
+			totalSeconds: t.totalSeconds,
+			secondsLeft: Math.max(0, t.secondsLeft),
+		}),
+	)
 	return { timers: active }
 }
 

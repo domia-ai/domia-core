@@ -1,0 +1,33 @@
+{
+	"intents": [
+		{
+			"templates": [
+				"what time is it [right now]",
+				"what time it is",
+				"what's the time",
+				"what is the [current] time",
+				"tell me the [current] time",
+				"(do you have|got) the time",
+				"time check",
+				"current time"
+			],
+			"allowBlockedTokens": true
+		}
+	],
+	"keywords": ["time", "hour", "clock", "o'clock"],
+	"exampleUtterances": ["what time is it", "tell me the time"],
+	"finalize": {
+		"mode": "template",
+		"ack": "{speakable}",
+		"error": "{speakable}"
+	},
+	"samples": [
+		{ "text": "what time is it" },
+		{ "text": "What time is it?" },
+		{ "text": "what time is it right now, please?" },
+		{ "text": "what's the time" },
+		{ "text": "what is the current time" },
+		{ "text": "tell me the time please" },
+		{ "text": "hey, do you have the time" }
+	]
+}

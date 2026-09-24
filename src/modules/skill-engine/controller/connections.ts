@@ -2,13 +2,18 @@ import {
 	DEFAULT_PROVIDER_DISCOVERY_MS,
 	type SelectSkillProviderType,
 } from "@/db"
-import { skillEngineLogger, domiaError, SKILL_ERRORS } from "@/utils"
+import { skillEngineLogger, domiaError, SKILL_ERRORS, now } from "@/utils"
 import type { DomiaType } from "@/modules/core"
 
+import dbAdapter from "../db-adapter"
 import { resolveSkillAdapter } from "../adapters"
 import { resolveSpecialization, listSpecializations } from "../specializations"
 import { resolveDescriptor } from "../utils/descriptor"
-import type { SkillConnectionType, DiscoveredProviderType } from "../types"
+import type {
+	SkillConnectionType,
+	SkillConnHandleType,
+	DiscoveredProviderType,
+} from "../types"
 
 import { connections } from "./state"
 import { buildToolMeta } from "./registry"
@@ -36,6 +41,32 @@ const buildSlugMap = (
 	return map
 }
 
+export const syncServerDescriptor = async (
+	cfg: SelectSkillProviderType,
+	handle: SkillConnHandleType,
+): Promise<SelectSkillProviderType> => {
+	if (!handle.readDescriptor) return cfg
+	const read = await handle.readDescriptor(cfg.toolsCache ?? [])
+	if (read.status === "invalid") return cfg
+	const next = read.status === "ok" ? read : { descriptor: null, hash: null }
+	if (next.hash === (cfg.serverDescriptorHash ?? null)) return cfg
+	const syncedAt = now()
+	dbAdapter
+		.cacheServerDescriptor(cfg.id, next.descriptor, next.hash, syncedAt)
+		.run()
+	skillEngineLogger.info("🧩 server descriptor cached", {
+		provider: cfg.name,
+		hash: next.hash,
+	})
+	return {
+		...cfg,
+		serverDescriptor: next.descriptor,
+		serverDescriptorHash: next.hash,
+		lastSyncAt: syncedAt,
+		updatedAt: syncedAt,
+	}
+}
+
 const openConnection = async (
 	cfg: SelectSkillProviderType,
 	slug: string,
@@ -59,20 +90,25 @@ const openConnection = async (
 				},
 			})
 		})
-	const descriptor = resolveDescriptor(cfg, language)
+	const provider = await syncServerDescriptor(cfg, handle)
+	const descriptor = resolveDescriptor(provider, language)
 	return {
-		providerId: cfg.id,
+		providerId: provider.id,
 		providerSlug: slug,
-		name: cfg.name,
-		maxResultChars: cfg.maxResultChars,
-		timeoutMs: cfg.timeout,
-		allowedTools: new Set((cfg.toolsCache ?? []).map((t) => t.rawName)),
+		name: provider.name,
+		maxResultChars: provider.maxResultChars,
+		timeoutMs: provider.timeout,
+		allowedTools: new Set((provider.toolsCache ?? []).map((t) => t.rawName)),
 		descriptor,
-		toolMeta: buildToolMeta(cfg.toolsCache ?? [], descriptor, cfg.trustTier),
+		toolMeta: buildToolMeta(
+			provider.toolsCache ?? [],
+			descriptor,
+			provider.trustTier,
+		),
 		toolsFreshUntil: null,
 		language,
-		provider: cfg,
-		specialization: resolveSpecialization(cfg),
+		provider,
+		specialization: resolveSpecialization(provider),
 		handle,
 	}
 }
@@ -103,8 +139,11 @@ export const connectProvider = async (
 	}
 }
 
-export const connectAll = async (domia: DomiaType): Promise<void> => {
-	const active = (domia.skillProviders ?? []).filter((s) => s.isActive)
+export const connectAll = async (
+	domia: DomiaType,
+	providers: SelectSkillProviderType[] = domia.skillProviders ?? [],
+): Promise<void> => {
+	const active = providers.filter((s) => s.isActive)
 	const activeIds = new Set(active.map((s) => s.id))
 	const stale = [...connections.values()]
 		.filter(

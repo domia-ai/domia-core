@@ -1,3 +1,4 @@
+import { capitalizeFirst } from "@/utils/text-tokens"
 import { languageSetsFor } from "@/utils"
 import type { ScheduleItemType } from "../types"
 
@@ -24,8 +25,9 @@ export const renderScheduleText = (
 	if (inline) return renderPlaceholders(inline, params)
 	const key = item.templateKey?.trim()
 	const catalog = key ? phrases[key] : undefined
-	if (catalog) return renderPlaceholders(catalog, params)
-	return renderPlaceholders(phrases.proactiveReminder, params)
+	return capitalizeFirst(
+		renderPlaceholders(catalog ?? phrases.proactiveReminder, params),
+	)
 }
 
 export const idleNudgeText = (language: string | null | undefined): string =>
