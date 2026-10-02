@@ -13,7 +13,7 @@
 			}
 		}
 	],
-	"keywords": ["timer", "countdown", "minutes", "seconds"],
+	"keywords": ["timer", "countdown"],
 	"exampleUtterances": [
 		"set a timer for five minutes",
 		"start a ten minute timer"
@@ -24,8 +24,10 @@
 		"error": "{speakable}"
 	},
 	"phrases": {
-		"timerSet": "Timer set for {label}.",
-		"timerSetOn": "Timer set for {label} on {target}.",
+		"timerSet": "Timer set for {duration}.",
+		"timerSetOn": "Timer set for {duration} on {target}.",
+		"timerSetNamed": "{label} timer set for {duration}.",
+		"timerSetNamedOn": "{label} timer set for {duration} on {target}.",
 		"timerFailed": "I couldn't start that timer.",
 		"timerCancelled": "Timer cancelled.",
 		"noActiveTimer": "There's no timer running.",

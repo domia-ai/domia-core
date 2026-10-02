@@ -7,6 +7,8 @@ import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver
 import { runLLMJson } from "@/modules/llm-engine"
 import {
 	personaContextFromDomia,
+	personaAddressNames,
+	resolvePersonaName,
 	type PersonaContextType,
 } from "@/modules/prompt-context-builder"
 import {
@@ -22,7 +24,10 @@ import {
 	type EmotionTrajectoryEntryType,
 	type UserEmotionType,
 } from "@/modules/emotion-engine"
-import { updateInteraction } from "@/modules/session-manager"
+import {
+	updateInteraction,
+	getInteractionById,
+} from "@/modules/session-manager"
 import {
 	buildFactExtractionLines,
 	parseFacts,
@@ -49,6 +54,7 @@ import {
 	DEFAULT_REFLECTION_YIELD_MAX_ATTEMPTS,
 } from "@/db"
 import { createReflectionGate } from "../utils"
+import { turnKindOf, captureFlagsFor } from "../utils/turn-kind"
 import { FACT_USER_GROUNDING_MIN_OVERLAP } from "../constants"
 import type {
 	ReflectionFlagsType,
@@ -87,7 +93,8 @@ const buildReflectionPrompt = (
 		lines.push(...emotionAppraisalInstructionLines())
 		lines.push(...userEmotionInstructionLines())
 	}
-	if (flags.facts) lines.push(...buildFactExtractionLines())
+	if (flags.facts)
+		lines.push(...buildFactExtractionLines(personaAddressNames(persona)))
 	if (flags.facts && explicitMemory) {
 		lines.push(
 			`This exchange contains an EXPLICIT memory command from the person (remember/forget). The fact they asked to remember — or the "op":"delete" retraction they asked to forget — MUST appear in "facts", built strictly from THEIR words in THIS exchange. Do not return [] and do not substitute other known facts for it.`,
@@ -215,22 +222,31 @@ export const filterReflectionFacts = (
 	const sets = languageSetsFor(persona.characterProfile?.language ?? null)
 	const cues = sets.relationFamilyCues
 	const replyWords = valueTokens(replyText)
-	const personaName = (persona.characterProfile?.name ?? "domia").toLowerCase()
+	const assistantNames = personaAddressNames(persona).map(foldText)
+	const assistantNameTokens = new Set(valueTokens(resolvePersonaName(persona)))
+	const assistantNamed: string[] = []
 	const replyExclusive: string[] = []
 	const hallucinatedRelations: string[] = []
 	const invertedPolarity: string[] = []
 	const kept = facts.filter((fact) => {
 		if (isEphemeralFact(fact.relation, fact.value)) return false
-		const subject = fact.subject.toLowerCase()
+		const subject = foldText(fact.subject)
 		if (
-			subject.includes(personaName) ||
-			subject.includes("domia") ||
+			assistantNames.some((name) => subject.includes(name)) ||
 			subject.includes("assistant") ||
 			subject === "you"
 		) {
 			return false
 		}
 		if (fact.op === "delete") return true
+		const words = valueTokens(fact.value)
+		if (
+			words.length > 0 &&
+			words.every((word) => assistantNameTokens.has(word))
+		) {
+			assistantNamed.push(`${fact.relation} ${fact.value}`)
+			return false
+		}
 		if (
 			isPolarityMismatch(
 				fact.relation,
@@ -241,7 +257,6 @@ export const filterReflectionFacts = (
 			invertedPolarity.push(`${fact.relation} ${fact.value}`)
 			return false
 		}
-		const words = valueTokens(fact.value)
 		if (words.length === 0) return false
 		const grounded = overlapRatio(words, userWords)
 		if (grounded === 0 && overlapRatio(words, replyWords) > 0)
@@ -252,6 +267,13 @@ export const filterReflectionFacts = (
 		hallucinatedRelations.push(`${fact.relation} ${fact.value}`)
 		return false
 	})
+	if (assistantNamed.length)
+		reflectionLogger.warn(
+			"facts valued with the assistant's own name dropped",
+			{
+				dropped: assistantNamed,
+			},
+		)
 	if (invertedPolarity.length)
 		reflectionLogger.warn("facts with an inverted polarity dropped", {
 			dropped: invertedPolarity,
@@ -616,8 +638,25 @@ export const reflectOnInteraction = async (
 	interactionId?: string,
 	originDomiaKey?: string,
 ): Promise<void> => {
-	const flags = flagsForDomia(domia)
-	if (!flags.emotion && !flags.facts) return
+	const enabled = flagsForDomia(domia)
+	if (!enabled.emotion && !enabled.facts) return
+	const trace = interactionId
+		? await getInteractionById(interactionId).catch((err: unknown) => {
+				reflectionLogger.warn("turn trace unavailable — reflecting as chat", {
+					interactionId,
+					err,
+				})
+				return null
+			})
+		: null
+	const turnKind = turnKindOf(trace, userText, domia.characterProfile?.language)
+	const flags = captureFlagsFor(enabled, turnKind)
+	if (!flags.emotion && !flags.facts) {
+		reflectionLogger.info(`🪞 reflection skipped — ${turnKind} turn`, {
+			interactionId,
+		})
+		return
+	}
 	if (interactionId && !claimReflection(interactionId)) {
 		reflectionLogger.info("🪞 reflection skipped — already captured", {
 			interactionId,

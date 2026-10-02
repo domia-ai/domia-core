@@ -2,6 +2,7 @@ import { publishToDomiaBus, DOMIA_EVENT_BUS_ENUM } from "@/buses"
 import { emitTurnEvent, DOMIA_TURN_EVENT_ENUM } from "@/buses"
 import {
 	DEFAULT_CONFIRMATION_TTL_MS,
+	INTENT_DECISION_ENUM,
 	SKILL_TOOL_NAME_SEPARATOR,
 	type ToolTraceEntryType,
 } from "@/db"
@@ -86,7 +87,11 @@ export const prewarmFastPathPhrase = (
 		match.resolvedArgs,
 	)
 	if (invocation.policy !== "allow") return true
-	const finalize = resolveToolFinalize(domia.id, match.namespacedName)
+	const finalize = resolveToolFinalize(
+		domia.id,
+		match.namespacedName,
+		match.resolvedArgs,
+	)
 	if (finalize && (finalize.mode === "agent_loop" || finalize.mode === "async"))
 		return true
 	const phrases = languageSetsFor(domia.characterProfile?.language).phrases
@@ -135,7 +140,11 @@ const executeMatch = async (
 	const phrases = languageSetsFor(
 		domia.characterProfile?.language ?? null,
 	).phrases
-	const finalize = resolveToolFinalize(domia.id, match.namespacedName)
+	const finalize = resolveToolFinalize(
+		domia.id,
+		match.namespacedName,
+		match.resolvedArgs,
+	)
 	emitTurnEvent({
 		type: DOMIA_TURN_EVENT_ENUM.TOOL_REQUESTED,
 		interactionId,
@@ -237,7 +246,8 @@ export const attemptFastPathRoute = async (
 				)
 				void updateInteraction({
 					id: interactionId,
-					intentDecision: `clarify:${bare.name}`,
+					intentDecision: `${INTENT_DECISION_ENUM.CLARIFY}:${bare.name}`,
+					llmResponse: question,
 					fastPathMs: verdict.fastPathMs,
 					intentMs: verdict.fastPathMs,
 				}).catch((err: unknown) =>
@@ -311,12 +321,12 @@ export const attemptFastPathRoute = async (
 		emitIntentDecided(
 			interactionId,
 			originDomiaKey,
-			`fast-path:compound(${verdict.matches.length})`,
+			`${INTENT_DECISION_ENUM.FAST_PATH}:compound(${verdict.matches.length})`,
 			verdict.fastPathMs,
 		)
 		void updateInteraction({
 			id: interactionId,
-			intentDecision: `fast-path:compound(${verdict.matches.length})`,
+			intentDecision: `${INTENT_DECISION_ENUM.FAST_PATH}:compound(${verdict.matches.length})`,
 			fastPathMs: verdict.fastPathMs,
 			intentMs: verdict.fastPathMs,
 			skillProviderUsed:
@@ -371,12 +381,12 @@ export const attemptFastPathRoute = async (
 		emitIntentDecided(
 			interactionId,
 			originDomiaKey,
-			`fast-path:${match.namespacedName}`,
+			`${INTENT_DECISION_ENUM.FAST_PATH}:${match.namespacedName}`,
 			verdict.fastPathMs,
 		)
 		void updateInteraction({
 			id: interactionId,
-			intentDecision: `fast-path:${match.namespacedName}`,
+			intentDecision: `${INTENT_DECISION_ENUM.FAST_PATH}:${match.namespacedName}`,
 			fastPathMs: verdict.fastPathMs,
 			intentMs: verdict.fastPathMs,
 		}).catch((err: unknown) =>
@@ -399,12 +409,12 @@ export const attemptFastPathRoute = async (
 	emitIntentDecided(
 		interactionId,
 		originDomiaKey,
-		`fast-path:${match.namespacedName}`,
+		`${INTENT_DECISION_ENUM.FAST_PATH}:${match.namespacedName}`,
 		verdict.fastPathMs,
 	)
 	void updateInteraction({
 		id: interactionId,
-		intentDecision: `fast-path:${match.namespacedName}`,
+		intentDecision: `${INTENT_DECISION_ENUM.FAST_PATH}:${match.namespacedName}`,
 		fastPathMs: verdict.fastPathMs,
 		intentMs: verdict.fastPathMs,
 		skillProviderUsed:

@@ -33,9 +33,14 @@ import {
 } from "@/modules/emotion-engine"
 import { parseFacts, upsertFacts } from "@/modules/memory"
 import { updateInteraction } from "@/modules/session-manager"
-import { runLLM, runLLMWithTools } from "@/modules/llm-engine"
+import {
+	runLLM,
+	runLLMWithTools,
+	TOOL_CHOICE_VALUES,
+} from "@/modules/llm-engine"
 import type {
 	ChatMessageType,
+	ToolChoiceType,
 	ToolDefinitionType,
 	LlmUsageType,
 	LlmUsageSinkType,
@@ -76,6 +81,9 @@ import {
 } from "./utils"
 
 let server: Server | null = null
+
+const toolChoiceOf = (raw: string | undefined): ToolChoiceType | undefined =>
+	TOOL_CHOICE_VALUES.find((choice) => choice === raw)
 
 const capabilityDisabled = (capability: string, domiaKey: string) =>
 	domiaError(GRPC_ERRORS.CAPABILITY_DISABLED, {
@@ -572,7 +580,13 @@ const buildImplementation = ({
 					model: domia.llmModelConfig?.modelName,
 					origin: request.originDomiaKey,
 				})
-				const out = await runLLMWithTools(domia, messages, tools)
+				const out = await runLLMWithTools(
+					domia,
+					messages,
+					tools,
+					undefined,
+					toolChoiceOf(request.toolChoice),
+				)
 				if (out.kind === "reply") return { reply: out.text }
 				return { toolCallsJson: JSON.stringify(out.calls) }
 			}),

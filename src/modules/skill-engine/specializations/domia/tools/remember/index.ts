@@ -1,6 +1,9 @@
 import { z } from "zod"
 
 import type { BuiltinToolType } from "../../../../types"
+import { foldText } from "@/utils/text-tokens"
+import { FACT_OWNED_SUBJECT_RELATION, FACT_SPEAKER_SUBJECT } from "@/db"
+
 import {
 	DOMIA_FACT_RELATION_MAX_CHARS,
 	DOMIA_FACT_SUBJECT_MAX_CHARS,
@@ -8,9 +11,33 @@ import {
 	DOMIA_TOOL_REMEMBER,
 	DOMIA_WRITE_HINTS,
 } from "../../constants"
-import { errorResult, builtinToolPacks, okResult, phrase } from "../../packs"
+import {
+	errorResult,
+	builtinToolPacks,
+	fillPlaceholders,
+	okResult,
+	phrase,
+} from "../../packs"
+import type { DomiaSpeakerFactType } from "../../types"
 import en from "./descriptors/en.json"
 import es from "./descriptors/es.json"
+
+const speakerFactOf = (
+	subject: string,
+	relation: string,
+	speakerSubjects: string[],
+): DomiaSpeakerFactType => {
+	const folded = foldText(subject)
+	if (speakerSubjects.some((name) => foldText(name) === folded))
+		return { subject: FACT_SPEAKER_SUBJECT, relation }
+	return {
+		subject: FACT_SPEAKER_SUBJECT,
+		relation: fillPlaceholders(FACT_OWNED_SUBJECT_RELATION, {
+			subject: subject.trim().toLowerCase(),
+			relation,
+		}),
+	}
+}
 
 export const rememberTool: BuiltinToolType = {
 	name: DOMIA_TOOL_REMEMBER,
@@ -45,9 +72,12 @@ export const rememberTool: BuiltinToolType = {
 		.strict(),
 	packs: builtinToolPacks({ en, es }),
 	execute: async (args, ctx) => {
-		const subject = args.subject as string
-		const relation = (args.relation as string).toLowerCase()
 		const value = args.value as string
+		const { subject, relation } = speakerFactOf(
+			args.subject as string,
+			(args.relation as string).toLowerCase(),
+			ctx.sets.speakerSubjects,
+		)
 		const result = await ctx.runtime.facts.upsert(ctx.domia, {
 			subject,
 			relation,
@@ -59,8 +89,6 @@ export const rememberTool: BuiltinToolType = {
 				`Fact not stored${result.reason ? `: ${result.reason}` : ""}. Rephrase the relation as a state (e.g. "likes", "has favorite color", "is named").`,
 				phrase(ctx.sets, "couldNotRemember"),
 			)
-		if (ctx.interactionId)
-			ctx.runtime.memory.markReflectionCaptured(ctx.interactionId)
 		return okResult(
 			`Remembered: ${subject} ${relation} ${value}.`,
 			phrase(ctx.sets, "rememberedThat"),

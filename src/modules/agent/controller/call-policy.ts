@@ -7,9 +7,10 @@ import {
 	getToolMeta,
 	describeInvocation,
 	inferWriteTarget,
+	screenToolCall,
 } from "@/modules/skill-engine"
 
-import { TARGETLESS_WRITE_NUDGE } from "../constants"
+import { MISSING_DETAIL_NUDGE } from "../constants"
 import { targetMentioned } from "../utils"
 import type {
 	AgentTurnContextType,
@@ -24,6 +25,36 @@ export const resolveCallPolicy = async (
 	advertisedName: string,
 	injectedRetry: boolean,
 ): Promise<CallPolicyVerdictType> => {
+	const screened = await screenToolCall(
+		ctx.domia.id,
+		call.name,
+		safeArgs,
+		ctx.transcript,
+	)
+	if (screened.kind === "reject") {
+		ctx.forceNoTool = true
+		agentLogger.warn("agent tool call rejected — target does not exist", {
+			domiaId: ctx.domia.id,
+			name: call.name,
+			reason: screened.reason,
+		})
+		return {
+			kind: "blocked",
+			message: `Blocked: ${screened.reason}. Do not call a tool again — answer the user directly.`,
+		}
+	}
+	if (screened.kind === "redirect") {
+		agentLogger.warn("agent tool call redirected to what the user said", {
+			domiaId: ctx.domia.id,
+			from: call.name,
+			to: screened.namespacedName,
+		})
+		for (const key of Object.keys(safeArgs))
+			if (!Object.hasOwn(screened.args, key))
+				Reflect.deleteProperty(safeArgs, key)
+		call.name = screened.namespacedName
+		call.arguments = safeArgs
+	}
 	const basePolicy = getToolPolicy(ctx.domia.id, call.name)
 	if (basePolicy === "block") {
 		agentLogger.warn("agent tool call rejected — policy block", {
@@ -55,10 +86,16 @@ export const resolveCallPolicy = async (
 				domiaId: ctx.domia.id,
 				name: call.name,
 			})
-			return { kind: "blocked", message: TARGETLESS_WRITE_NUDGE }
+			return {
+				kind: "blocked",
+				message: MISSING_DETAIL_NUDGE[inferred.missing ?? "target"],
+			}
 		}
 		if (inferred.kind === "inferred") {
-			Object.assign(safeArgs, inferred.args)
+			for (const [key, value] of Object.entries(inferred.args)) {
+				if (value === undefined) Reflect.deleteProperty(safeArgs, key)
+				else safeArgs[key] = value
+			}
 			call.arguments = safeArgs
 			agentLogger.info("agent write target inferred from the utterance", {
 				domiaId: ctx.domia.id,

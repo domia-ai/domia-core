@@ -12,9 +12,13 @@ import {
 	domiaError,
 	SKILL_ERRORS,
 } from "@/utils"
-import { foldText as fold, tokensOf } from "@/utils/text-tokens"
+import { containsCue, foldText as fold, tokensOf } from "@/utils/text-tokens"
 
-import type { SkillSpecializationType, SkillConnHandleType } from "../../types"
+import type {
+	SkillSpecializationType,
+	SkillConnHandleType,
+	ToolRedirectType,
+} from "../../types"
 import { resolveDescriptor } from "../../utils/descriptor"
 import { bindFastPathTools } from "../../utils/descriptor-data"
 import {
@@ -23,7 +27,7 @@ import {
 	clearDeviceOwner,
 } from "../../utils/media-owners"
 import { findToolByBaseName, toolBaseName } from "../../utils/tool-name"
-import { bestByName, stripTokens } from "../../utils/name-match"
+import { bestByName, nameScore, stripTokens } from "../../utils/name-match"
 import type { HaEntityType, HaContextCacheType, HaSlotValueType } from "./types"
 import {
 	HA_SPECIALIZATION_KIND,
@@ -38,6 +42,10 @@ import {
 	HA_FULL_COVERAGE_SCORE,
 	HA_SENSITIVE_TOOL_RE,
 	HA_BUILTIN_SHADOWED_TOOLS,
+	HA_DOMAIN_ACTION_TOOLS,
+	HA_DOMAIN_ACTION_DONE_PHRASES,
+	HA_DOMAIN_ACTION_VERBS,
+	HA_DOMAIN_ACTION_CUES,
 	HA_FAST_PATH_EXCLUDED_DOMAINS,
 	HA_SENSITIVE_DOMAIN_RE,
 	HA_READ_TOOL_RE,
@@ -366,6 +374,18 @@ const haFinalizeTemplates = (language: string | null): ToolFinalizeMapType => {
 			done: phrases.adjusted,
 			error: phrases.cantAdjust,
 		},
+		HassLockDoor: {
+			mode: "deadline",
+			ack: phrases.onIt,
+			done: phrases.locked,
+			error: phrases.cantDoThat,
+		},
+		HassUnlockDoor: {
+			mode: "deadline",
+			ack: phrases.onIt,
+			done: phrases.unlocked,
+			error: phrases.cantDoThat,
+		},
 	}
 }
 
@@ -410,6 +430,85 @@ const resolvedEntityDomain = (
 	if (!ctx) return null
 	const entity = foldedEntitiesOf(ctx).get(fold(name))
 	return entity?.domain ?? null
+}
+
+const resolvedEntity = (
+	provider: SelectSkillProviderType,
+	resolvedArgs: Record<string, unknown>,
+): HaEntityType | null => {
+	const name =
+		typeof resolvedArgs.name === "string" ? resolvedArgs.name.trim() : null
+	if (!name) return null
+	const ctx = contextFor(provider.id)
+	return ctx ? (foldedEntitiesOf(ctx).get(fold(name)) ?? null) : null
+}
+
+const domainActionsOf = (
+	provider: SelectSkillProviderType,
+	resolvedArgs: Record<string, unknown>,
+): { entity: HaEntityType; actions: Record<string, string[]> } | null => {
+	const entity = resolvedEntity(provider, resolvedArgs)
+	if (!entity || !Object.hasOwn(HA_DOMAIN_ACTION_TOOLS, entity.domain))
+		return null
+	return { entity, actions: HA_DOMAIN_ACTION_TOOLS[entity.domain] }
+}
+
+const domainActionOf = (
+	provider: SelectSkillProviderType,
+	rawName: string,
+	resolvedArgs: Record<string, unknown>,
+): string | null => {
+	const scoped = domainActionsOf(provider, resolvedArgs)
+	if (!scoped) return null
+	const base = toolBaseName(rawName)
+	const hit = Object.entries(scoped.actions).find(([, tools]) =>
+		tools.includes(base),
+	)
+	return hit ? hit[0] : null
+}
+
+const withoutPhrases = (folded: string, phrases: string[]): string =>
+	[...phrases]
+		.map((p) => fold(p))
+		.sort((a, b) => b.length - a.length)
+		.reduce((text, phrase) => text.split(phrase).join(" "), folded)
+
+const spokenActions = (
+	actions: string[],
+	transcript: string,
+	targetNames: string[],
+	language: string | null,
+): string[] => {
+	const cues = forLanguage(HA_DOMAIN_ACTION_CUES, language)
+	const spoken = withoutPhrases(fold(transcript), targetNames)
+	return actions.filter((action) =>
+		(cues[action] ?? []).some((cue) => containsCue(spoken, cue)),
+	)
+}
+
+const redirectToSpokenAction = (
+	provider: SelectSkillProviderType,
+	rawName: string,
+	resolvedArgs: Record<string, unknown>,
+	transcript: string,
+	language: string | null,
+): ToolRedirectType => {
+	const scoped = domainActionsOf(provider, resolvedArgs)
+	if (!scoped || !domainActionOf(provider, rawName, resolvedArgs))
+		return { kind: "keep" }
+	const spoken = spokenActions(
+		Object.keys(scoped.actions),
+		transcript,
+		scoped.entity.names,
+		language,
+	)
+	if (spoken.length !== 1) return { kind: "keep" }
+	const cached = provider.toolsCache ?? []
+	const preferred = scoped.actions[spoken[0]]
+		.map((base) => findToolByBaseName(cached, base))
+		.find((tool) => tool !== undefined)
+	if (!preferred || preferred.rawName === rawName) return { kind: "keep" }
+	return { kind: "redirect", rawName: preferred.rawName }
 }
 
 const baseLanguage = (language: string | null): string =>
@@ -470,7 +569,10 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 	describeInvocation: (provider, rawName, args, language) => {
 		const target = invocationTarget(args)
 		if (!target) return null
-		const verb = forLanguage(HA_ACTION_VERBS, language)[toolBaseName(rawName)]
+		const action = domainActionOf(provider, rawName, args)
+		const verb = action
+			? forLanguage(HA_DOMAIN_ACTION_VERBS, language)[action]
+			: forLanguage(HA_ACTION_VERBS, language)[toolBaseName(rawName)]
 		const targetNames = entityNamesFor(provider.id, target)
 		return {
 			target,
@@ -531,6 +633,14 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		)
 			return "write_destructive"
 		return null
+	},
+	redirectInvocation: redirectToSpokenAction,
+	invocationFinalize: (provider, rawName, resolvedArgs, language) => {
+		const action = domainActionOf(provider, rawName, resolvedArgs)
+		if (!action) return null
+		const done =
+			languageSetsFor(language).phrases[HA_DOMAIN_ACTION_DONE_PHRASES[action]]
+		return done ? { done } : null
 	},
 	onConnected: async (
 		provider: SelectSkillProviderType,
@@ -673,6 +783,7 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 				)
 				if (mapped) rest.area = mapped
 				return finalizeNames(
+					provider.id,
 					ctx,
 					rest,
 					areaHint,
@@ -680,6 +791,7 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 				)
 			}
 			return finalizeNames(
+				provider.id,
 				ctx,
 				out,
 				areaHint,
@@ -758,7 +870,19 @@ const slotValuesOf = (
 	return entitySlotValues(ctx, domains, owned)
 }
 
+const nameIsKnown = (
+	ctx: HaContextCacheType,
+	name: string,
+	generic: Set<string>,
+): boolean =>
+	[
+		...ctx.entities.flatMap((e) => entityNameVariants(e, null)),
+		...ctx.areaNames.values(),
+		...ctx.floorNames.values(),
+	].some((known) => nameScore(name, known, generic, HA_FULL_COVERAGE_SCORE) > 0)
+
 const finalizeNames = (
+	providerId: string,
 	ctx: HaContextCacheType,
 	args: Record<string, unknown>,
 	areaHint: string | null,
@@ -766,6 +890,14 @@ const finalizeNames = (
 ): Record<string, unknown> => {
 	if (typeof args.name !== "string") return args
 	const resolved = resolveEntity(ctx, args.name, areaHint, generic)
+	if (!resolved && !nameIsKnown(ctx, args.name, generic)) {
+		if (ctx.source !== "ws") void refreshContext(providerId, ctx.handle)
+		throw domiaError(SKILL_ERRORS.TARGET_NOT_FOUND, {
+			logger: skillEngineLogger,
+			messageOverride: `no device is called "${args.name}"`,
+			meta: { name: args.name },
+		})
+	}
 	if (!resolved) return args
 	const out = { ...args }
 	const canonical = resolved.names[0] ?? args.name

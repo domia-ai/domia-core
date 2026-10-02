@@ -1,4 +1,5 @@
 import { SKILL_TOOL_NAME_SEPARATOR } from "@/db"
+import { languageSetsFor } from "@/utils"
 import { describeInvocation } from "@/modules/skill-engine"
 
 const humanize = (raw: string): string =>
@@ -39,5 +40,8 @@ export const summarizeConfirmAction = (
 ): string => {
 	const described = describeInvocation(domiaId, toolName, args, language)
 	const summary = described.summary ?? genericSummary(toolName, args)
-	return `You want me to ${summary}.`
+	return languageSetsFor(language).phrases.confirmSummary.replace(
+		"{summary}",
+		summary,
+	)
 }

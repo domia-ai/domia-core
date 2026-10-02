@@ -14,6 +14,11 @@ import {
 import type { DomiaType } from "@/modules/core"
 import { matchFastPath, invalidateFastPathIndex } from "@/modules/fast-path"
 import {
+	runAgentTurn,
+	summarizeConfirmAction,
+	type AgentInferenceType,
+} from "@/modules/agent"
+import {
 	callTool,
 	connectProvider,
 	disconnectProviders,
@@ -482,7 +487,8 @@ const checkTimers = async (domia: DomiaType): Promise<void> => {
 	checker.check(
 		"a satellite origin keeps its own timer and mirrors it",
 		fromSatellite.status === "ok" &&
-			fromSatellite.speakableText === "Timer set for pasta." &&
+			fromSatellite.speakableText ===
+				"Pasta timer set for 1 minute and 30 seconds." &&
 			fake.mirrored.includes("started"),
 		`got=${JSON.stringify(fromSatellite)}`,
 	)
@@ -664,6 +670,134 @@ const checkVolume = async (domia: DomiaType): Promise<void> => {
 	)
 }
 
+const addressedDomia = (
+	domia: DomiaType,
+	name: string,
+	addressedAs: string[],
+	wakeWord: string | null = null,
+): DomiaType =>
+	({
+		...domia,
+		characterProfile: {
+			...domia.characterProfile,
+			name,
+			promptOverrides: { addressedAs },
+		},
+		wakeWordConfig: wakeWord ? { wakeWord } : null,
+	}) as unknown as DomiaType
+
+const checkAddress = async (
+	domias: Record<(typeof LANGUAGES)[number], DomiaType>,
+): Promise<void> => {
+	console.log("\naddress names around a fast-path sentence")
+	const chef = addressedDomia(domias.en, "Sous", ["Chef"])
+	const timerOf = (domia: DomiaType, text: string): unknown => {
+		const verdict = matchFastPath(domia, text, satelliteOrigin)
+		return verdict.kind === "match" && verdict.match.tool === "timer"
+			? verdict.match.resolvedArgs.seconds
+			: JSON.stringify(verdict)
+	}
+	const cases: [string, DomiaType, string, number][] = [
+		["a leading nickname", chef, "Chef set a timer for twelve minutes.", 720],
+		["a trailing nickname", chef, "Set a timer for twelve minutes, Chef.", 720],
+		["the profile name", chef, "Sous, set a timer for twelve minutes.", 720],
+		[
+			"a nickname after a courtesy word",
+			chef,
+			"Please, Chef, set a timer for twelve minutes.",
+			720,
+		],
+		[
+			"the wake word",
+			addressedDomia(domias.en, "Sous", [], "computer"),
+			"Computer, set a timer for five minutes.",
+			300,
+		],
+		[
+			"a leading nickname (es)",
+			addressedDomia(domias.es, "Sol", ["Chef"]),
+			"Chef, pon un temporizador de doce minutos.",
+			720,
+		],
+		[
+			"a trailing nickname (es)",
+			addressedDomia(domias.es, "Sol", ["Chef"]),
+			"Pon un temporizador de doce minutos, Chef.",
+			720,
+		],
+	]
+	for (const [label, domia, text, seconds] of cases) {
+		const got = timerOf(domia, text)
+		checker.check(
+			`${label}: "${text}" → timer ${seconds}s`,
+			got === seconds,
+			`got=${String(got)}`,
+		)
+	}
+	const unaliased = matchFastPath(
+		domias.en,
+		"Chef set a timer for twelve minutes.",
+		satelliteOrigin,
+	)
+	checker.check(
+		"without the nickname configured the sentence is left to the LLM",
+		unaliased.kind === "miss",
+		`got=${JSON.stringify(unaliased)}`,
+	)
+	const midSentence = matchFastPath(
+		chef,
+		"set a chef timer for twelve minutes",
+		satelliteOrigin,
+	)
+	checker.check(
+		"a nickname in the middle of the sentence is not stripped",
+		midSentence.kind === "miss",
+		`got=${JSON.stringify(midSentence)}`,
+	)
+	fake.connectedSatellite = "sat-1"
+	const unnamed = await call(chef, "timer", { seconds: 720 }, "sat-1")
+	checker.check(
+		"an unnamed timer speaks its duration",
+		unnamed.status === "ok" &&
+			unnamed.speakableText === "Timer set for 12 minutes.",
+		`got=${JSON.stringify(unnamed)}`,
+	)
+	const named = await call(
+		chef,
+		"timer",
+		{ seconds: 720, label: "pasta" },
+		"sat-1",
+	)
+	checker.check(
+		"a named timer speaks its name and its duration",
+		named.status === "ok" &&
+			named.speakableText === "Pasta timer set for 12 minutes.",
+		`got=${JSON.stringify(named)}`,
+	)
+	const spanish = await call(domias.es, "timer", { seconds: 720 }, "sat-1")
+	const spanishNamed = await call(
+		domias.es,
+		"timer",
+		{ seconds: 720, label: "pasta" },
+		"sat-1",
+	)
+	checker.check(
+		"the spanish timer reply states the duration, named or not",
+		spanish.speakableText === "Temporizador de 12 minutos." &&
+			spanishNamed.speakableText === "Temporizador de pasta, 12 minutos.",
+		`got=${JSON.stringify([spanish.speakableText, spanishNamed.speakableText])}`,
+	)
+	const timerDescription =
+		DOMIA_TOOLS.find((tool) => tool.name === "timer")?.definition.description ??
+		""
+	checker.check(
+		"the timer description offers no example label to copy",
+		!timerDescription.includes("pasta") &&
+			timerDescription.includes("only when the user named the timer"),
+		`got=${timerDescription}`,
+	)
+}
+
 const executeDirect = (
 	domia: DomiaType,
 	tool: string,
@@ -693,13 +827,13 @@ const checkMemory = async (domia: DomiaType): Promise<void> => {
 		interactionId,
 	)
 	checker.check(
-		"remember writes the fact and claims the reflection",
+		"remember writes the fact and leaves the turn open for reflection",
 		remembered.status === "ok" &&
 			remembered.speakableText === "Got it, I'll remember that." &&
 			fake.facts.some(
 				(f) => f.relation === "has favorite color" && f.value === "blue",
 			) &&
-			fake.reflectionClaims.includes(interactionId),
+			!fake.reflectionClaims.includes(interactionId),
 		`got=${JSON.stringify(remembered)} facts=${JSON.stringify(fake.facts)}`,
 	)
 	const rejectedId = randomUUID()
@@ -732,6 +866,28 @@ const checkMemory = async (domia: DomiaType): Promise<void> => {
 		getToolPolicy(domia.id, namespaced("forget")) === "confirm",
 		`got=${getToolPolicy(domia.id, namespaced("forget"))}`,
 	)
+	const askedForget = summarizeConfirmAction(
+		domia.id,
+		namespaced("forget"),
+		{ what: "the pantry" },
+		"en",
+	)
+	checker.check(
+		"en: forget is confirmed with its own verb and topic",
+		askedForget === "You want me to forget everything about the pantry.",
+		askedForget,
+	)
+	const askedOlvidar = summarizeConfirmAction(
+		domia.id,
+		namespaced("forget"),
+		{ what: "la despensa" },
+		"es",
+	)
+	checker.check(
+		"es: forget is confirmed from the catalog sentence",
+		askedOlvidar === "Voy a olvidar todo sobre la despensa.",
+		askedOlvidar,
+	)
 	const forgot = await call(domia, "forget", { what: "blue" })
 	checker.check(
 		"forget expires the matching fact after confirmation",
@@ -754,6 +910,138 @@ const checkMemory = async (domia: DomiaType): Promise<void> => {
 		'"forget it" still ranks as cancel with forget mounted',
 		forgetIt.kind === "match" && forgetIt.match.tool === "cancel",
 		`got=${JSON.stringify(forgetIt)}`,
+	)
+}
+
+const REMINDER_PHRASES: {
+	language: "en" | "es"
+	text: string
+	emitted: Record<string, unknown>
+	at: string
+	reminder: string
+}[] = [
+	{
+		language: "en",
+		text: "Remind me to water the plants at 9 tonight.",
+		emitted: { action: "set", text: "water the plants", at: "9:00" },
+		at: "21:00",
+		reminder: "water the plants",
+	},
+	{
+		language: "en",
+		text: "Remind me at nine tonight to water the plants.",
+		emitted: {
+			action: "set",
+			text: "water the plants",
+			seconds: 0,
+			at: "21:00",
+		},
+		at: "21:00",
+		reminder: "water the plants",
+	},
+	{
+		language: "en",
+		text: "Remind me to call mom at 7",
+		emitted: { action: "set", text: "call mom", seconds: 0, at: "19:00" },
+		at: "19:00",
+		reminder: "call mom",
+	},
+	{
+		language: "en",
+		text: "Remind me to take the pills at 7 in the morning",
+		emitted: { text: "take the pills", at: "19:00" },
+		at: "07:00",
+		reminder: "take the pills",
+	},
+	{
+		language: "en",
+		text: "Wake me at 7 in the morning and remind me to call mom at 8 tonight.",
+		emitted: { action: "set", text: "call mom", at: "20:00" },
+		at: "20:00",
+		reminder: "call mom",
+	},
+	{
+		language: "en",
+		text: "Remind me to stretch at eleven tonight.",
+		emitted: {
+			action: "set",
+			text: "stretch",
+			seconds: 3600,
+			at: "23:00",
+		},
+		at: "23:00",
+		reminder: "stretch",
+	},
+	{
+		language: "es",
+		text: "Recuérdame regar las plantas a las nueve de la noche.",
+		emitted: { action: "set", text: "regar las plantas", at: "9:00" },
+		at: "21:00",
+		reminder: "regar las plantas",
+	},
+]
+
+const checkSpokenReminders = async (
+	domias: Record<"en" | "es", DomiaType>,
+): Promise<void> => {
+	console.log("\na reminder from the model lands at the hour that was spoken")
+	for (const { language, text, emitted, at, reminder } of REMINDER_PHRASES) {
+		const domia = domias[language]
+		const before = fake.rows.length
+		const inference: AgentInferenceType = () =>
+			Promise.resolve({
+				kind: "tool_calls",
+				calls: [{ name: namespaced("reminder"), arguments: { ...emitted } }],
+			})
+		const tools = toolsCache().filter(
+			(t) => t.rawName === "reminder" || t.rawName === "alarm",
+		)
+		const result = await runWithTraceContext(
+			{ originDomiaKey: domia.domiaKey, satelliteId: "sat-1" },
+			() => runAgentTurn(domia, text, tools, inference, {}),
+		)
+		const created = fake.rows.slice(before).find((r) => r.kind === "reminder")
+		const due = created ? new Date(created.dueAt) : null
+		const clock = due
+			? `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`
+			: null
+		checker.check(
+			`${language}: "${text}" reminds "${reminder}" at ${at}`,
+			result.toolNamesUsed.join(",") === namespaced("reminder") &&
+				created?.text === reminder &&
+				clock === at,
+			`used=${result.toolNamesUsed.join(",")} text=${created?.text} at=${clock} reply="${result.reply}"`,
+		)
+	}
+}
+
+const checkInventedTime = async (domia: DomiaType): Promise<void> => {
+	console.log("\na time the user never said is asked for, never invented")
+	const before = fake.rows.length
+	const question = "When should I remind you?"
+	const inference: AgentInferenceType = (_messages, _tools, toolChoice) =>
+		Promise.resolve(
+			toolChoice === "none"
+				? { kind: "reply", text: question }
+				: {
+						kind: "tool_calls",
+						calls: [
+							{
+								name: namespaced("reminder"),
+								arguments: { action: "set", text: "Remind me", seconds: 3 },
+							},
+						],
+					},
+		)
+	const tools = toolsCache().filter((t) => t.rawName === "reminder")
+	const result = await runWithTraceContext(
+		{ originDomiaKey: domia.domiaKey, satelliteId: "sat-1" },
+		() => runAgentTurn(domia, "Remind me.", tools, inference, {}),
+	)
+	checker.check(
+		'a bare "remind me" creates nothing and asks when',
+		fake.rows.length === before && result.reply === question,
+		`rows=${fake.rows.length - before} reply="${result.reply}"`,
 	)
 }
 
@@ -787,6 +1075,9 @@ const main = async (): Promise<void> => {
 	await checkAlarms(domias.en)
 	await checkVolume(domias.en)
 	await checkMemory(domias.en)
+	await checkAddress(domias)
+	await checkSpokenReminders(domias)
+	await checkInventedTime(domias.en)
 	await disconnectProviders(providers.map((p) => p.id))
 	for (const language of LANGUAGES) invalidateFastPathIndex(domias[language].id)
 	const pass = checker.passCount()

@@ -11,16 +11,21 @@ import type {
 	MockMusicPlayerType,
 	MockMusicQueueType,
 	MockMusicServerType,
+	MockMusicAlbumType,
+	MockMusicArtistType,
+	MockMusicLibraryType,
+	MockMusicPlayerFixtureType,
+	MockMusicSiteType,
 	MockMusicStateType,
 	MockMusicTrackType,
 } from "../types"
 
-const ARTISTS = [
+const ARTISTS: MockMusicArtistType[] = [
 	{ uri: "spotify://artist/radiohead", name: "Radiohead" },
 	{ uri: "spotify://artist/bad-bunny", name: "Bad Bunny" },
 ]
 
-const ALBUMS = [
+const ALBUMS: MockMusicAlbumType[] = [
 	{
 		uri: "spotify://album/ok-computer",
 		name: "OK Computer",
@@ -42,6 +47,7 @@ const TRACKS: MockMusicTrackType[] = [
 		artists: ["Radiohead"],
 		album: "OK Computer",
 		duration: 264,
+		genres: ["rock", "alternative"],
 	},
 	{
 		uri: "spotify://track/paranoid-android",
@@ -49,6 +55,7 @@ const TRACKS: MockMusicTrackType[] = [
 		artists: ["Radiohead"],
 		album: "OK Computer",
 		duration: 383,
+		genres: ["rock", "alternative"],
 	},
 	{
 		uri: "spotify://track/titi-me-pregunto",
@@ -56,10 +63,11 @@ const TRACKS: MockMusicTrackType[] = [
 		artists: ["Bad Bunny"],
 		album: "Un Verano Sin Ti",
 		duration: 243,
+		genres: ["reggaeton", "latin"],
 	},
 ]
 
-const PLAYER_FIXTURES = [
+const PLAYER_FIXTURES: MockMusicPlayerFixtureType[] = [
 	{ player_id: "kitchen", name: "Kitchen", volume_level: 35 },
 	{ player_id: "living_room", name: "Living Room", volume_level: 45 },
 	{ player_id: "voice_pe_1", name: "Voice PE 1", volume_level: 50 },
@@ -77,8 +85,21 @@ const defaultBehavior = (): MockMusicBehaviorType => ({
 	poison: {},
 })
 
-const createPlayers = (): MockMusicPlayerType[] =>
-	PLAYER_FIXTURES.map((p) => ({
+const DEFAULT_LIBRARY: MockMusicLibraryType = {
+	artists: ARTISTS,
+	albums: ALBUMS,
+	tracks: TRACKS,
+}
+
+const libraryOf = (site?: MockMusicSiteType): MockMusicLibraryType => ({
+	...DEFAULT_LIBRARY,
+	...site?.library,
+})
+
+const createPlayers = (
+	fixtures: MockMusicPlayerFixtureType[],
+): MockMusicPlayerType[] =>
+	fixtures.map((p) => ({
 		player_id: p.player_id,
 		name: p.name,
 		state: "idle" as const,
@@ -98,10 +119,32 @@ const fold = (value: string): string =>
 		.toLowerCase()
 		.trim()
 
+const SEARCH_STOP_WORDS = [
+	"some",
+	"a",
+	"the",
+	"music",
+	"songs",
+	"by",
+	"algo",
+	"de",
+	"un",
+	"poco",
+	"música",
+]
+
+const SEARCH_STOP_TOKENS = new Set(SEARCH_STOP_WORDS.map((word) => fold(word)))
+
+const tokensOf = (value: string): string[] =>
+	fold(value)
+		.split(/[^\p{L}\p{N}]+/u)
+		.filter((token) => token.length > 0)
+
 const matches = (haystack: string[], query: string): boolean => {
-	const needle = fold(query)
-	if (!needle) return true
-	return haystack.some((h) => fold(h).includes(needle))
+	const folded = haystack.map(fold).join(" ")
+	return tokensOf(query)
+		.filter((token) => !SEARCH_STOP_TOKENS.has(token))
+		.every((token) => folded.includes(token))
 }
 
 const trackBrief = (track: MockMusicTrackType) => ({
@@ -112,14 +155,14 @@ const trackBrief = (track: MockMusicTrackType) => ({
 	duration: track.duration,
 })
 
-const albumBrief = (album: (typeof ALBUMS)[number]) => ({
+const albumBrief = (album: MockMusicAlbumType) => ({
 	uri: album.uri,
 	name: album.name,
 	artist: album.artist,
 	year: album.year,
 })
 
-const artistBrief = (artist: (typeof ARTISTS)[number]) => ({
+const artistBrief = (artist: MockMusicArtistType) => ({
 	uri: artist.uri,
 	name: artist.name,
 })
@@ -151,11 +194,12 @@ const emptyQueue = (queueId: string): MockMusicQueueType => ({
 })
 
 const currentItemOf = (
+	library: MockMusicLibraryType,
 	queue: MockMusicQueueType,
 ): MockMusicCurrentItemType | null => {
 	const item = queue.items.at(queue.current_index)
 	if (!item) return null
-	const track = TRACKS.find((t) => t.name === item.name)
+	const track = library.tracks.find((t) => t.name === item.name)
 	return {
 		item_id: item.item_id,
 		name: item.name,
@@ -166,13 +210,17 @@ const currentItemOf = (
 	}
 }
 
-const tracksForUri = (uri: string): MockMusicTrackType[] => {
-	const track = TRACKS.find((t) => t.uri === uri)
+const tracksForUri = (
+	library: MockMusicLibraryType,
+	uri: string,
+): MockMusicTrackType[] => {
+	const track = library.tracks.find((t) => t.uri === uri)
 	if (track) return [track]
-	const album = ALBUMS.find((a) => a.uri === uri)
-	if (album) return TRACKS.filter((t) => t.album === album.name)
-	const artist = ARTISTS.find((a) => a.uri === uri)
-	if (artist) return TRACKS.filter((t) => t.artists.includes(artist.name))
+	const album = library.albums.find((a) => a.uri === uri)
+	if (album) return library.tracks.filter((t) => t.album === album.name)
+	const artist = library.artists.find((a) => a.uri === uri)
+	if (artist)
+		return library.tracks.filter((t) => t.artists.includes(artist.name))
 	return []
 }
 
@@ -209,13 +257,20 @@ const clampLevel = (level: number): number =>
 const registerLibraryTools = (
 	mcp: McpServer,
 	gate: MockBehaviorGateType,
+	library: MockMusicLibraryType,
 ): void => {
 	const searches = [
 		{
 			name: "library_search_tracks",
 			description: "Searches the music library for tracks matching a query.",
 			run: (query: string, limit: number) =>
-				TRACKS.filter((t) => matches([t.name, t.album, ...t.artists], query))
+				library.tracks
+					.filter((t) =>
+						matches(
+							[t.name, t.album, ...t.artists, ...(t.genres ?? [])],
+							query,
+						),
+					)
 					.slice(0, limit)
 					.map(trackBrief),
 		},
@@ -223,7 +278,8 @@ const registerLibraryTools = (
 			name: "library_search_albums",
 			description: "Searches the music library for albums matching a query.",
 			run: (query: string, limit: number) =>
-				ALBUMS.filter((a) => matches([a.name, a.artist], query))
+				library.albums
+					.filter((a) => matches([a.name, a.artist], query))
 					.slice(0, limit)
 					.map(albumBrief),
 		},
@@ -231,7 +287,8 @@ const registerLibraryTools = (
 			name: "library_search_artists",
 			description: "Searches the music library for artists matching a query.",
 			run: (query: string, limit: number) =>
-				ARTISTS.filter((a) => matches([a.name], query))
+				library.artists
+					.filter((a) => matches([a.name], query))
 					.slice(0, limit)
 					.map(artistBrief),
 		},
@@ -323,6 +380,7 @@ const registerPlaybackTools = (
 	players: MockMusicPlayerType[],
 	queues: Map<string, MockMusicQueueType>,
 	gate: MockBehaviorGateType,
+	library: MockMusicLibraryType,
 ): void => {
 	const queueOf = (queueId: string): MockMusicQueueType => {
 		const existing = queues.get(queueId)
@@ -336,7 +394,7 @@ const registerPlaybackTools = (
 		if (queue.items.length === 0) return `${player.name} has an empty queue`
 		queue.current_index =
 			(queue.current_index + delta + queue.items.length) % queue.items.length
-		player.current_item = currentItemOf(queue)
+		player.current_item = currentItemOf(library, queue)
 		player.state = "playing"
 		return `${player.name} now playing ${player.current_item?.name ?? "nothing"}`
 	}
@@ -357,7 +415,7 @@ const registerPlaybackTools = (
 			if (err) return errResult(err)
 			const player = players.find((p) => p.player_id === args.queue_id)
 			if (!player) return errResult(`Error: unknown player ${args.queue_id}`)
-			const tracks = tracksForUri(args.uri)
+			const tracks = tracksForUri(library, args.uri)
 			if (tracks.length === 0)
 				return errResult(`Error: nothing found for uri ${args.uri}`)
 			const queue = queueOf(player.player_id)
@@ -367,7 +425,7 @@ const registerPlaybackTools = (
 			queue.item_count = queue.items.length
 			queue.current_index = 0
 			player.state = "playing"
-			player.current_item = currentItemOf(queue)
+			player.current_item = currentItemOf(library, queue)
 			return toolResult(
 				withPoison(
 					gate,
@@ -629,11 +687,12 @@ const buildMusicServer = (
 	players: MockMusicPlayerType[],
 	queues: Map<string, MockMusicQueueType>,
 	gate: MockBehaviorGateType,
+	library: MockMusicLibraryType,
 ): McpServer => {
 	const mcp = new McpServer({ name: "eval-mock-music", version: "1.0.0" })
-	registerLibraryTools(mcp, gate)
+	registerLibraryTools(mcp, gate, library)
 	registerPlayerTools(mcp, players, gate)
-	registerPlaybackTools(mcp, players, queues, gate)
+	registerPlaybackTools(mcp, players, queues, gate, library)
 	registerVolumeTools(mcp, players, gate)
 	return mcp
 }
@@ -648,9 +707,12 @@ const readBody = (req: import("http").IncomingMessage): Promise<string> =>
 export const startMockMusic = async (
 	port = 0,
 	baseBehavior: Partial<MockMusicBehaviorType> = {},
+	site?: MockMusicSiteType,
 ): Promise<MockMusicServerType> => {
 	let behavior = { ...defaultBehavior(), ...baseBehavior }
-	const players = createPlayers()
+	const fixtures = site?.players ?? PLAYER_FIXTURES
+	const library = libraryOf(site)
+	const players = createPlayers(fixtures)
 	const queues = new Map<string, MockMusicQueueType>()
 	const gate = createBehaviorGate(() => behavior)
 	const server = createServer((req, res) => {
@@ -671,7 +733,7 @@ export const startMockMusic = async (
 			return
 		}
 		if (req.url === "/__reset" && req.method === "POST") {
-			players.splice(0, players.length, ...createPlayers())
+			players.splice(0, players.length, ...createPlayers(fixtures))
 			queues.clear()
 			behavior = { ...defaultBehavior(), ...baseBehavior }
 			gate.resetCounts()
@@ -689,7 +751,7 @@ export const startMockMusic = async (
 			return
 		}
 		void (async () => {
-			const mcp = buildMusicServer(players, queues, gate)
+			const mcp = buildMusicServer(players, queues, gate, library)
 			const transport = new NodeStreamableHTTPServerTransport({
 				sessionIdGenerator: undefined,
 			})

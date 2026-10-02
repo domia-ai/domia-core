@@ -50,6 +50,7 @@ export const promptOverridesSchema = z.object({
 	traits: z.array(z.string()).nullish(),
 	styleNotes: z.string().nullish(),
 	environmentContext: z.string().nullish(),
+	addressedAs: z.array(z.string()).nullish(),
 })
 
 export const ttsVoiceSchema = z.object({

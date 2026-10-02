@@ -12,7 +12,7 @@
 			}
 		}
 	],
-	"keywords": ["temporizador", "cuenta atrás", "minutos", "segundos"],
+	"keywords": ["temporizador", "cuenta atrás"],
 	"exampleUtterances": [
 		"pon un temporizador de cinco minutos",
 		"temporizador de diez minutos"
@@ -23,8 +23,10 @@
 		"error": "{speakable}"
 	},
 	"phrases": {
-		"timerSet": "Temporizador de {label}.",
-		"timerSetOn": "Temporizador de {label} en {target}.",
+		"timerSet": "Temporizador de {duration}.",
+		"timerSetOn": "Temporizador de {duration} en {target}.",
+		"timerSetNamed": "Temporizador de {label}, {duration}.",
+		"timerSetNamedOn": "Temporizador de {label}, {duration}, en {target}.",
 		"timerFailed": "No pude poner ese temporizador.",
 		"timerCancelled": "Temporizador cancelado.",
 		"noActiveTimer": "No hay ningún temporizador en marcha.",

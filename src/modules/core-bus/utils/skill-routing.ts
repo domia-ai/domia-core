@@ -1,6 +1,7 @@
 import { domiaBusLogger, languageSetsFor } from "@/utils"
 import {
 	DEFAULT_TOOL_SHORTLIST_MAX,
+	DEFAULT_TOOL_SHORTLIST_RANKED_RESERVE,
 	DEFAULT_SPECULATION_SKILL_GATE_MAX_SCORE,
 	type SkillToolType,
 } from "@/db"
@@ -36,6 +37,37 @@ export const cachedToolsOf = (domia: DomiaType): SkillToolType[] => {
 	return (domia.skillProviders ?? [])
 		.filter((s) => s.isActive && connected.has(s.id))
 		.flatMap((s) => s.toolsCache ?? [])
+}
+
+export const expectedActionTools = (
+	tools: SkillToolType[],
+	toolKeywords: Record<string, string[]>,
+	keywordHits: ReadonlySet<string>,
+	isReadTool: (namespacedName: string) => boolean,
+): string[] =>
+	tools
+		.filter(
+			(t) =>
+				(toolKeywords[t.namespacedName] ?? []).some((keyword) =>
+					keywordHits.has(keyword),
+				) && !isReadTool(t.namespacedName),
+		)
+		.map((t) => t.namespacedName)
+
+export const namedActionToolsOnly = (
+	tools: SkillToolType[],
+	toolKeywords: Record<string, string[]>,
+	expectedTools: string[],
+	isReadTool: (namespacedName: string) => boolean,
+): SkillToolType[] => {
+	if (expectedTools.length === 0) return tools
+	const expected = new Set(expectedTools)
+	return tools.filter(
+		(t) =>
+			expected.has(t.namespacedName) ||
+			(toolKeywords[t.namespacedName] ?? []).length === 0 ||
+			isReadTool(t.namespacedName),
+	)
 }
 
 export const skillsMayIntercept = (domia: DomiaType): boolean =>
@@ -87,7 +119,10 @@ export const shortlistedToolsOf = async (
 	const result = shortlistTools(
 		ranked,
 		domia.llmModelConfig?.toolShortlistMax ?? DEFAULT_TOOL_SHORTLIST_MAX,
-		{ coreNames: manifest.coreNames },
+		{
+			coreNames: manifest.coreNames,
+			rankedReserve: DEFAULT_TOOL_SHORTLIST_RANKED_RESERVE,
+		},
 	)
 	if (result.applied) {
 		domiaBusLogger.info(

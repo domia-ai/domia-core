@@ -57,6 +57,9 @@ const SWEEP_ENTITIES: MockHaEntityType[] = [
 		area: "Kitchen",
 	},
 	{ names: ["Front Door"], domain: "lock", area: "Entryway" },
+	{ names: ["Driveway Gate"], domain: "cover", area: "Driveway" },
+	{ names: ["Thermostat"], domain: "climate", area: "Living Room" },
+	{ names: ["House Alarm"], domain: "alarm_control_panel", area: "Hallway" },
 ]
 
 const POSITIVES: {

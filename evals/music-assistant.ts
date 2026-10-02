@@ -16,6 +16,7 @@ import {
 import {
 	MA_DEFAULT_TOOL_WHITELIST,
 	MA_FAST_PATH_SAMPLES,
+	MA_QUERY_FILLERS,
 	MA_SPECIALIZATION_KIND,
 	MA_TOOL_MUSIC_PLAY,
 	MA_TOOL_NOW_PLAYING,
@@ -30,6 +31,7 @@ import {
 	nowPlayingText,
 	planPlay,
 	playingText,
+	queryVariants,
 	queueTargetOf,
 } from "@/modules/skill-engine/specializations/music-assistant/planner"
 import type {
@@ -389,6 +391,148 @@ const checkDescriptorInvariants = (): void => {
 			blocked.join(" | "),
 		)
 	}
+}
+
+const QUERY_CASES: { language: string; spoken: string; searched: string[] }[] =
+	[
+		{ language: "en", spoken: "some jazz", searched: ["some jazz", "jazz"] },
+		{ language: "en", spoken: "Some Jazz", searched: ["Some Jazz", "Jazz"] },
+		{
+			language: "en",
+			spoken: "a bit of Miles Davis",
+			searched: ["a bit of Miles Davis", "Miles Davis"],
+		},
+		{
+			language: "en",
+			spoken: "something by Radiohead",
+			searched: ["something by Radiohead", "Radiohead"],
+		},
+		{
+			language: "en",
+			spoken: "some music by Bill Evans",
+			searched: ["some music by Bill Evans", "Bill Evans"],
+		},
+		{ language: "en", spoken: "Radiohead", searched: ["Radiohead"] },
+		{ language: "en", spoken: "some", searched: ["some"] },
+		{
+			language: "en",
+			spoken: "somebody to love",
+			searched: ["somebody to love"],
+		},
+		{
+			language: "es",
+			spoken: "algo de jazz",
+			searched: ["algo de jazz", "jazz"],
+		},
+		{
+			language: "es",
+			spoken: "un poco de Bad Bunny",
+			searched: ["un poco de Bad Bunny", "Bad Bunny"],
+		},
+		{
+			language: "es",
+			spoken: "música de Radiohead",
+			searched: ["música de Radiohead", "Radiohead"],
+		},
+		{
+			language: "es",
+			spoken: "Algo contigo",
+			searched: ["Algo contigo", "contigo"],
+		},
+	]
+
+const recordingHandle = (library: Record<string, string>, searched: string[]) =>
+	({
+		listTools: () => Promise.resolve({ tools: [] }),
+		callTool: (name: string, args: Record<string, unknown>) => {
+			const query = typeof args.query === "string" ? args.query : null
+			if (name === "library_search_tracks" && query) searched.push(query)
+			const uri = query ? library[query.toLowerCase()] : undefined
+			const rows =
+				name === "players_list_players"
+					? [{ player_id: "living_room", name: "Living Room", state: "idle" }]
+					: name === "library_search_artists" && uri
+						? [{ uri, name: query }]
+						: []
+			return Promise.resolve({
+				text: "",
+				status: "ok" as const,
+				isError: false,
+				structured: rows,
+			})
+		},
+		close: () => Promise.resolve(),
+	}) as unknown as Parameters<typeof playerRoster.attach>[1]
+
+const checkQueryFillers = async (): Promise<void> => {
+	console.log("\nfiller words never reach the music search alone")
+	for (const { language, spoken, searched } of QUERY_CASES) {
+		const variants = queryVariants(spoken, MA_QUERY_FILLERS[language])
+		checker.check(
+			`${language}: "${spoken}" is searched as ${searched.join(" → ")}`,
+			JSON.stringify(variants) === JSON.stringify(searched),
+			JSON.stringify(variants),
+		)
+	}
+	const spec = resolveSpecializationByKind(MA_SPECIALIZATION_KIND)
+	const play = async (
+		language: string,
+		query: string,
+		library: Record<string, string>,
+	): Promise<{ searched: string[]; spoken: string; ok: boolean }> => {
+		const provider = musicCfg("http://127.0.0.1:1")
+		const searched: string[] = []
+		const result = await spec?.callVirtualTool?.(
+			provider,
+			recordingHandle(library, searched),
+			MA_TOOL_MUSIC_PLAY,
+			{ query, player: "Living Room" },
+			language,
+		)
+		playerRoster.clear(provider.id)
+		return {
+			searched,
+			spoken: result?.speakableText ?? "",
+			ok: result?.status === "ok",
+		}
+	}
+	const jazz = await play("en", "some jazz", { jazz: "library://genre/jazz" })
+	checker.check(
+		'en: "some jazz" falls back to jazz and plays it',
+		jazz.ok &&
+			jazz.searched.join(",") === "some jazz,jazz" &&
+			jazz.spoken.toLowerCase().includes("jazz") &&
+			!jazz.spoken.toLowerCase().includes("some"),
+		JSON.stringify(jazz),
+	)
+	const titled = await play("en", "Some Girls", {
+		"some girls": "library://album/some-girls",
+	})
+	checker.check(
+		"en: a title that starts with a filler word is found as spoken",
+		titled.ok && titled.searched.join(",") === "Some Girls",
+		JSON.stringify(titled),
+	)
+	const missing = await play("en", "some zydeco", {})
+	checker.check(
+		"en: a miss names the music, not the filler",
+		!missing.ok && missing.spoken === "I couldn't find zydeco in your music.",
+		JSON.stringify(missing),
+	)
+	const algo = await play("es", "algo de jazz", {
+		jazz: "library://genre/jazz",
+	})
+	checker.check(
+		'es: "algo de jazz" falls back to jazz and plays it',
+		algo.ok && algo.searched.join(",") === "algo de jazz,jazz",
+		JSON.stringify(algo),
+	)
+	const falta = await play("es", "un poco de zydeco", {})
+	checker.check(
+		"es: a miss names the music, not the filler",
+		!falta.ok && falta.spoken === "No encontré zydeco en tu música.",
+		JSON.stringify(falta),
+	)
 }
 
 const checkArgResolution = async (): Promise<void> => {
@@ -871,6 +1015,7 @@ const main = async (): Promise<void> => {
 	checkSpokenText()
 	checkDescriptorInvariants()
 	await checkArgResolution()
+	await checkQueryFillers()
 	await checkTransportVolume()
 	await checkLiveMock()
 	console.log(

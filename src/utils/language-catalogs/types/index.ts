@@ -58,6 +58,7 @@ export type LanguageCatalogType = {
 	retryCues: string[]
 	relationFamilyCues?: Partial<Record<RelationFamilyType, string[]>>
 	selfDescriptionCues?: string[]
+	speakerSubjects?: string[]
 	pastTenseCues?: string[]
 	negativePreferenceCues?: string[]
 	anaphoraRewrites?: AnaphoraRewriteType[]
@@ -120,6 +121,7 @@ export type ResolvedLanguageSetsType = {
 	retryCues: string[]
 	relationFamilyCues: Record<RelationFamilyType, string[]>
 	selfDescriptionCues: string[]
+	speakerSubjects: string[]
 	pastTenseCues: string[]
 	negativePreferenceCues: string[]
 	interruptPhrases: string[]

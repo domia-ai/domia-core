@@ -16,6 +16,7 @@ import {
 	MA_ARG_RADIO,
 	MA_ARG_URI,
 	MA_NOW_PLAYING_QUEUE_ITEMS,
+	MA_QUERY_FILLERS,
 	MA_TOOL_ACTIVE_QUEUE,
 	MA_TOOL_MUSIC_PLAY,
 	MA_TOOL_NOW_PLAYING,
@@ -32,6 +33,7 @@ import {
 	planPlay,
 	playerUnavailableText,
 	playingText,
+	queryVariants,
 	queueTargetOf,
 } from "./planner"
 import {
@@ -155,6 +157,24 @@ const searchAll = async (
 	return [...artists, ...albums, ...tracks]
 }
 
+const baseLanguage = (language: string | null): string =>
+	(language ?? "en").toLowerCase().split(/[-_]/)[0]
+
+const fillersFor = (language: string | null): string[] =>
+	MA_QUERY_FILLERS[baseLanguage(language)] ?? MA_QUERY_FILLERS.en
+
+const searchVariants = async (
+	handle: SkillConnHandleType,
+	variants: string[],
+	limit: number,
+	signal?: AbortSignal,
+): Promise<{ query: string; hits: MaSearchHitType[] }> => {
+	const [query, ...rest] = variants
+	const hits = await searchAll(handle, query, limit, signal)
+	if (hits.length > 0 || rest.length === 0) return { query, hits }
+	return searchVariants(handle, rest, limit, signal)
+}
+
 const runMusicPlay = async (
 	provider: SelectSkillProviderType,
 	handle: SkillConnHandleType,
@@ -164,12 +184,17 @@ const runMusicPlay = async (
 ): Promise<SkillCallResultType> => {
 	const phrases = languageSetsFor(language).phrases
 	const rawQuery = args[MA_ARG_QUERY]
-	const query = typeof rawQuery === "string" ? rawQuery.trim() : ""
-	if (!query) return failed(phrases.musicWhichMusic)
+	const asSpoken = typeof rawQuery === "string" ? rawQuery.trim() : ""
+	if (!asSpoken) return failed(phrases.musicWhichMusic)
 	const spoken = spokenPlayer(args)
 	playerRoster.attach(provider, handle)
-	const [hits] = await Promise.all([
-		searchAll(handle, query, searchLimitOf(provider), signal),
+	const [{ query, hits }] = await Promise.all([
+		searchVariants(
+			handle,
+			queryVariants(asSpoken, fillersFor(language)),
+			searchLimitOf(provider),
+			signal,
+		),
 		ensureRoster(provider, signal),
 	])
 	const player = await targetPlayer(provider, args, language)

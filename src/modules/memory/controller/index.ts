@@ -21,6 +21,7 @@ import {
 	type FactKindEnumType,
 	type SelectMemoryFactType,
 	type SelectFactEvidenceType,
+	FACT_SPEAKER_SUBJECT,
 } from "@/db"
 import dbAdapter from "../db-adapter"
 import { factSchema } from "../schemas"
@@ -378,14 +379,17 @@ export const isExplicitMemoryCommand = (
 	language?: string | null,
 ): boolean => languageSetsFor(language).memoryCommandRe.test(text)
 
-export const buildFactExtractionLines = (): string[] => [
+export const buildFactExtractionLines = (
+	assistantNames: string[],
+): string[] => [
 	`Also extract durable facts the person EXPLICITLY stated about themselves. Format as objects {subject, relation, value, confidence, when}: "subject" is ALWAYS exactly "the user" — the person speaking — never "the user said X", never their name, and never a third party they mention (fold that person into the relation instead); "relation" is short lowercase (e.g. "is named", "is allergic to", "likes", "dislikes"); "value" is the plain detail with NO brackets or quotes (e.g. Kevin, green tea); "confidence" is 0..1; "when" is "now" (true today — the default), "past" (was true, is NOT true now: "I used to…", "I no longer…"), "future" (a plan) or a date like 2026-12-01.`,
 	`Only DURABLE identity qualifies: name, tastes, relationships, possessions, allergies, home, work. NEVER capture in-the-moment actions, requests or commands. "Turn on the kitchen lights" → NOT a fact (a command). "Remind me at nine" → NOT a fact (a request). "My name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"} IS a fact.`,
 	`DO capture clear first-person declarations: "my name is Kevin" → {subject:"the user", relation:"is named", value:"Kevin"}; "I love green tea" → {subject:"the user", relation:"likes", value:"green tea"}; "I can't stand coffee" → {subject:"the user", relation:"dislikes", value:"coffee"}; "I'm allergic to peanuts" → {subject:"the user", relation:"is allergic to", value:"peanuts"}; facts about THEIR people and pets too, still with subject "the user" — "my sister's name is Elena" → {subject:"the user", relation:"has a sister named", value:"Elena"}; "my dog is called Luka" → {subject:"the user", relation:"has a dog named", value:"Luka"}. Preferences, name, allergies, relationships, and plans they state ARE facts — capture them.`,
 	`KEEP THE ATTRIBUTE they named — never collapse it into a bare "likes": "my favorite color is blue" → {subject:"the user", relation:"has favorite color", value:"blue"} (NOT likes | blue); "my favourite song is Clair de Lune" → {subject:"the user", relation:"has favorite song", value:"Clair de Lune"}. The "value" is only the detail, never the attribute word.`,
 	`The value MUST come from the PERSON's own words in this exchange. If it appears only in YOUR reply — you told a joke about a penguin, you suggested a restaurant — it is NOT a fact: emit nothing for it.`,
 	`When the person RETRACTS or REVERSES something ("I quit coffee", "I no longer like tea", "I switched from X to Y", "actually I can't stand it anymore"), emit a retraction with "op":"delete" for the OLD fact ({subject:"the user", relation:"likes", value:"coffee", op:"delete"}) — and for a switch also add the NEW fact. Default op is "add"; only set "delete" for an explicit retraction. A past-tense statement that is NOT a retraction ("I used to live in Bogotá", "I lived in Berlin for years") stays an "add" with "when":"past" — never a delete. KEEP THE POLARITY THEY USED: "used to like X" is still {relation:"likes", value:"X", when:"past"} — NEVER "dislikes". "I used to like coffee, now I only drink tea" → [{subject:"the user", relation:"drinks", value:"tea", when:"now"}, {subject:"the user", relation:"likes", value:"coffee", when:"past"}].`,
-	`NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant, or Domia; (d) the EXAMPLES in these instructions — Kevin, green tea, coffee and peanuts are illustrations, never facts, unless THIS conversation explicitly stated them. If they only asked a question or made small talk, return [].`,
+	`NEVER create a fact from: (a) a QUESTION they asked — "do you have a spa?" does NOT mean they like spas; (b) YOUR reply or suggestions — recommending an action movie does NOT mean they like action movies; (c) anything about you, the assistant (called ${assistantNames.join(", ")}); (d) the EXAMPLES in these instructions — Kevin, green tea, coffee and peanuts are illustrations, never facts, unless THIS conversation explicitly stated them. If they only asked a question or made small talk, return [].`,
+	`${assistantNames.join(", ")} is YOUR name. When the person says it they are addressing you; it is never their name or a fact value.`,
 ]
 
 export const parseFacts = (input: unknown): RawFactType[] => {
@@ -411,14 +415,13 @@ const normalizeFactKey = (raw: string): string =>
 		.replace(/\s+/g, " ")
 		.trim()
 
-const SPEAKER_SUBJECT = "the user"
 const SPEAKER_RE =
 	/^(the user|the person|the speaker|they|user|the user said[a-z ]*|the person said[a-z ]*)$/
 
 const canonicalSubject = (raw: string): string => {
 	const norm = normalizeFactKey(raw)
 	if (SPEAKER_RE.test(norm) || norm.startsWith("the user"))
-		return SPEAKER_SUBJECT
+		return FACT_SPEAKER_SUBJECT
 	return norm
 }
 
@@ -437,7 +440,7 @@ export const rejectFact = (
 	value: string,
 	stopwords: Set<string>,
 ): string | null => {
-	if (subject !== SPEAKER_SUBJECT) return "subject not the user"
+	if (subject !== FACT_SPEAKER_SUBJECT) return "subject not the user"
 	if (!RELATION_ALLOWLIST_RE.test(relation)) return "relation not state-shaped"
 	if (isEphemeralFact(relation, value)) return "ephemeral"
 	if (factTokensOf(value, stopwords).length === 0 && value.length < 3)
@@ -493,9 +496,10 @@ const corroborate = async (
 const enteringConfidence = (
 	kind: FactKindEnumType,
 	claimed: number | undefined,
+	explicit = false,
 ): number => {
 	const base = claimed ?? DEFAULT_FACT_CONFIDENCE
-	if (kind === FACT_KIND_ENUM.OBSERVATION)
+	if (kind === FACT_KIND_ENUM.OBSERVATION && !explicit)
 		return Math.min(base, OBSERVATION_QUARANTINE_CONFIDENCE)
 	return Math.max(base, confFloor(kind))
 }
@@ -593,7 +597,7 @@ export const upsertFacts = async (
 		}
 		const validity = resolveFactValidity(fact.when)
 		if (keyed?.supersededAt) {
-			const entering = enteringConfidence(kind, fact.confidence)
+			const entering = enteringConfidence(kind, fact.confidence, fact.explicit)
 			dbClient.transaction((tx) => {
 				if (SINGLE_VALUED_RELATIONS.has(relation))
 					dbAdapter.supersedeActiveFacts(domia.id, subject, relation, tx).run()
@@ -636,7 +640,7 @@ export const upsertFacts = async (
 			relation,
 			value,
 			valueKey,
-			confidence: enteringConfidence(kind, fact.confidence),
+			confidence: enteringConfidence(kind, fact.confidence, fact.explicit),
 			kind,
 			sourceKind: FACT_SOURCE_KIND_ENUM.STATED,
 			personId: null,

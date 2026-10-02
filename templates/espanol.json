@@ -22,8 +22,8 @@
 	},
 	"stt": {
 		"name": "Español",
-		"engine": "NEMO_SPEECH",
-		"modelName": "nemotron-3.5-asr-streaming-0.6b",
+		"engine": "PARAKEET",
+		"modelName": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
 		"language": "es",
 		"modelPath": "data/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
 		"quantization": "int8",
@@ -44,7 +44,7 @@
 		"poolQueueMaxDepth": 8,
 		"poolQueueTimeoutMs": 15000,
 		"workerRecycleAfterJobs": 0,
-		"baseUrl": "http://127.0.0.1:8600/v1"
+		"baseUrl": null
 	},
 	"tts": {
 		"name": "Español",

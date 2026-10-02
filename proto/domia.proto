@@ -179,6 +179,7 @@ message InferenceRequest {
   optional string session_id = 6;
   optional string target_domia_key = 7;
   optional string trace_id = 8;
+  optional string tool_choice = 9;
 }
 
 message InferenceResponse {

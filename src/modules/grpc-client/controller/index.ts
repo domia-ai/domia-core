@@ -30,6 +30,7 @@ import type {
 	ChatMessageType,
 	ToolCallType,
 	ToolCallOrReplyType,
+	ToolChoiceType,
 	ToolDefinitionType,
 } from "@/modules/llm-engine"
 import type {
@@ -47,6 +48,8 @@ import type {
 	StreamVoiceReplyRequestType,
 	StreamVoiceReplyResult,
 	OpenedServerStream,
+	ReplyAudioReaderType,
+	ReplyAudioReaderOptsType,
 } from "../types"
 import {
 	GRPC_MAX_MESSAGE_BYTES,
@@ -526,6 +529,7 @@ const openServerStream = async <T>(
 			attemptedTargets: attempted,
 			firstValue: first.done ? undefined : first.value,
 			stream,
+			abort: () => ac.abort(),
 		}
 	}
 	return {
@@ -628,6 +632,69 @@ export const streamTtsFromTarget = async (
 	}
 }
 
+export const readReplyAudio = (
+	source: AsyncIterable<ReplyAudioMessage>,
+	opts: ReplyAudioReaderOptsType = {},
+): ReplyAudioReaderType => {
+	const iterator = source[Symbol.asyncIterator]()
+	let resolveTranscript: (v: string) => void = () => undefined
+	let resolveFinalReply: (v: string) => void = () => undefined
+	const transcriptPromise = new Promise<string>((r) => {
+		resolveTranscript = r
+	})
+	const finalReplyPromise = new Promise<string>((r) => {
+		resolveFinalReply = r
+	})
+	const state = { ended: false }
+	const finish = (): void => {
+		state.ended = true
+		resolveTranscript("")
+		resolveFinalReply("")
+	}
+	const nextAudio = async (): Promise<Buffer | null> => {
+		while (!state.ended) {
+			const next = await iterator.next()
+			if (next.done) break
+			const payload = next.value.payload
+			if (payload?.$case === "audio") {
+				opts.onAudioChunk?.(payload.audio)
+				if (payload.audio.pcm.length > 0) return Buffer.from(payload.audio.pcm)
+			} else if (payload?.$case === "transcript") {
+				resolveTranscript(payload.transcript)
+			} else if (payload?.$case === "finalReply") {
+				resolveFinalReply(payload.finalReply)
+			}
+		}
+		finish()
+		return null
+	}
+	const drainText = async (): Promise<void> => {
+		try {
+			while ((await nextAudio()) !== null) continue
+		} catch (err) {
+			grpcClientLogger.warn(
+				`reply stream ended before the final reply: ${errMsg(err)}`,
+			)
+			finish()
+		}
+	}
+	const audio = (async function* (): AsyncIterable<Buffer> {
+		try {
+			while (true) {
+				const chunk = await nextAudio()
+				if (chunk === null) return
+				yield chunk
+			}
+		} catch (err) {
+			finish()
+			throw err
+		} finally {
+			if (!state.ended) void drainText()
+		}
+	})()
+	return { audio, transcriptPromise, finalReplyPromise }
+}
+
 export const streamReplyAudioFromTarget = async (
 	senderDomiaKey: string,
 	targets: DeliverEventTarget[],
@@ -661,37 +728,18 @@ export const streamReplyAudioFromTarget = async (
 			attemptedTargets: opened.attemptedTargets,
 		}
 	}
-	const sourceStream = opened.stream
-	let resolveFinalReply!: (v: string) => void
-	const finalReplyPromise = new Promise<string>((r) => {
-		resolveFinalReply = r
-	})
-	let sampleRate: number | undefined
-	let channels: number | undefined
-	if (opened.firstValue?.payload?.$case === "audio") {
-		sampleRate = opened.firstValue.payload.audio.sampleRate
-		channels = opened.firstValue.payload.audio.channels
-	}
-	const audio = (async function* (): AsyncIterable<Buffer> {
-		try {
-			for await (const msg of sourceStream) {
-				if (msg.payload?.$case === "audio") {
-					const pcm = msg.payload.audio.pcm
-					if (pcm.length > 0) yield Buffer.from(pcm)
-				} else if (msg.payload?.$case === "finalReply") {
-					resolveFinalReply(msg.payload.finalReply)
-				}
-			}
-		} finally {
-			resolveFinalReply("")
-		}
-	})()
+	const firstAudio =
+		opened.firstValue?.payload?.$case === "audio"
+			? opened.firstValue.payload.audio
+			: undefined
+	const reader = readReplyAudio(opened.stream)
 	return {
 		delivered: true,
-		audio,
-		finalReplyPromise,
-		sampleRate,
-		channels,
+		audio: reader.audio,
+		finalReplyPromise: reader.finalReplyPromise,
+		cancel: opened.abort,
+		sampleRate: firstAudio?.sampleRate,
+		channels: firstAudio?.channels,
 		target: opened.target,
 		attemptedTargets: opened.attemptedTargets,
 	}
@@ -736,40 +784,19 @@ export const streamVoiceReplyFromTarget = async (
 			attemptedTargets: opened.attemptedTargets,
 		}
 	}
-	const sourceStream = opened.stream
-	let resolveTranscript!: (v: string) => void
-	let resolveFinalReply!: (v: string) => void
-	const transcriptPromise = new Promise<string>((r) => {
-		resolveTranscript = r
-	})
-	const finalReplyPromise = new Promise<string>((r) => {
-		resolveFinalReply = r
-	})
 	const audioMeta: { sampleRate?: number; channels?: number } = {}
-	const audio = (async function* (): AsyncIterable<Buffer> {
-		try {
-			for await (const msg of sourceStream) {
-				if (msg.payload?.$case === "audio") {
-					const chunk = msg.payload.audio
-					audioMeta.sampleRate ??= chunk.sampleRate
-					audioMeta.channels ??= chunk.channels
-					if (chunk.pcm.length > 0) yield Buffer.from(chunk.pcm)
-				} else if (msg.payload?.$case === "transcript") {
-					resolveTranscript(msg.payload.transcript)
-				} else if (msg.payload?.$case === "finalReply") {
-					resolveFinalReply(msg.payload.finalReply)
-				}
-			}
-		} finally {
-			resolveTranscript("")
-			resolveFinalReply("")
-		}
-	})()
+	const reader = readReplyAudio(opened.stream, {
+		onAudioChunk: (chunk) => {
+			audioMeta.sampleRate ??= chunk.sampleRate
+			audioMeta.channels ??= chunk.channels
+		},
+	})
 	return {
 		delivered: true,
-		audio,
-		transcriptPromise,
-		finalReplyPromise,
+		audio: reader.audio,
+		transcriptPromise: reader.transcriptPromise,
+		finalReplyPromise: reader.finalReplyPromise,
+		cancel: opened.abort,
 		audioMeta,
 		target: opened.target,
 		attemptedTargets: opened.attemptedTargets,
@@ -865,6 +892,8 @@ export const delegateInferenceWithTools = async (
 		originDomiaKey?: string
 		interactionId?: string
 		sessionId?: string
+		toolChoice?: ToolChoiceType
+		signal?: AbortSignal
 	},
 ): Promise<ToolCallOrReplyType> => {
 	const client = getClient(target)
@@ -876,6 +905,9 @@ export const delegateInferenceWithTools = async (
 	const addr = addrOf(target)
 	const ac = new AbortController()
 	const timer = setTimeout(() => ac.abort(), tunables.unaryDeadlineMs)
+	const signal = payload.signal
+		? AbortSignal.any([ac.signal, payload.signal])
+		: ac.signal
 	try {
 		const res = await client.runInferenceWithTools(
 			{
@@ -887,8 +919,9 @@ export const delegateInferenceWithTools = async (
 				sessionId: payload.sessionId,
 				traceId: getTraceContext()?.traceId,
 				targetDomiaKey: target.domiaKey,
+				toolChoice: payload.toolChoice,
 			},
-			{ signal: ac.signal },
+			{ signal },
 		)
 		if (res.toolCallsJson) {
 			return {

@@ -3,8 +3,6 @@ import {
 	domiaBusLogger,
 	setTraceContext,
 	toError,
-	wrapPcmToWav,
-	writeWavToTemp,
 	domiaError,
 	GRPC_ERRORS,
 } from "@/utils"
@@ -26,6 +24,8 @@ import {
 	createSentencePipeline,
 	turnLedgerFor,
 	markLadderStage,
+	collectReplyAudio,
+	firstAudioCols,
 } from "../utils"
 import {
 	getOrCreateInteractionId,
@@ -37,11 +37,7 @@ import {
 	INTERACTION_INPUT_TYPE_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
-import {
-	runTTS,
-	ttsVoiceFromDomia,
-	cachedTtsPcmChunks,
-} from "@/modules/tts-engine"
+import { ttsVoiceFromDomia, cachedTtsPcmChunks } from "@/modules/tts-engine"
 import {
 	resolveCapabilityDelegations,
 	resolveDomiaStreamingCapabilities,
@@ -58,6 +54,7 @@ import type {
 	LlmDonePayloadType,
 	LlmFlowSessionType,
 	PlaybackOutcomeType,
+	ResolvedTtsEngineType,
 	StreamingSinkFormatType,
 } from "../types"
 
@@ -174,8 +171,6 @@ const tryLocalStreamingTtsPlayback = async (
 	const { domia } = ctx
 	const caps = tts.adapter.capabilities
 	let playback: PlaybackOutcomeType
-	let ttfaMs: number | undefined
-	let perceivedTtfaMs: number | undefined
 	const ttsStart = Date.now()
 	markLadderStage(session.interactionId, "ttsFirstUnitAt", ttsStart)
 	try {
@@ -194,12 +189,6 @@ const tryLocalStreamingTtsPlayback = async (
 				originDomiaKey: session.originDomiaKey,
 				ledger: single.ledger,
 				aborted: () => isTurnAborted(domia.id, session.interactionId),
-				onFirstChunk: () => {
-					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
-					if (session.speechEndAt) {
-						perceivedTtfaMs = Date.now() - session.speechEndAt
-					}
-				},
 			},
 			{ sampleRate: caps.sampleRate, channels: caps.channels },
 		)
@@ -223,8 +212,7 @@ const tryLocalStreamingTtsPlayback = async (
 		ttsAudioPath: playback.filePath,
 		ttsMs: Date.now() - ttsStart,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
-		ttfaMs,
-		perceivedTtfaMs,
+		...firstAudioCols(session.interactionId),
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 	publishTtsPlaybackComplete(domia.id, session, playback)
@@ -232,16 +220,23 @@ const tryLocalStreamingTtsPlayback = async (
 	return true
 }
 
-const runLocalSyncTts = async (
+const renderLocalTtsFile = async (
 	ctx: CoreBusContextType,
 	session: LlmFlowSessionType,
+	tts: NonNullable<ResolvedTtsEngineType>,
 ): Promise<void> => {
 	const { domia } = ctx
-	let response: Awaited<ReturnType<typeof runTTS>>
 	const ttsStart = Date.now()
 	markLadderStage(session.interactionId, "ttsFirstUnitAt", ttsStart)
+	let filePath: string
 	try {
-		response = await runTTS(domia, session.reply)
+		const caps = tts.adapter.capabilities
+		const rendered = await collectReplyAudio(
+			session.interactionId,
+			cachedTtsPcmChunks(domia, tts.adapter, session.reply),
+			{ sampleRate: caps.sampleRate, channels: caps.channels },
+		)
+		filePath = rendered.filePath
 	} catch (err) {
 		notifyAudioFallback(ctx, {
 			interactionId: session.interactionId,
@@ -253,14 +248,14 @@ const runLocalSyncTts = async (
 		return
 	}
 
-	const filePath = response.filePath
 	await updateInteraction({
 		id: session.interactionId,
-		ttsEngineUsed: response.engineUsed,
+		ttsEngineUsed: tts.adapter.id,
 		ttsExecutorKey: domia.domiaKey,
 		ttsAudioPath: filePath,
 		ttsMs: Date.now() - ttsStart,
 		ttsVoiceUsed: domia.ttsConfig?.voiceName ?? null,
+		...firstAudioCols(session.interactionId),
 		totalMs: pipelineElapsed(session.interactionId),
 	})
 	registerAudioForServing(session.interactionId, filePath)
@@ -313,15 +308,17 @@ const runDelegatedStreamingTts = async (
 	const sampleRate = streamed.sampleRate ?? DEFAULT_SAMPLE_RATE
 
 	if (!ctx.features.canPlayback && !getStreamingSink(session.interactionId)) {
-		const chunks: Buffer[] = []
-		for await (const chunk of streamed.audio) chunks.push(chunk)
-		const wav = wrapPcmToWav(Buffer.concat(chunks), sampleRate, channels, 16)
-		const ttsAudioPath = await writeWavToTemp(wav, session.interactionId, "tts")
+		const { filePath: ttsAudioPath } = await collectReplyAudio(
+			session.interactionId,
+			streamed.audio,
+			{ sampleRate, channels },
+		)
 		registerAudioForServing(session.interactionId, ttsAudioPath)
 		await updateInteraction({
 			id: session.interactionId,
 			ttsExecutorKey: streamed.target?.domiaKey,
 			ttsAudioPath,
+			...firstAudioCols(session.interactionId),
 		})
 		publishToDomiaBus(domia.id, DOMIA_EVENT_BUS_ENUM.TTS_DONE, {
 			interactionId: session.interactionId,
@@ -331,8 +328,6 @@ const runDelegatedStreamingTts = async (
 		return
 	}
 
-	let ttfaMs: number | undefined
-	let perceivedTtfaMs: number | undefined
 	try {
 		const single = singleReplyAudio(
 			domia,
@@ -349,12 +344,6 @@ const runDelegatedStreamingTts = async (
 				originDomiaKey: session.originDomiaKey,
 				ledger: single.ledger,
 				aborted: () => isTurnAborted(domia.id, session.interactionId),
-				onFirstChunk: () => {
-					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
-					if (session.speechEndAt) {
-						perceivedTtfaMs = Date.now() - session.speechEndAt
-					}
-				},
 			},
 			{ sampleRate, channels },
 		)
@@ -364,8 +353,7 @@ const runDelegatedStreamingTts = async (
 			heardReply,
 			ttsExecutorKey: streamed.target?.domiaKey,
 			ttsAudioPath: playback.filePath,
-			ttfaMs,
-			perceivedTtfaMs,
+			...firstAudioCols(session.interactionId),
 			totalMs: pipelineElapsed(session.interactionId),
 		})
 		publishTtsPlaybackComplete(domia.id, session, playback)
@@ -453,9 +441,9 @@ export const deliverReply = async (
 	}
 
 	try {
-		if (features.canRunTts) {
+		if (features.canRunTts && features.tts) {
 			if (await tryLocalStreamingTtsPlayback(ctx, session)) return
-			await runLocalSyncTts(ctx, session)
+			await renderLocalTtsFile(ctx, session, features.tts)
 			return
 		}
 

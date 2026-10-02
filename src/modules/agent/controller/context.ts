@@ -161,5 +161,7 @@ export const createTurnContext = (
 		taintedByOpenWorld: false,
 		readOnlyRound: false,
 		readOnlyRetried: false,
+		actNudged: false,
+		plainRetried: false,
 	}
 }

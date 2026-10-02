@@ -1,4 +1,4 @@
-import { BUILTIN_PROVIDER_NAME } from "@/db"
+import { BUILTIN_PROVIDER_NAME, SKILL_TOOL_NAME_SEPARATOR } from "@/db"
 
 export const DOMIA_SPECIALIZATION_KIND = BUILTIN_PROVIDER_NAME
 export const DOMIA_PACK_BASE_LANGUAGE = "en"
@@ -15,6 +15,11 @@ export const DOMIA_TOOL_ALARM_CANCEL = "alarm_cancel"
 export const DOMIA_TOOL_VOLUME = "volume"
 export const DOMIA_TOOL_REMEMBER = "remember"
 export const DOMIA_TOOL_FORGET = "forget"
+export const DOMIA_FACT_WRITE_TOOLS: ReadonlySet<string> = new Set([
+	`${BUILTIN_PROVIDER_NAME}${SKILL_TOOL_NAME_SEPARATOR}${DOMIA_TOOL_REMEMBER}`,
+])
+export const DOMIA_ARG_CLOCK = "at"
+export const DOMIA_ARG_DELAY = "seconds"
 export const DOMIA_CLOCK_SEPARATOR = ":"
 export const DOMIA_CLOCK_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/
 export const DOMIA_PLACEHOLDER_RE = /\{(\w+)\}/g

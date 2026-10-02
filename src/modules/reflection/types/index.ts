@@ -5,6 +5,16 @@ import type {
 import type { RawFactType } from "@/modules/memory"
 import type { LoggerType } from "@/utils"
 
+import type { TURN_KIND_ENUM_VALUES } from "../constants"
+
+export type TurnKindType = (typeof TURN_KIND_ENUM_VALUES)[number]
+
+export type TurnTraceType = {
+	intentDecision?: string | null
+	toolCallCount?: number | null
+	skillResponse?: unknown[] | null
+}
+
 export type ReflectionFlagsType = {
 	emotion: boolean
 	facts: boolean

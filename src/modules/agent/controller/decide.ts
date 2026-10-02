@@ -3,10 +3,12 @@ import type { ToolCallOrReplyType } from "@/modules/llm-engine"
 
 import {
 	READ_BEFORE_ANSWER_NUDGE,
+	ACT_BEFORE_CLAIM_NUDGE,
+	PLAIN_ANSWER_NUDGE,
 	AGENT_FAILURE_REPLY,
 	AGENT_ACTED_FAILURE_REPLY,
 } from "../constants"
-import { looksLikeToolCallJson } from "../utils"
+import { stripToolCallJson } from "../utils"
 import type { AgentDecisionOutcomeType, AgentTurnContextType } from "../types"
 import { ABORTED, raceAbort } from "./helpers"
 import { abortedOutcome, doneReason, replyOutcome } from "./result"
@@ -133,16 +135,64 @@ export const decideNextAction = async (
 			)
 			return { kind: "stop", outcome: { kind: "continue" } }
 		}
+		const spoken = stripToolCallJson(out.text)
+		const expectedTools = ctx.opts?.expectedTools ?? []
+		if (
+			expectedTools.length > 0 &&
+			ctx.toolNamesUsed.length === 0 &&
+			!noTool &&
+			!spoken.endsWith("?")
+		) {
+			if (!ctx.actNudged) {
+				ctx.decisionMs += inferMs
+				ctx.actNudged = true
+				ctx.messages.push({
+					role: "user",
+					content: ACT_BEFORE_CLAIM_NUDGE.replace(
+						"{tools}",
+						expectedTools.map((name) => ctx.aliasMap.aliasOf(name)).join(", "),
+					),
+				})
+				agentLogger.warn("answer without the expected tool call — retrying", {
+					domiaId: ctx.domia.id,
+					expectedTools,
+				})
+				return { kind: "stop", outcome: { kind: "continue" } }
+			}
+			ctx.finalizeMs += inferMs
+			agentLogger.warn(
+				"expected tool never called — replying honestly instead of the claim",
+				{ domiaId: ctx.domia.id, expectedTools },
+			)
+			return {
+				kind: "stop",
+				outcome: replyOutcome(ctx, step, {
+					reply: ctx.languageSets.phrases.cantDoThat,
+					stopReason: "no_tool_call",
+				}),
+			}
+		}
+		const leakedToolCall = spoken !== out.text.trim()
+		if ((leakedToolCall || spoken.length === 0) && !ctx.plainRetried) {
+			ctx.decisionMs += inferMs
+			ctx.plainRetried = true
+			ctx.forceNoTool = true
+			ctx.messages.push({ role: "user", content: PLAIN_ANSWER_NUDGE })
+			agentLogger.warn("agent reply had no speakable text — regenerating", {
+				domiaId: ctx.domia.id,
+				leakedToolCall,
+			})
+			return { kind: "stop", outcome: { kind: "continue" } }
+		}
 		ctx.finalizeMs += inferMs
-		const spokeToolCall = looksLikeToolCallJson(out.text)
-		if (spokeToolCall)
-			agentLogger.warn("agent reply was a tool-call JSON — suppressed", {
+		if (leakedToolCall)
+			agentLogger.warn("agent reply carried tool-call JSON — stripped", {
 				domiaId: ctx.domia.id,
 			})
 		return {
 			kind: "stop",
 			outcome: replyOutcome(ctx, step, {
-				reply: spokeToolCall ? AGENT_FAILURE_REPLY : out.text,
+				reply: spoken.length > 0 ? spoken : AGENT_FAILURE_REPLY,
 				stopReason: doneReason(ctx),
 			}),
 		}

@@ -158,5 +158,138 @@
 				}
 			}
 		]
+	},
+	{
+		"name": "fast-neg: a question about tonight's menu is not a device command",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Does tonight's menu have nuts?",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: a menu question without a time word stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "does the menu have nuts",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: an allergen question about tonight stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "is there anything with gluten tonight",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: a cooking question naming a room stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "What can I cook tonight in the kitchen?",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: thanks with no command stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "Thanks. That actually helps a little.",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: a pantry question stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "What should I keep in the pantry instead?",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
+	},
+	{
+		"name": "fast-neg: a remark about a guest stays chat",
+		"suite": "fast",
+		"language": "en",
+		"turns": [
+			{
+				"text": "One of them is vegetarian, by the way.",
+				"expect": {
+					"fastPath": false,
+					"notTools": [
+						"HassSetPosition",
+						"HassTurnOn",
+						"HassTurnOff",
+						"HassLightSet"
+					]
+				}
+			}
+		]
 	}
 ]

@@ -12,7 +12,11 @@ import {
 	elicitContentFor,
 } from "../../utils"
 import { updateInteraction } from "@/modules/session-manager"
-import { SKILL_TOOL_NAME_SEPARATOR, type ToolTraceEntryType } from "@/db"
+import {
+	INTENT_DECISION_ENUM,
+	SKILL_TOOL_NAME_SEPARATOR,
+	type ToolTraceEntryType,
+} from "@/db"
 import {
 	peekPendingConfirmation,
 	peekExpiredConfirmation,
@@ -25,7 +29,11 @@ import {
 	runConfirmedTool,
 } from "@/modules/agent"
 import { resolveToolFinalize, renderFinalizeText } from "@/modules/skill-engine"
-import type { CoreBusContextType, SttDonePayloadType } from "../../types"
+import type {
+	ConfirmationTurnOutcomeType,
+	CoreBusContextType,
+	SttDonePayloadType,
+} from "../../types"
 
 export const handlePendingConfirmation = async (
 	ctx: CoreBusContextType,
@@ -64,7 +72,7 @@ export const handlePendingConfirmation = async (
 		)
 		void updateInteraction({
 			id: interactionId,
-			intentDecision: "elicit-answer",
+			intentDecision: INTENT_DECISION_ENUM.ELICIT_ANSWER,
 		}).catch((err: unknown) =>
 			domiaBusLogger.warn("confirmation: elicit-answer persist failed", {
 				interactionId,
@@ -73,35 +81,44 @@ export const handlePendingConfirmation = async (
 		)
 		return true
 	}
+	const replyConfirm = (
+		reply: string,
+		outcome: ConfirmationTurnOutcomeType,
+	): void => {
+		void updateInteraction({
+			id: interactionId,
+			intentDecision: `${INTENT_DECISION_ENUM.CONFIRMATION}:${outcome}`,
+			llmResponse: reply,
+		}).catch((err: unknown) =>
+			domiaBusLogger.warn("confirmation: reply persist failed", {
+				interactionId,
+				err,
+			}),
+		)
+		publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
+			reply,
+			transcript,
+			interactionId,
+			originDomiaKey,
+			responseType: payload.responseType,
+			speechEndAt: payload.speechEndAt,
+			liveVoice: payload.liveVoice,
+		})
+	}
 	const pending = peekPendingConfirmation(confirmScope)
 	if (!pending) {
 		const expired = peekExpiredConfirmation(confirmScope)
 		if (expired && isAffirmative(transcript, expired.language)) {
 			settleConfirmation(confirmScope, "expired")
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
-				reply: languageSetsFor(expired.language).phrases.confirmExpired,
-				transcript,
-				interactionId,
-				originDomiaKey,
-				responseType: payload.responseType,
-				speechEndAt: payload.speechEndAt,
-				liveVoice: payload.liveVoice,
-			})
+			replyConfirm(
+				languageSetsFor(expired.language).phrases.confirmExpired,
+				"expired",
+			)
 			return true
 		}
 	}
 	if (pending) {
 		const phrases = languageSetsFor(pending.language).phrases
-		const replyConfirm = (reply: string): void =>
-			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.LLM_DONE, {
-				reply,
-				transcript,
-				interactionId,
-				originDomiaKey,
-				responseType: payload.responseType,
-				speechEndAt: payload.speechEndAt,
-				liveVoice: payload.liveVoice,
-			})
 		const affirmative = isAffirmative(transcript, pending.language)
 		const negative = isNegative(transcript, pending.language)
 		const taken = affirmative !== negative ? pending : null
@@ -113,7 +130,7 @@ export const handlePendingConfirmation = async (
 				"confirmation claim lost — not executing (already settled or persist failed)",
 				{ domiaId, interactionId, tool: taken.tool },
 			)
-			replyConfirm(phrases.confirmExpired)
+			replyConfirm(phrases.confirmExpired, "expired")
 			return true
 		}
 		if (taken && affirmative) {
@@ -130,12 +147,16 @@ export const handlePendingConfirmation = async (
 			try {
 				const res = await runConfirmedTool(domia.id, taken)
 				const ok = res.status === "ok" && !res.isError
-				const rule = resolveToolFinalize(domia.id, taken.tool)
-				const template = ok ? rule?.done : rule?.error
+				const rule = resolveToolFinalize(domia.id, taken.tool, res.resolvedArgs)
+				const template = ok ? (rule?.done ?? rule?.ack) : rule?.error
 				const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
 				reply = template
-					? (renderFinalizeText(template, taken.args, res.resolvedArgs) ??
-						fallback)
+					? (renderFinalizeText(
+							template,
+							taken.args,
+							res.resolvedArgs,
+							res.speakableText,
+						) ?? fallback)
 					: fallback
 				trace = {
 					kind: "result",
@@ -183,7 +204,7 @@ export const handlePendingConfirmation = async (
 					err,
 				}),
 			)
-			replyConfirm(reply)
+			replyConfirm(reply, "approved")
 			return true
 		}
 		if (taken && negative) {
@@ -207,7 +228,7 @@ export const handlePendingConfirmation = async (
 					err,
 				}),
 			)
-			replyConfirm(phrases.cancelledAction)
+			replyConfirm(phrases.cancelledAction, "denied")
 			return true
 		}
 		const offTopicWords = transcript.trim().split(/\s+/).filter(Boolean).length
@@ -218,7 +239,7 @@ export const handlePendingConfirmation = async (
 			!pending.reasked
 		) {
 			markConfirmationReasked(confirmScope)
-			replyConfirm(phrases.confirmReask)
+			replyConfirm(phrases.confirmReask, "reasked")
 			return true
 		}
 		if (affirmative === negative) settleConfirmation(confirmScope, "ignored")

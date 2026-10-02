@@ -12,11 +12,19 @@ export const capitalizeFirst = (text: string): string =>
 const escapeRegex = (text: string): string =>
 	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-export const containsCue = (foldedText: string, cue: string): boolean =>
+const cueRe = (cue: string): RegExp =>
 	new RegExp(
 		`(^|[^\\p{L}\\p{N}])${escapeRegex(foldText(cue))}($|[^\\p{L}\\p{N}])`,
 		"u",
-	).test(foldedText)
+	)
+
+export const containsCue = (foldedText: string, cue: string): boolean =>
+	cueRe(cue).test(foldedText)
+
+export const cueIndex = (foldedText: string, cue: string): number => {
+	const hit = cueRe(cue).exec(foldedText)
+	return hit ? hit.index + hit[1].length : -1
+}
 
 export const tokensOf = (
 	text: string,

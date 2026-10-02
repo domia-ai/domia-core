@@ -47,7 +47,7 @@ export const parkConfirmTarget = (
 	const confirmPhrase = ctx.languageSets.phrases.confirmAction
 	const siblingNote =
 		droppedSiblings.length > 0
-			? ` I'll hold off on the rest until you confirm.`
+			? ` ${ctx.languageSets.phrases.confirmSiblingsHeld}`
 			: ""
 	return confirmOutcome(ctx, step, {
 		reply: summary

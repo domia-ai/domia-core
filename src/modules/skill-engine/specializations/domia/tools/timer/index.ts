@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import type { BuiltinToolType } from "../../../../types"
+import { capitalizeFirst } from "@/utils/text-tokens"
 import {
 	DOMIA_TIMER_LABEL_MAX_CHARS,
 	DOMIA_TIMER_MAX_SECONDS,
@@ -28,7 +29,7 @@ export const timerTool: BuiltinToolType = {
 	definition: {
 		name: DOMIA_TOOL_TIMER,
 		description:
-			"Starts a countdown timer that announces when it ends. seconds = total duration in seconds; label = optional short name (e.g. pasta).",
+			"Starts a countdown timer that announces when it ends. seconds = total duration in seconds; label = only when the user named the timer, otherwise omit it.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -38,7 +39,10 @@ export const timerTool: BuiltinToolType = {
 					maximum: DOMIA_TIMER_MAX_SECONDS,
 					description: "Duration in seconds",
 				},
-				label: { type: "string", description: "Optional short name" },
+				label: {
+					type: "string",
+					description: "Name the user gave the timer; omit if they gave none",
+				},
 			},
 			required: ["seconds"],
 		},
@@ -59,18 +63,23 @@ export const timerTool: BuiltinToolType = {
 	available: announceTargetExists,
 	execute: async (args, ctx) => {
 		const seconds = args.seconds as number
-		const label =
-			typeof args.label === "string"
-				? args.label
-				: durationLabel(seconds, ctx.sets)
+		const duration = durationLabel(seconds, ctx.sets)
+		const namedLabel = typeof args.label === "string" ? args.label : null
+		const label = namedLabel ?? duration
 		try {
 			const result = await startTimer(ctx, "timer", { seconds, label })
-			const speakable = destinationDiffers(ctx.origin, result)
-				? phrase(ctx.sets, "timerSetOn", {
-						label,
-						target: destinationName(ctx, result),
-					})
-				: phrase(ctx.sets, "timerSet", { label })
+			const speakable = capitalizeFirst(
+				destinationDiffers(ctx.origin, result)
+					? phrase(ctx.sets, namedLabel ? "timerSetNamedOn" : "timerSetOn", {
+							label,
+							duration,
+							target: destinationName(ctx, result),
+						})
+					: phrase(ctx.sets, namedLabel ? "timerSetNamed" : "timerSet", {
+							label,
+							duration,
+						}),
+			)
 			return okResult(
 				`Timer "${label}" set for ${seconds} seconds (due ${result.timer.dueAt}).`,
 				speakable,

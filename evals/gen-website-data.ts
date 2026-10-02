@@ -15,11 +15,9 @@ import {
 	FAST_PATH_SKIP_PHRASES_PER_SIDE,
 	ROUTINE_MAX_STEPS,
 	ROUTINE_TOOL_PREFIX,
-	SKILL_DESCRIPTOR_RESOURCE_URI,
 	SKILL_SERVER_DESCRIPTOR_MAX_BYTES,
 	SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATES,
 	SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATE_CHARS,
-	SKILL_SERVER_DESCRIPTOR_STRIPPED_FIELDS,
 } from "@/db/constants/skills"
 import {
 	lintTemplate,
@@ -538,13 +536,11 @@ const skillsFile = (): WebsiteSkillsFileType => {
 	]
 	return {
 		meta: metaOf(
-			"domia-core: specializations/domia/tools (DOMIA_TOOLS: name, hiddenFromLlm, policy), specializations/home-assistant/constants (HA_ACTION_VERBS, HA_CONTEXT_TOOL, HA_SENSITIVE_TOOL_RE, HA_BUILTIN_SHADOWED_TOOLS), specializations/music-assistant/constants (MA tool ids), src/db/constants/skills.ts (ROUTINE_MAX_STEPS, SKILL_DESCRIPTOR_RESOURCE_URI, SKILL_SERVER_DESCRIPTOR_*); alwaysOn/defaultOn are per-identity flags (builtin_tools = DEFAULT_BUILTIN_TOOLS, skills_engine = DEFAULT_SKILLS_ENGINE in src/db/constants/skills.ts), both switchable from the console; examples: fastPath from the same packs (routines with phrases register fast-path templates via specializations/domia/routines.ts; routine tool = ROUTINE_TOOL_PREFIX + slug; the MCP tool id is illustrative)",
+			"domia-core: specializations/domia/tools (DOMIA_TOOLS: name, hiddenFromLlm, policy), specializations/home-assistant/constants (HA_ACTION_VERBS, HA_CONTEXT_TOOL, HA_SENSITIVE_TOOL_RE, HA_BUILTIN_SHADOWED_TOOLS), specializations/music-assistant/constants (MA tool ids), src/db/constants/skills.ts (ROUTINE_MAX_STEPS, SKILL_SERVER_DESCRIPTOR_MAX_*); alwaysOn/defaultOn are per-identity flags (builtin_tools = DEFAULT_BUILTIN_TOOLS, skills_engine = DEFAULT_SKILLS_ENGINE in src/db/constants/skills.ts), both switchable from the console; examples: fastPath from the same packs (routines with phrases register fast-path templates via specializations/domia/routines.ts; routine tool = ROUTINE_TOOL_PREFIX + slug; the MCP tool id is illustrative)",
 		),
 		groups,
 		examples,
 		routineMaxSteps: ROUTINE_MAX_STEPS,
-		descriptorResource: SKILL_DESCRIPTOR_RESOURCE_URI,
-		strippedPolicyFields: [...SKILL_SERVER_DESCRIPTOR_STRIPPED_FIELDS],
 		descriptorLimits: {
 			maxBytes: SKILL_SERVER_DESCRIPTOR_MAX_BYTES,
 			maxTemplates: SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATES,

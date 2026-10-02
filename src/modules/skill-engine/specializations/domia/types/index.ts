@@ -49,3 +49,8 @@ export type DomiaRoutineBlocksType = {
 	finalize: ToolFinalizeMapType
 	intents: FastPathIntentType[]
 }
+
+export type DomiaSpeakerFactType = {
+	subject: string
+	relation: string
+}

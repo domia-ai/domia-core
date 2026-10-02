@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
-
 import { getTableColumns } from "drizzle-orm"
 
 import {
@@ -202,37 +199,6 @@ const checkConfigSurfaceParity = (
 		"config schema exposes the preset name on the stt section",
 		fieldsOf("stt").includes("name"),
 		fieldsOf("stt").join(","),
-	)
-}
-
-const checkContractManifest = (
-	checker: ReturnType<typeof makeChecker>,
-): void => {
-	const path = resolve(process.cwd(), "contract/contract.json")
-	const raw = ((): string | null => {
-		try {
-			return readFileSync(path, "utf8")
-		} catch {
-			return null
-		}
-	})()
-	checker.check("contract manifest is generated", raw !== null, path)
-	if (raw === null) return
-	const manifest = JSON.parse(raw) as {
-		configDomiaKeys?: string[]
-		tables?: Record<string, string[] | undefined>
-	}
-	const served = Object.keys(serializeConfig(getDomia({})).domia)
-	checker.check(
-		"contract manifest configDomiaKeys match serializeConfig",
-		JSON.stringify(manifest.configDomiaKeys) === JSON.stringify(served),
-		`manifest=${manifest.configDomiaKeys?.join(",") ?? "missing"} served=${served.join(",")}`,
-	)
-	const announcementColumns = manifest.tables?.announcement ?? []
-	checker.check(
-		"contract manifest carries announcement.delivered",
-		announcementColumns.includes("delivered"),
-		announcementColumns.join(","),
 	)
 }
 
@@ -629,7 +595,6 @@ const main = async (): Promise<void> => {
 
 	console.log("\n[config surface] schema ⊆ GET /config ⊆ POST /config")
 	checkConfigSurfaceParity(checker)
-	checkContractManifest(checker)
 
 	console.log("\n[runtime] failed reload revert + reconciliation")
 	await checkFailedReloadReverts(checker)

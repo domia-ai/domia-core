@@ -224,12 +224,17 @@ const buildParakeet = (config: SttWorkerEngineConfigType) => {
 	})
 }
 
+const LANGUAGE_BOUND_ENGINES = new Set<string>([
+	STT_ENGINE_ENUM.WHISPER,
+	STT_ENGINE_ENUM.NEMOTRON_STREAMING,
+])
+
 const configKey = (config: SttWorkerEngineConfigType): string =>
 	[
 		config.engine,
 		path.resolve(config.modelPath),
 		config.modelName ?? "",
-		config.language ?? "",
+		LANGUAGE_BOUND_ENGINES.has(config.engine) ? (config.language ?? "") : "",
 		config.quantization ?? "default",
 		config.numThreads,
 		config.provider,

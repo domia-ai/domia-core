@@ -162,6 +162,30 @@ export const parseSearchHits = (
 	return hits
 }
 
+const withoutLeadingFiller = (
+	tokens: string[],
+	fillers: string[][],
+): string[] => {
+	const filler = fillers.find(
+		(f) => f.length < tokens.length && f.every((t, i) => tokens[i] === t),
+	)
+	return filler
+		? withoutLeadingFiller(tokens.slice(filler.length), fillers)
+		: tokens
+}
+
+export const queryVariants = (query: string, fillers: string[]): string[] => {
+	const words = query.trim().split(/\s+/).filter(Boolean)
+	const folded = words.map((w) => foldText(w))
+	const phrases = fillers
+		.map((f) => foldText(f).split(/\s+/).filter(Boolean))
+		.filter((f) => f.length > 0)
+		.sort((a, b) => b.length - a.length)
+	const kept = withoutLeadingFiller(folded, phrases)
+	const stripped = words.slice(words.length - kept.length).join(" ")
+	return [...new Set([query.trim(), stripped])].filter((q) => q.length > 0)
+}
+
 const KIND_PRIORITY: Record<MaSearchKindType, number> = {
 	artist: 0,
 	album: 1,

@@ -174,6 +174,7 @@ export interface InferenceRequest {
   sessionId?: string | undefined;
   targetDomiaKey?: string | undefined;
   traceId?: string | undefined;
+  toolChoice?: string | undefined;
 }
 
 export interface InferenceResponse {
@@ -2944,6 +2945,7 @@ function createBaseInferenceRequest(): InferenceRequest {
     sessionId: undefined,
     targetDomiaKey: undefined,
     traceId: undefined,
+    toolChoice: undefined,
   };
 }
 
@@ -2972,6 +2974,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     }
     if (message.traceId !== undefined) {
       writer.uint32(66).string(message.traceId);
+    }
+    if (message.toolChoice !== undefined) {
+      writer.uint32(74).string(message.toolChoice);
     }
     return writer;
   },
@@ -3047,6 +3052,14 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
           message.traceId = reader.string();
           continue;
         }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.toolChoice = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3098,6 +3111,11 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
         : isSet(object.trace_id)
         ? globalThis.String(object.trace_id)
         : undefined,
+      toolChoice: isSet(object.toolChoice)
+        ? globalThis.String(object.toolChoice)
+        : isSet(object.tool_choice)
+        ? globalThis.String(object.tool_choice)
+        : undefined,
     };
   },
 
@@ -3127,6 +3145,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     if (message.traceId !== undefined) {
       obj.traceId = message.traceId;
     }
+    if (message.toolChoice !== undefined) {
+      obj.toolChoice = message.toolChoice;
+    }
     return obj;
   },
 
@@ -3143,6 +3164,7 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     message.sessionId = object.sessionId ?? undefined;
     message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     message.traceId = object.traceId ?? undefined;
+    message.toolChoice = object.toolChoice ?? undefined;
     return message;
   },
 };

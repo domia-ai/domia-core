@@ -46,7 +46,12 @@ export const dispatchAllAsync = (
 			callTool(ctx.domia.id, call.name, safeArgs)
 				.then((result) => {
 					const ok = result.status === "ok" && !result.isError
-					const template = ok ? rule?.done : rule?.error
+					const settled = resolveToolFinalize(
+						ctx.domia.id,
+						call.name,
+						result.resolvedArgs ?? safeArgs,
+					)
+					const template = ok ? settled?.done : settled?.error
 					const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
 					return {
 						tool: call.name,
@@ -101,7 +106,12 @@ export const deadlineAck = (
 		pendingTools.push(
 			running[i].then(({ result }) => {
 				const ok = result.status === "ok" && !result.isError
-				const template = ok ? rule?.done : rule?.error
+				const settled = resolveToolFinalize(
+					ctx.domia.id,
+					call.name,
+					result.resolvedArgs ?? safeArgs,
+				)
+				const template = ok ? settled?.done : settled?.error
 				const fallback = ok ? phrases.thatIsDone : phrases.cantDoThat
 				return {
 					tool: call.name,

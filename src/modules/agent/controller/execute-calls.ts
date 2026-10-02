@@ -119,7 +119,11 @@ const recordSettledResults = (
 			})
 		}
 		callMessages[idx] = guarded.text
-		const rule = resolveToolFinalize(ctx.domia.id, call.name)
+		const rule = resolveToolFinalize(
+			ctx.domia.id,
+			call.name,
+			result.resolvedArgs ?? safeArgs,
+		)
 		if (rule?.mode === "template" || rule?.mode === "deadline") {
 			const ok = result.status === "ok" && !result.isError
 			const template = ok

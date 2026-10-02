@@ -1,5 +1,6 @@
 import { DomiaType } from "@/modules/core"
 import { languageSetsFor } from "@/utils"
+import { foldText } from "@/utils/text-tokens"
 
 import {
 	STATIC_DOMIA_PROMPT_FULL,
@@ -20,6 +21,7 @@ import type {
 	PersonaContextType,
 	RecentTurnType,
 } from "../types"
+import { promptOverridesSchema } from "../schemas"
 
 const EMOTION_NOISE_THRESHOLD = 0.2
 
@@ -122,6 +124,39 @@ export const resolvePersonaName = (persona: {
 	if (!raw || raw.toLowerCase() === "default") return DEFAULT_PERSONA_NAME
 	return raw
 }
+
+const uniqueByFold = (names: (string | null | undefined)[]): string[] => {
+	const seen = new Set<string>()
+	return names
+		.map((name) => name?.trim() ?? "")
+		.filter((name) => {
+			const folded = foldText(name)
+			if (!folded || seen.has(folded)) return false
+			seen.add(folded)
+			return true
+		})
+}
+
+const addressedAsOf = (overrides: unknown): string[] => {
+	const parsed = promptOverridesSchema.safeParse(overrides)
+	return parsed.success ? (parsed.data.addressedAs ?? []) : []
+}
+
+export const personaAddressNames = (persona: {
+	characterProfile: { name?: string | null } | null
+	promptOverrides?: unknown
+}): string[] =>
+	uniqueByFold([
+		resolvePersonaName(persona),
+		...addressedAsOf(persona.promptOverrides),
+	])
+
+export const identityAddressNames = (domia: DomiaType): string[] =>
+	uniqueByFold([
+		resolvePersonaName(domia),
+		...addressedAsOf(domia.characterProfile?.promptOverrides),
+		domia.wakeWordConfig?.wakeWord,
+	]).map(foldText)
 
 const substituteName = (template: string, name: string): string =>
 	template.split("{name}").join(name)

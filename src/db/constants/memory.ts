@@ -22,6 +22,8 @@ export const FACT_KIND_ENUM_VALUES = [
 	FACT_KIND_ENUM.OBSERVATION,
 ] as const
 export const DEFAULT_FACT_KIND = FACT_KIND_ENUM.OBSERVATION
+export const FACT_SPEAKER_SUBJECT = "the user"
+export const FACT_OWNED_SUBJECT_RELATION = "has {subject} that {relation}"
 export const FACT_SOURCE_KIND_ENUM = {
 	STATED: "stated",
 	INFERRED: "inferred",

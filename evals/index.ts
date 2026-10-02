@@ -137,6 +137,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 			"agent guards, confirmations, stale tools, provider status (mock MCP)",
 	},
 	{
+		name: "skill-routing",
+		file: "skill-routing.ts",
+		battery: "pure",
+		description:
+			"tool shortlist ranked reserve, intent gate without a local LLM, built-in keyword routing",
+	},
+	{
 		name: "ha-intents-sweep",
 		file: "ha-intents-sweep.ts",
 		battery: "pure",
@@ -214,6 +221,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "fact grounding, attribution and retry predicate",
 	},
 	{
+		name: "reflection-turns",
+		file: "reflection-turns.ts",
+		battery: "pure",
+		description:
+			"command turns (fast path, tools, confirmations, bare yes/no) never feed fact or mood capture; conversational turns still do",
+	},
+	{
 		name: "bench-run",
 		file: "bench-run.ts",
 		battery: "pure",
@@ -239,6 +253,20 @@ const SUITES: EvalRegistrySuiteType[] = [
 		battery: "pure",
 		description:
 			"first fragment splitter, phrase cache, Wyoming chunk sequencing",
+	},
+	{
+		name: "delegated-skills",
+		file: "delegated-skills.ts",
+		battery: "pure",
+		description:
+			"delegated agent inference: every confirm-policy tool parks on the origin, no claimed action without its tool call, remember writes whatever subject the hub chose",
+	},
+	{
+		name: "reply-delivery",
+		file: "reply-delivery.ts",
+		battery: "pure",
+		description:
+			"first audio timed on every reply path with or without playback, delegated reply text survives an early audio close, empty replies fail loudly",
 	},
 	{
 		name: "ears",

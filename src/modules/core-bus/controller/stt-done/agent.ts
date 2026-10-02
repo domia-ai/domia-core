@@ -135,6 +135,7 @@ export const tryAgentTurn = async (
 		prompt: string,
 		schema: Record<string, unknown>,
 	) => Promise<string | null>,
+	expectedTools: string[] = [],
 ): Promise<boolean> => {
 	const { domia } = ctx
 	const envelope = getInteractionRuntime(session.interactionId)?.envelope
@@ -166,6 +167,7 @@ export const tryAgentTurn = async (
 					retryCall: retryCall ?? undefined,
 					knownFacts: session.knownFacts,
 					knowledgeBase: session.knowledgeBase,
+					expectedTools,
 					constrainedRepair,
 					onSlowTool:
 						session.isVoice && session.liveVoice

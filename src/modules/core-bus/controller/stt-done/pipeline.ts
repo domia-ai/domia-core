@@ -22,6 +22,7 @@ import {
 	resourceCols,
 	extractEmotionTags,
 	splitSentenceEmotionTags,
+	firstAudioCols,
 } from "../../utils"
 import { pipelineElapsed } from "@/modules/session-manager"
 import { INTERACTION_STATUS_ENUM } from "@/db"
@@ -99,8 +100,6 @@ const pipelineVoiceFromTokensInner = async (
 	let pendingPaced = ""
 	const cacheReplyUnits = domia.ttsConfig?.phraseCacheReplyUnitsEnabled === true
 
-	let ttfaMs: number | undefined
-	let perceivedTtfaMs: number | undefined
 	const firstSentence = { at: undefined as number | undefined }
 	const hasFirstSentence = (): boolean => firstSentence.at !== undefined
 	let llmFirstSentenceMs: number | undefined
@@ -132,11 +131,6 @@ const pipelineVoiceFromTokensInner = async (
 			ledger,
 			aborted: () => isTurnAborted(domia.id, session.interactionId),
 			onFirstChunk: () => {
-				ttfaMs =
-					pipelineElapsed(session.interactionId) ?? Date.now() - startTime
-				if (session.speechEndAt) {
-					perceivedTtfaMs = Date.now() - session.speechEndAt
-				}
 				if (firstSentence.at) ttsFirstChunkMs = Date.now() - firstSentence.at
 				emitTurnEvent({
 					type: DOMIA_TURN_EVENT_ENUM.TTS_FIRST_AUDIO,
@@ -352,8 +346,7 @@ const pipelineVoiceFromTokensInner = async (
 		...usageCols(takeLlmUsage(session.interactionId)),
 		...resourceCols(domia),
 		llmQueueMs: takeReplyQueueWait(session.interactionId),
-		ttfaMs,
-		perceivedTtfaMs,
+		...firstAudioCols(session.interactionId),
 		llmFirstSentenceMs,
 		ttsFirstChunkMs,
 		totalMs: pipelineElapsed(session.interactionId),

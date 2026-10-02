@@ -6,6 +6,7 @@ import {
 	DEFAULT_FAST_PATH_COMPOUND_ENABLED,
 	DEFAULT_FAST_PATH_COMPOUND_MAX_TARGETS,
 	FAST_PATH_SKIP_PHRASES_PER_SIDE,
+	FAST_PATH_ADDRESS_NAMES_PER_SIDE,
 	FAST_PATH_COMPOUND_MAX_LEADING_STOPWORDS,
 } from "@/db"
 import {
@@ -14,6 +15,7 @@ import {
 	type ResolvedLanguageSetsType,
 } from "@/utils"
 import type { DomiaType } from "@/modules/core"
+import { identityAddressNames } from "@/modules/prompt-context-builder"
 import {
 	getConnectionsFor,
 	type OriginCapabilitiesType,
@@ -26,7 +28,7 @@ import {
 	stripSkipWords,
 } from "../utils/normalize"
 import { compileIndex, dynamicHashOf } from "../utils/compile"
-import { matchTemplate } from "../utils/match"
+import { matchTemplate, numberSetsOf } from "../utils/match"
 import type {
 	BareEntityMatchType,
 	CompiledFastPathIndexType,
@@ -310,16 +312,6 @@ const argsOfCapture = (
 	return { args: surface, resolvedArgs: resolved }
 }
 
-const numberSetsOf = (sets: ResolvedLanguageSetsType): NumberSetsType => ({
-	words: sets.numberWords,
-	joiners: sets.numberJoiners,
-	durationUnits: sets.durationUnits,
-	durationPhrases: sets.durationPhrases,
-	unitArticles: sets.unitArticles,
-	clockWords: sets.clockWords,
-	clockTwelveAm: sets.clockTwelveAm,
-})
-
 const providersEnabledFor = (domia: DomiaType): boolean =>
 	domia.llmModelConfig?.fastPathEnabled ?? DEFAULT_FAST_PATH_ENABLED
 
@@ -415,8 +407,22 @@ export const matchFastPath = (
 	}
 	const asSpoken = attempt(stripped)
 	if (asSpoken) return done(asSpoken)
-	const withoutCues = stripAdditiveCues(stripped, sets.additiveCues)
-	if (withoutCues !== stripped) {
+	const unaddressed = stripSkipWords(
+		stripSkipWords(
+			stripped,
+			identityAddressNames(domia),
+			FAST_PATH_ADDRESS_NAMES_PER_SIDE,
+		),
+		sets.skipWords,
+		FAST_PATH_SKIP_PHRASES_PER_SIDE,
+	)
+	if (unaddressed !== stripped) {
+		const withoutAddress = attempt(unaddressed)
+		if (withoutAddress) return done(withoutAddress)
+	}
+	for (const spoken of new Set([stripped, unaddressed])) {
+		const withoutCues = stripAdditiveCues(spoken, sets.additiveCues)
+		if (withoutCues === spoken) continue
 		const additive = attempt(withoutCues)
 		if (additive) return done(additive)
 	}

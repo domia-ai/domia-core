@@ -24,7 +24,7 @@ export const buildToolManifest = (
 	const coreNames = new Set<string>()
 	const hiddenNames = new Set<string>()
 	const builtinNames = new Set<string>()
-	const builtinKeywords: string[] = []
+	const builtinToolKeywords: Record<string, string[]> = {}
 	const exampleUtterances: string[] = []
 	const keywords: string[] = []
 	const language = domia.characterProfile?.language ?? null
@@ -36,9 +36,12 @@ export const buildToolManifest = (
 		const core = new Set(descriptor.coreTools)
 		const hidden = new Set(descriptor.hiddenTools)
 		const builtin = provider.protocol === SKILL_PROTOCOL_ENUM.BUILTIN
-		if (builtin) builtinKeywords.push(...descriptor.keywords)
 		for (const tool of tools) {
-			if (builtin) builtinNames.add(tool.namespacedName)
+			if (builtin) {
+				builtinNames.add(tool.namespacedName)
+				builtinToolKeywords[tool.namespacedName] =
+					descriptor.aliases[tool.rawName] ?? []
+			}
 			if (core.has(tool.rawName) || core.has(toolBaseName(tool.rawName)))
 				coreNames.add(tool.namespacedName)
 			if (hidden.has(tool.rawName) || hidden.has(toolBaseName(tool.rawName)))
@@ -53,7 +56,7 @@ export const buildToolManifest = (
 		coreNames,
 		hiddenNames,
 		builtinNames,
-		builtinKeywords,
+		builtinToolKeywords,
 		exampleUtterances,
 		keywords,
 	}

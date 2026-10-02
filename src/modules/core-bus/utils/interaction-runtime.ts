@@ -111,8 +111,11 @@ export const pushInteractionReply = (
 	)
 }
 
-export const pushInteractionFirstAudio = (interactionId: string): void => {
-	markLadderStage(interactionId, "audioDeliveredAt")
+export const pushInteractionFirstAudio = (
+	interactionId: string,
+	delivered = true,
+): void => {
+	if (delivered) markLadderStage(interactionId, "audioDeliveredAt")
 	const rt = runtimes.get(interactionId)
 	if (!rt || rt.timings.firstAudioAt) return
 	rt.timings.firstAudioAt = Date.now()

@@ -9,7 +9,7 @@ import type {
 } from "../types"
 
 export const READ_TOOL_RE =
-	/GetLiveContext|GetDateTime|get_items|GetState|List|music_now_playing|get_active_queue|list_players|library_search/i
+	/GetLiveContext|GetDateTime|get_items|GetState|List|music_now_playing|get_active_queue|list_players|library_search|^(time|date|timer_status)$/i
 export const CONFIRM_RE = /do you want me|want me to|go ahead/i
 
 export const makeChecker = (): CheckerType => {

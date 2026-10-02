@@ -14,6 +14,8 @@ import {
 	disconnectProviders,
 	listTools,
 	providerStatuses,
+	resolveSkillArgs,
+	resolveToolFinalize,
 	effectiveHints,
 	deriveRiskClass,
 	deriveDefaultPolicy,
@@ -28,6 +30,7 @@ import { LLM_ENGINE_ENUM } from "@/db"
 import { baseLlmModelConfig } from "@/test-utils/mocks/llm-model-config"
 
 import { startMockHa, startMockMusic, makeChecker } from "./lib"
+import type { MockHaSiteType } from "./types"
 import { DOMIA_TURN_EVENT_ENUM, onTurnEvent } from "@/buses"
 import {
 	runWithTraceContext,
@@ -810,6 +813,297 @@ const checkTargetlessWrites = async (): Promise<void> => {
 	await haMock.close()
 }
 
+const ACTION_SITE: MockHaSiteType = {
+	entities: [
+		{
+			names: ["Kitchen Light", "Luz de la Cocina"],
+			domain: "light",
+			area: "Kitchen",
+		},
+		{
+			names: ["Front Door", "Puerta Principal"],
+			domain: "lock",
+			area: "Entryway",
+		},
+		{
+			names: ["Garage Door", "Puerta del Garaje"],
+			domain: "cover",
+			area: "Garage",
+		},
+		{
+			names: ["House Alarm", "Alarma de la Casa"],
+			domain: "alarm_control_panel",
+			area: "Hallway",
+		},
+	],
+	tools: [
+		{
+			rawName: "HassUnlockDoor",
+			domain: "lock",
+			description: "Unlocks a door lock entity.",
+			properties: { name: { type: "string" } },
+		},
+		{
+			rawName: "HassSetPosition",
+			domain: "intent",
+			description: "Sets the position of a device or entity, such as a cover.",
+			properties: { name: { type: "string" }, position: { type: "number" } },
+		},
+	],
+}
+
+const GENERIC_ONLY = [
+	"GetLiveContext",
+	"HassTurnOn",
+	"HassTurnOff",
+	"HassLightSet",
+	"HassSetPosition",
+]
+
+const checkDomainActions = async (): Promise<void> => {
+	console.log("\nthe spoken verb and the entity domain pick the action")
+	const haMock = await startMockHa(0, {}, ACTION_SITE)
+	const haCfg = (toolWhitelist: string[] | null): SelectSkillProviderType =>
+		({
+			...providerCfg(haMock.url),
+			id: randomUUID(),
+			name: "home-assistant",
+			descriptor: { version: 1, kind: "home-assistant" },
+			toolsCache: null,
+			toolWhitelist,
+		}) as unknown as SelectSkillProviderType
+	const named = (tool: string): string => `${HA_SLUG}__${tool}`
+	const connectReady = async (
+		cfg: SelectSkillProviderType,
+		language: string,
+	): Promise<void> => {
+		await connectProvider(cfg, HA_SLUG, language)
+		await listTools({ ...domia, skillProviders: [cfg] })
+		for (let attempt = 0; attempt < 40; attempt++) {
+			const probe = await resolveSkillArgs(DOMIA_ID, named("HassTurnOn"), {
+				name: "kitchen light",
+			})
+			if (probe.ok) return
+			await new Promise((resolve) => setTimeout(resolve, 50))
+		}
+	}
+	const runOn = async (
+		cfg: SelectSkillProviderType,
+		language: string,
+		transcript: string,
+		tool: string,
+		args: Record<string, unknown>,
+	): Promise<{
+		result: Awaited<ReturnType<typeof runAgentTurn>>
+		parked: string | null
+	}> => {
+		clearConfirmationsForDomia(DOMIA_KEY)
+		const speaker = {
+			...domia,
+			characterProfile: { name: "Domia", language },
+			skillProviders: [cfg],
+		} as DomiaType
+		const result = await runAgentTurn(
+			speaker,
+			transcript,
+			await listTools(speaker),
+			scripted([
+				{ kind: "tool_calls", calls: [{ name: named(tool), arguments: args }] },
+				{ kind: "reply", text: "(follow-up)" },
+			]),
+			{},
+		)
+		const parked = peekPendingConfirmation(scope)?.tool ?? null
+		clearConfirmationsForDomia(DOMIA_KEY)
+		return { result, parked }
+	}
+
+	const full = haCfg(null)
+	await connectReady(full, "en")
+
+	const lock = await runOn(full, "en", "Lock the front door.", "HassTurnOff", {
+		name: "front door",
+	})
+	checker.check(
+		"a turn-off aimed at a lock becomes the lock tool the user asked for",
+		lock.result.stopReason === "confirm_required" &&
+			lock.parked === named("HassLockDoor") &&
+			lock.result.reply ===
+				"You want me to lock Front Door. Do you want me to go ahead with that?",
+		`parked=${lock.parked} reply="${lock.result.reply}"`,
+	)
+
+	const unlock = await runOn(
+		full,
+		"en",
+		"Unlock the front door",
+		"HassTurnOn",
+		{ name: "front door" },
+	)
+	checker.check(
+		"a turn-on aimed at a lock becomes the unlock tool the user asked for",
+		unlock.parked === named("HassUnlockDoor") &&
+			unlock.result.reply.includes("unlock Front Door"),
+		`parked=${unlock.parked} reply="${unlock.result.reply}"`,
+	)
+
+	const bareOff = await runOn(
+		full,
+		"en",
+		"Turn off the front door",
+		"HassTurnOff",
+		{ name: "front door" },
+	)
+	checker.check(
+		"a lock with no spoken lock verb is confirmed by what would really happen",
+		bareOff.result.stopReason === "confirm_required" &&
+			bareOff.parked === named("HassTurnOff") &&
+			bareOff.result.reply.includes("unlock Front Door") &&
+			!bareOff.result.reply.includes("turn off"),
+		`parked=${bareOff.parked} reply="${bareOff.result.reply}"`,
+	)
+
+	const open = await runOn(full, "en", "Open the garage door.", "HassTurnOn", {
+		name: "garage door",
+	})
+	checker.check(
+		"a cover is confirmed with open, never turn on",
+		open.parked === named("HassTurnOn") &&
+			open.result.reply ===
+				"You want me to open Garage Door. Do you want me to go ahead with that?",
+		`parked=${open.parked} reply="${open.result.reply}"`,
+	)
+
+	const close = await runOn(
+		full,
+		"en",
+		"Close the garage door.",
+		"HassTurnOn",
+		{ name: "garage door" },
+	)
+	checker.check(
+		"a cover asked to close never runs the opening tool",
+		close.parked === named("HassTurnOff") &&
+			close.result.reply.includes("close Garage Door"),
+		`parked=${close.parked} reply="${close.result.reply}"`,
+	)
+
+	const alarm = await runOn(
+		full,
+		"en",
+		"Turn off the house alarm",
+		"HassTurnOff",
+		{ name: "house alarm" },
+	)
+	checker.check(
+		"an alarm panel is never switched without asking",
+		alarm.result.stopReason === "confirm_required" &&
+			alarm.result.toolNamesUsed.length === 0 &&
+			alarm.parked === named("HassTurnOff"),
+		`stop=${alarm.result.stopReason} parked=${alarm.parked}`,
+	)
+
+	const light = await runOn(
+		full,
+		"en",
+		"Turn on the kitchen light",
+		"HassTurnOn",
+		{ name: "kitchen light" },
+	)
+	checker.check(
+		"a light keeps running on the generic tool without a confirmation",
+		light.parked === null &&
+			light.result.toolNamesUsed.join(",") === named("HassTurnOn"),
+		`parked=${light.parked} used=${light.result.toolNamesUsed.join(",")}`,
+	)
+
+	const doneOf = (tool: string, name: string): string | undefined =>
+		resolveToolFinalize(DOMIA_ID, named(tool), { name })?.done
+	checker.check(
+		"the settle sentence carries the same verb as the confirmation",
+		doneOf("HassTurnOn", "Garage Door") === "Done, I opened {name}." &&
+			doneOf("HassTurnOff", "Garage Door") === "Done, I closed {name}." &&
+			doneOf("HassTurnOn", "Front Door") === "Done, I locked {name}." &&
+			doneOf("HassTurnOff", "Front Door") === "Done, I unlocked {name}." &&
+			doneOf("HassLockDoor", "Front Door") === "Done, I locked {name}." &&
+			doneOf("HassUnlockDoor", "Front Door") === "Done, I unlocked {name}." &&
+			doneOf("HassTurnOn", "Kitchen Light") === "Done, I turned on {name}.",
+		[
+			doneOf("HassTurnOn", "Garage Door"),
+			doneOf("HassTurnOff", "Front Door"),
+			doneOf("HassLockDoor", "Front Door"),
+			doneOf("HassTurnOn", "Kitchen Light"),
+		].join(" | "),
+	)
+
+	const menu = await runOn(
+		full,
+		"en",
+		"Does tonight's menu have nuts?",
+		"HassSetPosition",
+		{ name: "Tonight" },
+	)
+	checker.check(
+		"a target that names no device is never parked for confirmation",
+		menu.parked === null &&
+			menu.result.stopReason !== "confirm_required" &&
+			menu.result.toolNamesUsed.length === 0 &&
+			menu.result.reply === "(follow-up)",
+		`parked=${menu.parked} stop=${menu.result.stopReason} reply="${menu.result.reply}"`,
+	)
+	await disconnectProviders([full.id])
+
+	const generic = haCfg(GENERIC_ONLY)
+	await connectReady(generic, "en")
+	const genericLock = await runOn(
+		generic,
+		"en",
+		"Lock the front door.",
+		"HassTurnOff",
+		{ name: "front door" },
+	)
+	checker.check(
+		"a home without lock tools locks through the generic tool of the right polarity",
+		genericLock.parked === named("HassTurnOn") &&
+			genericLock.result.reply.includes("lock Front Door") &&
+			!genericLock.result.reply.includes("unlock"),
+		`parked=${genericLock.parked} reply="${genericLock.result.reply}"`,
+	)
+	await disconnectProviders([generic.id])
+
+	const spanish = haCfg(null)
+	await connectReady(spanish, "es")
+	const cerrar = await runOn(
+		spanish,
+		"es",
+		"Cierra la puerta principal con llave.",
+		"HassTurnOff",
+		{ name: "puerta principal" },
+	)
+	checker.check(
+		"es: the lock verb and the confirmation sentence come from the catalogs",
+		cerrar.parked === named("HassLockDoor") &&
+			cerrar.result.reply ===
+				"Voy a cerrar con llave Front Door. ¿Quieres que lo haga?",
+		`parked=${cerrar.parked} reply="${cerrar.result.reply}"`,
+	)
+	const abrir = await runOn(
+		spanish,
+		"es",
+		"Abre la puerta del garaje.",
+		"HassTurnOn",
+		{ name: "puerta del garaje" },
+	)
+	checker.check(
+		"es: a cover is confirmed with abrir",
+		abrir.parked === named("HassTurnOn") &&
+			abrir.result.reply === "Voy a abrir Garage Door. ¿Quieres que lo haga?",
+		`parked=${abrir.parked} reply="${abrir.result.reply}"`,
+	)
+	await disconnectProviders([spanish.id])
+	await haMock.close()
+}
+
 const MUSIC_SLUG = "music"
 
 const MUSIC_WHITELIST = [
@@ -1382,6 +1676,7 @@ const main = async (): Promise<void> => {
 	await checkAbort()
 	await checkToolAliases()
 	await checkTargetlessWrites()
+	await checkDomainActions()
 	await checkGrammarRejection()
 	await checkTwoProviders()
 

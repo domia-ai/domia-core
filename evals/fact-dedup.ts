@@ -1,10 +1,17 @@
 import { eq, inArray } from "drizzle-orm"
 
-import { dbClient, domia as domiaTable, memoryFact, factEvidence } from "@/db"
+import {
+	dbClient,
+	domia as domiaTable,
+	memoryFact,
+	factEvidence,
+	FACT_KIND_ENUM,
+} from "@/db"
 import { embed } from "@/modules/embeddings"
 import {
 	FACT_DEDUP_DEFAULT_THRESHOLD,
 	FACT_DEDUP_RELATION_THRESHOLDS,
+	MIN_RECALL_CONF_OBS,
 	upsertFacts,
 } from "@/modules/memory"
 import { getDomia } from "@/test-utils"
@@ -188,6 +195,34 @@ const runCardinalitySuite = async (): Promise<void> => {
 		checker.check(
 			"deleting a fact cascades its evidence rows away",
 			(await evidenceCountFor(stored.map((r) => r.id))) === 0,
+		)
+		const guests = {
+			subject: "the user",
+			relation: "has",
+			value: "six guests coming for dinner on Friday",
+		}
+		await upsertFacts(testDomia, [guests])
+		const inferred = await dbClient.query.memoryFact.findMany({
+			where: eq(memoryFact.domiaId, TEST_DOMIA_ID),
+		})
+		checker.check(
+			`an inferred observation stays quarantined below recall (confidence=${inferred[0]?.confidence})`,
+			inferred.length === 1 &&
+				inferred[0].kind === FACT_KIND_ENUM.OBSERVATION &&
+				inferred[0].confidence < MIN_RECALL_CONF_OBS,
+		)
+		await dbClient
+			.delete(memoryFact)
+			.where(eq(memoryFact.domiaId, TEST_DOMIA_ID))
+		await upsertFacts(testDomia, [{ ...guests, explicit: true }])
+		const asked = await dbClient.query.memoryFact.findMany({
+			where: eq(memoryFact.domiaId, TEST_DOMIA_ID),
+		})
+		checker.check(
+			`an observation the user asked to remember enters recallable (confidence=${asked[0]?.confidence})`,
+			asked.length === 1 &&
+				asked[0].kind === FACT_KIND_ENUM.OBSERVATION &&
+				asked[0].confidence >= MIN_RECALL_CONF_OBS,
 		)
 	} finally {
 		await dbClient

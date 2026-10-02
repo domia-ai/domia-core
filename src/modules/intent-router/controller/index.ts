@@ -8,6 +8,7 @@ import type { DomiaType } from "@/modules/core"
 import { runLLMIntent } from "@/modules/llm-engine"
 import { knownSlotCount } from "@/modules/llm-slots"
 import { intentRouterLogger, parseLlmJson, languageSetsFor } from "@/utils"
+import { cueIndex, foldText } from "@/utils/text-tokens"
 
 import { INTENT_SYSTEM } from "../constants"
 import { embed } from "@/modules/embeddings"
@@ -71,6 +72,40 @@ export const personalQuestionHit = (
 		transcript,
 		languageSetsFor(language ?? null).personalQuestionMarkers,
 	)
+
+const wordsBefore = (transcript: string, foldedIndex: number): string => {
+	const count = foldText(transcript)
+		.slice(0, foldedIndex)
+		.split(/\s+/)
+		.filter(Boolean).length
+	return transcript.trim().split(/\s+/).slice(0, count).join(" ")
+}
+
+const firstMarkerIndex = (foldedText: string, markers: string[]): number =>
+	markers.reduce((first, marker) => {
+		const at = foldedText.indexOf(foldMarker(marker))
+		return at >= 0 && at < first ? at : first
+	}, Number.POSITIVE_INFINITY)
+
+export const builtinKeywordHits = (
+	transcript: string,
+	language: string | null | undefined,
+	keywords: string[],
+): string[] => {
+	const folded = foldText(transcript)
+	const questionAt = firstMarkerIndex(
+		foldMarker(transcript),
+		languageSetsFor(language ?? null).personalQuestionMarkers,
+	)
+	return keywords.filter((keyword) => {
+		const at = cueIndex(folded, keyword)
+		return (
+			at >= 0 &&
+			at < questionAt &&
+			routingBlockerHit(wordsBefore(transcript, at), language) === null
+		)
+	})
+}
 
 const EDGE_PUNCTUATION_RE = /^[\s¿¡"']+|[\s?!.,"']+$/g
 
@@ -349,7 +384,8 @@ export const classifyNeedsSkill = async (
 			)
 		}
 	}
-	if (!opts.canRunLlm) return { needsSkill: false, reason: "no-local-llm" }
+	if (!opts.canRunLlm)
+		return { needsSkill: tools.length > 0, reason: "no-local-llm" }
 	if (
 		domia.llmModelConfig?.intentLlmOnSingleSlot === false &&
 		knownSlotCount(domia) === 1

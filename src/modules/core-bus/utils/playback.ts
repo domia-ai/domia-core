@@ -17,6 +17,7 @@ import {
 import { registerAudioForServing } from "./audio"
 import { getStreamingSink } from "./streaming-sink"
 import { markLadderStage } from "./stage-ladder"
+import { markFirstAudio } from "./first-audio"
 import type {
 	CoreBusContextType,
 	PlaybackOutcomeType,
@@ -76,6 +77,7 @@ const streamToSink = async (
 ): Promise<PlaybackOutcomeType> => {
 	let firstChunkEmitted = false
 	let interrupted = false
+	const startedAt = Date.now()
 	const writer = createWavStreamWriter(
 		meta.interactionId,
 		format.sampleRate,
@@ -102,6 +104,10 @@ const streamToSink = async (
 					meta.ledger?.markFirstChunk()
 					notePlaybackStarted(ctx.domia.id)
 					markLadderStage(meta.interactionId, "audioDeliveredAt")
+					markFirstAudio(meta.interactionId, {
+						played: true,
+						since: startedAt,
+					})
 					meta.onFirstChunk?.()
 					publishToDomiaBus(
 						ctx.domia.id,
@@ -145,6 +151,7 @@ export const playStreamedAudio = async (
 	if (sink) return streamToSink(ctx, audio, meta, format, sink)
 	let firstChunkEmitted = false
 	let aborted = false
+	const startedAt = Date.now()
 	const writer = createWavStreamWriter(
 		meta.interactionId,
 		format.sampleRate,
@@ -153,6 +160,20 @@ export const playStreamedAudio = async (
 		"tts",
 	)
 	let wroteAny = false as boolean
+	const markFirstChunk = (): void => {
+		if (firstChunkEmitted) return
+		firstChunkEmitted = true
+		meta.ledger?.markFirstChunk()
+		notePlaybackStarted(ctx.domia.id)
+		markLadderStage(meta.interactionId, "audioDeliveredAt")
+		markFirstAudio(meta.interactionId, { played: true, since: startedAt })
+		meta.onFirstChunk?.()
+		publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
+			interactionId: meta.interactionId,
+			originDomiaKey: meta.originDomiaKey,
+			playedLocally: true,
+		})
+	}
 	try {
 		const captured = (async function* (): AsyncIterable<Buffer> {
 			for await (const chunk of audio) {
@@ -178,19 +199,7 @@ export const playStreamedAudio = async (
 			sampleRate: format.sampleRate,
 			channels: format.channels,
 			bitsPerSample: 16,
-			onFirstChunkWritten: () => {
-				if (firstChunkEmitted) return
-				firstChunkEmitted = true
-				meta.ledger?.markFirstChunk()
-				notePlaybackStarted(ctx.domia.id)
-				markLadderStage(meta.interactionId, "audioDeliveredAt")
-				meta.onFirstChunk?.()
-				publishToDomiaBus(ctx.domia.id, DOMIA_EVENT_BUS_ENUM.PLAYBACK_STARTED, {
-					interactionId: meta.interactionId,
-					originDomiaKey: meta.originDomiaKey,
-					playedLocally: true,
-				})
-			},
+			onFirstChunkWritten: markFirstChunk,
 		})
 		if (!result.success) {
 			throw domiaError(AUDIO_PLAYBACK_ERRORS.PLAYBACK_FAILED, {

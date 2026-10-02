@@ -11,7 +11,7 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["fecha", "qué día", "que día", "qué fecha"],
+	"keywords": ["la fecha", "qué fecha", "que fecha", "qué día", "que día"],
 	"exampleUtterances": ["qué día es hoy", "dime la fecha"],
 	"finalize": {
 		"mode": "template",

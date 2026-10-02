@@ -180,6 +180,32 @@ export const MA_KEYWORDS: Record<string, string[]> = {
 	],
 }
 
+export const MA_QUERY_FILLERS: Record<string, string[]> = {
+	en: [
+		"some",
+		"any",
+		"a bit of",
+		"a little bit of",
+		"a little",
+		"something by",
+		"anything by",
+		"something from",
+		"music by",
+		"music from",
+		"songs by",
+		"songs from",
+	],
+	es: [
+		"algo de",
+		"algo",
+		"un poco de",
+		"un poquito de",
+		"música de",
+		"canciones de",
+		"lo que sea de",
+	],
+}
+
 export const MA_ACTION_VERBS: Record<string, Record<string, string>> = {
 	en: {
 		[MA_TOOL_MUSIC_PLAY]: "play music on",

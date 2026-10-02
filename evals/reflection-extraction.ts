@@ -4,6 +4,7 @@ import {
 	shouldRetryFactExtraction,
 } from "@/modules/reflection"
 import {
+	buildFactExtractionLines,
 	classifyFactKind,
 	isPastTenseQuery,
 	rankFactsByRelevance,
@@ -47,6 +48,80 @@ const esPersona = {
 	...persona,
 	characterProfile: { ...(persona.characterProfile ?? {}), language: "es" },
 } as unknown as PersonaContextType
+
+const personaNamed = (
+	name: string,
+	addressedAs: string[] = [],
+): PersonaContextType =>
+	({
+		characterProfile: { name },
+		promptOverrides: { addressedAs },
+	}) as unknown as PersonaContextType
+
+const keptFor = (
+	speaker: PersonaContextType,
+	facts: RawFactType[],
+	userText: string,
+	replyText: string,
+): string[] =>
+	filterReflectionFacts(facts, userText, replyText, speaker).map(
+		(f) => `${f.relation}|${f.value}`,
+	)
+
+const assistantNameChecks = (): void => {
+	checker.check(
+		"the assistant's name said as an address is never the user's name",
+		keptFor(
+			personaNamed("Marlowe"),
+			[fact("is named", "Marlowe"), fact("is named", "Laura")],
+			"Marlowe, I'm Laura.",
+			"Nice to meet you, Laura.",
+		).join() === "is named|Laura",
+	)
+	checker.check(
+		"the same name is kept when the identity is called something else",
+		keptFor(
+			personaNamed("Atlas"),
+			[fact("is named", "Marlowe")],
+			"My name is Marlowe.",
+			"Welcome, Marlowe.",
+		).join() === "is named|Marlowe",
+	)
+	checker.check(
+		"a nickname stays usable as a fact value, the profile name does not",
+		keptFor(
+			personaNamed("Sous", ["Chef"]),
+			[fact("works as", "chef"), fact("is named", "Sous")],
+			"Sous, I work as a chef.",
+			"A colleague, magnifique.",
+		).join() === "works as|chef",
+	)
+	checker.check(
+		"a value that merely contains the assistant's name is kept",
+		keptFor(
+			personaNamed("Marlowe"),
+			[fact("likes", "Marlowe novels")],
+			"I love Marlowe novels.",
+			"A fine taste.",
+		).join() === "likes|Marlowe novels",
+	)
+	checker.check(
+		"a fact whose subject is the assistant's nickname is dropped",
+		filterReflectionFacts(
+			[{ subject: "Chef", relation: "likes", value: "peanuts" }],
+			"I like peanuts.",
+			"Noted.",
+			personaNamed("Sous", ["Chef"]),
+		).length === 0,
+	)
+	const lines = buildFactExtractionLines(["Sous", "Chef"]).join("\n")
+	checker.check(
+		"the extraction prompt names the identity instead of a fixed product name",
+		lines.includes("the assistant (called Sous, Chef)") &&
+			lines.includes("Sous, Chef is YOUR name.") &&
+			!lines.includes("Domia"),
+	)
+}
 
 const NOW_AT = Date.parse("2026-09-11T12:00:00Z")
 const FORMERLY = languageSetsFor("en").phrases.formerly
@@ -498,6 +573,7 @@ const main = async (): Promise<void> => {
 		"a device command never takes the priority lane",
 		!isSelfDescriptionTurn("turn off the kitchen lights", "en"),
 	)
+	assistantNameChecks()
 	await temporalChecks()
 
 	console.log(

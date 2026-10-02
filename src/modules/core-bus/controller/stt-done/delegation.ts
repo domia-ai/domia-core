@@ -5,7 +5,12 @@ import {
 	heardReplyOf,
 	notifyInteractionFailed,
 	playStreamedAudio,
+	firstAudioCols,
+	isTurnAborted,
+	spokenTextOf,
+	emptyReplyError,
 } from "../../utils"
+import { INTERACTION_STATUS_ENUM } from "@/db"
 import { updateInteraction, pipelineElapsed } from "@/modules/session-manager"
 import { buildDelegationPersona } from "@/modules/prompt-context-builder"
 import { reflectOnInteraction } from "@/modules/reflection"
@@ -95,26 +100,20 @@ export const tryDelegatedReplyAudio = async (
 
 	try {
 		const channels = streamed.channels === 2 ? 2 : 1
-		let ttfaMs: number | undefined
-		let perceivedTtfaMs: number | undefined
 		const playback = await playStreamedAudio(
 			ctx,
 			trackedAudio,
 			{
 				interactionId: session.interactionId,
 				originDomiaKey: session.originDomiaKey,
-				onFirstChunk: () => {
-					ttfaMs = pipelineElapsed(session.interactionId) ?? undefined
-					if (session.speechEndAt) {
-						perceivedTtfaMs = Date.now() - session.speechEndAt
-					}
-				},
 			},
 			{
 				sampleRate: streamed.sampleRate ?? DEFAULT_SAMPLE_RATE,
 				channels,
 			},
 		)
+		const aborted = isTurnAborted(domia.id, session.interactionId)
+		if (aborted) streamed.cancel?.()
 		const reply = finalizeExpressedEmotion(
 			domia,
 			(await streamed.finalReplyPromise) ?? "",
@@ -122,21 +121,37 @@ export const tryDelegatedReplyAudio = async (
 		domiaBusLogger.info(
 			`⏱️ replyAudio delegation pipeline: ${Date.now() - startTime}ms`,
 		)
+		if (!aborted && spokenTextOf(reply).length === 0) {
+			notifyInteractionFailed(ctx, {
+				interactionId: session.interactionId,
+				originDomiaKey: session.originDomiaKey,
+				responseType: session.responseType,
+				error: emptyReplyError({
+					site: "replyAudio delegation",
+					interactionId: session.interactionId,
+					target: streamed.target?.domiaKey,
+				}),
+				step: "llm",
+				silent: playback.audioStarted,
+				liveVoice: session.liveVoice,
+			})
+			return true
+		}
 		const heardReply = heardReplyOf(reply, playback)
 		await persistTurnComplete({
 			id: session.interactionId,
+			...(aborted ? { status: INTERACTION_STATUS_ENUM.ABORTED } : {}),
 			llmPrompt: session.promptContext,
 			llmResponse: reply,
 			heardReply,
 			llmExecutorKey: streamed.target?.domiaKey,
 			ttsExecutorKey: streamed.target?.domiaKey,
 			ttsAudioPath: playback.filePath,
-			ttfaMs,
-			perceivedTtfaMs,
+			...firstAudioCols(session.interactionId),
 			totalMs: pipelineElapsed(session.interactionId),
 		})
 		publishStreamedReplyComplete(domia.id, session, reply, playback)
-		if (heardReply) {
+		if (heardReply && !aborted) {
 			void reflectOnInteraction(
 				domia,
 				session.transcript,

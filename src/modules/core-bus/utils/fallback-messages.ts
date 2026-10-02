@@ -1,4 +1,11 @@
-import { languageSetsFor } from "@/utils"
+import {
+	languageSetsFor,
+	domiaError,
+	domiaBusLogger,
+	LLM_ERRORS,
+} from "@/utils"
+
+import { extractEmotionTags } from "./emotion-tags"
 
 import type { ReplyFallbackResultType, HeardReplyPlaybackType } from "../types"
 
@@ -35,3 +42,11 @@ export const heardReplyOf = (
 	if (!playback.interrupted) return reply
 	return playback.heardText ?? ""
 }
+
+export const spokenTextOf = (reply: string): string =>
+	extractEmotionTags(reply).clean.trim()
+
+export const emptyReplyError = (
+	meta: Record<string, unknown>,
+): ReturnType<typeof domiaError> =>
+	domiaError(LLM_ERRORS.EMPTY_REPLY, { logger: domiaBusLogger, meta })

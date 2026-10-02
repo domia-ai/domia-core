@@ -86,6 +86,7 @@ export type ToolShortlistResultType = {
 export type ToolShortlistOptionsType = {
 	coreNames?: Set<string>
 	confMin?: number
+	rankedReserve?: number
 }
 
 export type ToolManifestType = {
@@ -93,7 +94,7 @@ export type ToolManifestType = {
 	coreNames: Set<string>
 	hiddenNames: Set<string>
 	builtinNames: Set<string>
-	builtinKeywords: string[]
+	builtinToolKeywords: Record<string, string[]>
 	exampleUtterances: string[]
 	keywords: string[]
 }
@@ -157,6 +158,19 @@ export type SkillSpecializationType = {
 		rawName: string,
 		resolvedArgs: Record<string, unknown>,
 	) => ToolRiskClassType | null
+	redirectInvocation?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		resolvedArgs: Record<string, unknown>,
+		transcript: string,
+		language: string | null,
+	) => ToolRedirectType
+	invocationFinalize?: (
+		provider: SelectSkillProviderType,
+		rawName: string,
+		resolvedArgs: Record<string, unknown>,
+		language: string | null,
+	) => Partial<ToolFinalizeRuleType> | null
 	fastPathSlotValues?: (
 		provider: SelectSkillProviderType,
 		key: string,
@@ -245,10 +259,25 @@ export type ToolInvocationDescriptionType = {
 	summary?: string
 }
 
+export type ToolRedirectType =
+	| { kind: "keep" }
+	| { kind: "redirect"; rawName: string }
+
+export type ToolCallScreenType =
+	| { kind: "keep" }
+	| {
+			kind: "redirect"
+			namespacedName: string
+			args: Record<string, unknown>
+	  }
+	| { kind: "reject"; reason: string }
+
+export type ToolMissingDetailType = "target" | "time"
+
 export type ToolTargetInferenceType =
 	| { kind: "targeted" }
 	| { kind: "inferred"; args: Record<string, unknown> }
-	| { kind: "untargeted" }
+	| { kind: "untargeted"; missing?: ToolMissingDetailType }
 
 export type SkillCallStatusType =
 	| "ok"

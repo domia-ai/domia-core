@@ -40,6 +40,7 @@ export type AgentTurnOptionsType = {
 	retryCall?: AgentRetryCallType
 	knownFacts?: string[]
 	knowledgeBase?: string[]
+	expectedTools?: string[]
 	constrainedRepair?: (
 		prompt: string,
 		schema: Record<string, unknown>,
@@ -79,6 +80,7 @@ export type AgentStopReasonType =
 	| "confirm_required"
 	| "call_cap"
 	| "inference_error"
+	| "no_tool_call"
 
 export type ToolGuardConfigType = {
 	repeatWarnAt: number
@@ -148,6 +150,8 @@ export type AgentTurnContextType = {
 	taintedByOpenWorld: boolean
 	readOnlyRound: boolean
 	readOnlyRetried: boolean
+	actNudged: boolean
+	plainRetried: boolean
 }
 
 export type ConfirmationSettleStatusType =

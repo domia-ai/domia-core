@@ -226,6 +226,10 @@ export const languageSetsFor = (
 			catalog.selfDescriptionCues ?? [],
 			EN.selfDescriptionCues ?? [],
 		),
+		speakerSubjects: mergedWithEn(
+			catalog.speakerSubjects ?? [],
+			EN.speakerSubjects ?? [],
+		),
 		pastTenseCues: mergedWithEn(
 			catalog.pastTenseCues ?? [],
 			EN.pastTenseCues ?? [],

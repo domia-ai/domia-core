@@ -112,6 +112,11 @@ export type NumberSetsType = {
 	clockTwelveAm: ClockTwelveAmType
 }
 
+export type FastPathSpokenClockType = {
+	value: string
+	qualified: boolean
+}
+
 export type FastPathMatchStateType = {
 	pos: number
 	literalChars: number

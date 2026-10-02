@@ -2,6 +2,7 @@ import type { ResolvedDelegateType } from "@/modules/capability-resolver"
 import type { PersonaContextType } from "@/modules/prompt-context-builder"
 import type { TtsVoiceType } from "@/modules/tts-engine"
 import type {
+	AudioChunk,
 	AudioReadyPayload,
 	SttDonePayload,
 	LlmDonePayload,
@@ -88,10 +89,21 @@ export type StreamReplyAudioRequestType = {
 	persona?: PersonaContextType
 }
 
+export type ReplyAudioReaderType = {
+	audio: AsyncIterable<Buffer>
+	transcriptPromise: Promise<string>
+	finalReplyPromise: Promise<string>
+}
+
+export type ReplyAudioReaderOptsType = {
+	onAudioChunk?: (chunk: AudioChunk) => void
+}
+
 export type StreamReplyAudioResult = {
 	delivered: boolean
 	audio?: AsyncIterable<Buffer>
 	finalReplyPromise?: Promise<string>
+	cancel?: () => void
 	sampleRate?: number
 	channels?: number
 	target?: DeliverEventTarget
@@ -114,6 +126,7 @@ export type StreamVoiceReplyResult = {
 	audio?: AsyncIterable<Buffer>
 	transcriptPromise?: Promise<string>
 	finalReplyPromise?: Promise<string>
+	cancel?: () => void
 	audioMeta?: { sampleRate?: number; channels?: number }
 	target?: DeliverEventTarget
 	error?: string
@@ -131,4 +144,5 @@ export type OpenedServerStream<T> = {
 	attemptedTargets: number
 	firstValue?: T
 	stream?: AsyncIterable<T>
+	abort?: () => void
 }

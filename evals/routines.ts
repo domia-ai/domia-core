@@ -12,6 +12,7 @@ import {
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { matchFastPath, invalidateFastPathIndex } from "@/modules/fast-path"
+import { summarizeConfirmAction } from "@/modules/agent"
 import {
 	callTool,
 	connectProvider,
@@ -554,6 +555,41 @@ const main = async (): Promise<void> => {
 				opened.speakableText === "Opened the front door." &&
 				toolRunsOf(openedId).includes(`${HOME}__HassTurnOn`),
 			`${JSON.stringify(opened)} ${toolRunsOf(openedId).join(" → ")}`,
+		)
+
+		console.log("\n[confirmation] a routine is confirmed as a routine")
+		const askedEn = summarizeConfirmAction(
+			DOMIA_ID,
+			OPEN_UP,
+			{ what: "front door" },
+			"en",
+		)
+		checker.check(
+			"en: the confirmation names the routine and says it will run",
+			askedEn === "You want me to run the Open up routine.",
+			askedEn,
+		)
+		const askedEs = summarizeConfirmAction(
+			DOMIA_ID,
+			OPEN_UP,
+			{ what: "front door" },
+			"es",
+		)
+		checker.check(
+			"es: the confirmation sentence and the routine verb come from the catalog",
+			askedEs === "Voy a ejecutar la rutina Open up.",
+			askedEs,
+		)
+		const askedOther = summarizeConfirmAction(
+			DOMIA_ID,
+			OPEN_UP,
+			{ what: "front door" },
+			"fr",
+		)
+		checker.check(
+			"a language without a catalog falls back to English",
+			askedOther === askedEn,
+			askedOther,
 		)
 
 		console.log(

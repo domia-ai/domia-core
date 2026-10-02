@@ -6,7 +6,7 @@ import {
 	type SkillToolType,
 	type ToolFinalizeRuleType,
 } from "@/db"
-import { skillEngineLogger, now } from "@/utils"
+import { skillEngineLogger, now, isDomiaError, SKILL_ERRORS } from "@/utils"
 import type { DomiaType } from "@/modules/core"
 
 import dbAdapter from "../db-adapter"
@@ -19,6 +19,7 @@ import type {
 	SkillProviderStatusType,
 	SkillToolStatusType,
 	ListToolsOptionsType,
+	ToolCallScreenType,
 } from "../types"
 
 import { connections } from "./state"
@@ -26,9 +27,29 @@ import { buildToolMeta } from "./registry"
 import { fireOnDisconnected, syncServerDescriptor } from "./connections"
 import { isBuiltinProvider } from "./providers"
 
+const invocationFinalizeOf = (
+	conn: SkillConnectionType,
+	rawName: string,
+	resolvedArgs: Record<string, unknown>,
+): Partial<ToolFinalizeRuleType> | null => {
+	const hook = conn.specialization?.invocationFinalize
+	if (!hook) return null
+	try {
+		return hook(conn.provider, rawName, resolvedArgs, conn.language)
+	} catch (error) {
+		skillEngineLogger.warn("specialization invocationFinalize failed", {
+			provider: conn.name,
+			tool: rawName,
+			error,
+		})
+		return null
+	}
+}
+
 export const resolveToolFinalize = (
 	domiaId: string,
 	namespacedName: string,
+	resolvedArgs?: Record<string, unknown>,
 ): ToolFinalizeRuleType | null => {
 	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
@@ -43,12 +64,14 @@ export const resolveToolFinalize = (
 			c.allowedTools.has(rawName),
 	)
 	if (!conn) return null
-	return (
+	const rule =
 		conn.descriptor.finalize[rawName] ??
 		conn.descriptor.finalize[toolBaseName(rawName)] ??
 		conn.descriptor.finalize["*"] ??
 		null
-	)
+	if (!rule || !resolvedArgs) return rule
+	const override = invocationFinalizeOf(conn, rawName, resolvedArgs)
+	return override ? { ...rule, ...override } : rule
 }
 
 const pruneSchemaParams = (
@@ -248,6 +271,7 @@ export const resolveSkillArgs = async (
 	ok: boolean
 	resolvedArgs: Record<string, unknown>
 	error?: string
+	errorCode?: string
 }> => {
 	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
 	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
@@ -278,6 +302,66 @@ export const resolveSkillArgs = async (
 			ok: false,
 			resolvedArgs: normalized,
 			error: error instanceof Error ? error.message : String(error),
+			...(isDomiaError(error) ? { errorCode: error.code } : {}),
 		}
+	}
+}
+
+const argsAllowedBy = (
+	tool: SkillToolType | undefined,
+	args: Record<string, unknown>,
+): Record<string, unknown> => {
+	const properties = tool?.inputSchema.properties
+	if (!properties || typeof properties !== "object") return args
+	return Object.fromEntries(
+		Object.entries(args).filter(([key]) => Object.hasOwn(properties, key)),
+	)
+}
+
+export const screenToolCall = async (
+	domiaId: string,
+	namespacedName: string,
+	args: Record<string, unknown>,
+	transcript: string,
+): Promise<ToolCallScreenType> => {
+	const sepIdx = namespacedName.indexOf(SKILL_TOOL_NAME_SEPARATOR)
+	const providerSlug = sepIdx >= 0 ? namespacedName.slice(0, sepIdx) : ""
+	const rawName =
+		sepIdx >= 0
+			? namespacedName.slice(sepIdx + SKILL_TOOL_NAME_SEPARATOR.length)
+			: namespacedName
+	const conn = [...connections.values()].find(
+		(c) =>
+			c.provider.domiaId === domiaId &&
+			c.providerSlug === providerSlug &&
+			c.allowedTools.has(rawName),
+	)
+	const hook = conn?.specialization?.redirectInvocation
+	if (!conn || !hook) return { kind: "keep" }
+	const resolved = await resolveSkillArgs(domiaId, namespacedName, args)
+	if (resolved.errorCode === SKILL_ERRORS.TARGET_NOT_FOUND.code)
+		return {
+			kind: "reject",
+			reason: resolved.error ?? SKILL_ERRORS.TARGET_NOT_FOUND.message,
+		}
+	if (!resolved.ok) return { kind: "keep" }
+	const verdict = hook(
+		conn.provider,
+		rawName,
+		resolved.resolvedArgs,
+		transcript,
+		conn.language,
+	)
+	if (verdict.kind === "keep" || !conn.allowedTools.has(verdict.rawName))
+		return { kind: "keep" }
+	return {
+		kind: "redirect",
+		namespacedName: `${conn.providerSlug}${SKILL_TOOL_NAME_SEPARATOR}${verdict.rawName}`,
+		args: argsAllowedBy(
+			(conn.provider.toolsCache ?? []).find(
+				(t) => t.rawName === verdict.rawName,
+			),
+			args,
+		),
 	}
 }

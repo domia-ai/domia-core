@@ -1,4 +1,5 @@
 import { FAST_PATH_CLOCK_NIGHT_PM_FROM_HOUR } from "@/db"
+import type { ResolvedLanguageSetsType } from "@/utils/language-catalogs/types"
 
 import { fold } from "./normalize"
 import type {
@@ -6,6 +7,7 @@ import type {
 	CompiledSlotType,
 	FastPathParseResultType,
 	FastPathMatchStateType,
+	FastPathSpokenClockType,
 	NumberSetsType,
 } from "../types"
 
@@ -286,7 +288,7 @@ const nightHourOf = (hours: number): number => {
 const clockTimeAt = (
 	text: string,
 	pos: number,
-): { value: string; chars: number } | null => {
+): { value: string; chars: number; qualified: boolean } | null => {
 	const clock = activeNumbers.clockWords
 	const tokens = tokensFrom(text, pos)
 	let index = 0
@@ -344,7 +346,53 @@ const clockTimeAt = (
 	return {
 		value: `${pad(hours)}:${pad(minutes)}`,
 		chars: charsOf(tokens, index),
+		qualified: pm || night || early || am,
 	}
+}
+
+export const numberSetsOf = (
+	sets: ResolvedLanguageSetsType,
+): NumberSetsType => ({
+	words: sets.numberWords,
+	joiners: sets.numberJoiners,
+	durationUnits: sets.durationUnits,
+	durationPhrases: sets.durationPhrases,
+	unitArticles: sets.unitArticles,
+	clockWords: sets.clockWords,
+	clockTwelveAm: sets.clockTwelveAm,
+})
+
+export const spokenClocksIn = (
+	utterance: string,
+	numbers: NumberSetsType,
+): FastPathSpokenClockType[] => {
+	activeNumbers = numbers
+	const tokens = fold(utterance).split(" ")
+	const byValue = new Map<string, FastPathSpokenClockType>()
+	tokens.forEach((_, start) => {
+		if (!phraseIndexAt(tokens, start, numbers.clockWords.prefixes)) return
+		const parsed = clockTimeAt(tokens.slice(start).join(" "), 0)
+		if (!parsed) return
+		const known = byValue.get(parsed.value)
+		byValue.set(parsed.value, {
+			value: parsed.value,
+			qualified: parsed.qualified || known?.qualified === true,
+		})
+	})
+	return [...byValue.values()]
+}
+
+export const hasSpokenDuration = (
+	utterance: string,
+	numbers: NumberSetsType,
+): boolean => {
+	activeNumbers = numbers
+	const tokens = fold(utterance).split(" ")
+	return tokens.some(
+		(_, start) =>
+			durationAt(tokens.slice(start).join(" "), 0, Number.MAX_SAFE_INTEGER) !==
+			null,
+	)
 }
 
 const wordNumberAt = (

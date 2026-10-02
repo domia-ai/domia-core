@@ -18,6 +18,11 @@ import {
 	DEFAULT_SAMPLE_RATE,
 	markLadderStage,
 	ladderCols,
+	firstAudioCols,
+	isTurnAborted,
+	spokenTextOf,
+	emptyReplyError,
+	skillsMayIntercept,
 } from "../utils"
 import { peekPendingConfirmation, confirmationScope } from "@/modules/agent"
 import {
@@ -29,6 +34,7 @@ import {
 import {
 	CAPABILITY_ENUM,
 	INTERACTION_INPUT_TYPE_ENUM,
+	INTERACTION_STATUS_ENUM,
 	RESPONSE_TYPE_ENUM,
 } from "@/db"
 import { runSTT } from "@/modules/stt-engine"
@@ -55,7 +61,6 @@ const tryFusedVoiceReply = async (
 		interactionId: string
 		originDomiaKey: string | undefined
 		audioPath: string
-		speechEndAt?: number
 		endpointDelayMs?: number
 		endpointDebounceMs?: number
 		liveVoice?: boolean
@@ -105,8 +110,6 @@ const tryFusedVoiceReply = async (
 	}
 
 	const audioIter = streamed.audio[Symbol.asyncIterator]()
-	let ttfaMs = null as number | null
-	let perceivedTtfaMs: number | null = null
 	let audioEmitted = false as boolean
 
 	let firstRes: IteratorResult<Buffer>
@@ -132,8 +135,6 @@ const tryFusedVoiceReply = async (
 
 	const timedAudio = (async function* (): AsyncIterable<Buffer> {
 		try {
-			ttfaMs = pipelineElapsed(interactionId) ?? Date.now() - startTime
-			if (args.speechEndAt) perceivedTtfaMs = Date.now() - args.speechEndAt
 			audioEmitted = true
 			yield firstRes.value
 			while (true) {
@@ -180,14 +181,41 @@ const tryFusedVoiceReply = async (
 		})
 	}
 
+	const aborted = isTurnAborted(domia.id, interactionId)
+	if (aborted) streamed.cancel?.()
 	await audioIter.return?.().catch(() => undefined)
 	const transcript = (await streamed.transcriptPromise) ?? ""
 	if (transcript.trim()) markLadderStage(interactionId, "sttFinalAt")
 	const reply = (await streamed.finalReplyPromise) ?? ""
+	if (!aborted && transcript.trim() && spokenTextOf(reply).length === 0) {
+		void updateInteraction({
+			id: interactionId,
+			sttResult: transcript,
+			sttExecutorKey: streamed.target?.domiaKey,
+			...firstAudioCols(interactionId),
+			...ladderCols(interactionId),
+		}).catch((err: unknown) =>
+			domiaBusLogger.warn("detached updateInteraction failed", { err }),
+		)
+		notifyInteractionFailed(ctx, {
+			interactionId,
+			originDomiaKey,
+			responseType: RESPONSE_TYPE_ENUM.VOICE,
+			error: emptyReplyError({
+				site: "fused voice reply",
+				interactionId,
+				target: streamed.target?.domiaKey,
+			}),
+			step: "llm",
+			silent: playback.audioStarted,
+			liveVoice: args.liveVoice,
+		})
+		return true
+	}
 	domiaBusLogger.info(`⏱️ fused voice reply timings`, {
 		domiaId: domia.id,
 		interactionId,
-		ttfaMs,
+		ttfaMs: firstAudioCols(interactionId).ttfaMs,
 		totalMs: Date.now() - startTime,
 		transcriptChars: transcript.length,
 		replyChars: reply.length,
@@ -204,8 +232,8 @@ const tryFusedVoiceReply = async (
 		llmExecutorKey: streamed.target?.domiaKey,
 		ttsExecutorKey: streamed.target?.domiaKey,
 		ttsAudioPath: playback.filePath,
-		ttfaMs: ttfaMs != null && ttfaMs > 0 ? ttfaMs : null,
-		perceivedTtfaMs,
+		...(aborted ? { status: INTERACTION_STATUS_ENUM.ABORTED } : {}),
+		...firstAudioCols(interactionId),
 		...ladderCols(interactionId),
 		totalMs: Date.now() - startTime,
 	}).catch((err: unknown) =>
@@ -377,6 +405,7 @@ export const handleAudioReady = async (
 
 		if (
 			!awaitingConfirmation &&
+			!skillsMayIntercept(domia) &&
 			features.canPlayback &&
 			responseType === RESPONSE_TYPE_ENUM.VOICE
 		) {
@@ -394,7 +423,6 @@ export const handleAudioReady = async (
 						interactionId,
 						originDomiaKey,
 						audioPath,
-						speechEndAt: payload.speechEndAt,
 						endpointDelayMs: payload.endpointDelayMs,
 						endpointDebounceMs: payload.endpointDebounceMs,
 						liveVoice: payload.liveVoice,

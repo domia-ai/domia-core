@@ -41,6 +41,80 @@ export const HA_FAST_PATH_EXCLUDED_DOMAINS = new Set([
 	"siren",
 ])
 
+export const HA_DOMAIN_ACTION_TOOLS: Record<
+	string,
+	Record<string, string[]>
+> = {
+	lock: {
+		lock: ["HassLockDoor", "HassTurnOn"],
+		unlock: ["HassUnlockDoor", "HassTurnOff"],
+	},
+	cover: {
+		open: ["HassTurnOn"],
+		close: ["HassTurnOff"],
+	},
+	valve: {
+		open: ["HassTurnOn"],
+		close: ["HassTurnOff"],
+	},
+}
+
+export const HA_DOMAIN_ACTION_DONE_PHRASES: Record<string, string> = {
+	lock: "locked",
+	unlock: "unlocked",
+	open: "opened",
+	close: "closed",
+}
+
+export const HA_DOMAIN_ACTION_VERBS: Record<string, Record<string, string>> = {
+	en: {
+		lock: "lock",
+		unlock: "unlock",
+		open: "open",
+		close: "close",
+	},
+	es: {
+		lock: "cerrar con llave",
+		unlock: "abrir",
+		open: "abrir",
+		close: "cerrar",
+	},
+}
+
+export const HA_DOMAIN_ACTION_CUES: Record<string, Record<string, string[]>> = {
+	en: {
+		lock: ["lock", "lock up", "secure", "bolt"],
+		unlock: ["unlock", "unbolt"],
+		open: ["open", "open up", "raise", "lift"],
+		close: ["close", "shut", "lower"],
+	},
+	es: {
+		lock: [
+			"cierra",
+			"cerrar",
+			"cierre",
+			"bloquea",
+			"bloquear",
+			"asegura",
+			"asegurar",
+			"echa llave",
+			"pon llave",
+			"pon seguro",
+		],
+		unlock: [
+			"abre",
+			"abrir",
+			"abra",
+			"desbloquea",
+			"desbloquear",
+			"quita llave",
+			"quita seguro",
+		],
+		open: ["abre", "abrir", "abra", "sube", "subir", "levanta", "levantar"],
+		close: ["cierra", "cerrar", "cierre", "baja", "bajar"],
+	},
+}
+
 export const HA_BUILTIN_SHADOWED_TOOLS = new Set([
 	"GetDateTime",
 	"HassCancelAllTimers",
@@ -128,6 +202,10 @@ export const HA_CATALOG_EXTENSIONS: Record<
 			turnedOn: "Done, I turned on {name}.",
 			turnedOff: "Done, I turned off {name}.",
 			adjusted: "Got it, I adjusted {name}.",
+			locked: "Done, I locked {name}.",
+			unlocked: "Done, I unlocked {name}.",
+			opened: "Done, I opened {name}.",
+			closed: "Done, I closed {name}.",
 		},
 	},
 	es: {
@@ -155,6 +233,10 @@ export const HA_CATALOG_EXTENSIONS: Record<
 			turnedOn: "Listo, encendí {name}.",
 			turnedOff: "Listo, apagué {name}.",
 			adjusted: "Hecho, ajusté {name}.",
+			locked: "Listo, cerré {name} con llave.",
+			unlocked: "Listo, abrí {name}.",
+			opened: "Listo, abrí {name}.",
+			closed: "Listo, cerré {name}.",
 		},
 	},
 }

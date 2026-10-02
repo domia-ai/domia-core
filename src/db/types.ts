@@ -24,6 +24,7 @@ import {
 	AUDIO_PLAYBACK_ENGINE_ENUM_VALUES,
 	CAPABILITY_ENUM_VALUES,
 	IMPLICIT_FEEDBACK_ENUM_VALUES,
+	INTENT_DECISION_ENUM_VALUES,
 	ARG_NORMALIZE_OP_ENUM_VALUES,
 	HARDWARE_CLASS_ENUM_VALUES,
 	BENCH_STAGE_ENUM_VALUES,
@@ -256,3 +257,5 @@ export type AudioPlaybackEngineEnumType =
 export type CapabilityEnumType = (typeof CAPABILITY_ENUM_VALUES)[number]
 export type ImplicitFeedbackType =
 	(typeof IMPLICIT_FEEDBACK_ENUM_VALUES)[number]
+export type IntentDecisionHeadType =
+	(typeof INTENT_DECISION_ENUM_VALUES)[number]

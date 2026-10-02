@@ -16,7 +16,7 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["date", "what day", "which day", "what's the date"],
+	"keywords": ["the date", "today's date", "what day", "which day"],
 	"exampleUtterances": ["what's the date today", "what day is it"],
 	"finalize": {
 		"mode": "template",

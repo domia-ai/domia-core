@@ -14,7 +14,7 @@ import { playAudio } from "@/modules/audio-playback"
 import { resolveCapabilityDelegations } from "@/modules/capability-resolver"
 import { deliverEvent } from "@/modules/grpc-client"
 import { reflectOnInteraction } from "@/modules/reflection"
-import { pipelineElapsed, updateInteraction } from "@/modules/session-manager"
+import { updateInteraction } from "@/modules/session-manager"
 import { downloadAudioToTemp } from "./audio"
 import {
 	notifyAudioFallback,
@@ -24,6 +24,7 @@ import {
 import { heardReplyOf } from "./fallback-messages"
 import { heardTextFromUniformRate } from "./spoken-position"
 import { isTurnAborted } from "./turn-scope"
+import { markFirstAudio, firstAudioCols } from "./first-audio"
 import type {
 	CoreBusContextType,
 	TtsDonePayloadType,
@@ -91,9 +92,10 @@ export const deliverLocalPlayback = async (
 		originDomiaKey,
 		playedLocally: false,
 	})
+	markFirstAudio(interactionId, { played: true })
 	await updateInteraction({
 		id: interactionId,
-		ttfaMs: pipelineElapsed(interactionId),
+		...firstAudioCols(interactionId),
 	})
 	let playResult: Awaited<ReturnType<typeof playAudio>>
 	try {

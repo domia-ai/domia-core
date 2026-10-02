@@ -4,6 +4,12 @@ import type {
 	MindIdentityRefType,
 	MindSectionsType,
 } from "@/modules/mind-transfer"
+import type { DomiaType } from "@/modules/core"
+import type { TurnKindType, TurnTraceType } from "@/modules/reflection"
+import type {
+	InferenceRequest,
+	InferenceResponse,
+} from "@/generated/proto/domia"
 
 export type EvalSuiteType =
 	| "home-mock"
@@ -399,12 +405,39 @@ export type MockHaServerType = {
 
 export type MockMusicBehaviorType = MockBehaviorCoreType
 
+export type MockMusicArtistType = { uri: string; name: string }
+
+export type MockMusicAlbumType = {
+	uri: string
+	name: string
+	artist: string
+	year: number
+}
+
+export type MockMusicPlayerFixtureType = {
+	player_id: string
+	name: string
+	volume_level: number
+}
+
+export type MockMusicLibraryType = {
+	artists: MockMusicArtistType[]
+	albums: MockMusicAlbumType[]
+	tracks: MockMusicTrackType[]
+}
+
+export type MockMusicSiteType = {
+	players?: MockMusicPlayerFixtureType[]
+	library?: Partial<MockMusicLibraryType>
+}
+
 export type MockMusicTrackType = {
 	uri: string
 	name: string
 	artists: string[]
 	album: string
 	duration: number
+	genres?: string[]
 }
 
 export type MockMusicQueueItemType = {
@@ -1309,8 +1342,6 @@ export type WebsiteSkillsFileType = {
 	groups: WebsiteSkillGroupType[]
 	examples: WebsiteSkillExampleType[]
 	routineMaxSteps: number
-	descriptorResource: string
-	strippedPolicyFields: string[]
 	descriptorLimits: {
 		maxBytes: number
 		maxTemplates: number
@@ -1339,4 +1370,48 @@ export type WebsiteCorpusSweepType = {
 export type WebsiteSourcedPackType = {
 	provider: string
 	block: FastPathBlockType
+}
+
+export type ReplyDeliveryFixtureType = {
+	domia: DomiaType
+	domiaKey: string
+}
+
+export type ReplyDeliveryEventsType = {
+	ttsDone: unknown[]
+	failed: unknown[]
+	playbackFinished: unknown[]
+	stop: () => void
+}
+
+export type DelegatedHubStubType = {
+	requests: InferenceRequest[]
+	responses: InferenceResponse[]
+}
+
+export type DelegatedConfirmCaseType = {
+	tool: string
+	args: Record<string, unknown>
+	transcript: string
+}
+
+export type DelegatedConfirmSampleType = {
+	target: string
+	args: Record<string, unknown>
+}
+
+export type DelegatedStoredFactType = {
+	subject: string
+	relation: string
+	value: string
+}
+
+export type ReflectionTurnCaseType = {
+	label: string
+	userText: string
+	reply: string
+	language?: string
+	trace: TurnTraceType
+	junk: { subject: string; relation: string; value: string }
+	kind: TurnKindType
 }

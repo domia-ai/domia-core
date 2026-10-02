@@ -7,7 +7,11 @@ import type {
 	EagerPrefillHandleType,
 	EagerPrefillRelationType,
 } from "@/buses"
-import { INTERACTION_STATUS_ENUM_VALUES, type ToolTraceEntryType } from "@/db"
+import {
+	INTERACTION_STATUS_ENUM_VALUES,
+	type SkillToolType,
+	type ToolTraceEntryType,
+} from "@/db"
 import { type DomiaType } from "@/modules/core"
 import { type RuntimeCapabilitiesType } from "@/setups/environment"
 import type {
@@ -16,6 +20,7 @@ import type {
 } from "@/modules/stt-engine"
 import type { TtsEngineAdapterType } from "@/modules/tts-engine"
 import type { LlmEngineAdapterType } from "@/modules/llm-engine"
+import type { IntentDecisionType } from "@/modules/intent-router"
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import type {
 	SpeculativeCaptureHooksType,
@@ -826,6 +831,38 @@ export type LadderStageType =
 	| "audioAudibleAt"
 
 export type LadderTimestampsType = Partial<Record<LadderStageType, number>>
+
+export type FirstAudioColsType = {
+	ttfaMs?: number
+	perceivedTtfaMs?: number
+}
+
+export type FirstAudioMarkType = {
+	played?: boolean
+	since?: number
+}
+
+export type ConfirmationTurnOutcomeType =
+	| "approved"
+	| "denied"
+	| "expired"
+	| "reasked"
+
+export type SkillIntentVerdictType = {
+	decision: IntentDecisionType
+	expectedTools: string[]
+	tools: SkillToolType[]
+}
+
+export type DelegatedInferenceTurnType = {
+	originDomiaKey: string
+	interactionId: string
+}
+
+export type ReplyAudioFileType = {
+	filePath: string
+	chunkCount: number
+}
 
 export type ForwardFailurePayloadType = {
 	interactionId: string | undefined

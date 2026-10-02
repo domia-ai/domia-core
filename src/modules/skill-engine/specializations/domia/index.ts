@@ -7,11 +7,29 @@ import type {
 	ToolHintOverrideType,
 	ToolPolicyType,
 } from "@/db"
-import type { LanguageCatalogExtensionType } from "@/utils"
+import {
+	languageSetsFor,
+	skillEngineLogger,
+	type LanguageCatalogExtensionType,
+} from "@/utils"
+import {
+	hasSpokenDuration,
+	numberSetsOf,
+	spokenClocksIn,
+} from "@/modules/fast-path/utils/match"
 
 import { runtimePortOrNull } from "../../controller/hooks"
-import type { SkillSpecializationType } from "../../types"
-import { DOMIA_SPECIALIZATION_KIND } from "./constants"
+import type {
+	BuiltinToolType,
+	SkillSpecializationType,
+	ToolTargetInferenceType,
+} from "../../types"
+import {
+	DOMIA_ARG_CLOCK,
+	DOMIA_ARG_DELAY,
+	DOMIA_CLOCK_RE,
+	DOMIA_SPECIALIZATION_KIND,
+} from "./constants"
 import { fillPlaceholders, packFor } from "./packs"
 import {
 	activeRoutinesOf,
@@ -139,6 +157,76 @@ const catalogExtensions = (): Record<string, LanguageCatalogExtensionType> => {
 	)
 }
 
+const builtinTool = (rawName: string): BuiltinToolType | undefined =>
+	DOMIA_TOOLS.find((t) => t.name === rawName)
+
+const propertiesOf = (tool: BuiltinToolType): Record<string, unknown> => {
+	const properties = tool.definition.inputSchema?.properties
+	return properties && typeof properties === "object"
+		? (properties as Record<string, unknown>)
+		: {}
+}
+
+const requiredOf = (tool: BuiltinToolType): string[] => {
+	const required = tool.definition.inputSchema?.required
+	return Array.isArray(required) ? required.map(String) : []
+}
+
+const withoutInvalidOptionals = (
+	tool: BuiltinToolType,
+	args: Record<string, unknown>,
+): Record<string, unknown> => {
+	const parsed = tool.schema.safeParse(args)
+	if (parsed.success) return args
+	const required = new Set(requiredOf(tool))
+	const invalid = new Set(
+		parsed.error.issues
+			.map((issue) => issue.path[0])
+			.filter(
+				(key): key is string => typeof key === "string" && !required.has(key),
+			),
+	)
+	if (invalid.size === 0) return args
+	const kept = Object.fromEntries(
+		Object.entries(args).filter(([key]) => !invalid.has(key)),
+	)
+	if (!tool.schema.safeParse(kept).success) return args
+	skillEngineLogger.info("built-in tool optional arguments dropped", {
+		tool: tool.name,
+		dropped: [...invalid],
+	})
+	return kept
+}
+
+const spokenTimeFor = (
+	tool: BuiltinToolType,
+	args: Record<string, unknown>,
+	transcript: string,
+	language: string | null,
+): ToolTargetInferenceType => {
+	const properties = propertiesOf(tool)
+	const takesClock = Object.hasOwn(properties, DOMIA_ARG_CLOCK)
+	const givesTime =
+		args[DOMIA_ARG_CLOCK] !== undefined || args[DOMIA_ARG_DELAY] !== undefined
+	if (!givesTime) return { kind: "targeted" }
+	const numbers = numberSetsOf(languageSetsFor(language))
+	const clocks = takesClock ? spokenClocksIn(transcript, numbers) : []
+	const delaySpoken = hasSpokenDuration(transcript, numbers)
+	if (clocks.length === 0 && !delaySpoken)
+		return { kind: "untargeted", missing: "time" }
+	if (clocks.length !== 1 || delaySpoken) return { kind: "targeted" }
+	const [spoken] = clocks
+	const given = args[DOMIA_ARG_CLOCK]
+	const valid = typeof given === "string" && DOMIA_CLOCK_RE.test(given)
+	return {
+		kind: "inferred",
+		args: {
+			[DOMIA_ARG_CLOCK]: valid && !spoken.qualified ? given : spoken.value,
+			[DOMIA_ARG_DELAY]: undefined,
+		},
+	}
+}
+
 export const domiaSpecialization: SkillSpecializationType = {
 	kind: DOMIA_SPECIALIZATION_KIND,
 	catalogExtensions: catalogExtensions(),
@@ -196,9 +284,25 @@ export const domiaSpecialization: SkillSpecializationType = {
 		if (!runtime) return false
 		return tool.available(origin, { domiaId: provider.domiaId, runtime })
 	},
+	resolveArgs: (_provider, rawName, args) => {
+		const tool = builtinTool(rawName)
+		return tool ? withoutInvalidOptionals(tool, args) : args
+	},
+	inferWriteTarget: (_provider, rawName, args, transcript, language) => {
+		const tool = builtinTool(rawName)
+		return tool
+			? spokenTimeFor(tool, args, transcript, language)
+			: { kind: "targeted" }
+	},
 	describeInvocation: (provider, rawName, args, language) => {
 		const routine = routineForTool(provider.domiaId, rawName)
-		if (routine) return { summary: routine.name }
+		if (routine)
+			return {
+				summary: fillPlaceholders(
+					languageSetsFor(language).phrases.confirmRoutineSummary,
+					{ name: routine.name },
+				),
+			}
 		const tool = DOMIA_TOOLS.find((t) => t.name === rawName)
 		if (!tool) return null
 		const summary = packFor(tool, language).confirmSummary

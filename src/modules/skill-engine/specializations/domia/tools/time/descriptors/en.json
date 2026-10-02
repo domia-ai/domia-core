@@ -14,7 +14,7 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["time", "hour", "clock", "o'clock"],
+	"keywords": ["what time", "the time", "time is it", "current time"],
 	"exampleUtterances": ["what time is it", "tell me the time"],
 	"finalize": {
 		"mode": "template",

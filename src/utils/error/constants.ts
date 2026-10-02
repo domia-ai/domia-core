@@ -132,6 +132,10 @@ export const LLM_ERRORS = {
 		code: "LLM/SLOT_WAIT_TIMEOUT",
 		message: "Timed out waiting for a free LLM server slot.",
 	},
+	EMPTY_REPLY: {
+		code: "LLM/EMPTY_REPLY",
+		message: "The reply had no text left to speak.",
+	},
 } as const
 
 export const AUDIO_PLAYBACK_ERRORS = {
@@ -272,6 +276,10 @@ export const SKILL_ERRORS = {
 	ROUTINE_INVALID: {
 		code: "SKILL/ROUTINE_INVALID",
 		message: "The routine definition is invalid.",
+	},
+	TARGET_NOT_FOUND: {
+		code: "SKILL/TARGET_NOT_FOUND",
+		message: "No device matches the requested name.",
 	},
 } as const
 

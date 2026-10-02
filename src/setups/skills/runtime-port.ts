@@ -398,7 +398,7 @@ const port: SkillRuntimePortType = {
 		) => {
 			const result = await upsertFacts(
 				domia,
-				[{ subject, relation, value }],
+				[{ subject, relation, value, explicit: true }],
 				evidenceInteractionId ?? undefined,
 			)
 			return {
