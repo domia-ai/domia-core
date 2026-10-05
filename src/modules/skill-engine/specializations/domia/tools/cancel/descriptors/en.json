@@ -13,7 +13,6 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["never mind", "forget it"],
 	"exampleUtterances": ["never mind", "forget it"],
 	"finalize": {
 		"mode": "template",

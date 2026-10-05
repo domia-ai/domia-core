@@ -42,7 +42,11 @@ import {
 	type AgentResultType,
 	type AgentTurnOptionsType,
 } from "@/modules/agent"
-import { delegatedAgentInference } from "@/modules/core-bus/controller/stt-done/skills-route"
+import {
+	delegatedAgentInference,
+	delegatedToolJudge,
+} from "@/modules/core-bus/controller/stt-done/skills-route"
+import { requestedToolOf } from "@/modules/intent-router"
 import { setLocalService, type DeliverEventTarget } from "@/modules/grpc-client"
 import { rejectFact } from "@/modules/memory"
 import {
@@ -158,6 +162,7 @@ const store = {
 	domias: new Map<string, DomiaType>(),
 	facts: [] as DelegatedStoredFactType[],
 	expired: [] as string[],
+	hiddenConversations: 0,
 	reflectionClaims: [] as string[],
 }
 
@@ -197,6 +202,9 @@ const port = {
 	memory: {
 		markReflectionCaptured: (interactionId: string) => {
 			store.reflectionClaims.push(interactionId)
+		},
+		hideRecentConversation: () => {
+			store.hiddenConversations += 1
 		},
 	},
 } as unknown as SkillRuntimePortType
@@ -590,6 +598,64 @@ const checkClaims = async (
 	)
 }
 
+const checkDelegatedJudge = async (
+	domia: DomiaType,
+	tools: SkillToolType[],
+): Promise<void> => {
+	console.log(
+		"\na node without a model sends the hub the judge question, not a full inference",
+	)
+	hub.requests = []
+	hub.responses = [{ reply: '{"tool": "HassTurnOn"}' }]
+	const hints = tools.map((t) => ({
+		name: t.rawName.split("__").at(-1) ?? t.rawName,
+		description: t.description,
+	}))
+	const verdict = await requestedToolOf(
+		domia,
+		"Turn on the kitchen light, please.",
+		hints,
+		delegatedToolJudge(domia.domiaKey, hubTarget, {
+			originDomiaKey: domia.domiaKey,
+			interactionId: randomUUID(),
+		}),
+	)
+	const sent = hub.requests[0]
+	const choice = sent.choiceJson
+		? (JSON.parse(sent.choiceJson) as { key: string; choices: string[] })
+		: null
+	checker.check(
+		"the request carries the choice question and no tools",
+		choice !== null &&
+			choice.key === "tool" &&
+			choice.choices.includes("HassTurnOn") &&
+			choice.choices.at(-1) === "none" &&
+			sent.toolsJson === "[]" &&
+			sent.toolChoice === "none",
+		JSON.stringify({ choice, tools: sent.toolsJson }),
+	)
+	checker.check(
+		"the hub's answer names the tool",
+		verdict.tool === "HassTurnOn" && !verdict.failed,
+		JSON.stringify(verdict),
+	)
+	hub.requests = []
+	hub.responses = [{ reply: '{"tool": "none"}' }]
+	const none = await requestedToolOf(
+		domia,
+		"I had a lovely day.",
+		hints,
+		delegatedToolJudge(domia.domiaKey, hubTarget, {
+			originDomiaKey: domia.domiaKey,
+			interactionId: randomUUID(),
+		}),
+	)
+	checker.check(
+		"a none from the hub is conversation, not a failure",
+		none.tool === null && !none.failed,
+	)
+}
+
 const checkRemember = async (
 	domia: DomiaType,
 	tools: SkillToolType[],
@@ -739,6 +805,7 @@ const main = async (): Promise<void> => {
 		await checkConfirmPolicy(domia, tools)
 		await checkConfirmedReply(domia, tools)
 		await checkClaims(domia, tools)
+		await checkDelegatedJudge(domia, tools)
 		await checkRemember(domia, tools, spanish)
 	} finally {
 		clearConfirmationsForDomia(domia.domiaKey)

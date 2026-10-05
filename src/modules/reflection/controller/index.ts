@@ -5,6 +5,7 @@ import { type DomiaType, getDomiaByDomiaKey } from "@/modules/core"
 import { reportReflectionToTarget } from "@/modules/grpc-client"
 import { resolveDomiaStreamingCapabilities } from "@/modules/capability-resolver"
 import { runLLMJson } from "@/modules/llm-engine"
+import { hasUrgentSlotWaiter } from "@/modules/llm-slots"
 import {
 	personaContextFromDomia,
 	personaAddressNames,
@@ -410,7 +411,21 @@ export const runReflection = async (
 			explicitMemory,
 			knownFacts,
 		)
-		for (let attempt = 1; attempt <= settings.yieldMaxAttempts; attempt++) {
+		const deferredAttempt = settings.yieldMaxAttempts + 1
+		for (let attempt = 1; attempt <= deferredAttempt; attempt++) {
+			if (attempt === deferredAttempt) {
+				const quietBy = Date.now() + settings.maxIdleWaitMs
+				while (
+					Date.now() < quietBy &&
+					(activeVoiceReplies() > 0 ||
+						hasUrgentSlotWaiter(reflector, "background"))
+				)
+					await sleep(settings.idlePollMs)
+				reflectionLogger.info(
+					"⏳ reflection deferred until the voice went quiet — last attempt",
+					{ responderId: key },
+				)
+			}
 			let yielded = false
 			const wasYielded = (): boolean => yielded
 			const result = await gate.runGated(
@@ -425,6 +440,10 @@ export const runReflection = async (
 					const deadline = Date.now() + settings.timeoutMs
 					const shouldAbort = (): boolean => {
 						if (Date.now() > deadline) return true
+						if (hasUrgentSlotWaiter(reflector, "background")) {
+							yielded = true
+							return true
+						}
 						if (!settings.yieldToVoice) return false
 						const busy = activeVoiceReplies() > 0
 						if (busy) yielded = true
@@ -526,15 +545,17 @@ export const runReflection = async (
 				priority,
 			)
 			if (!wasYielded()) return result
-			reflectionLogger.info(
-				`⏳ reflection yielded LLM to live voice — requeued (${attempt}/${settings.yieldMaxAttempts})`,
-				{ responderId: key },
-			)
-			await sleep(settings.idlePollMs * 4)
+			if (attempt < deferredAttempt) {
+				reflectionLogger.info(
+					`⏳ reflection yielded LLM to live voice — requeued (${attempt}/${settings.yieldMaxAttempts})`,
+					{ responderId: key },
+				)
+				await sleep(settings.idlePollMs * 4)
+			}
 		}
 		reflectionLogger.warn(
-			"reflection skipped after repeated yields to live voice (best-effort)",
-			{ responderId: key },
+			"reflection dropped: the voice never went quiet within the idle wait",
+			{ responderId: key, maxIdleWaitMs: settings.maxIdleWaitMs },
 		)
 		return empty
 	} catch (err) {

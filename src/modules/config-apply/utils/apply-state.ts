@@ -1,28 +1,26 @@
 import { now } from "@/utils"
 
 import type {
+	ApplyStateEntryType,
 	ApplyStateType,
 	ConfigApplyStateType,
 	ReloadSubsystemType,
-	SubsystemRevisionStateType,
 } from "../types"
-
-type EntryType = SubsystemRevisionStateType & { domiaKey: string }
 
 const entryKey = (domiaKey: string, subsystem: ReloadSubsystemType): string =>
 	`${domiaKey}:${subsystem}`
 
 export const createApplyState = (): ApplyStateType => {
-	const entries = new Map<string, EntryType>()
+	const entries = new Map<string, ApplyStateEntryType>()
 
 	const entryFor = (
 		domiaKey: string,
 		subsystem: ReloadSubsystemType,
-	): EntryType => {
+	): ApplyStateEntryType => {
 		const key = entryKey(domiaKey, subsystem)
 		const existing = entries.get(key)
 		if (existing) return existing
-		const created: EntryType = {
+		const created: ApplyStateEntryType = {
 			domiaKey,
 			subsystem,
 			desiredRevision: 0,
@@ -35,11 +33,11 @@ export const createApplyState = (): ApplyStateType => {
 		return created
 	}
 
-	const sync = (entry: EntryType): void => {
+	const sync = (entry: ApplyStateEntryType): void => {
 		entry.inSync = entry.runningRevision >= entry.desiredRevision
 	}
 
-	const listFor = (domiaKey: string): EntryType[] =>
+	const listFor = (domiaKey: string): ApplyStateEntryType[] =>
 		[...entries.values()].filter((e) => e.domiaKey === domiaKey)
 
 	return {

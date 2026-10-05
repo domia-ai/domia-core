@@ -7,6 +7,7 @@ import {
 	index,
 } from "drizzle-orm/sqlite-core"
 import {
+	DEFAULT_FACT_CONFIDENCE,
 	FACT_KIND_ENUM_VALUES,
 	DEFAULT_FACT_KIND,
 	FACT_SOURCE_KIND_ENUM_VALUES,
@@ -59,7 +60,7 @@ export const memoryFact = sqliteTable(
 		relation: text("relation").notNull(),
 		value: text("value").notNull(),
 		valueKey: text("value_key").notNull().default(""),
-		confidence: real("confidence").notNull().default(0.7),
+		confidence: real("confidence").notNull().default(DEFAULT_FACT_CONFIDENCE),
 		kind: text("kind", { enum: FACT_KIND_ENUM_VALUES })
 			.notNull()
 			.default(DEFAULT_FACT_KIND),

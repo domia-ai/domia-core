@@ -1,41 +1,27 @@
-import {
-	SKILLS_ROUTING_ENUM,
-	DEFAULT_INTENT_MODEL,
-	DEFAULT_INTENT_EMBED_THRESHOLD,
-	DEFAULT_INTENT_LEXICAL_MIN_SCORE,
-} from "@/db"
+import { DEFAULT_INTENT_MODEL } from "@/db"
 import type { DomiaType } from "@/modules/core"
-import { runLLMIntent } from "@/modules/llm-engine"
-import { knownSlotCount } from "@/modules/llm-slots"
+import { runLLMChoice, type LlmChoiceRequestType } from "@/modules/llm-engine"
 import { intentRouterLogger, parseLlmJson, languageSetsFor } from "@/utils"
-import { cueIndex, foldText } from "@/utils/text-tokens"
 
-import { INTENT_SYSTEM } from "../constants"
-import { embed } from "@/modules/embeddings"
 import {
-	cosine,
-	keyphraseHit,
-	keywordHit,
-	exampleEmbeddings,
-	toolEmbeddings,
-	lexicalToolScore,
-	splitClauses,
-	hasReadTool,
-	intentCacheScope,
+	TOOL_JUDGE_DESCRIPTION_MAX_CHARS,
+	TOOL_JUDGE_KEY,
+	TOOL_JUDGE_NONE,
+	TOOL_JUDGE_PROMPT_MAX_CHARS,
+	TOOL_JUDGE_SYSTEM,
+	TOOL_JUDGE_TRIMMED_EXAMPLES,
+} from "../constants"
+import {
 	isIntentCacheEnabled,
-	lookupIntentCacheExact,
-	lookupIntentCacheSemantic,
-	noteIntentCacheMiss,
-	rememberIntentDecision,
+	judgeCacheScope,
+	lookupJudgeCache,
+	rememberJudgeVerdict,
 } from "../utils"
 import type {
-	IntentDecisionType,
 	IntentToolHintType,
-	IntentRoutingHintsType,
-	IntentEmbeddingOutcomeType,
+	ToolJudgeRemoteType,
+	ToolJudgeVerdictType,
 } from "../types"
-
-const EMBED_AMBIGUITY_BAND = 0.06
 
 const escapeRe = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
@@ -73,67 +59,129 @@ export const personalQuestionHit = (
 		languageSetsFor(language ?? null).personalQuestionMarkers,
 	)
 
-const wordsBefore = (transcript: string, foldedIndex: number): string => {
-	const count = foldText(transcript)
-		.slice(0, foldedIndex)
-		.split(/\s+/)
-		.filter(Boolean).length
-	return transcript.trim().split(/\s+/).slice(0, count).join(" ")
+const capped = (text: string): string =>
+	text.length > TOOL_JUDGE_DESCRIPTION_MAX_CHARS
+		? `${text.slice(0, TOOL_JUDGE_DESCRIPTION_MAX_CHARS - 1).trimEnd()}…`
+		: text
+
+const firstSentence = (text: string): string => {
+	const end = text.search(/[.!?](\s|$)/)
+	return end === -1 ? text : text.slice(0, end + 1)
 }
 
-const firstMarkerIndex = (foldedText: string, markers: string[]): number =>
-	markers.reduce((first, marker) => {
-		const at = foldedText.indexOf(foldMarker(marker))
-		return at >= 0 && at < first ? at : first
-	}, Number.POSITIVE_INFINITY)
+const judgeLine = (
+	tool: IntentToolHintType,
+	describe: (description: string) => string | null,
+	maxExamples: number | null,
+): string => {
+	const examples =
+		maxExamples === null ? tool.examples : tool.examples?.slice(0, maxExamples)
+	const description = tool.description?.trim()
+		? describe(tool.description.trim())
+		: null
+	const shown = examples?.length ? ` Examples: ${examples.join("; ")}` : ""
+	return `- ${tool.name}:${description ? ` ${description}` : ""}${shown}`
+}
 
-export const builtinKeywordHits = (
+const judgeSystemOf = (tools: IntentToolHintType[]): string | null => {
+	const whole = (d: string): string => capped(d)
+	const brief = (d: string): string => capped(firstSentence(d))
+	const attempts: [
+		(tool: IntentToolHintType) => (d: string) => string | null,
+		number | null,
+	][] = [
+		[() => whole, null],
+		[() => brief, null],
+		[(t) => (t.examples?.length ? () => null : brief), null],
+		[
+			(t) => (t.examples?.length ? () => null : brief),
+			TOOL_JUDGE_TRIMMED_EXAMPLES,
+		],
+	]
+	for (const [describeFor, maxExamples] of attempts) {
+		const lines = tools.map((t) => judgeLine(t, describeFor(t), maxExamples))
+		const system = `${TOOL_JUDGE_SYSTEM}\n\nTools:\n${lines.join("\n")}`
+		if (system.length <= TOOL_JUDGE_PROMPT_MAX_CHARS) return system
+	}
+	return null
+}
+
+export const judgeRequestOf = (
 	transcript: string,
-	language: string | null | undefined,
-	keywords: string[],
-): string[] => {
-	const folded = foldText(transcript)
-	const questionAt = firstMarkerIndex(
-		foldMarker(transcript),
-		languageSetsFor(language ?? null).personalQuestionMarkers,
-	)
-	return keywords.filter((keyword) => {
-		const at = cueIndex(folded, keyword)
-		return (
-			at >= 0 &&
-			at < questionAt &&
-			routingBlockerHit(wordsBefore(transcript, at), language) === null
+	tools: IntentToolHintType[],
+): LlmChoiceRequestType | null => {
+	const system = judgeSystemOf(tools)
+	return system === null
+		? null
+		: {
+				system,
+				user: transcript,
+				key: TOOL_JUDGE_KEY,
+				choices: [...tools.map((t) => t.name), TOOL_JUDGE_NONE],
+			}
+}
+
+const remoteChoice = async (
+	remote: ToolJudgeRemoteType,
+	request: LlmChoiceRequestType,
+): Promise<string | null> => {
+	const raw = await remote(request)
+	const chosen = raw == null ? null : parseLlmJson(raw).value?.[request.key]
+	return typeof chosen === "string" && request.choices.includes(chosen)
+		? chosen
+		: null
+}
+
+export const requestedToolOf = async (
+	domia: DomiaType,
+	transcript: string,
+	tools: IntentToolHintType[],
+	remote?: ToolJudgeRemoteType,
+): Promise<ToolJudgeVerdictType> => {
+	if (tools.length === 0) return { tool: null, failed: false }
+	const started = Date.now()
+	const request = judgeRequestOf(transcript, tools)
+	if (request === null) {
+		intentRouterLogger.warn(
+			"tool judge skipped — the tool catalog exceeds the prompt budget",
+			{ domiaId: domia.id, tools: tools.length },
 		)
-	})
-}
-
-const EDGE_PUNCTUATION_RE = /^[\s¿¡"']+|[\s?!.,"']+$/g
-
-const structuralStateQuestion = (
-	transcript: string,
-	openers: string[],
-	stateWords: string[],
-): string | null => {
-	const folded = foldMarker(transcript).replace(EDGE_PUNCTUATION_RE, "")
-	const opener = openers.find((o) => folded.startsWith(`${foldMarker(o)} `))
-	if (!opener) return null
-	const word = stateWords.find((w) => folded.endsWith(` ${foldMarker(w)}`))
-	return word ? `${opener} … ${word}` : null
-}
-
-export const stateQuestionHit = (
-	transcript: string,
-	language: string | null | undefined,
-): string | null => {
-	const sets = languageSetsFor(language ?? null)
-	return (
-		markerHit(transcript, sets.stateQuestionMarkers) ??
-		structuralStateQuestion(
-			transcript,
-			sets.stateQuestionOpeners,
-			sets.stateWords,
+		return { tool: null, failed: true }
+	}
+	const scope = isIntentCacheEnabled(domia)
+		? judgeCacheScope(domia, request)
+		: null
+	const cached = scope === null ? null : lookupJudgeCache(scope, transcript)
+	if (cached) {
+		intentRouterLogger.info(
+			`tool judge: ${cached.tool ?? TOOL_JUDGE_NONE} (cached)`,
+			{ domiaId: domia.id },
 		)
-	)
+		return cached
+	}
+	try {
+		const chosen = remote
+			? await remoteChoice(remote, request)
+			: await runLLMChoice(
+					domia,
+					request,
+					domia.llmModelConfig?.intentModelName?.trim() || DEFAULT_INTENT_MODEL,
+				)
+		const named = chosen && chosen !== TOOL_JUDGE_NONE ? chosen : null
+		intentRouterLogger.info(
+			`tool judge: ${named ?? TOOL_JUDGE_NONE} (${Date.now() - started}ms)`,
+			{ domiaId: domia.id },
+		)
+		const verdict = { tool: named, failed: false }
+		if (scope !== null) rememberJudgeVerdict(domia, scope, transcript, verdict)
+		return verdict
+	} catch (error) {
+		intentRouterLogger.warn("tool judge failed — no tool named", {
+			domiaId: domia.id,
+			error,
+		})
+		return { tool: null, failed: true }
+	}
 }
 
 export const retryCueHit = (
@@ -142,30 +190,7 @@ export const retryCueHit = (
 ): string | null =>
 	markerHit(transcript, languageSetsFor(language ?? null).retryCues)
 
-export const scoreIntentEmbedding = async (
-	domia: DomiaType,
-	transcript: string,
-	tools: IntentToolHintType[],
-	hints?: IntentRoutingHintsType,
-): Promise<{ best: number; lexical: number } | null> => {
-	const [toolVecs, exampleVecs, queryVecs] = await Promise.all([
-		toolEmbeddings(domia, tools),
-		hints?.exampleUtterances?.length
-			? exampleEmbeddings(domia, hints.exampleUtterances)
-			: Promise.resolve(null),
-		embed(domia, [transcript]),
-	])
-	const query = queryVecs?.[0]
-	if (!toolVecs || !query) return null
-	let best = 0
-	for (const vec of toolVecs) best = Math.max(best, cosine(query, vec))
-	if (exampleVecs)
-		for (const vec of exampleVecs) best = Math.max(best, cosine(query, vec))
-	const lexical = await lexicalToolScore(domia, transcript, tools)
-	return { best, lexical }
-}
-
-const numericFollowUp = (
+export const numericFollowUp = (
 	transcript: string,
 	language: string | null | undefined,
 ): boolean => {
@@ -187,229 +212,4 @@ const numericFollowUp = (
 		return false
 	}
 	return hasNumber
-}
-
-const someClauseNeedsTools = async (
-	domia: DomiaType,
-	transcript: string,
-	toolVecs: number[][],
-	exampleVecs: number[][] | null,
-): Promise<boolean> => {
-	const language = domia.characterProfile?.language
-	const clauses = splitClauses(transcript, language).filter(
-		(clause) => personalQuestionHit(clause, language) === null,
-	)
-	if (clauses.length === 0) return false
-	const vectors = await embed(domia, clauses)
-	if (!vectors) return false
-	const reference = exampleVecs ? [...toolVecs, ...exampleVecs] : toolVecs
-	return vectors.some((query) =>
-		reference.some(
-			(vec) => cosine(query, vec) >= DEFAULT_INTENT_EMBED_THRESHOLD,
-		),
-	)
-}
-
-const classifyByEmbedding = async (
-	domia: DomiaType,
-	transcript: string,
-	tools: IntentToolHintType[],
-	scope: string | null,
-	hints?: IntentRoutingHintsType,
-): Promise<IntentEmbeddingOutcomeType> => {
-	const language = domia.characterProfile?.language
-	const lexicalOnly = (
-		outcome: IntentDecisionType,
-	): IntentEmbeddingOutcomeType => ({ outcome, vector: null })
-	const hit = keyphraseHit(transcript, tools)
-	if (hit) return lexicalOnly({ needsSkill: true, reason: `keyphrase:${hit}` })
-	if (numericFollowUp(transcript, language))
-		return lexicalOnly({ needsSkill: true, reason: "numeric-followup" })
-	const retry = retryCueHit(transcript, language)
-	if (retry) return lexicalOnly({ needsSkill: true, reason: `retry:${retry}` })
-	if (personalQuestionHit(transcript, language) === null) {
-		const stateQuestion = stateQuestionHit(transcript, language)
-		if (stateQuestion && hasReadTool(domia.id, tools))
-			return lexicalOnly({
-				needsSkill: true,
-				reason: `state-question:${stateQuestion}`,
-			})
-	}
-	if (hints?.keywords?.length) {
-		const kw = keywordHit(transcript, hints.keywords)
-		if (kw) return lexicalOnly({ needsSkill: true, reason: `keyword:${kw}` })
-	}
-	const started = Date.now()
-	const [toolVecs, exampleVecs, queryVecs] = await Promise.all([
-		toolEmbeddings(domia, tools),
-		hints?.exampleUtterances?.length
-			? exampleEmbeddings(domia, hints.exampleUtterances)
-			: Promise.resolve(null),
-		embed(domia, [transcript]),
-	])
-	const query = queryVecs?.[0]
-	if (!toolVecs || !query) return { outcome: null, vector: null }
-	if (scope) {
-		const cached = lookupIntentCacheSemantic(domia, scope, query)
-		if (cached) return { outcome: cached, vector: query }
-	}
-	let best = 0
-	for (const vec of toolVecs) best = Math.max(best, cosine(query, vec))
-	if (exampleVecs)
-		for (const vec of exampleVecs) best = Math.max(best, cosine(query, vec))
-	const threshold =
-		domia.llmModelConfig?.intentEmbedThreshold ?? DEFAULT_INTENT_EMBED_THRESHOLD
-	let verdict =
-		best >= threshold
-			? "skill"
-			: best >= threshold - EMBED_AMBIGUITY_BAND
-				? "ambiguous"
-				: "chat"
-	const lexicalMin =
-		domia.llmModelConfig?.intentLexicalMinScore ??
-		DEFAULT_INTENT_LEXICAL_MIN_SCORE
-	let lexical = 0
-	if (verdict === "chat") {
-		lexical = await lexicalToolScore(domia, transcript, tools)
-		if (lexical > 0 && lexical >= lexicalMin) verdict = "ambiguous"
-	}
-	if (verdict === "skill") {
-		const blocker = routingBlockerHit(
-			transcript,
-			domia.characterProfile?.language,
-		)
-		if (blocker) verdict = "ambiguous"
-	}
-	const marker =
-		verdict !== "chat" && best < DEFAULT_INTENT_EMBED_THRESHOLD
-			? personalQuestionHit(transcript, domia.characterProfile?.language)
-			: null
-	const personal =
-		marker &&
-		!(await someClauseNeedsTools(domia, transcript, toolVecs, exampleVecs))
-			? marker
-			: null
-	if (personal) verdict = "chat"
-	intentRouterLogger.info(
-		`intent embedding gate: sim=${best.toFixed(3)} lex=${lexical.toFixed(2)} thr=${threshold} lexMin=${lexicalMin}${personal ? ` personal="${personal}"` : ""} → ${verdict} (${Date.now() - started}ms)`,
-		{ domiaId: domia.id },
-	)
-	if (verdict === "ambiguous") return { outcome: "ambiguous", vector: query }
-	if (personal)
-		return {
-			outcome: { needsSkill: false, reason: `personal:${personal}` },
-			vector: query,
-		}
-	return {
-		outcome: {
-			needsSkill: verdict === "skill",
-			reason: `embedding:${best.toFixed(2)}`,
-		},
-		vector: query,
-	}
-}
-
-const buildPrompt = (
-	transcript: string,
-	tools: IntentToolHintType[],
-): string => {
-	const seen = new Set<string>()
-	const lines: string[] = []
-	for (const t of tools) {
-		if (seen.has(t.name)) continue
-		seen.add(t.name)
-		lines.push(t.description ? `- ${t.name}: ${t.description}` : `- ${t.name}`)
-	}
-	return `${INTENT_SYSTEM}\n\nAvailable tools:\n${lines.join("\n")}\n\nUser: ${transcript}\nJSON:`
-}
-
-const parseDecision = (raw: string): boolean | null => {
-	const { value: obj } = parseLlmJson(raw)
-	if (obj) {
-		const v = obj.tool ?? obj.needsTool ?? obj.needs_skill ?? obj.skill
-		if (typeof v === "boolean") return v
-		if (typeof v === "string") {
-			const s = v.trim().toLowerCase()
-			if (["false", "no", "none", "null", ""].includes(s)) return false
-			return true
-		}
-	}
-	if (/\btrue\b/i.test(raw) && !/\bfalse\b/i.test(raw)) return true
-	if (/\bfalse\b/i.test(raw) && !/\btrue\b/i.test(raw)) return false
-	return null
-}
-
-export const classifyNeedsSkill = async (
-	domia: DomiaType,
-	transcript: string,
-	tools: IntentToolHintType[],
-	opts: { canRunLlm: boolean; hints?: IntentRoutingHintsType },
-): Promise<IntentDecisionType> => {
-	const routing = domia.llmModelConfig?.skillsRouting
-	if (routing === SKILLS_ROUTING_ENUM.ALWAYS_AGENT)
-		return { needsSkill: true, reason: "always-agent" }
-	if (routing === SKILLS_ROUTING_ENUM.FAST_ROUTER)
-		return { needsSkill: tools.length > 0, reason: "fast-router" }
-	const scope = isIntentCacheEnabled(domia)
-		? intentCacheScope(domia, tools, opts.hints)
-		: null
-	if (scope) {
-		const exact = lookupIntentCacheExact(scope, transcript)
-		if (exact) return exact
-		noteIntentCacheMiss()
-	}
-	const remember = (
-		decision: IntentDecisionType,
-		vector: number[] | null,
-	): IntentDecisionType => {
-		if (scope)
-			rememberIntentDecision(domia, scope, transcript, vector, decision)
-		return decision
-	}
-	let queryVector: number[] | null = null
-	if (routing === SKILLS_ROUTING_ENUM.EMBEDDING_GATE) {
-		const { outcome, vector } = await classifyByEmbedding(
-			domia,
-			transcript,
-			tools,
-			scope,
-			opts.hints,
-		)
-		queryVector = vector
-		if (outcome && outcome !== "ambiguous") return remember(outcome, vector)
-		if (outcome === null) {
-			intentRouterLogger.warn(
-				"embedding gate unavailable — falling back to LLM classifier",
-				{ domiaId: domia.id },
-			)
-		}
-	}
-	if (!opts.canRunLlm)
-		return { needsSkill: tools.length > 0, reason: "no-local-llm" }
-	if (
-		domia.llmModelConfig?.intentLlmOnSingleSlot === false &&
-		knownSlotCount(domia) === 1
-	)
-		return { needsSkill: tools.length > 0, reason: "single-slot-skip-llm" }
-
-	const model =
-		domia.llmModelConfig?.intentModelName?.trim() || DEFAULT_INTENT_MODEL
-	try {
-		const raw = await runLLMIntent(domia, buildPrompt(transcript, tools), model)
-		const decided = raw == null ? null : parseDecision(raw)
-		if (decided == null) {
-			intentRouterLogger.warn("intent unparseable — failing closed to chat", {
-				domiaId: domia.id,
-				raw,
-			})
-			return { needsSkill: false, reason: "classify-failed" }
-		}
-		return remember({ needsSkill: decided, reason: "classified" }, queryVector)
-	} catch (error) {
-		intentRouterLogger.warn("intent classify failed — failing closed to chat", {
-			domiaId: domia.id,
-			error,
-		})
-		return { needsSkill: false, reason: "classify-failed" }
-	}
 }

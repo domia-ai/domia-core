@@ -1,0 +1,44 @@
+name: Skill or routing report
+description: A skill or tool was picked wrongly, not picked, or behaved wrongly
+labels: ["skills"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Routing is driven by data in the skill descriptor (fast-path templates, per-tool examples and labels), so the exact sentence matters more than anything else.
+  - type: textarea
+    id: sentence
+    attributes:
+      label: The sentence
+      description: Exactly what was said or typed (the transcript Domia heard, if you have it), and its language.
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Skill provider
+      description: For example the built-in tools, Home Assistant, Music Assistant, or the name of your MCP server.
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: Tool you expected
+  - type: input
+    id: decision
+    attributes:
+      label: What Domia decided
+      description: The intent decision of the turn, for example `skill (judge:HassTurnOn)`, `chat (judge:none)` or `fast-path:...`, and the tool it called if any.
+  - type: textarea
+    id: reply
+    attributes:
+      label: What it did and said
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Commit or version, the LLM model, and whether the node routes locally or delegates to a hub.
+    validations:
+      required: true

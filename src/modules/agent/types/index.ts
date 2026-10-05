@@ -152,6 +152,7 @@ export type AgentTurnContextType = {
 	readOnlyRetried: boolean
 	actNudged: boolean
 	plainRetried: boolean
+	askedForDetail: boolean
 }
 
 export type ConfirmationSettleStatusType =
@@ -205,6 +206,7 @@ export type AgentResultType = {
 	finalizeMs: number
 	finalizeMode: AgentFinalizeModeType
 	stopReason: AgentStopReasonType
+	askedForDetail: boolean
 	pendingTools?: Promise<AsyncToolOutcomeType>[]
 }
 

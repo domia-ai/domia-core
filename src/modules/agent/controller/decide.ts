@@ -140,6 +140,12 @@ export const decideNextAction = async (
 		if (
 			expectedTools.length > 0 &&
 			ctx.toolNamesUsed.length === 0 &&
+			spoken.endsWith("?")
+		)
+			ctx.askedForDetail = true
+		if (
+			expectedTools.length > 0 &&
+			ctx.toolNamesUsed.length === 0 &&
 			!noTool &&
 			!spoken.endsWith("?")
 		) {

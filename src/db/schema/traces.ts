@@ -7,6 +7,7 @@ import {
 } from "drizzle-orm/sqlite-core"
 import type { ToolTraceEntryType, VoiceFeelFeaturesType } from "../json-types"
 import {
+	DEFAULT_SESSION_ID_TIMEOUT_MS,
 	DEFAULT_WAKE_WORD,
 	INTERACTION_INPUT_TYPE_ENUM_VALUES,
 	INTERACTION_INPUT_TYPE_ENUM,
@@ -30,7 +31,9 @@ export const interactionSessionTrace = sqliteTable(
 		sessionId: text("session_id").notNull(),
 		startedAt: text("started_at").notNull().default(DEFAULT_TIMESTAMP),
 		lastUsedAt: text("last_used_at").notNull().default(DEFAULT_TIMESTAMP),
-		timeoutMs: integer("session_id_timeout_ms").notNull().default(300_000),
+		timeoutMs: integer("session_id_timeout_ms")
+			.notNull()
+			.default(DEFAULT_SESSION_ID_TIMEOUT_MS),
 		createdAt: text("created_at").notNull().default(DEFAULT_TIMESTAMP),
 		updatedAt: text("updated_at").notNull().default(DEFAULT_TIMESTAMP),
 	},

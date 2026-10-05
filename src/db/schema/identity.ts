@@ -81,6 +81,7 @@ import {
 	DEFAULT_MODEL_INSTALL_MAX_REDIRECTS,
 	DEFAULT_MODEL_INSTALL_MAX_CONCURRENT_JOBS,
 	DEFAULT_MODEL_JOB_RETENTION_MS,
+	DEFAULT_SESSION_ID_TIMEOUT_MS,
 } from "../constants"
 import { DEFAULT_TIMESTAMP } from "./shared"
 
@@ -121,7 +122,7 @@ export const domia = sqliteTable("domia", {
 	isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
 	sessionIdTimeoutMs: integer("session_id_timeout_ms")
 		.notNull()
-		.default(300_000),
+		.default(DEFAULT_SESSION_ID_TIMEOUT_MS),
 	memoryWindowTurns: integer("memory_window_turns")
 		.notNull()
 		.default(DEFAULT_MEMORY_WINDOW_TURNS),

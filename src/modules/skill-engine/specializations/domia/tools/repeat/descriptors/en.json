@@ -14,7 +14,6 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["repeat", "again", "pardon"],
 	"exampleUtterances": ["repeat that", "what did you say"],
 	"finalize": {
 		"mode": "template",

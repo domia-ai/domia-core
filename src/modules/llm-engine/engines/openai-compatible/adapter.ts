@@ -10,7 +10,7 @@ import {
 import {
 	runOpenAiCompatibleChatConstrainedJson,
 	runOpenAiCompatibleConstrainedJson,
-	runOpenAiCompatibleIntent,
+	runOpenAiCompatibleChoice,
 	runOpenAiCompatibleJson,
 } from "./structured"
 import {
@@ -28,7 +28,7 @@ export const openAiCompatibleEngine: LlmEngineAdapterType = {
 	runReplyStreamOrTools: runOpenAiCompatibleReplyStreamOrTools,
 	runConstrainedJson: runOpenAiCompatibleConstrainedJson,
 	runChatConstrainedJson: runOpenAiCompatibleChatConstrainedJson,
-	runIntent: runOpenAiCompatibleIntent,
+	runChoice: runOpenAiCompatibleChoice,
 	warmup: warmupOpenAiCompatible,
 	prefill: prefillOpenAiCompatible,
 }

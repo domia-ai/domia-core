@@ -78,7 +78,7 @@
 		"temperature": 0.7,
 		"contextWindow": 4096,
 		"numPredict": 80,
-		"llmConcurrency": 2,
+		"llmConcurrency": 3,
 		"useCompactPrompt": false,
 		"reflectionModelName": null,
 		"slotAffinityEnabled": true

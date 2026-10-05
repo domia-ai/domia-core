@@ -203,15 +203,6 @@ export const languageSetsFor = (
 			catalog.personalQuestionMarkers,
 			EN.personalQuestionMarkers,
 		),
-		stateQuestionMarkers: mergedWithEn(
-			catalog.stateQuestionMarkers,
-			EN.stateQuestionMarkers,
-		),
-		stateQuestionOpeners: mergedWithEn(
-			catalog.stateQuestionOpeners ?? [],
-			EN.stateQuestionOpeners ?? [],
-		),
-		stateWords: mergedWithEn(catalog.stateWords ?? [], EN.stateWords ?? []),
 		retryCues: mergedWithEn(catalog.retryCues, EN.retryCues),
 		relationFamilyCues: Object.fromEntries(
 			RELATION_FAMILIES.map((family) => [

@@ -20,7 +20,10 @@ import type {
 } from "@/modules/stt-engine"
 import type { TtsEngineAdapterType } from "@/modules/tts-engine"
 import type { LlmEngineAdapterType } from "@/modules/llm-engine"
-import type { IntentDecisionType } from "@/modules/intent-router"
+import type {
+	IntentDecisionType,
+	IntentToolHintType,
+} from "@/modules/intent-router"
 import type { RecentTurnType } from "@/modules/prompt-context-builder"
 import type {
 	SpeculativeCaptureHooksType,
@@ -848,10 +851,26 @@ export type ConfirmationTurnOutcomeType =
 	| "expired"
 	| "reasked"
 
+export type OpenRequestType = {
+	transcript: string
+	at: number
+}
+
+export type JudgeCatalogType = {
+	hints: IntentToolHintType[]
+	byName: Map<string, SkillToolType>
+}
+
+export type JudgedDecisionType = {
+	decision: IntentDecisionType
+	judged: SkillToolType | null
+}
+
 export type SkillIntentVerdictType = {
 	decision: IntentDecisionType
 	expectedTools: string[]
 	tools: SkillToolType[]
+	namedToolUnavailable: boolean
 }
 
 export type DelegatedInferenceTurnType = {

@@ -10,6 +10,7 @@ import type {
 	StreamReplyOrToolsType,
 	ToolDefinitionType,
 	LlmUsageSinkType,
+	LlmChoiceRequestType,
 } from "../types"
 
 export const runLLM = async (
@@ -167,14 +168,14 @@ export const runLLMChatConstrainedJson = async (
 	)
 }
 
-export const runLLMIntent = async (
+export const runLLMChoice = async (
 	domia: DomiaType,
-	prompt: string,
+	request: LlmChoiceRequestType,
 	modelName: string,
 ): Promise<string | null> => {
 	const engine = domia.llmModelConfig?.engine
 	if (!engine || !LLM_ENGINE_ENUM_VALUES.includes(engine)) return null
 	const adapter = getLlmEngine(engine)
-	if (!adapter?.runIntent) return null
-	return await adapter.runIntent(domia, prompt, modelName)
+	if (!adapter?.runChoice) return null
+	return await adapter.runChoice(domia, request, modelName)
 }

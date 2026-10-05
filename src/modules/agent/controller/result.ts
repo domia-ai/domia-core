@@ -34,6 +34,7 @@ export const turnResult = (
 	finalizeMs: ctx.finalizeMs,
 	finalizeMode: patch.finalizeMode ?? "agent_loop",
 	stopReason: patch.stopReason ?? "completed",
+	askedForDetail: ctx.askedForDetail && ctx.toolNamesUsed.length === 0,
 	pendingTools: patch.pendingTools,
 })
 

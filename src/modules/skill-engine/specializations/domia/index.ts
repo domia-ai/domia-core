@@ -63,10 +63,6 @@ const routinesFor = (
 			)
 		: []
 
-const unique = (lists: (string[] | undefined)[]): string[] => [
-	...new Set(lists.flatMap((list) => list ?? [])),
-]
-
 const hintsOf = (
 	entries: DomiaToolPackEntryType[],
 ): Record<string, ToolHintOverrideType> =>
@@ -244,17 +240,11 @@ export const domiaSpecialization: SkillSpecializationType = {
 			version: 1,
 			kind: DOMIA_SPECIALIZATION_KIND,
 			routing: {
-				aliases: {
-					...Object.fromEntries(
-						routed
-							.filter(({ pack }) => (pack.keywords ?? []).length > 0)
-							.map(({ tool, pack }) => [tool.name, pack.keywords ?? []]),
-					),
-					...routines.aliases,
-				},
-				keywords: unique(routed.map(({ pack }) => pack.keywords)),
-				exampleUtterances: unique(
-					routed.map(({ pack }) => pack.exampleUtterances),
+				aliases: routines.aliases,
+				toolExamples: Object.fromEntries(
+					routed
+						.filter(({ pack }) => (pack.exampleUtterances ?? []).length > 0)
+						.map(({ tool, pack }) => [tool.name, pack.exampleUtterances ?? []]),
 				),
 			},
 			execution: {

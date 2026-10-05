@@ -34,7 +34,10 @@ import {
 	wakeScheduleAt,
 } from "@/modules/proactivity"
 import { markReflectionCaptured } from "@/modules/reflection"
-import { getRecentTurns } from "@/modules/session-manager"
+import {
+	getRecentTurns,
+	hideRecentConversation,
+} from "@/modules/session-manager"
 import {
 	setSkillRuntimePort,
 	type OriginCapabilitiesType,
@@ -410,6 +413,7 @@ const port: SkillRuntimePortType = {
 	},
 	memory: {
 		markReflectionCaptured,
+		hideRecentConversation,
 	},
 }
 

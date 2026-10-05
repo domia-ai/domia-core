@@ -34,8 +34,8 @@ export type ResolvedSkillDescriptorType = {
 	kind: string | null
 	description: string | null
 	aliases: Record<string, string[]>
-	exampleUtterances: string[]
-	keywords: string[]
+	toolExamples: Record<string, string[]>
+	toolLabels: Record<string, string>
 	coreTools: string[]
 	hiddenTools: string[]
 	toolPolicy: Record<string, ToolPolicyType>
@@ -94,9 +94,8 @@ export type ToolManifestType = {
 	coreNames: Set<string>
 	hiddenNames: Set<string>
 	builtinNames: Set<string>
-	builtinToolKeywords: Record<string, string[]>
-	exampleUtterances: string[]
-	keywords: string[]
+	toolExamples: Record<string, string[]>
+	toolLabels: Record<string, string>
 }
 
 export type OriginCapabilitiesType = {
@@ -561,6 +560,7 @@ export type SkillRuntimePortType = {
 	}
 	memory: {
 		markReflectionCaptured: (interactionId: string) => void
+		hideRecentConversation: (domia: DomiaType) => void
 	}
 }
 
@@ -590,7 +590,6 @@ export type BuiltinToolPackSampleType = {
 export type BuiltinToolPackType = {
 	intents?: BuiltinToolPackIntentType[]
 	expansionRules?: Record<string, string>
-	keywords?: string[]
 	exampleUtterances?: string[]
 	finalize: ToolFinalizeRuleType
 	phrases?: Record<string, string>

@@ -12,7 +12,6 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["qué hora", "que hora", "la hora"],
 	"exampleUtterances": ["qué hora es", "dime la hora"],
 	"finalize": {
 		"mode": "template",

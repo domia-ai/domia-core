@@ -24,9 +24,8 @@ export const buildToolManifest = (
 	const coreNames = new Set<string>()
 	const hiddenNames = new Set<string>()
 	const builtinNames = new Set<string>()
-	const builtinToolKeywords: Record<string, string[]> = {}
-	const exampleUtterances: string[] = []
-	const keywords: string[] = []
+	const toolExamples: Record<string, string[]> = {}
+	const toolLabels: Record<string, string> = {}
 	const language = domia.characterProfile?.language ?? null
 	for (const provider of domia.skillProviders ?? []) {
 		if (!provider.isActive || !connectedProviderIds.has(provider.id)) continue
@@ -37,27 +36,29 @@ export const buildToolManifest = (
 		const hidden = new Set(descriptor.hiddenTools)
 		const builtin = provider.protocol === SKILL_PROTOCOL_ENUM.BUILTIN
 		for (const tool of tools) {
-			if (builtin) {
-				builtinNames.add(tool.namespacedName)
-				builtinToolKeywords[tool.namespacedName] =
-					descriptor.aliases[tool.rawName] ?? []
-			}
+			if (builtin) builtinNames.add(tool.namespacedName)
+			const examplesKey = [tool.rawName, toolBaseName(tool.rawName)].find(
+				(key) => Object.hasOwn(descriptor.toolExamples, key),
+			)
+			if (examplesKey !== undefined)
+				toolExamples[tool.namespacedName] = descriptor.toolExamples[examplesKey]
+			const labelKey = [tool.rawName, toolBaseName(tool.rawName)].find((key) =>
+				Object.hasOwn(descriptor.toolLabels, key),
+			)
+			if (labelKey !== undefined)
+				toolLabels[tool.namespacedName] = descriptor.toolLabels[labelKey]
 			if (core.has(tool.rawName) || core.has(toolBaseName(tool.rawName)))
 				coreNames.add(tool.namespacedName)
 			if (hidden.has(tool.rawName) || hidden.has(toolBaseName(tool.rawName)))
 				hiddenNames.add(tool.namespacedName)
 		}
-		if (builtin) continue
-		exampleUtterances.push(...descriptor.exampleUtterances)
-		keywords.push(...descriptor.keywords)
 	}
 	return {
 		aliases,
 		coreNames,
 		hiddenNames,
 		builtinNames,
-		builtinToolKeywords,
-		exampleUtterances,
-		keywords,
+		toolExamples,
+		toolLabels,
 	}
 }

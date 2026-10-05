@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose something Domia should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The situation
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+    validations:
+      required: true
+  - type: textarea
+    id: shapes
+    attributes:
+      label: Where it has to work
+      description: Domia runs standalone, with several identities in one process, across hubs and through satellites, on modest hardware. Say which of those your idea touches and anything that would not fit.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -26,7 +26,7 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "intent-cache.ts",
 		battery: "pure",
 		description:
-			"semantic intent cache: exact/semantic hits, scope invalidation, LRU",
+			"tool-judge cache: exact repeats by catalog and model scope, failures never cached, LRU",
 	},
 	{
 		name: "heard-prefix",
@@ -141,7 +141,7 @@ const SUITES: EvalRegistrySuiteType[] = [
 		file: "skill-routing.ts",
 		battery: "pure",
 		description:
-			"tool shortlist ranked reserve, intent gate without a local LLM, built-in keyword routing",
+			"tool shortlist ranked reserve, judge catalog names and labels, prompt budget, judge verdicts and cache, open requests",
 	},
 	{
 		name: "ha-intents-sweep",
@@ -383,6 +383,13 @@ const SUITES: EvalRegistrySuiteType[] = [
 		description: "deterministic case runner against the in-process mock HA",
 	},
 	{
+		name: "tool-judge",
+		file: "tool-judge.ts",
+		battery: "quality",
+		description:
+			"the model names the tool a sentence asks for — builtins alone and the full catalog of every provider — over a held-out corpus disjoint from the descriptor examples (needs the llama-server at EVAL_JUDGE_OPENAI_HOST)",
+	},
+	{
 		name: "live",
 		file: "run.ts",
 		battery: "quality",
@@ -462,13 +469,6 @@ const SUITES: EvalRegistrySuiteType[] = [
 		battery: "tool",
 		requires: ["skills"],
 		description: "fast-path false-positive sweep",
-	},
-	{
-		name: "routing-sweep",
-		file: "routing-sweep.ts",
-		battery: "tool",
-		requires: ["skills"],
-		description: "routing threshold sweep",
 	},
 	{
 		name: "h2-regressions",

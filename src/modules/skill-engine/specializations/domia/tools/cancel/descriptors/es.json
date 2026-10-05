@@ -12,7 +12,6 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["olvídalo", "déjalo"],
 	"exampleUtterances": ["olvídalo", "déjalo"],
 	"finalize": {
 		"mode": "template",

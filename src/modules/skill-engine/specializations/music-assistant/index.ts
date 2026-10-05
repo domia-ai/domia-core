@@ -18,9 +18,9 @@ import {
 	MA_ARG_PLAYER_ID,
 	MA_ARG_QUEUE_ID,
 	MA_CATALOG_EXTENSIONS,
-	MA_EXAMPLE_UTTERANCES,
+	MA_TOOL_EXAMPLES,
+	MA_TOOL_LABELS,
 	MA_FAST_PATH_PACKS,
-	MA_KEYWORDS,
 	MA_PARAM_ALLOW,
 	MA_PLACEHOLDER_RE,
 	MA_QUEUE_ARG_TOOLS,
@@ -65,13 +65,6 @@ const forLanguage = <T>(
 	byLanguage: Record<string, T>,
 	language: string | null,
 ): T => byLanguage[baseLanguage(language)] ?? byLanguage.en
-
-const mergedWithEn = (
-	byLanguage: Record<string, string[]>,
-	language: string | null,
-): string[] => [
-	...new Set([...byLanguage.en, ...(byLanguage[baseLanguage(language)] ?? [])]),
-]
 
 const playerArgOf = (rawName: string): string =>
 	MA_QUEUE_ARG_TOOLS.includes(rawName) ? MA_ARG_QUEUE_ID : MA_ARG_PLAYER_ID
@@ -166,8 +159,8 @@ export const musicAssistantSpecialization: SkillSpecializationType = {
 		kind: MA_SPECIALIZATION_KIND,
 		routing: {
 			aliases: MA_ALIASES,
-			exampleUtterances: forLanguage(MA_EXAMPLE_UTTERANCES, language),
-			keywords: mergedWithEn(MA_KEYWORDS, language),
+			toolExamples: forLanguage(MA_TOOL_EXAMPLES, language),
+			toolLabels: MA_TOOL_LABELS,
 		},
 		execution: {
 			coreTools: MA_VIRTUAL_TOOLS,

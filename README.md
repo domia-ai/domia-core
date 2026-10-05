@@ -94,7 +94,7 @@ For the full architecture and current state, see [`docs/ARCHITECTURE.md`](./docs
 
 ## 🚀 Quick start
 
-**Prerequisites:** Node.js ≥ 24, Docker (for Ollama + MQTT), and `sox` (audio playback).
+**Prerequisites:** Node.js ≥ 24, Docker (for the MQTT broker, and for Ollama if you use it as the model server), and `sox` (audio playback).
 
 ```bash
 # 1. install deps
@@ -152,7 +152,7 @@ See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for the full walkthrough and 
 - **Cognition** — `llm-engine`, `prompt-context-builder`, `reflection`
 - **Identity** — `emotion-engine`, `memory`, `mind`
 - **Action** — `skill-engine`, `agent`, `matcher`, `embeddings`, `intent-router`
-- **Satellites** — `satellite-core`, `satellite-protocols` (ESPHome / Wyoming / LiveKit / OpenAI-Realtime / WebSocket), `satellite-discovery`
+- **Satellites** — `satellite-core`, `satellite-protocols` (ESPHome / Wyoming / LiveKit), `satellite-gateway` (native WebSocket), `realtime-gateway` (OpenAI-Realtime), `satellite-discovery`
 - **Distribution** — `grpc-client`, `capability-resolver`, `network-sync`, `heartbeat-manager`, `mqtt-event-handler`
 - **Performance & ops** — `inference-pool`, `voice-admission`, `config-engine`, `session-manager`
 
@@ -188,4 +188,4 @@ Every non-loopback request carries `Authorization: Bearer <DOMIA_MESH_SECRET>` (
 
 ## 🤝 Contributing
 
-Developer, designer, or voice artist — you're welcome. Start with [GETTING_STARTED.md](./GETTING_STARTED.md), and note the project's [emotional commit style](./COMMITS.md).
+Developer, designer, or voice artist — you're welcome. Start with [GETTING_STARTED.md](./GETTING_STARTED.md), then read [CONTRIBUTING.md](./CONTRIBUTING.md) for how changes are made and verified. The rules of the codebase — for people and for coding agents — are in [AGENTS.md](./AGENTS.md), and commits follow the project's [emotional commit style](./COMMITS.md). Security problems go through [SECURITY.md](./SECURITY.md), never a public issue.

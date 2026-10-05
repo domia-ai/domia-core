@@ -21,8 +21,8 @@ const finalizeMapSchema = z.record(z.string(), finalizeRuleSchema)
 const routingSchema = z
 	.object({
 		aliases: z.record(z.string(), z.array(z.string())).optional(),
-		exampleUtterances: z.array(z.string()).optional(),
-		keywords: z.array(z.string()).optional(),
+		toolExamples: z.record(z.string(), z.array(z.string())).optional(),
+		toolLabels: z.record(z.string(), z.string()).optional(),
 	})
 	.strict()
 

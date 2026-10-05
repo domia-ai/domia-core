@@ -27,6 +27,7 @@ const envSchema = z.object({
 	BENCH_CORPUS: z.string().min(1).default("golden"),
 	BENCH_TTFA_P95_MAX: z.coerce.number().optional(),
 	BENCH_TOTAL_P95_MAX: z.coerce.number().optional(),
+	BENCH_INTENT_P95_MAX: z.coerce.number().optional(),
 	EVAL_BENCH_LIVE: z.string().optional(),
 	EVAL_MOCK_DOMAIN_PREFIXED: z.string().optional(),
 	DOMIA_MESH_SECRET: z.string().min(8).optional(),

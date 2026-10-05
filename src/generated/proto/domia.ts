@@ -175,6 +175,7 @@ export interface InferenceRequest {
   targetDomiaKey?: string | undefined;
   traceId?: string | undefined;
   toolChoice?: string | undefined;
+  choiceJson?: string | undefined;
 }
 
 export interface InferenceResponse {
@@ -2946,6 +2947,7 @@ function createBaseInferenceRequest(): InferenceRequest {
     targetDomiaKey: undefined,
     traceId: undefined,
     toolChoice: undefined,
+    choiceJson: undefined,
   };
 }
 
@@ -2977,6 +2979,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     }
     if (message.toolChoice !== undefined) {
       writer.uint32(74).string(message.toolChoice);
+    }
+    if (message.choiceJson !== undefined) {
+      writer.uint32(82).string(message.choiceJson);
     }
     return writer;
   },
@@ -3060,6 +3065,14 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
           message.toolChoice = reader.string();
           continue;
         }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.choiceJson = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3116,6 +3129,11 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
         : isSet(object.tool_choice)
         ? globalThis.String(object.tool_choice)
         : undefined,
+      choiceJson: isSet(object.choiceJson)
+        ? globalThis.String(object.choiceJson)
+        : isSet(object.choice_json)
+        ? globalThis.String(object.choice_json)
+        : undefined,
     };
   },
 
@@ -3148,6 +3166,9 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     if (message.toolChoice !== undefined) {
       obj.toolChoice = message.toolChoice;
     }
+    if (message.choiceJson !== undefined) {
+      obj.choiceJson = message.choiceJson;
+    }
     return obj;
   },
 
@@ -3165,6 +3186,7 @@ export const InferenceRequest: MessageFns<InferenceRequest> = {
     message.targetDomiaKey = object.targetDomiaKey ?? undefined;
     message.traceId = object.traceId ?? undefined;
     message.toolChoice = object.toolChoice ?? undefined;
+    message.choiceJson = object.choiceJson ?? undefined;
     return message;
   },
 };

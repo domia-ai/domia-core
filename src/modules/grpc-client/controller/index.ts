@@ -28,6 +28,7 @@ import {
 } from "@/generated/proto/domia"
 import type {
 	ChatMessageType,
+	LlmChoiceRequestType,
 	ToolCallType,
 	ToolCallOrReplyType,
 	ToolChoiceType,
@@ -893,6 +894,7 @@ export const delegateInferenceWithTools = async (
 		interactionId?: string
 		sessionId?: string
 		toolChoice?: ToolChoiceType
+		choice?: LlmChoiceRequestType
 		signal?: AbortSignal
 	},
 ): Promise<ToolCallOrReplyType> => {
@@ -920,6 +922,7 @@ export const delegateInferenceWithTools = async (
 				traceId: getTraceContext()?.traceId,
 				targetDomiaKey: target.domiaKey,
 				toolChoice: payload.toolChoice,
+				choiceJson: payload.choice ? JSON.stringify(payload.choice) : undefined,
 			},
 			{ signal },
 		)

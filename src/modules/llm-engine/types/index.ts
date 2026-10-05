@@ -99,11 +99,11 @@ export type LlmEngineAdapterType = {
 		toolChoice?: ToolChoiceType,
 		signal?: AbortSignal,
 	) => Promise<StreamReplyOrToolsType>
-	runIntent?: (
+	runChoice?: (
 		domia: DomiaType,
-		prompt: string,
+		request: LlmChoiceRequestType,
 		modelName: string,
-	) => Promise<string>
+	) => Promise<string | null>
 	runConstrainedJson?: (
 		domia: DomiaType,
 		prompt: string,
@@ -124,3 +124,10 @@ export type LlmProbeType = (
 	domia: DomiaType,
 	timeoutMs: number,
 ) => Promise<LlmProbeResultType>
+
+export type LlmChoiceRequestType = {
+	system: string
+	user: string
+	key: string
+	choices: string[]
+}

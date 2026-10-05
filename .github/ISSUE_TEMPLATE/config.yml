@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/domia-ai/domia-core/security/advisories/new
+    about: Report a vulnerability privately. Never open a public issue for it.
+  - name: Question or idea to discuss
+    url: https://domia.ai/contact
+    about: For anything that is not a bug or a concrete feature request.

@@ -38,7 +38,6 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["alarma", "despiértame", "despiertame"],
 	"exampleUtterances": [
 		"ponme una alarma a las siete y media",
 		"despiértame a las seis"

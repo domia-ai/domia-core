@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste tokens, `.env` contents or other people's voice recordings. For a security problem use the private report instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The sentence you said or the request you sent, and the steps. For a voice turn, the interaction id helps.
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where it seems to fail
+      options:
+        - Wake word or listening
+        - Speech to text
+        - Routing or skills
+        - Reply (LLM)
+        - Speech (TTS) or playback
+        - Memory or character
+        - Satellite or multi-node
+        - Configuration or setup
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Commit or version, hardware and OS, the role of the node (standalone, hub, thin client, satellite and its protocol), STT / LLM / TTS engines and models.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant lines, with secrets removed.
+      render: shell

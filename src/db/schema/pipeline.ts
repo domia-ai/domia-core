@@ -94,7 +94,6 @@ import {
 	DEFAULT_CONSTRAINED_REPAIR_ENABLED,
 	DEFAULT_SLOT_WAIT_TIMEOUT_MS,
 	DEFAULT_SLOT_WAIT_POLL_MS,
-	DEFAULT_INTENT_LLM_ON_SINGLE_SLOT,
 	AGENT_DECISION_MODE_ENUM_VALUES,
 	DEFAULT_AGENT_DECISION_MODE,
 	DEFAULT_AUTHORED_SPEECH_ENABLED,
@@ -102,12 +101,8 @@ import {
 	DEFAULT_AGENT_PROMPT_MODE,
 	SKILLS_ROUTING_ENUM_VALUES,
 	DEFAULT_SKILLS_ROUTING,
-	DEFAULT_INTENT_EMBED_THRESHOLD,
-	DEFAULT_INTENT_LEXICAL_MIN_SCORE,
 	DEFAULT_INTENT_CACHE_ENABLED,
 	DEFAULT_INTENT_CACHE_SIZE,
-	DEFAULT_INTENT_CACHE_MIN_SIMILARITY,
-	DEFAULT_DESCRIPTOR_ROUTING_ENABLED,
 	DEFAULT_AGENT_MAX_STEPS,
 	DEFAULT_AGENT_BUDGET_MS,
 	DEFAULT_TOOL_CALL_TEMPERATURE,
@@ -277,17 +272,6 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 		.default(DEFAULT_SKILLS_ROUTING),
 	intentModelName: text("intent_model_name"),
 	embeddingModelName: text("embedding_model_name"),
-	intentEmbedThreshold: real("intent_embed_threshold")
-		.notNull()
-		.default(DEFAULT_INTENT_EMBED_THRESHOLD),
-	intentLexicalMinScore: real("intent_lexical_min_score")
-		.notNull()
-		.default(DEFAULT_INTENT_LEXICAL_MIN_SCORE),
-	descriptorRoutingEnabled: integer("descriptor_routing_enabled", {
-		mode: "boolean",
-	})
-		.notNull()
-		.default(DEFAULT_DESCRIPTOR_ROUTING_ENABLED),
 	toolModelName: text("tool_model_name"),
 	agentMaxSteps: integer("agent_max_steps")
 		.notNull()
@@ -412,9 +396,6 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	intentCacheSize: integer("intent_cache_size")
 		.notNull()
 		.default(DEFAULT_INTENT_CACHE_SIZE),
-	intentCacheMinSimilarity: real("intent_cache_min_similarity")
-		.notNull()
-		.default(DEFAULT_INTENT_CACHE_MIN_SIMILARITY),
 	fastPathMaxUtteranceChars: integer("fast_path_max_utterance_chars")
 		.notNull()
 		.default(DEFAULT_FAST_PATH_MAX_UTTERANCE_CHARS),
@@ -434,11 +415,6 @@ export const llmModelConfig = sqliteTable("llm_model_config", {
 	slotWaitPollMs: integer("slot_wait_poll_ms")
 		.notNull()
 		.default(DEFAULT_SLOT_WAIT_POLL_MS),
-	intentLlmOnSingleSlot: integer("intent_llm_on_single_slot", {
-		mode: "boolean",
-	})
-		.notNull()
-		.default(DEFAULT_INTENT_LLM_ON_SINGLE_SLOT),
 	agentDecisionMode: text("agent_decision_mode", {
 		enum: AGENT_DECISION_MODE_ENUM_VALUES,
 	})

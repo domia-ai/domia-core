@@ -34,7 +34,6 @@
 			}
 		}
 	],
-	"keywords": ["your volume", "speak louder", "speak quieter", "your voice"],
 	"exampleUtterances": ["turn your volume down", "speak louder please"],
 	"finalize": {
 		"mode": "template",

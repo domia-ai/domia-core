@@ -12,6 +12,21 @@ Three layers are merged for each provider, per field, at resolve time:
 
 The full JSON schema is published by the running node at `GET /skills/descriptor-schema` (`z.toJSONSchema` of the strict zod schema in `src/modules/skill-engine/schemas`), together with the list of fields a server may set, the fields that are stripped from server copies, the ingest limits and the resource URI.
 
+## How an utterance reaches a tool
+
+1. **Fast path** — the `fastPath` templates of every connected provider are matched first, in milliseconds, with no model. A full match calls the tool directly.
+2. **Tool judge** — everything else goes through one short, constrained call to the local model that names the one tool the sentence asks for, or `none`, over the identity's whole catalog. The judge sees, per tool, its name (or its `routing.toolLabels` entry), its description and its `routing.toolExamples` in the identity's language. A named tool is the only tool offered to the agent for that turn; `none` means the sentence is conversation.
+3. **Agent** — the model is called with the offered tools and acts.
+
+So the two levers a skill author owns for routing are `fastPath` (exact phrasings answered without a model) and `routing.toolExamples` + `routing.toolLabels` (how the judge recognises the rest). `routing.aliases` feeds the lexical ranker that protects speculation on partial transcripts; `routing.exampleUtterances` and `routing.keywords` only serve the legacy `embedding-gate` routing mode.
+
+Guidance that holds on a 3B model, measured on `npm run evals -- tool-judge`:
+
+- give every tool 3–6 short examples in the way people actually speak, including phrasings that do not contain the tool's own words ("keep playing" for a resume tool);
+- make examples of neighbouring tools contrast ("play some jazz" vs "resume the music" vs "next song"), the judge confuses siblings more than strangers;
+- when a tool name is an API identifier (`volume_volume_mute`), give it a readable label (`mute_music`) — the model keys on the name's words;
+- keep the description's first sentence a plain statement of what the tool does; the judge reads the whole description while the catalog fits its budget, the first sentence only when it does not.
+
 ## The MCP resource
 
 An MCP server advertises the descriptor as a static resource with the fixed URI `domia://descriptor` (`SKILL_DESCRIPTOR_RESOURCE_URI`). Domia never fetches a URL for it: after `connect`, if the server's capabilities include `resources`, the already-open MCP client lists resources, finds that URI and reads it. The first `text` content is parsed as JSON and ingested.
@@ -46,7 +61,7 @@ server.registerResource(
 A server copy is limited to routing, templates and texts. On ingest Domia keeps:
 
 - `description` (sanitised, at most 500 characters)
-- `routing.aliases`, `routing.exampleUtterances`, `routing.keywords`
+- `routing.aliases`, `routing.toolExamples` (at most 6 sanitised sentences per tool, 50 tools), `routing.toolLabels` (plain names, at most 40 characters of letters, digits, `_`, `:` or `-`), `routing.exampleUtterances`, `routing.keywords`
 - `execution.finalize` (texts sanitised, at most 200 characters each, only renderable placeholders) and `execution.genericWords`
 - `fastPath.intents[]` with `tool`, `templates`, `slots`, `requiredKeywords`, `argDefaults`, `priority`, plus `fastPath.expansionRules`
 - `i18n.<lang>` blocks with the same fields
@@ -77,6 +92,8 @@ Finalize texts (`ack`, `error`, `done`) and `description` go through the injecti
 | Field                                                                                                                      | Merge                                                                                                                                                        |
 | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `routing.aliases`, `routing.exampleUtterances`, `routing.keywords`, `execution.genericWords`                               | union of defaults ∪ server ∪ DB ∪ locale (DB entries come after server entries)                                                                              |
+| `routing.toolExamples`                                                                                                     | defaults → server → DB → locale, per tool key, later wins (the locale block carries the examples of that language)                                           |
+| `routing.toolLabels`                                                                                                       | defaults → server → DB, per tool key, later wins; labels are language-independent and never come from a locale block                                         |
 | `execution.finalize`                                                                                                       | defaults → server → DB → locale, per tool key, later wins                                                                                                    |
 | `description`                                                                                                              | DB ?? server ?? defaults                                                                                                                                     |
 | `fastPath` block                                                                                                           | first defined of: DB locale, DB root, server locale, server root, defaults locale, defaults root — a block replaces the whole block, blocks are never merged |
@@ -95,9 +112,16 @@ Tool `get_forecast { city: string }`, English and Spanish fast-path templates, a
 	"version": 1,
 	"description": "Weather forecasts by city.",
 	"routing": {
-		"keywords": ["forecast", "weather", "temperature", "rain"],
 		"aliases": { "get_forecast": ["weather", "forecast"] },
-		"exampleUtterances": ["forecast for madrid", "weather in london tomorrow"]
+		"toolLabels": { "get_forecast": "weather_forecast" },
+		"toolExamples": {
+			"get_forecast": [
+				"what's the weather like in paris",
+				"will it rain tomorrow",
+				"do I need an umbrella today",
+				"how hot will it get this weekend"
+			]
+		}
 	},
 	"execution": {
 		"finalize": {
@@ -130,7 +154,13 @@ Tool `get_forecast { city: string }`, English and Spanish fast-path templates, a
 	},
 	"i18n": {
 		"es": {
-			"keywords": ["pronóstico", "tiempo", "clima"],
+			"toolExamples": {
+				"get_forecast": [
+					"qué tiempo hace en parís",
+					"va a llover mañana",
+					"necesito paraguas hoy"
+				]
+			},
 			"finalize": {
 				"get_forecast": {
 					"mode": "template",
@@ -164,7 +194,9 @@ Notes on the grammar: templates are a hassil subset — `{slot}`, `[optional]`, 
 
 Everything the server ships can be overridden from the console without touching the server:
 
-- adding `routing.keywords` in the DB descriptor adds to the union; the server keywords stay
+- a DB `routing.toolExamples.get_forecast` replaces the server examples for that tool; a DB `i18n.es.toolExamples` replaces them for Spanish only
+- a DB `routing.toolLabels.get_forecast` replaces the server label
+- adding `routing.keywords` in the DB descriptor adds to the union; the server keywords stay (legacy `embedding-gate` mode only)
 - a DB `execution.finalize.get_forecast` replaces the server text for that tool
 - a DB `description` replaces the server description
 - a DB `fastPath` block (root or `i18n.<lang>`) replaces the server block entirely — copy the server templates you want to keep

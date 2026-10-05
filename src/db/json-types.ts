@@ -59,8 +59,8 @@ export type SkillProviderConfigType = {
 
 export type SkillDescriptorRoutingType = {
 	aliases?: Record<string, string[]>
-	exampleUtterances?: string[]
-	keywords?: string[]
+	toolExamples?: Record<string, string[]>
+	toolLabels?: Record<string, string>
 }
 
 export type SkillResilienceConfigType = {

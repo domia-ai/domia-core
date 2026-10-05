@@ -6,6 +6,7 @@ import {
 	parseLlmJson,
 } from "@/utils"
 import { runLLMJson } from "@/modules/llm-engine"
+import { hasUrgentSlotWaiter } from "@/modules/llm-slots"
 import { stripDomiaSnapshotSecrets } from "@/modules/config"
 import { activeVoiceReplies } from "@/modules/voice-admission"
 import { recordEpisode, patchUserModel } from "@/modules/memory"
@@ -31,6 +32,7 @@ import {
 	RECENT_TURNS_WINDOW,
 	SUMMARIZE_IDLE_POLL_MS,
 	SUMMARIZE_MAX_IDLE_WAIT_MS,
+	SUMMARIZE_YIELD_MAX_ATTEMPTS,
 } from "../constants"
 import { sessionSummarySchema } from "../schemas"
 import type {
@@ -194,6 +196,22 @@ export const getLastAnnouncementAt = async (domiaId: string) => {
 	return row?.updatedAt ?? null
 }
 
+const summaryYieldingTo = async (
+	summarizer: DomiaType,
+	prompt: string,
+): Promise<string | null> => {
+	for (let attempt = 0; attempt < SUMMARIZE_YIELD_MAX_ATTEMPTS; attempt++) {
+		const yields: boolean[] = []
+		const raw = await runLLMJson(summarizer, prompt, () => {
+			if (hasUrgentSlotWaiter(summarizer, "background")) yields.push(true)
+			return yields.length > 0
+		})
+		if (yields.length === 0) return raw
+		await new Promise((r) => setTimeout(r, SUMMARIZE_IDLE_POLL_MS))
+	}
+	return null
+}
+
 const SESSION_SUMMARY_MIN_TURNS = 2
 const SESSION_SUMMARY_MAX_TURNS = 24
 
@@ -247,7 +265,14 @@ ${turns.join("\n")}`
 						},
 					}
 				: domia
-		const raw = await runLLMJson(summarizer, prompt)
+		const raw = await summaryYieldingTo(summarizer, prompt)
+		if (raw === null) {
+			memoryLogger.info(
+				"session summary skipped — the model stayed busy (best-effort)",
+				{ domiaId: domia.id, sessionId },
+			)
+			return
+		}
 		const { value: obj, state } = parseLlmJson(raw, sessionSummarySchema)
 		if (!obj) return
 		if (state === "repaired") {
@@ -477,6 +502,13 @@ const afterConversationReset = (
 	if (resetAt === undefined) return true
 	const ts = sqlTimestampMs(createdAt)
 	return Number.isNaN(ts) || ts >= resetAt
+}
+
+export const hideRecentConversation = (domia: DomiaType): void => {
+	conversationResetAt.set(domia.id, Date.now())
+	memoryLogger.info("🧹 recent conversation hidden", {
+		domiaKey: domia.domiaKey,
+	})
 }
 
 export const resetConversation = async (domia: DomiaType): Promise<void> => {

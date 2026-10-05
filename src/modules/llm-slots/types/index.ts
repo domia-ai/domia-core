@@ -1,4 +1,4 @@
-export type LlmSlotPurposeType = "interactive" | "background"
+export type LlmSlotPurposeType = "interactive" | "background" | "router"
 
 export type SlotServerStateType = {
 	generation: number

@@ -35,6 +35,7 @@ export const forgetTool: BuiltinToolType = {
 	execute: async (args, ctx) => {
 		const what = args.what as string
 		const expired = await ctx.runtime.facts.expire(ctx.domia, what)
+		ctx.runtime.memory.hideRecentConversation(ctx.domia)
 		if (expired === 0)
 			return okResult(
 				`Nothing remembered about "${what}".`,

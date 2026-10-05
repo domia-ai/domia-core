@@ -8,11 +8,7 @@ import {
 } from "@/db"
 import type { DomiaType } from "@/modules/core"
 import { rankTools, type ScoredToolType } from "@/modules/matcher"
-import {
-	builtinKeywordHits,
-	classifyNeedsSkill,
-	resetIntentCache,
-} from "@/modules/intent-router"
+import { judgeRequestOf, requestedToolOf } from "@/modules/intent-router"
 import {
 	domiaSpecialization,
 	homeAssistantSpecialization,
@@ -23,8 +19,13 @@ import { DOMIA_TOOLS } from "@/modules/skill-engine/specializations/domia/tools"
 import { maVirtualTools } from "@/modules/skill-engine/specializations/music-assistant/virtual-tools"
 import {
 	expectedActionTools,
-	namedActionToolsOnly,
+	judgeCatalogOf,
+	namedToolsOnly,
 } from "@/modules/core-bus/utils/skill-routing"
+import {
+	setOpenRequest,
+	takeOpenRequest,
+} from "@/modules/core-bus/utils/open-request"
 import { baseLlmModelConfig } from "@/test-utils/mocks/llm-model-config"
 
 import { makeChecker } from "./lib"
@@ -147,22 +148,13 @@ const CORE_NAMES = new Set(
 	).map((t) => t.namespacedName),
 )
 
-const BUILTIN_KEYWORDS: Record<string, string[]> = {
-	en:
-		domiaSpecialization.descriptorDefaults?.(BUILTIN_TOOLS, "en").routing
-			?.keywords ?? [],
-	es:
-		domiaSpecialization.descriptorDefaults?.(BUILTIN_TOOLS, "es").routing
-			?.keywords ?? [],
-}
-
 const domia = {
 	id: randomUUID(),
 	domiaKey: "SKILL_ROUTING_EVAL",
 	characterProfile: { name: "Domia", language: "en" },
 	llmModelConfig: {
 		...baseLlmModelConfig(),
-		skillsRouting: SKILLS_ROUTING_ENUM.EMBEDDING_GATE,
+		skillsRouting: SKILLS_ROUTING_ENUM.TOOL_JUDGE,
 	},
 } as unknown as DomiaType
 
@@ -188,16 +180,6 @@ const rawNames = (tools: SkillToolType[]): string[] =>
 const SHORTLIST_CASES: { text: string; must: string[] }[] = [
 	{ text: "Lock the front door.", must: ["HassLockDoor"] },
 	{ text: "Unlock the front door.", must: ["HassUnlockDoor"] },
-	{
-		text: "Remind me to water the plants at 9 tonight.",
-		must: ["reminder"],
-	},
-	{
-		text: "Remind me at nine tonight to water the plants.",
-		must: ["reminder"],
-	},
-	{ text: "Forget what I said about the pantry.", must: ["forget"] },
-	{ text: "Remember that I am allergic to cilantro.", must: ["remember"] },
 	{
 		text: "Play some jazz in the living room.",
 		must: ["music_play"],
@@ -327,282 +309,162 @@ const checkReserveRules = (): void => {
 	)
 }
 
-const DELEGATED_CHAT = [
-	"Honestly, I'm wiped out and stressed about dinner. I have salmon, lemons, and asparagus. What can I cook tonight?",
-	"Thanks. That actually helps a little.",
-	"What should I keep in the pantry instead?",
-	"Does tonight's menu have nuts?",
-	"does the menu have nuts",
-	"is there anything with gluten tonight",
-	"Luna, tell me a short bedtime story about a dragon who is afraid of the dark.",
-]
-
-const DELEGATED_SKILL = [
-	"Lock the front door.",
-	"Set the thermostat to 21 degrees.",
-	"Play some jazz in the living room.",
-	"Turn everything off.",
-]
-
-const checkDelegatedGate = async (): Promise<void> => {
-	console.log("\na node without a local LLM still gates chat from skills")
-	const decide = async (
-		transcript: string,
-	): Promise<{ needsSkill: boolean; reason: string }> => {
-		resetIntentCache()
-		const routable = (await shortlistFor(transcript)).filter(
-			(t) => !BUILTIN_NAMES.has(t.namespacedName),
-		)
-		return classifyNeedsSkill(
-			domia,
-			transcript,
-			routable.map((t) => ({ name: t.rawName, description: t.description })),
-			{ canRunLlm: false },
-		)
-	}
-	for (const text of DELEGATED_CHAT) {
-		const decision = await decide(text)
-		checker.check(
-			`chat stays chat: "${text.slice(0, 60)}"`,
-			!decision.needsSkill,
-			decision.reason,
-		)
-	}
-	for (const text of DELEGATED_SKILL) {
-		const decision = await decide(text)
-		checker.check(
-			`a command reaches the agent: "${text}"`,
-			decision.needsSkill,
-			decision.reason,
-		)
-	}
-	const noTools = await classifyNeedsSkill(
-		{
-			...domia,
-			llmModelConfig: {
-				...domia.llmModelConfig,
-				skillsRouting: SKILLS_ROUTING_ENUM.INTENT_GATE,
-			},
-		} as DomiaType,
-		"Lock the front door.",
-		[{ name: "HassLockDoor", description: "Locks a door lock entity." }],
-		{ canRunLlm: false },
-	)
-	checker.check(
-		"a classifier that cannot run locally hands the turn to the peer agent",
-		noTools.needsSkill && noTools.reason === "no-local-llm",
-		JSON.stringify(noTools),
-	)
-}
-
-const KEYWORD_CASES: {
-	text: string
-	language: string
-	hit: boolean
-}[] = [
-	{
-		text: "Remind me to water the plants at 9 tonight.",
-		language: "en",
-		hit: true,
-	},
-	{
-		text: "Remind me at nine tonight to water the plants.",
-		language: "en",
-		hit: true,
-	},
-	{
-		text: "Forget what I said about the pantry.",
-		language: "en",
-		hit: true,
-	},
-	{
-		text: "Atlas, remind me what's happening this Friday.",
-		language: "en",
-		hit: false,
-	},
-	{ text: "Remind me when the bins go out.", language: "en", hit: false },
-	{
-		text: "One of them is vegetarian, by the way.",
-		language: "en",
-		hit: false,
-	},
-	{
-		text: "Remind me to call mom if it rains.",
-		language: "en",
-		hit: true,
-	},
-	{
-		text: "Remember that my favorite tea is jasmine.",
-		language: "en",
-		hit: true,
-	},
-	{ text: "Remember that my name is Kevin.", language: "en", hit: true },
-	{
-		text: "Do you remember that my name is Kevin?",
-		language: "en",
-		hit: false,
-	},
-	{ text: "Don't forget about the milk.", language: "en", hit: false },
-	{ text: "She said remind me at five.", language: "en", hit: false },
-	{
-		text: "Recuérdame regar las plantas a las nueve.",
-		language: "es",
-		hit: true,
-	},
-	{
-		text: "Recuérdame qué pasa este viernes.",
-		language: "es",
-		hit: false,
-	},
-]
-
-const checkBuiltinKeywords = (): void => {
-	console.log("\nbuilt-in keywords route commands, never recall questions")
-	for (const { text, language, hit } of KEYWORD_CASES) {
-		const found = builtinKeywordHits(text, language, BUILTIN_KEYWORDS[language])
-		checker.check(
-			`${hit ? "routes" : "leaves"} "${text}"`,
-			found.length > 0 === hit,
-			`hit=${found.join(",")}`,
-		)
-	}
-}
-
-const BUILTIN_TOOL_KEYWORDS = Object.fromEntries(
-	Object.entries(
-		domiaSpecialization.descriptorDefaults?.(BUILTIN_TOOLS, "en").routing
-			?.aliases ?? {},
-	).map(([name, keywords]) => [`${BUILTIN}__${name}`, keywords]),
-)
-
-const READ_BUILTINS = new Set(
-	DOMIA_TOOLS.filter(
-		(t) => t.definition.annotations?.readOnlyHint === true,
-	).map((t) => `${BUILTIN}__${t.name}`),
-)
-
-const EXPECTATION_CASES: { text: string; expected: string[] }[] = [
-	{ text: "I had a great time at the party.", expected: [] },
-	{ text: "What time is it?", expected: [] },
-	{ text: "We had our first date in Paris.", expected: [] },
-	{ text: "I'll be there in ten minutes.", expected: [] },
-	{ text: "Forget about it, it doesn't matter.", expected: [] },
-	{ text: "Remind me to call mom at five.", expected: ["reminder"] },
-	{ text: "Forget what I said about the pantry.", expected: ["forget"] },
-	{ text: "Set a timer for the pasta.", expected: ["timer"] },
-	{ text: "Remember that I am allergic to cilantro.", expected: ["remember"] },
-]
-
-const CHAT_SENTENCES: Record<string, string[]> = {
-	en: [
-		"I had a great time at the party last night.",
-		"We had our first date in Paris, you know.",
-		"I woke up at six o'clock.",
-		"It took an hour to get home.",
-		"I'll be there in ten minutes.",
-	],
-	es: [
-		"Tardé una hora en llegar a casa.",
-		"Llego en diez minutos.",
-		"Se me rompió el reloj.",
-	],
-}
-
-const checkChatStaysChat = (): void => {
-	console.log("\nordinary sentences never hit a built-in keyword")
-	for (const [language, sentences] of Object.entries(CHAT_SENTENCES))
-		for (const text of sentences) {
-			const found = builtinKeywordHits(
-				text,
-				language,
-				BUILTIN_KEYWORDS[language],
-			)
-			checker.check(
-				`${language}: "${text}" stays chat`,
-				found.length === 0,
-				`hit=${found.join(",")}`,
-			)
-		}
-}
-
-const checkExpectedTools = (): void => {
-	console.log("\nonly the action tool the words name is expected to be called")
-	for (const { text, expected } of EXPECTATION_CASES) {
-		const hits = new Set(
-			builtinKeywordHits(
-				text,
-				"en",
-				Object.values(BUILTIN_TOOL_KEYWORDS).flat(),
-			),
-		)
-		const found = expectedActionTools(
-			BUILTIN_TOOLS,
-			BUILTIN_TOOL_KEYWORDS,
-			hits,
-			(name) => READ_BUILTINS.has(name),
-		)
-		checker.check(
-			`"${text}" expects [${expected.join(", ")}]`,
-			found.join() === expected.map((name) => `${BUILTIN}__${name}`).join(),
-			`found=${found.join(",")}`,
-		)
-	}
-}
-
 const checkNamedToolOnly = (): void => {
-	console.log(
-		"\nwhen the words name one action tool, its rivals are not offered",
-	)
-	const isRead = (name: string): boolean => READ_BUILTINS.has(name)
-	const offeredFor = (text: string): string[] => {
-		const hits = new Set(
-			builtinKeywordHits(
-				text,
-				"en",
-				Object.values(BUILTIN_TOOL_KEYWORDS).flat(),
-			),
-		)
-		const expected = expectedActionTools(
-			ALL_TOOLS,
-			BUILTIN_TOOL_KEYWORDS,
-			hits,
-			isRead,
-		)
-		return namedActionToolsOnly(
-			ALL_TOOLS,
-			BUILTIN_TOOL_KEYWORDS,
-			expected,
-			isRead,
-		).map((t) => t.rawName)
-	}
-	const remember = offeredFor("Remember that my favorite tea is jasmine.")
+	console.log("\nwhen a tool is named, only that tool is offered")
+	const remember = `${BUILTIN}__remember`
+	const alarm = `${BUILTIN}__alarm`
+	const forRemember = rawNames(namedToolsOnly(ALL_TOOLS, [remember]))
 	checker.check(
-		"remember is offered without forget, reminder, timer or alarm",
-		remember.includes("remember") &&
-			!["forget", "reminder", "timer", "alarm"].some((name) =>
-				remember.includes(name),
-			),
-		remember.join(","),
+		"remember is offered alone",
+		forRemember.join() === "remember",
+		forRemember.join(","),
+	)
+	const withoutAlarm = ALL_TOOLS.filter((t) => t.namespacedName !== alarm)
+	checker.check(
+		"a named tool that is unavailable offers nothing and expects nothing",
+		namedToolsOnly(withoutAlarm, [alarm]).length === 0 &&
+			expectedActionTools(withoutAlarm, [alarm]).length === 0,
 	)
 	checker.check(
-		"read tools and other providers stay offered",
-		remember.includes("time") && remember.includes("HassTurnOn"),
-		remember.join(","),
+		"with no tool named every tool stays offered and nothing is expected",
+		namedToolsOnly(ALL_TOOLS, []).length === ALL_TOOLS.length &&
+			expectedActionTools(ALL_TOOLS, []).length === 0,
 	)
 	checker.check(
-		"a sentence that names no action tool keeps every tool",
-		offeredFor("What time is it?").length === ALL_TOOLS.length,
+		"the named tool is the one expected to be called",
+		expectedActionTools(ALL_TOOLS, [remember]).join() === remember,
+	)
+}
+
+const checkJudgeCatalog = async (): Promise<void> => {
+	console.log("\nthe judge sees one stable catalog with readable names")
+	const sorted = [...ALL_TOOLS].sort((a, b) =>
+		a.namespacedName.localeCompare(b.namespacedName),
+	)
+	const catalog = judgeCatalogOf(
+		sorted,
+		{ [`${MUSIC}__playback_pause`]: ["pause the music"] },
+		{ [`${MUSIC}__playback_pause`]: "pause_music" },
+	)
+	checker.check(
+		"a tool label replaces its raw name for the judge",
+		catalog.byName.get("pause_music")?.rawName === "playback_pause" &&
+			!catalog.byName.has("playback_pause"),
+	)
+	checker.check(
+		"examples travel with the renamed tool",
+		catalog.hints.find((h) => h.name === "pause_music")?.examples?.[0] ===
+			"pause the music",
+	)
+	const twin = tool("other-home", "HassTurnOn", "Turns on a device.")
+	const clashing = judgeCatalogOf([...sorted, twin], {}, {})
+	checker.check(
+		"two providers with the same tool name are told apart by provider",
+		clashing.byName.has("home-assistant:HassTurnOn") &&
+			clashing.byName.has("other-home:HassTurnOn") &&
+			!clashing.byName.has("HassTurnOn"),
+	)
+	const request = judgeRequestOf("x", catalog.hints)
+	checker.check(
+		"the judge is offered every tool and none",
+		request !== null &&
+			request.choices.length === catalog.hints.length + 1 &&
+			request.choices.at(-1) === "none",
+	)
+	const bloated = Array.from({ length: 400 }, (_, i) => ({
+		name: `tool_${i}`,
+		description: "x".repeat(300),
+		examples: ["one example sentence", "another example sentence"],
+	}))
+	const trimmed = judgeRequestOf("x", bloated.slice(0, 60))
+	checker.check(
+		"over budget, descriptions give way before examples",
+		trimmed !== null &&
+			!trimmed.system.includes("xxxxxxxx") &&
+			trimmed.system.includes("Examples:"),
+	)
+	checker.check(
+		"a catalog that cannot fit skips the judge",
+		judgeRequestOf("x", bloated) === null,
+	)
+	const skipped = await requestedToolOf(domia, "x", bloated)
+	checker.check(
+		"a skipped judge is a failure, not a none",
+		skipped.tool === null && skipped.failed,
+	)
+	const failing = await requestedToolOf(domia, "x", catalog.hints, () =>
+		Promise.reject(new Error("hub down")),
+	)
+	checker.check(
+		"a judge that errors is a failure, not a none",
+		failing.tool === null && failing.failed,
+	)
+	const none = await requestedToolOf(
+		domia,
+		"I had a lovely day.",
+		catalog.hints,
+		() => Promise.resolve('{"tool": "none"}'),
+	)
+	checker.check(
+		"a judge that answers none is not a failure",
+		none.tool === null && !none.failed,
+	)
+	const named = await requestedToolOf(
+		domia,
+		"Pause the song.",
+		catalog.hints,
+		() => Promise.resolve('{"tool": "pause_music"}'),
+	)
+	const repeated = await requestedToolOf(
+		domia,
+		"Pause the song.",
+		catalog.hints,
+		() => Promise.reject(new Error("must not be asked again")),
+	)
+	checker.check(
+		"an exact repeat is answered from the cache without the judge",
+		repeated.tool === "pause_music" && !repeated.failed,
+	)
+	checker.check(
+		"a remote judge names a tool by its label",
+		named.tool === "pause_music",
+	)
+}
+
+const checkOpenRequest = (): void => {
+	console.log("\na short answer is joined to the request that asked for it")
+	const scope = "SKILL_ROUTING_EVAL:sat-1"
+	setOpenRequest(scope, "Set a timer for the pasta.")
+	checker.check(
+		"a short answer takes the open request",
+		takeOpenRequest(scope, "Ten minutes.")?.transcript ===
+			"Set a timer for the pasta.",
+	)
+	checker.check(
+		"an open request is taken once",
+		takeOpenRequest(scope, "Ten minutes.") === null,
+	)
+	setOpenRequest(scope, "Set a timer for the pasta.")
+	checker.check(
+		"a long new sentence is not an answer and drops the open request",
+		takeOpenRequest(
+			scope,
+			"Actually tell me about the history of pasta in the south of Italy.",
+		) === null && takeOpenRequest(scope, "Ten minutes.") === null,
+	)
+	checker.check(
+		"another room never takes this room's open request",
+		(setOpenRequest(scope, "Set a timer."),
+		takeOpenRequest("SKILL_ROUTING_EVAL:sat-2", "Ten minutes.")) === null,
 	)
 }
 
 const main = async (): Promise<void> => {
 	checkReserveRules()
 	await checkDemoShortlist()
-	await checkDelegatedGate()
-	checkBuiltinKeywords()
-	checkChatStaysChat()
-	checkExpectedTools()
 	checkNamedToolOnly()
+	await checkJudgeCatalog()
+	checkOpenRequest()
 	const pass = checker.passCount()
 	const fail = checker.failCount()
 	console.log(`\n${pass}/${pass + fail} skill-routing checks passed`)

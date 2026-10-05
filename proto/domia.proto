@@ -180,6 +180,7 @@ message InferenceRequest {
   optional string target_domia_key = 7;
   optional string trace_id = 8;
   optional string tool_choice = 9;
+  optional string choice_json = 10;
 }
 
 message InferenceResponse {

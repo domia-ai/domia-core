@@ -1,3 +1,4 @@
+import { DEFAULT_INTENT_MODEL } from "@/db"
 import { createServer, ServerError, Status, type Server } from "nice-grpc"
 
 import { env } from "@/config"
@@ -35,7 +36,9 @@ import { parseFacts, upsertFacts } from "@/modules/memory"
 import { updateInteraction } from "@/modules/session-manager"
 import {
 	runLLM,
+	runLLMChoice,
 	runLLMWithTools,
+	type LlmChoiceRequestType,
 	TOOL_CHOICE_VALUES,
 } from "@/modules/llm-engine"
 import type {
@@ -572,6 +575,23 @@ const buildImplementation = ({
 				const { domia, features } = await resolveTarget(request.targetDomiaKey)
 				if (!features.canRunLlm) {
 					throw capabilityDisabled("llm", domia.domiaKey)
+				}
+				if (request.choiceJson) {
+					const choice = JSON.parse(request.choiceJson) as LlmChoiceRequestType
+					grpcServerLogger.info(
+						"🧭 RunInferenceWithTools: tool judge for a peer",
+						{
+							choices: choice.choices.length,
+							origin: request.originDomiaKey,
+						},
+					)
+					const chosen = await runLLMChoice(
+						domia,
+						choice,
+						domia.llmModelConfig?.intentModelName?.trim() ||
+							DEFAULT_INTENT_MODEL,
+					)
+					return { reply: JSON.stringify({ [choice.key]: chosen ?? "" }) }
 				}
 				const messages = JSON.parse(request.messagesJson) as ChatMessageType[]
 				const tools = JSON.parse(request.toolsJson) as ToolDefinitionType[]

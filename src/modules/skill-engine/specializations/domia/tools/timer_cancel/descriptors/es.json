@@ -9,7 +9,6 @@
 			]
 		}
 	],
-	"keywords": ["cancela temporizador", "para temporizador"],
 	"exampleUtterances": ["cancela el temporizador", "para el temporizador"],
 	"finalize": {
 		"mode": "template",

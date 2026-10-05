@@ -7,6 +7,9 @@ import {
 	SKILL_SERVER_DESCRIPTOR_MAX_SLOT_VALUES,
 	SKILL_SERVER_DESCRIPTOR_MAX_FINALIZE_CHARS,
 	SKILL_SERVER_DESCRIPTOR_MAX_DESCRIPTION_CHARS,
+	SKILL_SERVER_DESCRIPTOR_MAX_TOOL_EXAMPLES,
+	SKILL_SERVER_DESCRIPTOR_MAX_TOOL_ENTRIES,
+	SKILL_SERVER_DESCRIPTOR_MAX_LABEL_CHARS,
 	type DomiaSkillDescriptorType,
 	type FastPathBlockType,
 	type FastPathIntentType,
@@ -35,6 +38,7 @@ const PLACEHOLDER = /\{(\w+)\}/g
 const RENDERER_PLACEHOLDERS = new Set(["speakable", "name"])
 const BENIGN_SANITIZE_REASONS = new Set(["control-chars", "newlines", "length"])
 const FINALIZE_TEXT_KEYS = ["ack", "error", "done"] as const
+const LABEL_RE = /^[\p{L}\p{N}_:-]+$/u
 
 const warnRejected = (
 	ctx: ServerDescriptorIngestContextType,
@@ -70,34 +74,59 @@ const cleanTextList = (
 	return kept.length > 0 ? kept : undefined
 }
 
+const cleanListMap = (
+	map: Record<string, string[]> | undefined,
+	maxPerTool: number | null,
+): Record<string, string[]> | undefined => {
+	if (!map) return undefined
+	const out = Object.fromEntries(
+		Object.entries(map)
+			.slice(0, SKILL_SERVER_DESCRIPTOR_MAX_TOOL_ENTRIES)
+			.map(([tool, list]) => [
+				tool,
+				cleanTextList(list, SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATE_CHARS)?.slice(
+					0,
+					maxPerTool ?? undefined,
+				),
+			])
+			.filter((entry): entry is [string, string[]] => entry[1] !== undefined),
+	)
+	return Object.keys(out).length > 0 ? out : undefined
+}
+
+const cleanLabels = (
+	map: Record<string, string> | undefined,
+): Record<string, string> | undefined => {
+	if (!map) return undefined
+	const out = Object.fromEntries(
+		Object.entries(map)
+			.slice(0, SKILL_SERVER_DESCRIPTOR_MAX_TOOL_ENTRIES)
+			.map(([tool, label]) => [
+				tool,
+				cleanText(label, SKILL_SERVER_DESCRIPTOR_MAX_LABEL_CHARS),
+			])
+			.filter(
+				(entry): entry is [string, string] =>
+					entry[1] !== null && LABEL_RE.test(entry[1]),
+			),
+	)
+	return Object.keys(out).length > 0 ? out : undefined
+}
+
 const cleanRouting = (
 	routing: SkillDescriptorRoutingType | undefined,
 ): SkillDescriptorRoutingType | undefined => {
 	if (!routing) return undefined
-	const aliases = routing.aliases
-		? Object.fromEntries(
-				Object.entries(routing.aliases)
-					.map(([tool, list]) => [
-						tool,
-						cleanTextList(list, SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATE_CHARS),
-					])
-					.filter(
-						(entry): entry is [string, string[]] => entry[1] !== undefined,
-					),
-			)
-		: undefined
-	const exampleUtterances = cleanTextList(
-		routing.exampleUtterances,
-		SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATE_CHARS,
+	const aliases = cleanListMap(routing.aliases, null)
+	const toolExamples = cleanListMap(
+		routing.toolExamples,
+		SKILL_SERVER_DESCRIPTOR_MAX_TOOL_EXAMPLES,
 	)
-	const keywords = cleanTextList(
-		routing.keywords,
-		SKILL_SERVER_DESCRIPTOR_MAX_TEMPLATE_CHARS,
-	)
+	const toolLabels = cleanLabels(routing.toolLabels)
 	const out: SkillDescriptorRoutingType = {
-		...(aliases && Object.keys(aliases).length > 0 ? { aliases } : {}),
-		...(exampleUtterances ? { exampleUtterances } : {}),
-		...(keywords ? { keywords } : {}),
+		...(aliases ? { aliases } : {}),
+		...(toolExamples ? { toolExamples } : {}),
+		...(toolLabels ? { toolLabels } : {}),
 	}
 	return Object.keys(out).length > 0 ? out : undefined
 }

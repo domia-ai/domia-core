@@ -14,7 +14,6 @@
 			"allowBlockedTokens": true
 		}
 	],
-	"keywords": ["time left", "timer status"],
 	"exampleUtterances": [
 		"how much time is left on the timer",
 		"how long on the timer"

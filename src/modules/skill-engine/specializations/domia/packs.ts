@@ -23,7 +23,6 @@ const builtinToolPackSchema = z
 	.object({
 		intents: z.array(fastPathIntentSchema.omit({ tool: true })).optional(),
 		expansionRules: z.record(z.string(), z.string()).optional(),
-		keywords: z.array(z.string().min(1)).optional(),
 		exampleUtterances: z.array(z.string().min(1)).optional(),
 		finalize: finalizeRuleSchema,
 		phrases: z.record(z.string(), z.string()).optional(),

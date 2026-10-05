@@ -1,29 +1,27 @@
-## 🧠 Module Architecture Overview
+# Modules
 
-DOMIA is designed as a collection of modular cognitive engines. Each module (e.g., `emotion-engine`, `memory-engine`, `identity-engine`) encapsulates a distinct layer of intelligence or functionality within the DOMIA ecosystem.
+Each folder here is one capability of Domia (speech-to-text, the LLM engine, the agent loop, skills, memory, reflection, satellites, …). A module owns its logic, its types and its persistence, and exposes them through a barrel.
 
-All modules follow a consistent, folder-based architecture to ensure clarity, scalability, and maintainability across the entire system.
+## Shape
 
-### 📁 Folder-Based Module Pattern
+| Path                                        | Role                                                                                                                                                |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`                                  | Pure barrel: re-exports what other modules may use. No logic.                                                                                       |
+| `controller/`                               | The module's public functions.                                                                                                                      |
+| `types/`                                    | Every named type of the module, in `types/index.ts`. Types are never declared inline elsewhere.                                                     |
+| `utils/`                                    | Stateless helpers used inside the module.                                                                                                           |
+| `constants/`                                | Fixed values that are not configuration. Anything tunable is a database column, not a constant here.                                                |
+| `schemas/`                                  | Zod schemas for input and stored JSON.                                                                                                              |
+| `db-adapter/`                               | Persistence for the module.                                                                                                                         |
+| `engines/`, `adapters/`, `specializations/` | For modules with interchangeable implementations: one folder per implementation plus a registry. Adding an engine is a folder and a registry entry. |
 
-Each DOMIA module includes the following standard folders:
+A module has only the folders it needs.
 
-| Folder        | Role                                                                                      |
-| ------------- | ----------------------------------------------------------------------------------------- |
-| `constants/`  | Contains static values, constants, and predefined enums.                                  |
-| `controller/` | Public API of the module. Contains the main methods exposed to other parts of the system. |
-| `db-adapter/` | Handles database operations or connections. Abstracts persistence logic for the module.   |
-| `example/`    | Demonstrates usage patterns and serves as live documentation.                             |
-| `schemas/`    | Includes validation schemas (e.g., with Zod) to enforce input/output integrity.           |
-| `types/`      | TypeScript interfaces and types shared within the module.                                 |
-| `utils/`      | Stateless utility functions used internally.                                              |
-| `index.ts`    | Entry point that re-exports selected functionality for simplified imports.                |
+## Conventions
 
-### 🧩 Why Modular?
+- Closure factories (`createX`), no classes.
+- A file with logic never re-exports; barrels only re-export.
+- Adapters throw `domiaError`; they never return a failure object.
+- Log through `createLogger`.
 
-- **Decoupling**: Each module operates independently but adheres to common standards.
-- **Composability**: Modules can be plugged in or swapped out with minimal effort.
-- **Cohesion**: Related logic stays together, improving readability and development flow.
-- **Scalability**: New features can grow organically inside their own bounded contexts.
-
-This architecture is designed to support DOMIA’s long-term vision: a distributed, cognitive, and emotionally intelligent system for smart environments.
+The full rules are in [`AGENTS.md`](../../AGENTS.md) at the repository root.

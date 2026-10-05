@@ -52,9 +52,6 @@ export type LanguageCatalogType = {
 	fastPathBlockers: string[]
 	routingBlockers: string[]
 	personalQuestionMarkers: string[]
-	stateQuestionMarkers: string[]
-	stateQuestionOpeners?: string[]
-	stateWords?: string[]
 	retryCues: string[]
 	relationFamilyCues?: Partial<Record<RelationFamilyType, string[]>>
 	selfDescriptionCues?: string[]
@@ -115,9 +112,6 @@ export type ResolvedLanguageSetsType = {
 	fastPathBlockers: string[]
 	routingBlockers: string[]
 	personalQuestionMarkers: string[]
-	stateQuestionMarkers: string[]
-	stateQuestionOpeners: string[]
-	stateWords: string[]
 	retryCues: string[]
 	relationFamilyCues: Record<RelationFamilyType, string[]>
 	selfDescriptionCues: string[]

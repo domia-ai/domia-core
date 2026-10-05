@@ -971,13 +971,21 @@ const runSlotCoordinatorChecks = async (): Promise<void> => {
 		background?.slotId === 2,
 		`slot=${background?.slotId}`,
 	)
+	const router = await acquireSlotLease(a, "router")
+	checker.check(
+		"with three slots the router gets its own lane next to the background one",
+		router?.slotId === 1 && held?.slotId === 0,
+		`router=${router?.slotId} interactive=${held?.slotId}`,
+	)
+	router?.release()
 	const b = slotDomia("slot-test-identity-b")
 	const leaseB = await acquireSlotLease(b, "interactive")
 	checker.check(
-		"second identity gets a distinct interactive slot",
-		leaseB !== null && leaseB.slotId !== held?.slotId,
+		"second identity shares the one interactive slot with three slots (router and background are pinned)",
+		leaseB !== null && leaseB.slotId === 0,
 		`b=${leaseB?.slotId}`,
 	)
+	leaseB?.release()
 	const staleLease = await acquireSlotLease(a, "interactive")
 	invalidateSlots(a)
 	const postInvalidate = await acquireSlotLease(a, "interactive")
@@ -986,15 +994,30 @@ const runSlotCoordinatorChecks = async (): Promise<void> => {
 		postInvalidate !== null,
 	)
 	staleLease?.release()
+	postInvalidate?.release()
 	const afterStaleRelease = await acquireSlotLease(b, "interactive")
 	checker.check(
 		"stale-generation release does not corrupt the new state",
 		afterStaleRelease !== null,
 	)
 	background?.release()
-	leaseB?.release()
-	postInvalidate?.release()
 	afterStaleRelease?.release()
+
+	slotCount = 2
+	resetSlotCoordinator()
+	const twoSlotRouter = await acquireSlotLease(a, "router")
+	checker.check(
+		"with two slots the router shares the background lane",
+		twoSlotRouter?.slotId === 1,
+		`router=${twoSlotRouter?.slotId}`,
+	)
+	twoSlotRouter?.release()
+	const twoSlotBackground = await acquireSlotLease(b, "background")
+	checker.check(
+		"the background lane is the same slot once the router releases it",
+		twoSlotBackground?.slotId === 1,
+	)
+	twoSlotBackground?.release()
 
 	slotCount = 1
 	resetSlotCoordinator()

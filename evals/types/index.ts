@@ -1415,3 +1415,31 @@ export type ReflectionTurnCaseType = {
 	junk: { subject: string; relation: string; value: string }
 	kind: TurnKindType
 }
+
+export type ToolJudgeCorpusType = {
+	positives: Record<string, Record<string, string[]>>
+	providers: Record<string, Record<string, Record<string, string[]>>>
+	chat: Record<string, string[]>
+	unconnected: Record<string, string[]>
+	compounds: Record<string, { text: string; tools: string[] }[]>
+}
+
+export type ToolJudgeSentenceType = {
+	provider: string
+	tool: string
+	text: string
+}
+
+export type ToolJudgeOutcomeType = ToolJudgeSentenceType & {
+	named: string | null
+	hit: boolean
+	rescued: boolean
+	failed: boolean
+	ms: number
+}
+
+export type ToolJudgeGateType = {
+	minHitRate: number
+	maxWrongToolRate: number
+	maxFalseAlarmRate: number
+}

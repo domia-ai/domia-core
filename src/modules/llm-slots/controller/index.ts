@@ -116,8 +116,25 @@ const discover = (baseUrl: string): Promise<SlotServerStateType> => {
 	return promise
 }
 
+const pinnedSlotOf = (
+	state: SlotServerStateType,
+	purpose: LlmSlotPurposeType,
+): number | null => {
+	if (purpose === "background") return state.slots >= 2 ? state.slots - 1 : null
+	if (purpose === "router")
+		return state.slots >= 3
+			? state.slots - 2
+			: state.slots >= 2
+				? state.slots - 1
+				: null
+	return null
+}
+
+const pinnedLaneCount = (state: SlotServerStateType): number =>
+	state.slots >= 3 ? 2 : state.slots >= 2 ? 1 : 0
+
 const interactiveSlotCount = (state: SlotServerStateType): number =>
-	state.slots >= 2 ? state.slots - 1 : state.slots
+	state.slots - pinnedLaneCount(state)
 
 const touchLru = (state: SlotServerStateType, identityId: string): void => {
 	const idx = state.lruOrder.indexOf(identityId)
@@ -130,8 +147,9 @@ const slotFor = (
 	identityId: string,
 	purpose: LlmSlotPurposeType,
 ): number | null => {
-	if (purpose === "background" && state.slots >= 2) return state.slots - 1
-	if (purpose === "background") stats.backgroundOnSharedSlot += 1
+	const pinned = pinnedSlotOf(state, purpose)
+	if (pinned !== null) return pinned
+	if (purpose !== "interactive") stats.backgroundOnSharedSlot += 1
 	const existing = state.leases.get(identityId)
 	if (existing !== undefined) {
 		touchLru(state, identityId)
@@ -184,12 +202,55 @@ const makeLease = (
 	}
 }
 
+const urgentWaiters = new Map<string, number>()
+
+const waiterKey = (baseUrl: string, slotId: number): string =>
+	`${baseUrl}#${slotId}`
+
+const noteUrgentWaiter = (key: string, delta: number): void => {
+	const next = (urgentWaiters.get(key) ?? 0) + delta
+	if (next > 0) urgentWaiters.set(key, next)
+	else urgentWaiters.delete(key)
+}
+
+export const hasUrgentSlotWaiter = (
+	domia: DomiaType,
+	purpose: LlmSlotPurposeType,
+): boolean => {
+	if (!affinityApplies(domia)) return false
+	const baseUrl = baseUrlOf(domia)
+	const state = servers.get(baseUrl)
+	if (!state) return false
+	const slotId =
+		pinnedSlotOf(state, purpose) ?? state.leases.get(domia.id) ?? null
+	return slotId !== null && urgentWaiters.has(waiterKey(baseUrl, slotId))
+}
+
 export const acquireSlotLease = async (
 	domia: DomiaType,
 	purpose: LlmSlotPurposeType,
+	urgent = false,
 ): Promise<SlotLeaseType | null> => {
 	if (!affinityApplies(domia)) return null
 	const baseUrl = baseUrlOf(domia)
+	const waitingOn: string[] = []
+	try {
+		return await waitForSlotLease(domia, purpose, baseUrl, (slotId) => {
+			if (!urgent || waitingOn.length > 0) return
+			waitingOn.push(waiterKey(baseUrl, slotId))
+			noteUrgentWaiter(waitingOn[0], 1)
+		})
+	} finally {
+		for (const key of waitingOn) noteUrgentWaiter(key, -1)
+	}
+}
+
+const waitForSlotLease = async (
+	domia: DomiaType,
+	purpose: LlmSlotPurposeType,
+	baseUrl: string,
+	onWait: (slotId: number) => void,
+): Promise<SlotLeaseType | null> => {
 	const waitTimeoutMs =
 		domia.llmModelConfig?.slotWaitTimeoutMs ?? DEFAULT_SLOT_WAIT_TIMEOUT_MS
 	const waitPollMs =
@@ -240,6 +301,7 @@ export const acquireSlotLease = async (
 			waited = true
 			stats.waits += 1
 		}
+		if (slotId !== null) onWait(slotId)
 		if (Date.now() >= deadline) {
 			stats.waitTimeouts += 1
 			const heldSlot = slotFor(state, domia.id, purpose)

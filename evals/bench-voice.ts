@@ -62,6 +62,7 @@ const SUMMARY_COLS = [
 	"perceived_ttfa_ms",
 	"total_ms",
 	"rss_mb",
+	"intent_ms",
 	"llm_fresh_tokens",
 	"llm_cached_tokens",
 	"d_endpoint_ms",
@@ -213,6 +214,7 @@ const main = async (): Promise<void> => {
 	const gates: [string, number | undefined][] = [
 		["ttfa_ms", env.BENCH_TTFA_P95_MAX],
 		["total_ms", env.BENCH_TOTAL_P95_MAX],
+		["intent_ms", env.BENCH_INTENT_P95_MAX],
 	]
 	let breached = violationCount > 0
 	for (const [name, max] of gates) {

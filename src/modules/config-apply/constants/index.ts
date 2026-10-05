@@ -194,9 +194,6 @@ export const LLM_LIVE_FIELDS = [
 	"skillsRouting",
 	"intentModelName",
 	"embeddingModelName",
-	"intentEmbedThreshold",
-	"intentLexicalMinScore",
-	"descriptorRoutingEnabled",
 	"toolModelName",
 	"agentMaxSteps",
 	"agentBudgetMs",
@@ -234,7 +231,6 @@ export const LLM_LIVE_FIELDS = [
 	"constrainedRepairEnabled",
 	"slotWaitTimeoutMs",
 	"slotWaitPollMs",
-	"intentLlmOnSingleSlot",
 	"agentDecisionMode",
 	"authoredSpeechEnabled",
 	"agentQuestionGuardEnabled",
@@ -245,7 +241,6 @@ export const LLM_LIVE_FIELDS = [
 	"fastPathCompoundMaxTargets",
 	"intentCacheEnabled",
 	"intentCacheSize",
-	"intentCacheMinSimilarity",
 ] as const
 
 export const WAKE_WORD_LISTENER_FIELDS = [

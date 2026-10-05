@@ -1,0 +1,663 @@
+{
+	"positives": {
+		"en": {
+			"time": [
+				"Do you know what time it is?",
+				"Could you tell me the time, please?",
+				"What's the hour right now?",
+				"Is it past noon yet?",
+				"How late is it?",
+				"Got the time?",
+				"Time, please.",
+				"Tell me what time we're at."
+			],
+			"date": [
+				"What's today's date?",
+				"Which day of the week is it?",
+				"What day is it today?",
+				"Do you know the date?",
+				"Is today Thursday?",
+				"What's the date tomorrow?",
+				"Tell me the date, please.",
+				"What month are we in?"
+			],
+			"timer": [
+				"Give me ten minutes on the clock.",
+				"Set a timer for twenty minutes.",
+				"Count down five minutes for me.",
+				"Put fifteen minutes on the clock for the rice.",
+				"Can you time three minutes for the eggs?",
+				"Give me a timer for half an hour.",
+				"I need a countdown of ninety seconds.",
+				"Timer, forty five minutes.",
+				"Start a pasta timer for eight minutes.",
+				"Let me know when twelve minutes have passed."
+			],
+			"reminder": [
+				"Remind me to call the dentist at four.",
+				"Remind me in an hour to take the laundry out.",
+				"Can you remind me to water the plants tonight at nine?",
+				"Don't let me forget to send that email at five.",
+				"Set a reminder to take my pills at eight in the morning.",
+				"I need a reminder to pick up the kids at three thirty.",
+				"Remind me about the meeting in ten minutes.",
+				"Give me a nudge at six to start dinner.",
+				"Tell me at seven that I have to leave.",
+				"Remind me to stretch in two minutes."
+			],
+			"alarm": [
+				"Wake me up at seven tomorrow.",
+				"Set an alarm for six thirty.",
+				"I need to get up at five, set an alarm.",
+				"Alarm for eight in the morning, please.",
+				"Can you wake me at quarter to seven?",
+				"Set my morning alarm for seven fifteen.",
+				"Put an alarm at nine tonight.",
+				"Get me up at six.",
+				"Wake me at noon."
+			],
+			"remember": [
+				"Remember that I'm allergic to peanuts.",
+				"Remember my sister's name is Elena.",
+				"Please remember that I prefer oat milk.",
+				"Keep in mind that I work from home on Fridays.",
+				"Note that my favorite color is green.",
+				"Don't forget that my birthday is in March.",
+				"Remember I don't eat pork.",
+				"Make a note that my dog is called Bruno.",
+				"Remember that my favorite tea is jasmine.",
+				"I want you to remember that I live in Madrid."
+			],
+			"forget": [
+				"Drop what I said about my job.",
+				"Forget that I like coffee.",
+				"Erase what you know about my sister.",
+				"Please forget my allergy.",
+				"Delete what I said about my favorite color.",
+				"Forget everything about my address.",
+				"I want you to forget what I said about the pantry.",
+				"Remove what you remember about my dog."
+			]
+		},
+		"es": {
+			"time": [
+				"¿Qué horas son?",
+				"¿Me dices la hora?",
+				"¿Qué horas son ya?",
+				"¿Ya es mediodía?"
+			],
+			"date": [
+				"¿A qué día estamos?",
+				"¿A qué fecha estamos?",
+				"¿Qué día de la semana es?",
+				"Dime la fecha de hoy."
+			],
+			"timer": [
+				"Pon un temporizador de diez minutos.",
+				"Cuenta cinco minutos.",
+				"Necesito un temporizador de media hora.",
+				"Avísame cuando pasen doce minutos.",
+				"Temporizador de ocho minutos para la pasta."
+			],
+			"reminder": [
+				"Recuérdame llamar al dentista a las cuatro.",
+				"Recuérdame en una hora sacar la ropa.",
+				"Ponme un recordatorio para tomar las pastillas a las ocho.",
+				"Avísame a las siete que tengo que salir.",
+				"Recuérdame regar las plantas esta noche a las nueve."
+			],
+			"alarm": [
+				"Despiértame a las siete.",
+				"Pon una alarma a las seis y media.",
+				"Necesito levantarme a las cinco, pon una alarma.",
+				"Alarma para las ocho de la mañana."
+			],
+			"remember": [
+				"Recuerda que soy alérgico al maní.",
+				"Acuérdate de que mi hermana se llama Elena.",
+				"Ten en cuenta que trabajo desde casa los viernes.",
+				"Anota que mi color favorito es el verde.",
+				"No olvides que mi cumpleaños es en marzo."
+			],
+			"forget": [
+				"Borra lo que te conté de mi trabajo.",
+				"Olvida que me gusta el café.",
+				"Borra lo que sabes de mi hermana.",
+				"Olvida todo sobre mi dirección."
+			]
+		}
+	},
+	"chat": {
+		"en": [
+			"I had a great time at the party last night.",
+			"We had our first date in Paris, you know.",
+			"I woke up at six o'clock.",
+			"It took an hour to get home.",
+			"I'll be there in ten minutes.",
+			"Forget about it, it doesn't matter.",
+			"Try that again later, okay?",
+			"I love your voice.",
+			"That alarm went off this morning and scared me.",
+			"Time flies when you're having fun.",
+			"I remember when we used to go camping.",
+			"Do you remember my name?",
+			"Remind me what we talked about yesterday.",
+			"Remind me when the bins go out.",
+			"I never have time for anything.",
+			"She said remind me at five.",
+			"I forgot my keys at the office.",
+			"It's been a long time since we talked.",
+			"Honestly I can't remember the last time I slept well.",
+			"My sister forgot my birthday again.",
+			"What do you think about time travel?",
+			"The timer on the oven is broken.",
+			"I hate alarms, they stress me out.",
+			"Do you ever forget things?",
+			"I'm tired of being reminded of my mistakes.",
+			"One of these days I'll learn to cook.",
+			"Every minute counts in this job.",
+			"I spent the whole day at the beach.",
+			"That date did not go well.",
+			"What a day, I'm exhausted.",
+			"Tomorrow is going to be a long day.",
+			"I was up until two last night.",
+			"We lost track of time talking.",
+			"It's about time they fixed that road.",
+			"How are you feeling today?",
+			"Tell me a joke.",
+			"What's your favorite movie?",
+			"I'm feeling a bit sad today.",
+			"What should I cook for dinner?",
+			"Do you like jazz?",
+			"I think I'm getting a cold.",
+			"Tell me something interesting about octopuses.",
+			"Why is the sky blue?",
+			"I'm bored.",
+			"Thanks, that helps a lot.",
+			"You're funny.",
+			"What do you think about my idea?",
+			"I can't decide what to wear.",
+			"My boss is driving me crazy.",
+			"Give me one tip for hosting a relaxed dinner party.",
+			"What's the capital of Australia?",
+			"Good morning!",
+			"I just got back from a fishing trip.",
+			"Explain how vaccines work in one sentence.",
+			"Are sequels ever better than the original?",
+			"Never mind.",
+			"Okay.",
+			"Yes.",
+			"No, thanks.",
+			"I had a second cup of coffee this morning.",
+			"In a minute I'm going to take a nap.",
+			"My watch stopped working.",
+			"Let's talk about something else.",
+			"Who was the first person on the moon?",
+			"Is it going to rain this weekend, do you think?",
+			"I should really call my mom more often.",
+			"I need to remember to breathe sometimes, life is hectic.",
+			"The meeting ran thirty minutes over.",
+			"I missed my alarm clock as a kid, my mom woke me up.",
+			"At seven I usually have breakfast.",
+			"Don't turn on the kitchen light, it's too bright already.",
+			"Please don't lock the door yet.",
+			"Don't play any music right now.",
+			"I don't want the alarm tomorrow.",
+			"Never mind the lights.",
+			"Don't pause it, I like this song.",
+			"You don't need to set a timer.",
+			"Whatever you do, don't turn off the heating.",
+			"No need to remind me, I'll remember.",
+			"Don't dim the lights, we're reading.",
+			"If you turned on the kitchen light it would get warm.",
+			"I'd hate it if the music stopped now.",
+			"What if we played some jazz later?",
+			"I wonder whether the garage is open."
+		],
+		"es": [
+			"La pasé genial en la fiesta de anoche.",
+			"Tardé una hora en llegar a casa.",
+			"Llego en diez minutos.",
+			"Se me rompió el reloj.",
+			"Olvídalo, no importa.",
+			"Me encanta tu voz.",
+			"Esa alarma me asustó esta mañana.",
+			"El tiempo vuela cuando te diviertes.",
+			"Recuerdo cuando íbamos de campamento.",
+			"¿Te acuerdas de mi nombre?",
+			"Recuérdame qué pasa este viernes.",
+			"Nunca tengo tiempo para nada.",
+			"Olvidé las llaves en la oficina.",
+			"¿Cómo te sientes hoy?",
+			"Cuéntame un chiste.",
+			"¿Qué cocino para la cena?",
+			"Estoy aburrido.",
+			"Gracias, eso ayuda mucho.",
+			"Mi jefe me tiene loco.",
+			"Qué día tan largo, estoy agotado.",
+			"A las siete suelo desayunar.",
+			"Buenos días.",
+			"¿Cuál es la capital de Australia?",
+			"Mañana va a ser un día pesado.",
+			"Hace mucho tiempo que no hablamos.",
+			"No enciendas la luz de la cocina, ya hay mucha luz.",
+			"No cierres la puerta todavía.",
+			"No pongas música ahora.",
+			"No quiero la alarma mañana.",
+			"No hace falta que me lo recuerdes.",
+			"No bajes las luces, estamos leyendo."
+		]
+	},
+	"providers": {
+		"home-assistant": {
+			"en": {
+				"HassTurnOn": [
+					"Turn the kitchen light on, please.",
+					"Lights on in the living room, please.",
+					"Could you switch the office fan on?",
+					"Power up the TV in the den.",
+					"Put the porch light on.",
+					"Activate the hallway lamp.",
+					"Turn the bedroom lights on for me.",
+					"Open the garage, I'm pulling in.",
+					"Get the kitchen lights going.",
+					"Fire up the patio heater."
+				],
+				"HassTurnOff": [
+					"Turn off the living room lights.",
+					"Lights off in the kitchen.",
+					"Could you switch the fan off?",
+					"Shut the TV down.",
+					"Kill the porch light.",
+					"Power off the bedroom lamp.",
+					"Close the garage door, please.",
+					"Turn off everything upstairs.",
+					"Shut off the heater in the office.",
+					"I'm leaving, turn the lights off."
+				],
+				"HassLightSet": [
+					"Dim the bedroom lamp to fifty percent.",
+					"Set the kitchen lights to twenty percent.",
+					"Make the living room a bit brighter.",
+					"Turn the office light red.",
+					"Put the hallway light at full brightness.",
+					"Lower the lights in the dining room.",
+					"Set the lamp to a warm white.",
+					"Brightness to seventy in the bedroom.",
+					"Make the lights softer in here.",
+					"Change the kitchen light to green."
+				],
+				"GetLiveContext": [
+					"Is the garage door open?",
+					"Are there any lights still on?",
+					"Is the office light still on?",
+					"Are any windows open?",
+					"Is the front door locked?",
+					"Is the TV on?",
+					"Did I leave the kitchen light on?",
+					"Is the hallway lamp on?",
+					"Is anything on in the office?",
+					"Are the garage lights off?"
+				],
+				"HassSetPosition": [
+					"Open the blinds.",
+					"Close the living room curtains.",
+					"Open the bedroom shades halfway.",
+					"Put the blinds at twenty percent.",
+					"Lower the kitchen blinds all the way.",
+					"Raise the shades in the office.",
+					"Set the curtains to seventy percent.",
+					"Open the garage blinds a little."
+				],
+				"HassClimateSetTemperature": [
+					"Put the thermostat at twenty one.",
+					"Turn the heat up to twenty three.",
+					"Make it cooler in here.",
+					"Set the AC to nineteen.",
+					"Warm the house up a bit.",
+					"Thermostat to twenty, please.",
+					"Lower the temperature in the bedroom to eighteen.",
+					"Bump the heating up two degrees."
+				],
+				"HassLockDoor": [
+					"Lock the front door for the night.",
+					"Lock up the house.",
+					"Could you lock the back door?",
+					"Make sure the front door is locked.",
+					"Lock the garage door.",
+					"Secure the side door.",
+					"Lock all the doors, please.",
+					"Lock the door behind me."
+				],
+				"HassUnlockDoor": [
+					"Unlock the front door, I'm home.",
+					"Open up the back door lock.",
+					"Unlock the garage door, please.",
+					"Let me in, unlock the door.",
+					"Unlock the side door.",
+					"Could you unlock the front door for the cleaner?",
+					"Unlock all the doors.",
+					"Undo the lock on the front door."
+				],
+				"HassBroadcast": [
+					"Tell everybody that dinner's on the table.",
+					"Announce to the house that we're leaving.",
+					"Broadcast that the movie is starting.",
+					"Let the kids know it's bedtime.",
+					"Tell the whole house to come down for cake.",
+					"Announce that the guests are here.",
+					"Say in every room that lunch is served.",
+					"Shout to everyone that the taxi is outside."
+				],
+				"GetLiveContext|HassClimateGetTemperature": [
+					"What's the temperature in the living room?",
+					"How cold is it in the bedroom?",
+					"What's the humidity in the bathroom?",
+					"What's it like temperature-wise in the office?"
+				]
+			},
+			"es": {
+				"HassTurnOn": [
+					"Enciende la luz de la cocina, por favor.",
+					"Prende el ventilador de la oficina, porfa.",
+					"Pon la luz del porche.",
+					"Activa la lámpara del pasillo.",
+					"Abre el garaje, ya llegué.",
+					"Enciende la tele de la sala."
+				],
+				"HassTurnOff": [
+					"Apaga las luces de la sala.",
+					"Apaga ya el ventilador.",
+					"Cierra la puerta del garaje, porfa.",
+					"Apaga todo arriba.",
+					"Ya me voy, apaga las luces.",
+					"Apaga la tele."
+				],
+				"HassLightSet": [
+					"Baja la luz del cuarto al cincuenta por ciento.",
+					"Pon las luces de la cocina al veinte.",
+					"Pon la sala un poco más brillante.",
+					"Cambia la luz de la oficina a rojo.",
+					"Baja las luces del comedor.",
+					"Pon la lámpara en blanco cálido."
+				],
+				"GetLiveContext": [
+					"¿Está abierta la puerta del garaje?",
+					"¿Qué luces están encendidas?",
+					"¿Sigue encendida la luz de la oficina?",
+					"¿Está cerrada con llave la puerta principal?",
+					"¿Está prendida la tele?",
+					"¿Está prendida la lámpara del pasillo?"
+				],
+				"HassSetPosition": [
+					"Abre las persianas, por favor.",
+					"Cierra las cortinas de la sala.",
+					"Abre las persianas del cuarto a la mitad.",
+					"Baja las persianas de la cocina del todo."
+				],
+				"HassClimateSetTemperature": [
+					"Deja el termostato en veintiún grados.",
+					"Sube la calefacción a veintitrés.",
+					"Que esté más fresco aquí.",
+					"Pon el aire a diecinueve."
+				],
+				"HassLockDoor": [
+					"Cierra la puerta principal con llave.",
+					"Bloquea la puerta de atrás, por favor.",
+					"Asegura la puerta del garaje.",
+					"Cierra todas las puertas con llave."
+				],
+				"HassUnlockDoor": [
+					"Quita el seguro de la puerta principal.",
+					"Desbloquea la puerta trasera.",
+					"Quita el seguro de la puerta del garaje.",
+					"Déjame entrar, abre la cerradura."
+				],
+				"HassBroadcast": [
+					"Diles a todos que ya está la cena.",
+					"Anuncia en la casa que ya nos vamos.",
+					"Diles a los niños que es hora de dormir.",
+					"Anuncia que llegaron los invitados."
+				],
+				"GetLiveContext|HassClimateGetTemperature": [
+					"¿Qué temperatura hay en la sala?",
+					"¿Qué temperatura hay en la oficina?"
+				]
+			}
+		},
+		"music-assistant": {
+			"en": {
+				"music_play": [
+					"Play some jazz in the living room.",
+					"Put on some Beatles.",
+					"Play Bohemian Rhapsody.",
+					"I'd like to hear some classical music.",
+					"Play the album Abbey Road in the kitchen.",
+					"Start some music in the office.",
+					"Play my chill playlist.",
+					"Put on something relaxing.",
+					"Play Daft Punk on the bedroom speaker.",
+					"Can we have some music?"
+				],
+				"music_now_playing": [
+					"What song is playing?",
+					"Who is this artist?",
+					"What's this track called?",
+					"Which album is this from?",
+					"What am I listening to?",
+					"Tell me the name of this song.",
+					"Who's singing right now?",
+					"What's on right now?"
+				],
+				"playback_pause": [
+					"Pause the song.",
+					"Hold on, pause that.",
+					"Stop the music for a moment.",
+					"Pause playback in the kitchen.",
+					"Put the music on hold.",
+					"Pause it.",
+					"Stop the song for now.",
+					"Pause the speaker in the office."
+				],
+				"playback_resume": [
+					"Resume the song.",
+					"Keep the music going.",
+					"Continue the song.",
+					"Play again where we left off.",
+					"Unpause the music.",
+					"Carry on with the playlist.",
+					"Resume playback in the kitchen.",
+					"Start the music back up."
+				],
+				"playback_next_track": [
+					"Skip this track.",
+					"Next track, please.",
+					"On to the next song.",
+					"I don't like this one, skip it.",
+					"Go to the next song.",
+					"Skip ahead.",
+					"Change the song.",
+					"Next, please."
+				],
+				"playback_previous_track": [
+					"Go back one song.",
+					"Play the track before this one.",
+					"Play that last one again.",
+					"Back to the last song.",
+					"Previous track, please.",
+					"Replay the one before.",
+					"Go back one.",
+					"Put the last song on again."
+				],
+				"volume_volume_set": [
+					"Volume at thirty percent.",
+					"Put the music at half.",
+					"Volume to sixty in the kitchen.",
+					"Put the speaker at twenty percent.",
+					"Set the music to full volume.",
+					"Volume at ten percent, please.",
+					"Make the music forty percent.",
+					"Set the office speaker to fifty."
+				],
+				"volume_volume_up": [
+					"Turn the music up a notch.",
+					"Louder, please.",
+					"Crank it up a bit.",
+					"Raise the volume in the kitchen.",
+					"A little louder.",
+					"Make the music louder.",
+					"Turn up the speaker.",
+					"Up the volume."
+				],
+				"volume_volume_down": [
+					"Turn the volume down.",
+					"Softer, please.",
+					"Lower the music a bit.",
+					"Turn the music down in the office.",
+					"A little softer.",
+					"Make it quieter.",
+					"Bring the volume down.",
+					"Turn down the speaker."
+				],
+				"volume_volume_mute": [
+					"Mute the song.",
+					"Mute every speaker.",
+					"Silence the kitchen speaker.",
+					"Unmute the music.",
+					"Mute it for a second.",
+					"Turn the sound off on the speaker.",
+					"Unmute the living room.",
+					"Mute everything."
+				]
+			},
+			"es": {
+				"music_play": [
+					"Pon música en la oficina.",
+					"Pon algo de los Beatles.",
+					"Pon Bohemian Rhapsody.",
+					"Quiero escuchar música clásica.",
+					"Pon mi playlist tranquila.",
+					"Pon Daft Punk en la bocina del cuarto."
+				],
+				"music_now_playing": [
+					"¿Qué canción está sonando?",
+					"¿Quién es este artista?",
+					"¿Cómo se llama esta canción?",
+					"¿Qué estoy escuchando?"
+				],
+				"playback_pause": [
+					"Pausa la canción.",
+					"Espera, pausa eso.",
+					"Detén la música un momento ahora mismo.",
+					"Pausa la bocina de la oficina."
+				],
+				"playback_resume": [
+					"Reanuda la canción.",
+					"Sigue con la canción.",
+					"Continúa la playlist.",
+					"Quita la pausa a la música."
+				],
+				"playback_next_track": [
+					"Sáltate esta canción.",
+					"La siguiente, por favor.",
+					"Pon la que sigue ya.",
+					"Cambia la canción, porfa."
+				],
+				"playback_previous_track": [
+					"Regresa una canción.",
+					"Pon la canción de antes.",
+					"Pon la de antes otra vez.",
+					"Regresa una."
+				],
+				"volume_volume_set": [
+					"Volumen al treinta por ciento.",
+					"Deja la música a medio volumen.",
+					"Volumen al sesenta en la cocina.",
+					"Pon la bocina al veinte por ciento."
+				],
+				"volume_volume_up": [
+					"Súbele al volumen.",
+					"Más fuerte, por favor.",
+					"Sube la música un poco.",
+					"Súbele a la bocina."
+				],
+				"volume_volume_down": [
+					"Bájale al volumen.",
+					"Más bajito, por favor, por favor.",
+					"Baja la música un poco.",
+					"Bájale a la bocina."
+				],
+				"volume_volume_mute": [
+					"Silencia la canción.",
+					"Silencia todas las bocinas.",
+					"Quita el silencio de la música.",
+					"Apaga el sonido de la bocina."
+				]
+			}
+		}
+	},
+	"unconnected": {
+		"en": [
+			"Order me a pizza.",
+			"Call my sister.",
+			"Send an email to Mark about the meeting.",
+			"Book a table for two tonight.",
+			"Check my bank balance.",
+			"Read me my new messages.",
+			"Translate this into French.",
+			"Take a picture of the garden.",
+			"Buy more coffee beans online.",
+			"Start a video call with grandma."
+		],
+		"es": [
+			"Pídeme una pizza.",
+			"Llama a mi hermana.",
+			"Mándale un correo a Marcos.",
+			"Reserva una mesa para dos esta noche.",
+			"Revisa mi saldo del banco.",
+			"Léeme mis mensajes nuevos."
+		]
+	},
+	"compounds": {
+		"en": [
+			{
+				"text": "Turn off the kitchen light and set a timer for ten minutes.",
+				"tools": ["HassTurnOff", "timer"]
+			},
+			{
+				"text": "Play some jazz and dim the living room.",
+				"tools": ["music_play", "HassLightSet"]
+			},
+			{
+				"text": "Remind me at six and lock the front door.",
+				"tools": ["reminder", "HassLockDoor"]
+			},
+			{
+				"text": "Pause the music and tell everyone dinner is ready.",
+				"tools": ["playback_pause", "HassBroadcast"]
+			},
+			{
+				"text": "Set the thermostat to twenty and close the blinds.",
+				"tools": ["HassClimateSetTemperature", "HassSetPosition"]
+			},
+			{
+				"text": "Skip this song and turn the volume down.",
+				"tools": ["playback_next_track", "volume_volume_down"]
+			}
+		],
+		"es": [
+			{
+				"text": "Apaga la luz de la cocina y pon un temporizador de diez minutos.",
+				"tools": ["HassTurnOff", "timer"]
+			},
+			{
+				"text": "Pon jazz y baja la luz de la sala.",
+				"tools": ["music_play", "HassLightSet"]
+			},
+			{
+				"text": "Recuérdame a las seis y cierra la puerta con llave.",
+				"tools": ["reminder", "HassLockDoor"]
+			}
+		]
+	}
+}

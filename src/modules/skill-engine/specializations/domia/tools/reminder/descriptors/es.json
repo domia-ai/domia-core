@@ -8,7 +8,6 @@
 			"argDefaults": { "action": "cancel" }
 		}
 	],
-	"keywords": ["recuérdame", "recordatorio"],
 	"exampleUtterances": [
 		"recuérdame llamar a mamá en veinte minutos",
 		"recuérdame a las siete tomar las pastillas"

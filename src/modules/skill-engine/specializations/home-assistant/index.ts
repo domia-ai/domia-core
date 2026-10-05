@@ -58,7 +58,7 @@ import {
 	HA_FAST_PATH_ENTITY_KEY_PREFIX,
 	HA_FAST_PATH_FLOOR_KEY,
 	HA_FAST_PATH_NAME_GROUPS,
-	HA_EXAMPLE_UTTERANCES,
+	HA_TOOL_EXAMPLES,
 	HA_MDNS_SERVICE_TYPE,
 	HA_MCP_PATH,
 } from "./constants"
@@ -527,7 +527,7 @@ export const homeAssistantSpecialization: SkillSpecializationType = {
 		kind: HA_SPECIALIZATION_KIND,
 		routing: {
 			aliases: HA_ALIASES,
-			exampleUtterances: forLanguage(HA_EXAMPLE_UTTERANCES, language),
+			toolExamples: forLanguage(HA_TOOL_EXAMPLES, language),
 		},
 		execution: {
 			coreTools: tools

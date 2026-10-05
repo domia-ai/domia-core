@@ -163,5 +163,6 @@ export const createTurnContext = (
 		readOnlyRetried: false,
 		actNudged: false,
 		plainRetried: false,
+		askedForDetail: false,
 	}
 }

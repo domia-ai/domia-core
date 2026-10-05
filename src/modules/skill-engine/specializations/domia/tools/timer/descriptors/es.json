@@ -12,7 +12,6 @@
 			}
 		}
 	],
-	"keywords": ["temporizador", "cuenta atrás"],
 	"exampleUtterances": [
 		"pon un temporizador de cinco minutos",
 		"temporizador de diez minutos"

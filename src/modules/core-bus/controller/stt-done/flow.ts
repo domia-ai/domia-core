@@ -329,6 +329,24 @@ const handleSttDoneFlow = async (
 			}
 		}
 
+		const targets = await resolveCapabilityDelegations(
+			domia,
+			CAPABILITY_ENUM.LLM,
+		)
+		if (targets.length > 0) {
+			setInteractionTarget(interactionId, targets[0].domiaKey)
+			if (
+				await attemptDelegatedSkillsRoute(
+					ctx,
+					session,
+					targets,
+					turnSignal,
+					payload,
+				)
+			)
+				return
+		}
+
 		if (payload.prestartedTokens) {
 			if (
 				session.isVoice &&
@@ -369,10 +387,6 @@ const handleSttDoneFlow = async (
 			return
 		}
 
-		const targets = await resolveCapabilityDelegations(
-			domia,
-			CAPABILITY_ENUM.LLM,
-		)
 		if (targets.length === 0) {
 			publishToDomiaBus(domiaId, DOMIA_EVENT_BUS_ENUM.CAPABILITY_MISSING, {
 				capability: CAPABILITY_ENUM.LLM,
@@ -382,11 +396,6 @@ const handleSttDoneFlow = async (
 			})
 			return
 		}
-
-		setInteractionTarget(interactionId, targets[0].domiaKey)
-
-		if (await attemptDelegatedSkillsRoute(ctx, session, targets, turnSignal))
-			return
 
 		if (await tryDelegatedReplyAudio(ctx, session, targets)) return
 		await runDelegatedStreamLlm(ctx, session, targets)

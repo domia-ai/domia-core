@@ -183,3 +183,7 @@ export type ConfigApplyEngineType = {
 		domiaKey: string,
 	) => Promise<ConfigApplyResultType>
 }
+
+export type ApplyStateEntryType = SubsystemRevisionStateType & {
+	domiaKey: string
+}

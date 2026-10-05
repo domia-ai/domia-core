@@ -135,7 +135,6 @@ export const DEFAULT_SKILL_MAX_TOTAL_TIMEOUT_MS = 30_000
 export const DEFAULT_CONSTRAINED_REPAIR_ENABLED = true
 export const DEFAULT_SLOT_WAIT_TIMEOUT_MS = 8000
 export const DEFAULT_SLOT_WAIT_POLL_MS = 25
-export const DEFAULT_INTENT_LLM_ON_SINGLE_SLOT = true
 export const AGENT_DECISION_MODE_ENUM = {
 	NATIVE: "native",
 	STRUCTURED: "structured",
@@ -158,26 +157,18 @@ export const AGENT_PROMPT_MODE_ENUM_VALUES = [
 ] as const
 export const DEFAULT_AGENT_PROMPT_MODE = AGENT_PROMPT_MODE_ENUM.COMPACT
 export const SKILLS_ROUTING_ENUM = {
+	TOOL_JUDGE: "tool-judge",
 	ALWAYS_AGENT: "always-agent",
-	INTENT_GATE: "intent-gate",
-	EMBEDDING_GATE: "embedding-gate",
-	FAST_ROUTER: "fast-router",
 } as const
 export const SKILLS_ROUTING_ENUM_VALUES = [
+	SKILLS_ROUTING_ENUM.TOOL_JUDGE,
 	SKILLS_ROUTING_ENUM.ALWAYS_AGENT,
-	SKILLS_ROUTING_ENUM.INTENT_GATE,
-	SKILLS_ROUTING_ENUM.EMBEDDING_GATE,
-	SKILLS_ROUTING_ENUM.FAST_ROUTER,
 ] as const
-export const DEFAULT_SKILLS_ROUTING = SKILLS_ROUTING_ENUM.EMBEDDING_GATE
+export const DEFAULT_SKILLS_ROUTING = SKILLS_ROUTING_ENUM.TOOL_JUDGE
 export const DEFAULT_INTENT_MODEL = "llama3.2:3b"
 export const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
-export const DEFAULT_INTENT_EMBED_THRESHOLD = 0.66
-export const DEFAULT_INTENT_LEXICAL_MIN_SCORE = 2
 export const DEFAULT_INTENT_CACHE_ENABLED = true
 export const DEFAULT_INTENT_CACHE_SIZE = 256
-export const DEFAULT_INTENT_CACHE_MIN_SIMILARITY = 0.97
-export const DEFAULT_DESCRIPTOR_ROUTING_ENABLED = true
 export const DEFAULT_EMBED_MODEL_PATH = "data/models/bge-small-en-v1.5"
 export const MATCHER_ENGINE_ENUM = {
 	LEXICAL: "lexical",
@@ -228,6 +219,7 @@ export const DEFAULT_AGENT_BUDGET_MS = 15_000
 export const DEFAULT_CONFIRMATION_TTL_MS = 120_000
 export const DEFAULT_CONFIRMATION_EXPIRED_GRACE_MS = 30_000
 export const DEFAULT_ELICIT_TTL_MS = 30_000
+export const DEFAULT_OPEN_REQUEST_ANSWER_MAX_WORDS = 8
 export const CONFIRMATION_STATUS_ENUM = {
 	PENDING: "pending",
 	APPROVED: "approved",
@@ -265,11 +257,14 @@ export const SKILL_SERVER_DESCRIPTOR_MAX_EXPANSION_DEPTH = 4
 export const SKILL_SERVER_DESCRIPTOR_MAX_SLOT_VALUES = 50
 export const SKILL_SERVER_DESCRIPTOR_MAX_FINALIZE_CHARS = 200
 export const SKILL_SERVER_DESCRIPTOR_MAX_DESCRIPTION_CHARS = 500
+export const SKILL_SERVER_DESCRIPTOR_MAX_TOOL_EXAMPLES = 6
+export const SKILL_SERVER_DESCRIPTOR_MAX_TOOL_ENTRIES = 50
+export const SKILL_SERVER_DESCRIPTOR_MAX_LABEL_CHARS = 40
 export const SKILL_SERVER_DESCRIPTOR_ALLOWED_FIELDS = [
 	"description",
 	"routing.aliases",
-	"routing.exampleUtterances",
-	"routing.keywords",
+	"routing.toolExamples",
+	"routing.toolLabels",
 	"execution.finalize",
 	"execution.genericWords",
 	"fastPath.intents[].tool",

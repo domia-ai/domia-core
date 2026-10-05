@@ -27,6 +27,7 @@ import type {
 	ToolDefinitionType,
 	LlmUsageType,
 	LlmUsageSinkType,
+	LlmChoiceRequestType,
 } from "../../types"
 import type { OllamaStatsType } from "./types"
 
@@ -526,19 +527,20 @@ const runOllamaReplyStreamOrTools = async (
 	}
 }
 
-const INTENT_NUM_PREDICT = 48
+const CHOICE_NUM_PREDICT = 48
 
-const runOllamaIntent = async (
+const runOllamaChoice = async (
 	domia: DomiaType,
-	prompt: string,
+	request: LlmChoiceRequestType,
 	modelName: string,
-): Promise<string> => {
+): Promise<string | null> => {
 	const release = await acquireSlot(domia)
 	const client = getClient(domia)
 	try {
 		const response = await client.generate({
 			model: modelName,
-			prompt,
+			system: request.system,
+			prompt: request.user,
 			stream: false,
 			keep_alive: resolveKeepAlive(domia),
 			...resolveThink(domia),
@@ -546,10 +548,13 @@ const runOllamaIntent = async (
 			options: {
 				num_ctx: domia.llmModelConfig?.contextWindow,
 				temperature: 0,
-				num_predict: INTENT_NUM_PREDICT,
+				num_predict: CHOICE_NUM_PREDICT,
 			},
 		})
-		return response.response.trim() || ""
+		const chosen = parseLlmJson(response.response).value?.[request.key]
+		return typeof chosen === "string" && request.choices.includes(chosen)
+			? chosen
+			: null
 	} catch (error) {
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {
 			logger: llmEngineLogger,
@@ -597,6 +602,6 @@ export const ollamaEngine: LlmEngineAdapterType = {
 	runReplyStreamOrTools: runOllamaReplyStreamOrTools,
 	runConstrainedJson: runOllamaConstrainedJson,
 	runChatConstrainedJson: runOllamaChatConstrainedJson,
-	runIntent: runOllamaIntent,
+	runChoice: runOllamaChoice,
 	warmup: warmupOllama,
 }

@@ -10,13 +10,17 @@ import {
 	shortlistTools,
 	buildToolManifest,
 	toolBaseName,
+	toolProviderSlug,
 	getConnectionsFor,
 	toolAvailableFor,
 	getToolPolicy,
+	getToolMeta,
 	type OriginCapabilitiesType,
 	type ToolManifestType,
 } from "@/modules/skill-engine"
 import { rankTools, getMatcherEngine } from "@/modules/matcher"
+import type { IntentToolHintType } from "@/modules/intent-router"
+import type { JudgeCatalogType } from "../types"
 
 export const hasSkillConnections = (domia: DomiaType): boolean =>
 	getConnectionsFor(domia.id).length > 0
@@ -39,35 +43,83 @@ export const cachedToolsOf = (domia: DomiaType): SkillToolType[] => {
 		.flatMap((s) => s.toolsCache ?? [])
 }
 
-export const expectedActionTools = (
-	tools: SkillToolType[],
-	toolKeywords: Record<string, string[]>,
-	keywordHits: ReadonlySet<string>,
-	isReadTool: (namespacedName: string) => boolean,
-): string[] =>
-	tools
-		.filter(
-			(t) =>
-				(toolKeywords[t.namespacedName] ?? []).some((keyword) =>
-					keywordHits.has(keyword),
-				) && !isReadTool(t.namespacedName),
-		)
-		.map((t) => t.namespacedName)
+export const judgeableToolsOf = (domia: DomiaType): SkillToolType[] =>
+	[...advertisedToolsOf(domia)].sort((a, b) =>
+		a.namespacedName.localeCompare(b.namespacedName),
+	)
 
-export const namedActionToolsOnly = (
+const JUDGE_NAME_QUALIFIER = ":"
+
+export const judgeCatalogOf = (
 	tools: SkillToolType[],
-	toolKeywords: Record<string, string[]>,
-	expectedTools: string[],
-	isReadTool: (namespacedName: string) => boolean,
+	toolExamples: Record<string, string[]>,
+	toolLabels: Record<string, string> = {},
+): JudgeCatalogType => {
+	const shown = (t: SkillToolType): string =>
+		toolLabels[t.namespacedName] ?? toolBaseName(t.rawName)
+	const counts = new Map<string, number>()
+	for (const t of tools) counts.set(shown(t), (counts.get(shown(t)) ?? 0) + 1)
+	const byName = new Map<string, SkillToolType>()
+	const hints: IntentToolHintType[] = []
+	for (const t of tools) {
+		const name =
+			(counts.get(shown(t)) ?? 0) > 1
+				? `${t.provider}${JUDGE_NAME_QUALIFIER}${shown(t)}`
+				: shown(t)
+		byName.set(name, t)
+		hints.push({
+			name,
+			description: t.description,
+			examples: toolExamples[t.namespacedName],
+		})
+	}
+	return { hints, byName }
+}
+
+export const isReadTool = (domia: DomiaType, namespacedName: string): boolean =>
+	getToolMeta(domia.id, namespacedName)?.riskClass === "read"
+
+export const providerReadToolsOf = (
+	domia: DomiaType,
+	tools: SkillToolType[],
+	namespacedName: string,
 ): SkillToolType[] => {
-	if (expectedTools.length === 0) return tools
-	const expected = new Set(expectedTools)
+	const slug = toolProviderSlug(namespacedName)
 	return tools.filter(
 		(t) =>
-			expected.has(t.namespacedName) ||
-			(toolKeywords[t.namespacedName] ?? []).length === 0 ||
-			isReadTool(t.namespacedName),
+			toolProviderSlug(t.namespacedName) === slug &&
+			isReadTool(domia, t.namespacedName),
 	)
+}
+
+export const withJudgedTool = (
+	domia: DomiaType,
+	tools: SkillToolType[],
+	judged: SkillToolType | null,
+	origin: OriginCapabilitiesType | null,
+): SkillToolType[] =>
+	!judged ||
+	tools.some((t) => t.namespacedName === judged.namespacedName) ||
+	(origin !== null &&
+		!toolAvailableFor(domia.id, judged.namespacedName, origin))
+		? tools
+		: [...tools, judged]
+
+export const expectedActionTools = (
+	tools: SkillToolType[],
+	named: string[],
+): string[] => {
+	const offered = new Set(tools.map((t) => t.namespacedName))
+	return named.filter((name) => offered.has(name))
+}
+
+export const namedToolsOnly = (
+	tools: SkillToolType[],
+	named: string[],
+): SkillToolType[] => {
+	if (named.length === 0) return tools
+	const wanted = new Set(named)
+	return tools.filter((t) => wanted.has(t.namespacedName))
 }
 
 export const skillsMayIntercept = (domia: DomiaType): boolean =>
@@ -99,17 +151,23 @@ export const looksSkillish = async (
 	return top > maxScore
 }
 
+export const offerableToolsOf = (
+	domia: DomiaType,
+	origin: OriginCapabilitiesType | null,
+): SkillToolType[] =>
+	advertisedToolsOf(domia).filter(
+		(t) =>
+			getToolPolicy(domia.id, t.namespacedName) !== "block" &&
+			(!origin || toolAvailableFor(domia.id, t.namespacedName, origin)),
+	)
+
 export const shortlistedToolsOf = async (
 	domia: DomiaType,
 	transcript: string,
 	origin: OriginCapabilitiesType | null = null,
 ): Promise<SkillToolType[]> => {
 	const manifest = toolManifestOf(domia)
-	const available = advertisedToolsOf(domia).filter(
-		(t) =>
-			getToolPolicy(domia.id, t.namespacedName) !== "block" &&
-			(!origin || toolAvailableFor(domia.id, t.namespacedName, origin)),
-	)
+	const available = offerableToolsOf(domia, origin)
 	const scored = await rankTools(domia, transcript, available, {
 		aliases: manifest.aliases,
 	})

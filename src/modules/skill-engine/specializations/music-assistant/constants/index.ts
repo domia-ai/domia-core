@@ -152,34 +152,6 @@ export const MA_ALIASES: Record<string, string[]> = {
 	radio: ["music", "play"],
 }
 
-export const MA_KEYWORDS: Record<string, string[]> = {
-	en: [
-		"music",
-		"song",
-		"track",
-		"album",
-		"artist",
-		"playlist",
-		"volume",
-		"speaker",
-		"now playing",
-		"play some",
-		"skip the song",
-		"turn the music",
-	],
-	es: [
-		"música",
-		"canción",
-		"disco",
-		"volumen",
-		"bocina",
-		"altavoz",
-		"suena",
-		"pon música",
-		"sube el volumen",
-	],
-}
-
 export const MA_QUERY_FILLERS: Record<string, string[]> = {
 	en: [
 		"some",
@@ -395,33 +367,152 @@ export const MA_FAST_PATH_SAMPLES: Record<string, string[]> = {
 	],
 }
 
-export const MA_EXAMPLE_UTTERANCES: Record<string, string[]> = {
-	en: [
-		"play Radiohead",
-		"play some jazz in the kitchen",
-		"put on OK Computer",
-		"play Karma Police on the living room speaker",
-		"pause the music",
-		"resume the music",
-		"skip this song",
-		"go back a song",
-		"turn the music up",
-		"set the volume to thirty percent",
-		"mute the speakers",
-		"which song is this?",
-	],
-	es: [
-		"pon Radiohead",
-		"pon algo de jazz en la cocina",
-		"pon el disco OK Computer",
-		"pon Karma Police en la bocina de la sala",
-		"pausa la música",
-		"reanuda la música",
-		"salta esta canción",
-		"vuelve una canción",
-		"sube el volumen de la música",
-		"pon el volumen al treinta por ciento",
-		"silencia las bocinas",
-		"¿qué canción es esta?",
-	],
+export const MA_TOOL_LABELS: Record<string, string> = {
+	[MA_TOOL_MUSIC_PLAY]: "play_music",
+	[MA_TOOL_NOW_PLAYING]: "what_is_playing",
+	[MA_TOOL_PAUSE]: "pause_music",
+	[MA_TOOL_RESUME]: "resume_music",
+	[MA_TOOL_NEXT]: "next_song",
+	[MA_TOOL_PREVIOUS]: "previous_song",
+	[MA_TOOL_VOLUME_SET]: "set_music_volume",
+	[MA_TOOL_VOLUME_UP]: "music_louder",
+	[MA_TOOL_VOLUME_DOWN]: "music_quieter",
+	[MA_TOOL_VOLUME_MUTE]: "mute_music",
+}
+
+export const MA_TOOL_EXAMPLES: Record<string, Record<string, string[]>> = {
+	en: {
+		[MA_TOOL_MUSIC_PLAY]: [
+			"play Radiohead",
+			"play some jazz in the kitchen",
+			"put on OK Computer",
+			"I want to hear some blues",
+			"put some music on",
+		],
+		[MA_TOOL_NOW_PLAYING]: [
+			"which song is this?",
+			"what's playing right now?",
+			"who sings this?",
+			"what album is this?",
+		],
+		[MA_TOOL_PAUSE]: [
+			"pause the music",
+			"hold the music for a second",
+			"stop the music for now",
+			"pause, please",
+		],
+		[MA_TOOL_RESUME]: [
+			"resume the music",
+			"keep playing",
+			"unpause",
+			"continue where it stopped",
+			"carry on with the music",
+		],
+		[MA_TOOL_NEXT]: [
+			"skip this song",
+			"next track",
+			"play the next one",
+			"skip it",
+			"put on a different song",
+		],
+		[MA_TOOL_PREVIOUS]: [
+			"go back a song",
+			"play the previous track",
+			"that one again",
+			"the song before this one",
+			"replay the previous one",
+		],
+		[MA_TOOL_VOLUME_SET]: [
+			"set the volume to thirty percent",
+			"music at half volume",
+			"speaker at twenty percent",
+			"volume fifty",
+		],
+		[MA_TOOL_VOLUME_UP]: [
+			"turn the music up",
+			"louder",
+			"a bit more volume",
+			"crank it up",
+		],
+		[MA_TOOL_VOLUME_DOWN]: [
+			"turn the music down",
+			"quieter please",
+			"lower the volume",
+			"bring it down a notch",
+		],
+		[MA_TOOL_VOLUME_MUTE]: [
+			"mute the speakers",
+			"mute the music",
+			"unmute",
+			"silence the speaker",
+			"turn the sound off",
+		],
+	},
+	es: {
+		[MA_TOOL_MUSIC_PLAY]: [
+			"pon Radiohead",
+			"pon algo de jazz en la cocina",
+			"pon el disco OK Computer",
+			"quiero escuchar blues",
+			"pon música",
+		],
+		[MA_TOOL_NOW_PLAYING]: [
+			"¿qué canción es esta?",
+			"¿qué está sonando?",
+			"¿quién canta esto?",
+			"¿qué disco es este?",
+		],
+		[MA_TOOL_PAUSE]: [
+			"pausa la música",
+			"detén la música un momento",
+			"para la música por ahora",
+			"pausa",
+		],
+		[MA_TOOL_RESUME]: [
+			"reanuda la música",
+			"sigue tocando",
+			"quita la pausa",
+			"continúa donde se quedó",
+			"sigue con la música",
+		],
+		[MA_TOOL_NEXT]: [
+			"salta esta canción",
+			"siguiente canción",
+			"pon la que sigue",
+			"sáltala",
+			"cambia la canción",
+		],
+		[MA_TOOL_PREVIOUS]: [
+			"vuelve una canción",
+			"pon la canción anterior",
+			"esa otra vez",
+			"regresa a la canción de antes",
+			"repite la anterior",
+		],
+		[MA_TOOL_VOLUME_SET]: [
+			"pon el volumen al treinta por ciento",
+			"música a medio volumen",
+			"bocina al veinte por ciento",
+			"volumen cincuenta",
+		],
+		[MA_TOOL_VOLUME_UP]: [
+			"sube el volumen de la música",
+			"más fuerte",
+			"un poco más de volumen",
+			"súbele",
+		],
+		[MA_TOOL_VOLUME_DOWN]: [
+			"baja el volumen de la música",
+			"más bajito por favor",
+			"baja el volumen",
+			"un poco más suave",
+		],
+		[MA_TOOL_VOLUME_MUTE]: [
+			"silencia las bocinas",
+			"silencia la música",
+			"quita el silencio",
+			"silencia la bocina",
+			"apaga el sonido",
+		],
+	},
 }

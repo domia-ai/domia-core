@@ -76,6 +76,7 @@ export const acquireSlot = async (
 	domia: DomiaType,
 	purpose: LlmSlotPurposeType = "interactive",
 	label = "unlabeled",
+	urgent = false,
 ): Promise<{ release: () => void; slotId: number | null }> => {
 	llmSemaphore.setLimit(
 		domia.llmModelConfig?.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY,
@@ -83,7 +84,7 @@ export const acquireSlot = async (
 	const releaseSemaphore = await llmSemaphore.acquire()
 	let lease: { slotId: number; release: () => void } | null = null
 	try {
-		lease = await acquireSlotLease(domia, purpose)
+		lease = await acquireSlotLease(domia, purpose, urgent)
 	} catch (error) {
 		releaseSemaphore()
 		throw domiaError(LLM_ERRORS.ENGINE_FAILED, {

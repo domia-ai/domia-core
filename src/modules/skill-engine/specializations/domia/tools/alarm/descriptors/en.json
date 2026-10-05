@@ -38,7 +38,6 @@
 			}
 		}
 	],
-	"keywords": ["alarm", "wake me"],
 	"exampleUtterances": [
 		"set an alarm for seven thirty",
 		"wake me up at six tomorrow"

@@ -21,11 +21,6 @@ const cueRe = (cue: string): RegExp =>
 export const containsCue = (foldedText: string, cue: string): boolean =>
 	cueRe(cue).test(foldedText)
 
-export const cueIndex = (foldedText: string, cue: string): number => {
-	const hit = cueRe(cue).exec(foldedText)
-	return hit ? hit.index + hit[1].length : -1
-}
-
 export const tokensOf = (
 	text: string,
 	options?: TokensOptionsType,

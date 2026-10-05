@@ -10,7 +10,6 @@ import {
 import type { LanguageCatalogType } from "@/utils/language-catalogs"
 
 import { makeChecker } from "./lib"
-import { stateQuestionHit } from "@/modules/intent-router"
 
 const SYNTHETIC_CODE = "xx"
 const SYNTHETIC_KIND = "zub"
@@ -46,7 +45,6 @@ const syntheticCatalogFromEn = (): LanguageCatalogType => {
 		fastPathBlockers: [...en.fastPathBlockers],
 		routingBlockers: [...en.routingBlockers],
 		personalQuestionMarkers: [...en.personalQuestionMarkers],
-		stateQuestionMarkers: ["zub encendido"],
 		retryCues: ["zub otra vez"],
 		anaphoraRewrites: [{ pattern: "^wub it$", template: "wub {entity}" }],
 		phrases: { done: "Zub done." },
@@ -177,47 +175,13 @@ const run = (): void => {
 		es.durationUnits.minutos === 60 && es.durationUnits.minutes === 60,
 	)
 	c.check(
-		"state-question markers stay merged for es",
-		es.stateQuestionMarkers.includes("hay algo encendido") &&
-			es.stateQuestionMarkers.includes("is anything still on"),
-	)
-	c.check(
 		"retry cues stay merged for es",
 		es.retryCues.includes("inténtalo de nuevo") &&
 			es.retryCues.includes("try it again"),
 	)
 	c.check(
-		"state-question openers and state words stay merged for es",
-		es.stateQuestionOpeners.includes("están las") &&
-			es.stateQuestionOpeners.includes("are the") &&
-			es.stateWords.includes("encendidas") &&
-			es.stateWords.includes("locked"),
-	)
-
-	console.log("\nstructural state questions")
-	const structuralHits: [string, string][] = [
-		["Are the kitchen island pendants on?", "en"],
-		["Is my front door locked?", "en"],
-		["is the bedroom TV still playing", "en"],
-		["¿Están las luces de la cocina encendidas?", "es"],
-		["¿Está la puerta del garaje cerrada con llave?", "es"],
-	]
-	for (const [text, lang] of structuralHits)
-		c.check(`hit: ${text}`, stateQuestionHit(text, lang) !== null)
-	const structuralMisses: [string, string][] = [
-		["Turn the kitchen lights on", "en"],
-		["Are the pendants on the island", "en"],
-		["Is the kitchen a nice place to cook", "en"],
-		["The office lights are on", "en"],
-		["Enciende las luces de la cocina", "es"],
-	]
-	for (const [text, lang] of structuralMisses)
-		c.check(`miss: ${text}`, stateQuestionHit(text, lang) === null)
-	c.check(
-		"synthetic catalog keeps its own markers plus the en fallback",
-		xx.stateQuestionMarkers.includes("zub encendido") &&
-			xx.stateQuestionMarkers.includes("is anything still on") &&
-			xx.retryCues.includes("zub otra vez") &&
+		"synthetic catalog keeps its own cues plus the en fallback",
+		xx.retryCues.includes("zub otra vez") &&
 			xx.retryCues.includes("try it again"),
 	)
 

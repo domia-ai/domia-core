@@ -8,7 +8,6 @@
 			]
 		}
 	],
-	"keywords": ["cancel alarm", "turn off alarm"],
 	"exampleUtterances": ["cancel the alarm", "turn off my alarm"],
 	"finalize": {
 		"mode": "template",

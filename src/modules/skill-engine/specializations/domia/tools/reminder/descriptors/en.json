@@ -8,7 +8,6 @@
 			"argDefaults": { "action": "cancel" }
 		}
 	],
-	"keywords": ["remind", "reminder"],
 	"exampleUtterances": [
 		"remind me to call mom in twenty minutes",
 		"remind me at seven to take the pills"

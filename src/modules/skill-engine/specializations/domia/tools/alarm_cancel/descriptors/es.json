@@ -8,7 +8,6 @@
 			]
 		}
 	],
-	"keywords": ["cancela la alarma", "quita la alarma"],
 	"exampleUtterances": ["cancela la alarma", "quita mi alarma"],
 	"finalize": {
 		"mode": "template",

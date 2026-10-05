@@ -16,6 +16,8 @@ import {
 	recentToolsLine,
 	lastActedEntity,
 	lastToolCall,
+	setOpenRequest,
+	clearOpenRequest,
 } from "../../utils"
 import { updateInteraction, pipelineElapsed } from "@/modules/session-manager"
 import {
@@ -34,6 +36,7 @@ import {
 	type AgentInferenceType,
 	type AgentStreamInferenceType,
 	type AgentResultType,
+	confirmationScope,
 } from "@/modules/agent"
 import { deliverReply } from "../llm-done"
 import {
@@ -136,6 +139,7 @@ export const tryAgentTurn = async (
 		schema: Record<string, unknown>,
 	) => Promise<string | null>,
 	expectedTools: string[] = [],
+	utterance: string = session.transcript,
 ): Promise<boolean> => {
 	const { domia } = ctx
 	const envelope = getInteractionRuntime(session.interactionId)?.envelope
@@ -156,7 +160,7 @@ export const tryAgentTurn = async (
 			},
 			"skills",
 			() =>
-				runAgentTurn(domia, session.transcript, tools, inference, {
+				runAgentTurn(domia, utterance, tools, inference, {
 					voice: session.isVoice,
 					streamFinalize,
 					allowAsyncTools: session.isVoice && session.liveVoice === true,
@@ -183,6 +187,10 @@ export const tryAgentTurn = async (
 		})
 		return false
 	}
+
+	const openScope = confirmationScope(domia.domiaKey, confirmationChannel)
+	if (result.askedForDetail) setOpenRequest(openScope, utterance)
+	else clearOpenRequest(openScope)
 
 	if (result.pendingTools?.length) {
 		const pending = result.pendingTools

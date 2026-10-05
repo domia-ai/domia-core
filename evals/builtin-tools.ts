@@ -124,6 +124,7 @@ const fake = {
 	facts: [] as { subject: string; relation: string; value: string }[],
 	expired: [] as string[],
 	reflectionClaims: [] as string[],
+	hiddenConversations: 0,
 }
 
 const ALLOWED_RELATION_RE = /^(is|has|likes?|lives?)\b/
@@ -271,6 +272,9 @@ const fakePort: SkillRuntimePortType = {
 	memory: {
 		markReflectionCaptured: (interactionId) => {
 			fake.reflectionClaims.push(interactionId)
+		},
+		hideRecentConversation: () => {
+			fake.hiddenConversations += 1
 		},
 	},
 }
@@ -1042,6 +1046,63 @@ const checkInventedTime = async (domia: DomiaType): Promise<void> => {
 		'a bare "remind me" creates nothing and asks when',
 		fake.rows.length === before && result.reply === question,
 		`rows=${fake.rows.length - before} reply="${result.reply}"`,
+	)
+	checker.check(
+		"the turn reports that it is waiting for a detail",
+		result.askedForDetail,
+	)
+
+	const timerTools = toolsCache().filter((t) => t.rawName === "timer")
+	const timerCall: AgentInferenceType = () =>
+		Promise.resolve({
+			kind: "tool_calls",
+			calls: [{ name: namespaced("timer"), arguments: { seconds: 600 } }],
+		})
+	const asked = await runWithTraceContext(
+		{ originDomiaKey: domia.domiaKey, satelliteId: "sat-1" },
+		() =>
+			runAgentTurn(
+				domia,
+				"Set a timer for the pasta.",
+				timerTools,
+				(messages, tools, toolChoice) =>
+					toolChoice === "none"
+						? Promise.resolve({ kind: "reply", text: "For how long?" })
+						: timerCall(messages, tools, toolChoice),
+				{},
+			),
+	)
+	checker.check(
+		"a timer with no spoken duration asks and starts nothing",
+		asked.askedForDetail && fake.rows.length === before,
+		`asked=${asked.askedForDetail} rows=${fake.rows.length - before}`,
+	)
+	const answered = await runWithTraceContext(
+		{ originDomiaKey: domia.domiaKey, satelliteId: "sat-1" },
+		() =>
+			runAgentTurn(
+				domia,
+				"Set a timer for the pasta. Ten minutes.",
+				timerTools,
+				timerCall,
+				{},
+			),
+	)
+	const started = fake.rows.slice(before).find((r) => r.kind === "timer")
+	checker.check(
+		"the request joined with its answer starts the timer",
+		!answered.askedForDetail &&
+			answered.toolNamesUsed.join(",") === namespaced("timer") &&
+			started !== undefined,
+		`used=${answered.toolNamesUsed.join(",")} rows=${fake.rows.length - before} reply="${answered.reply}"`,
+	)
+
+	const hiddenBefore = fake.hiddenConversations
+	await executeDirect(domia, "forget", { what: "the pantry" }, randomUUID())
+	checker.check(
+		"forget also hides the recent conversation",
+		fake.hiddenConversations === hiddenBefore + 1,
+		`hidden=${fake.hiddenConversations - hiddenBefore}`,
 	)
 }
 

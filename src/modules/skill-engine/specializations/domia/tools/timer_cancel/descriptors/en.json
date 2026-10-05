@@ -9,7 +9,6 @@
 			]
 		}
 	],
-	"keywords": ["cancel timer", "stop timer"],
 	"exampleUtterances": ["cancel the timer", "stop my timer"],
 	"finalize": {
 		"mode": "template",

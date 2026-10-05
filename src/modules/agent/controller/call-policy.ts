@@ -82,6 +82,7 @@ export const resolveCallPolicy = async (
 		)
 		if (inferred.kind === "untargeted") {
 			ctx.forceNoTool = true
+			ctx.askedForDetail = true
 			agentLogger.warn("agent write had no target — asking the user", {
 				domiaId: ctx.domia.id,
 				name: call.name,

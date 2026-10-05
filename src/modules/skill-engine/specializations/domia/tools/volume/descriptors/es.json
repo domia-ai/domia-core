@@ -30,7 +30,6 @@
 			}
 		}
 	],
-	"keywords": ["tu volumen", "habla más alto", "habla más bajo", "tu voz"],
 	"exampleUtterances": ["baja tu volumen", "habla más alto por favor"],
 	"finalize": {
 		"mode": "template",

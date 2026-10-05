@@ -9,7 +9,6 @@
 			]
 		}
 	],
-	"keywords": ["cuánto falta", "cuánto queda"],
 	"exampleUtterances": ["cuánto tiempo falta", "cuánto queda del temporizador"],
 	"finalize": {
 		"mode": "template",

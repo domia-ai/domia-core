@@ -155,7 +155,10 @@ const portFor = (domia: DomiaType): SkillRuntimePortType => ({
 	lastReply: () => Promise.resolve(null),
 	volume: { get: notUsed, set: notUsed },
 	facts: { upsert: notUsed, expire: notUsed },
-	memory: { markReflectionCaptured: () => undefined },
+	memory: {
+		markReflectionCaptured: () => undefined,
+		hideRecentConversation: () => undefined,
+	},
 })
 
 const goodNight: RoutineInputType = {
